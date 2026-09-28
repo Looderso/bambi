@@ -16,6 +16,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# Every library ends up inside a plugin, which is a shared library, and on Linux all its code must then be
+# position-independent. macOS compiles that way anyway; Windows has no such thing.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Falling off the end of a function that returns a value is undefined behaviour, and at -O3 the
 # compiler is free to run on into whatever comes next. It was a warning nobody read.
