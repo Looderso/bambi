@@ -36,6 +36,10 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/JUCE
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/clap-juce-extensions
                  ${CMAKE_BINARY_DIR}/third_party/clap-juce-extensions EXCLUDE_FROM_ALL)
 
+# JUCE's modules are compiled into every library that uses them -- the interface, the host, the editor and each
+# plugin -- so they are configured once, here, for all of them. No web view, no curl, no VST2.
+add_compile_definitions(JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+
 add_subdirectory(${PROJECT_SOURCE_DIR}/ui ${CMAKE_BINARY_DIR}/ui)
 add_subdirectory(${PROJECT_SOURCE_DIR}/host ${CMAKE_BINARY_DIR}/host)
 add_subdirectory(${PROJECT_SOURCE_DIR}/editor ${CMAKE_BINARY_DIR}/editor)

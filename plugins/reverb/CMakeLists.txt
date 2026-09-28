@@ -39,10 +39,6 @@ target_sources(bambi-reverb-code INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Controls.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panel.cpp)
 target_include_directories(bambi-reverb-code INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
-target_compile_definitions(bambi-reverb-code INTERFACE
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(bambi-reverb-code INTERFACE
     bambi-reverb
     bambi-host

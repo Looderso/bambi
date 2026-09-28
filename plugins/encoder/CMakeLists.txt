@@ -44,10 +44,6 @@ target_sources(bambi-encoder-code INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/SourceSettings.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/FrameTrace.cpp)
 target_include_directories(bambi-encoder-code INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
-target_compile_definitions(bambi-encoder-code INTERFACE
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(bambi-encoder-code INTERFACE
     bambi-encode
     bambi-host

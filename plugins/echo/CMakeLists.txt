@@ -40,10 +40,6 @@ target_sources(bambi-echo-code INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Strip.cpp)
 target_include_directories(bambi-echo-code INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
-target_compile_definitions(bambi-echo-code INTERFACE
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(bambi-echo-code INTERFACE
     bambi-echo
     bambi-host
