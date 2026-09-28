@@ -35,10 +35,14 @@ namespace {
 constexpr int kEnoughReads = 1000;
 constexpr auto kReadDeadline = std::chrono::seconds(5);
 
-/// A pause of `d` on the clock, yielding while it waits, whatever the system's sleep granularity.
-void pauseFor(std::chrono::steady_clock::duration d) {
-    const auto until = std::chrono::steady_clock::now() + d;
-    while (std::chrono::steady_clock::now() < until) std::this_thread::yield();
+/*  A writer's pause between bursts: until the reader has taken one more, or `most` has passed. Tied to the reader
+    rather than to a duration, so neither the system's sleep granularity (15.6 ms on Windows) nor a machine with
+    fewer cores than threads starves the reader; it sleeps while it waits, and leaves the reader the core. */
+void pauseForReader(const std::atomic<int>& reads, std::chrono::steady_clock::duration most) {
+    const int seen = reads.load(std::memory_order_relaxed);
+    const auto until = std::chrono::steady_clock::now() + most;
+    while (reads.load(std::memory_order_relaxed) == seen && std::chrono::steady_clock::now() < until)
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
 }
 
 /*  A session nobody else is using. Tests run in one process and share the machine's shared
@@ -1329,7 +1333,7 @@ TEST_CASE("many windows editing one instance at once never tear an edit") {
     REQUIRE(target.open(s.id, targetId, Product::Encoder));
 
     std::atomic<bool> stop{false};
-    std::atomic<int> refused{0}, sent{0};
+    std::atomic<int> refused{0}, sent{0}, taken{0};
     std::vector<std::thread> senders;
     for (int k = 0; k < 3; ++k) {
         senders.emplace_back([&, k] {
@@ -1343,9 +1347,8 @@ TEST_CASE("many windows editing one instance at once never tear an edit") {
                 else
                     refused.fetch_add(1);
                 //  Bursts back to back, where writers collide on the lock, then a pause that lets the reader in.
-                //  A window sends once a frame; a burst is thousands of times that. Waited out on the clock: a
-                //  sleep is 2 ms on macOS but a whole 15.6 ms timer tick on Windows.
-                if (n % 32 == 0) pauseFor(std::chrono::milliseconds(2));
+                //  A window sends once a frame; a burst is thousands of times that.
+                if (n % 32 == 0) pauseForReader(taken, std::chrono::milliseconds(2));
             }
         });
     }
@@ -1357,6 +1360,7 @@ TEST_CASE("many windows editing one instance at once never tear an edit") {
     while (reads < kEnoughReads && std::chrono::steady_clock::now() < until) {
         if (!target.takePatchEdit(*got, last)) continue;
         ++reads;
+        taken.store(reads, std::memory_order_relaxed);
         if (!consistent(*got)) ++torn;
         if (got->sequence <= previous) ++backwards;
         previous = got->sequence;
