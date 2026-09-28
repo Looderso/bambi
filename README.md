@@ -11,7 +11,7 @@ Linux.
 - **Reverb** — one room around the whole field: early reflections from the direction each part of it arrives
   from, and a diffuse tail.
 
-The website is **[looderso.github.io/bambi-site](https://looderso.github.io/bambi-site/)**, and builds are on the
+The website is **[bambi.wiki](https://bambi.wiki)**, and builds are on the
 [releases page](https://github.com/Looderso/bambi/releases). bambi is in **alpha**: expect changes, and
 report what breaks.
 
