@@ -111,6 +111,9 @@ int main(int argc, char** argv) {
             p->setValueNotifyingHost(1.0f);
         echo->openSource(15);
     }
+    //  --axis, --every-pass: the taps tab on that category of the selected tap
+    if (want == "--axis") echo->showCategory(1);
+    if (want == "--every-pass") echo->showCategory(2);
     if (want == "--full") echo->setEquirectFull(true);
     if (regions)
         echo->showTab(1);

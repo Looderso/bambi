@@ -47,10 +47,10 @@ if [ "${1:-}" != "--core" ]; then
     step "reverb checks"    "$(rel reverb bambi-reverb-check)"
     echo "pictures"
     step "encoder"          "$(rel encoder bambi-plugin-snapshot)" "$shot"
-    for mode in "" --regions --sectors --settings --copy --presets --presets-name --presets-delete; do
+    for mode in "" --regions --sectors --settings --copy --presets --presets-name --presets-delete --axis --every-pass; do
         step "echo $mode"   "$(rel echo bambi-echo-shot)" "$shot" $mode
     done
-    for mode in "" --regions --settings --copy "--source 0"; do
+    for mode in "" --regions --settings --copy --room "--source 0"; do
         step "reverb $mode" "$(rel reverb bambi-reverb-shot)" "$shot" $mode
     done
     rm -f "$shot"

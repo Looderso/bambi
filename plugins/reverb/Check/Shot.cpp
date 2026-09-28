@@ -107,6 +107,8 @@ int main(int argc, char** argv) {
     }
 
     if (copyShot) rev->revealNamed("region copy");
+    //  --room: the room tab, where the six rooms and their numbers are
+    if (argc > 2 && juce::String(argv[2]) == "--room") rev->showTab(0);
     if (argc > 2 && juce::String(argv[2]) == "--settings") {
         rev->openSettings(true);
         rev->typeInstanceName("plate, long");
