@@ -35,16 +35,6 @@ namespace {
 constexpr int kEnoughReads = 1000;
 constexpr auto kReadDeadline = std::chrono::seconds(5);
 
-/*  A writer's pause between bursts: until the reader has taken one more, or `most` has passed. Tied to the reader
-    rather than to a duration, so neither the system's sleep granularity (15.6 ms on Windows) nor a machine with
-    fewer cores than threads starves the reader; it sleeps while it waits, and leaves the reader the core. */
-void pauseForReader(const std::atomic<int>& reads, std::chrono::steady_clock::duration most) {
-    const int seen = reads.load(std::memory_order_relaxed);
-    const auto until = std::chrono::steady_clock::now() + most;
-    while (reads.load(std::memory_order_relaxed) == seen && std::chrono::steady_clock::now() < until)
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
-}
-
 /*  A session nobody else is using. Tests run in one process and share the machine's shared
  *  memory namespace, so a fixed name would collide with a previous failed run. */
 struct Session {
@@ -1340,15 +1330,20 @@ TEST_CASE("many windows editing one instance at once never tear an edit") {
             LinkBus bus;
             if (!bus.open(s.id, Uuid::generate(), Product::Encoder)) return;
             auto e = std::make_unique<LinkPatchEdit>();
+            int burstStart = 0;
             for (int n = 1; !stop.load(std::memory_order_relaxed); ++n) {
+                if (n % 32 == 1) burstStart = taken.load();
                 editAt(*e, k * 1'000'000 + n);
                 if (bus.sendPatchEdit(targetId, *e) != 0)
                     sent.fetch_add(1);
                 else
                     refused.fetch_add(1);
-                //  Bursts back to back, where writers collide on the lock, then a pause that lets the reader in.
-                //  A window sends once a frame; a burst is thousands of times that.
-                if (n % 32 == 0) pauseForReader(taken, std::chrono::milliseconds(2));
+                /*  Bursts back to back, where writers collide on the lock, then a pause that lets the reader in:
+                    until it has taken an edit since this burst began, which it always can, since the burst left
+                    one. A wait and not a sleep, so neither a timer's granularity (15.6 ms on Windows) nor a
+                    machine with fewer cores than threads decides how often the reader gets in. A window sends
+                    once a frame; a burst is thousands of times that. */
+                if (n % 32 == 0) taken.wait(burstStart);
             }
         });
     }
@@ -1360,12 +1355,15 @@ TEST_CASE("many windows editing one instance at once never tear an edit") {
     while (reads < kEnoughReads && std::chrono::steady_clock::now() < until) {
         if (!target.takePatchEdit(*got, last)) continue;
         ++reads;
-        taken.store(reads, std::memory_order_relaxed);
+        taken.store(reads);
+        taken.notify_all();
         if (!consistent(*got)) ++torn;
         if (got->sequence <= previous) ++backwards;
         previous = got->sequence;
     }
     stop.store(true);
+    taken.fetch_add(1);  // and wake any sender waiting on a read that is not coming
+    taken.notify_all();
     for (auto& t : senders) t.join();
 
     INFO("read ", reads, " edits of ", sent.load(), " sent, ", refused.load(), " refused");
