@@ -1,0 +1,157 @@
+#  Every push and pull request: the repository's checks, core's tests on three systems, and the plugins built
+#  and checked on three systems. A tag `v*` also publishes the plugins as a release.
+#
+#  Link-time optimisation makes a JUCE link need a lot of memory, so links run two at a time.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: style, layers, format, notices
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - run: pipx install clang-format==23.1.1
+      - run: tools/check-style.sh
+      - run: tools/check-layers.sh
+      - run: tools/format.sh --check
+      - run: tools/release/notices.py --check
+
+  core:
+    name: core · ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - if: runner.os == 'macOS'
+        run: brew install ninja
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: cmake -B build -G Ninja
+      - run: cmake --build build
+      - run: ./build/bambi-tests
+        shell: bash
+      #  The audio hashes are one toolchain's (Apple clang, arm64); the other systems have no manifest.
+      - if: runner.os == 'macOS'
+        run: tools/golden.sh
+
+  plugins:
+    name: plugins · ${{ matrix.os }}
+    needs: core
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            system: macos
+            options: -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64
+          - os: windows-latest
+            system: windows
+          - os: ubuntu-latest
+            system: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - if: runner.os == 'macOS'
+        run: brew install ninja
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build xvfb libasound2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libglu1-mesa-dev mesa-common-dev
+      - name: configure
+        shell: bash
+        run: >
+          cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON -DBAMBI_COPY_PLUGIN=OFF
+          -DCMAKE_JOB_POOLS=link=2 -DCMAKE_JOB_POOL_LINK=link "${{ matrix.options }}"
+      - run: cmake --build build-plugin
+      - name: check suites
+        shell: bash
+        run: |
+          run() { if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a "$@"; else "$@"; fi; }
+          suite() { echo "build-plugin/plugins/$1/$2_artefacts/Release/$2"; }
+          run "$(suite encoder bambi-plugin-check)"
+          run "$(suite echo bambi-echo-check)"
+          run "$(suite reverb bambi-reverb-check)"
+      - name: collect
+        shell: bash
+        run: |
+          mkdir -p out/VST3 out/CLAP
+          for p in Encoder Echo Reverb; do
+            dir="build-plugin/plugins/${p,,}/Bambi${p}_artefacts/Release"
+            cp -R "$dir/VST3/bambi $p.vst3" out/VST3/
+            cp -R "$dir/CLAP/bambi $p.clap" out/CLAP/
+          done
+          cp "tools/release/INSTALL-${{ matrix.system }}.txt" out/INSTALL.txt
+          cp LICENSE LICENSE-AGPL-3.0.md THIRD-PARTY-NOTICES.txt out/
+      #  Zipped here, not by the upload: an artifact loses file permissions, and a macOS bundle's executable
+      #  would arrive unable to run. Named without the version, so
+      #  .../releases/latest/download/bambi-macos.zip always means the newest.
+      - name: zip
+        shell: bash
+        run: |
+          cd out
+          if [ "$RUNNER_OS" = Windows ]; then 7z a -tzip -bso0 "../bambi-${{ matrix.system }}.zip" .; else zip -qry "../bambi-${{ matrix.system }}.zip" .; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bambi-${{ matrix.system }}
+          path: bambi-${{ matrix.system }}.zip
+
+  release:
+    name: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [checks, plugins]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      #  The binaries are AGPLv3, which obliges the complete corresponding source beside them: JUCE included,
+      #  which GitHub's own source archive of a tag leaves out.
+      - name: source
+        run: |
+          git ls-files --recurse-submodules -z |
+            tar --null -T - --transform "s|^|bambi-${GITHUB_REF_NAME}/|" -czf "bambi-${GITHUB_REF_NAME}-source.tar.gz"
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            artifacts/bambi-*.zip
+            bambi-*-source.tar.gz
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+          generate_release_notes: true

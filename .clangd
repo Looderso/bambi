@@ -1,0 +1,9 @@
+CompileFlags:
+  CompilationDatabase: build-plugin
+
+# For header files, infer flags from plugin source files
+If:
+  PathMatch: [ui/.*\.h, ui/.*\.hpp]
+CompileFlags:
+  Add: [-xc++, -std=c++20]
+  # Let clangd infer include paths from plugin sources

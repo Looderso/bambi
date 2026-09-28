@@ -1,0 +1,14 @@
+bambi for Windows: VST3 and CLAP, x64
+
+1. Copy the plugins into your plugin folders (this needs administrator rights):
+     VST3\*.vst3  ->  C:\Program Files\Common Files\VST3\
+     CLAP\*.clap  ->  C:\Program Files\Common Files\CLAP\
+
+2. These alpha builds are not signed, so Windows may warn about them when you unpack the zip. The plugins
+   themselves install and run normally.
+
+3. Restart your host and rescan its plugins.
+
+The plugins are licensed under the GNU AGPLv3 (LICENSE-AGPL-3.0.md), bambi's own code under the GPLv3
+(LICENSE); third-party components and their licences are in THIRD-PARTY-NOTICES.txt. The complete source
+of this release is attached to it: https://github.com/Looderso/bambi/releases

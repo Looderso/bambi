@@ -1,0 +1,5 @@
+<!-- bambi / Encoder mark -- sphere and source, bare -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="22" fill="none" stroke="#1b1a17" stroke-width="1.6"/>
+  <circle cx="41" cy="24" r="3.4" fill="#d4873a"/>
+</svg>

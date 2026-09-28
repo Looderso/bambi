@@ -1,0 +1,10 @@
+.DS_Store
+build/
+build-*/
+.cache/
+# The private half, tracked in its own repository (bambi-private.git beside this folder)
+/CLAUDE.md
+/docs/
+/.claude/
+/prototypes/
+/tools/check-docs.sh
