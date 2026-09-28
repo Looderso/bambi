@@ -10,7 +10,7 @@ seconds, and the plugins, which do.
 - **Windows**: Visual Studio 2022 or its Build Tools, with the C++ workload. Build from a
   "Developer Command Prompt" for x64, which puts the compiler, CMake and Ninja on the path.
 - **Linux**: a C++20 compiler, and for the plugins JUCE's dependencies: ALSA, FreeType, fontconfig, X11
-  (`libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev`) and
+  (`libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libxi-dev`) and
   Mesa's GL headers.
 - **clang-format 23**, to check formatting (`brew install llvm`, or `pipx install clang-format`).
 
