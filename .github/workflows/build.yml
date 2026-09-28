@@ -117,7 +117,7 @@ jobs:
         run: |
           mkdir -p out/VST3 out/CLAP
           for p in Encoder Echo Reverb; do
-            dir="build-plugin/plugins/${p,,}/Bambi${p}_artefacts/Release"
+            dir="build-plugin/plugins/$(echo "$p" | tr '[:upper:]' '[:lower:]')/Bambi${p}_artefacts/Release"
             cp -R "$dir/VST3/bambi $p.vst3" out/VST3/
             cp -R "$dir/CLAP/bambi $p.clap" out/CLAP/
           done
