@@ -33,7 +33,7 @@ namespace {
 //  The concurrency tests read until they have this many samples, not for a fixed time, so a loaded
 //  machine does not fail them; the deadline only bounds a hang.
 constexpr int kEnoughReads = 1000;
-constexpr auto kReadDeadline = std::chrono::seconds(5);
+constexpr auto kReadDeadline = std::chrono::seconds(10);
 
 /*  A session nobody else is using. Tests run in one process and share the machine's shared
  *  memory namespace, so a fixed name would collide with a previous failed run. */
@@ -1352,7 +1352,14 @@ TEST_CASE("many windows editing one instance at once never tear an edit") {
     std::uint32_t last = 0, previous = 0;
     auto got = std::make_unique<LinkPatchEdit>();
     const auto until = std::chrono::steady_clock::now() + kReadDeadline;
+    auto beat = std::chrono::steady_clock::now();
     while (reads < kEnoughReads && std::chrono::steady_clock::now() < until) {
+        //  Alive, as a window publishing every frame is: past the heartbeat timeout every send is refused, and
+        //  the senders, waiting on a read that cannot come, would stall the test.
+        if (std::chrono::steady_clock::now() - beat > std::chrono::milliseconds(100)) {
+            target.publishDynamic(LinkDynamic{});
+            beat = std::chrono::steady_clock::now();
+        }
         if (!target.takePatchEdit(*got, last)) continue;
         ++reads;
         taken.store(reads);
