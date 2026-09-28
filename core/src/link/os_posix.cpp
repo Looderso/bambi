@@ -34,7 +34,8 @@ bool mapShared(const std::string& name, std::size_t bytes, std::intptr_t& handle
     bool sized = false;
     for (int attempt = 0; attempt < 40 && !sized; ++attempt) {
         struct stat st{};
-        if (::fstat(fd, &st) == 0 && static_cast<std::size_t>(st.st_size) >= bytes) {
+        const bool known = ::fstat(fd, &st) == 0;
+        if (known && static_cast<std::size_t>(st.st_size) >= bytes) {
             sized = true;
             break;
         }
@@ -42,10 +43,17 @@ bool mapShared(const std::string& name, std::size_t bytes, std::intptr_t& handle
             sized = true;
             break;
         }
+        //  Sized already, and too small: a segment another build left, which no wait will grow. Only an
+        //  unsized one is a creator mid-flight.
+        if (known && st.st_size > 0) break;
         ::usleep(500);  // the creator is mid-flight; it will be sized in a moment
     }
     if (!sized) {
-        error = "could not size the shared segment: " + std::string(std::strerror(errno));
+        struct stat st{};
+        error = ::fstat(fd, &st) == 0 && st.st_size > 0
+                    ? "shared segment is smaller than this build expects; it was probably created by a different "
+                      "bambi version"
+                    : "could not size the shared segment: " + std::string(std::strerror(errno));
         ::close(fd);
         return false;
     }
