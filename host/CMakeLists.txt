@@ -17,7 +17,7 @@ add_library(bambi-host STATIC
 )
 target_include_directories(bambi-host PUBLIC include)
 # clap_juce_extensions: FieldEffectProcessor is a CLAP-capable processor, and ClapPorts.h names its headers.
-target_link_libraries(bambi-host PUBLIC bambi-core juce::juce_audio_processors clap_juce_extensions)
+target_link_libraries(bambi-host PUBLIC bambi-core bambi-juce-headers clap_juce_extensions)
 bambi_warnings(bambi-host)
 # Link-time optimisation, as every plugin target has: FieldEffectProcessor is the audio thread's
 # outer loop, and with LTO it costs what it would compiled inside each plugin (within 0.4 %).

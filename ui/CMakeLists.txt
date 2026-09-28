@@ -2,7 +2,7 @@
 #
 # bambi-ui -- the look and the shared components of every plugin in the suite: Theme.h names every
 # colour, size, stroke, radius and spacing (tools/check-style.sh fails on a literal anywhere else), and
-# the components draw from it. It depends on JUCE's graphics and GUI modules and on bambi-core, never on
+# the components draw from it. It depends on JUCE's headers and on bambi-core, never on
 # a processor or a plugin.
 add_library(bambi-ui STATIC
   src/HitArea.cpp
@@ -31,5 +31,5 @@ add_library(bambi-ui STATIC
   src/Widgets.cpp
 )
 target_include_directories(bambi-ui PUBLIC include)
-target_link_libraries(bambi-ui PUBLIC juce::juce_graphics juce::juce_gui_basics bambi-core)
+target_link_libraries(bambi-ui PUBLIC bambi-juce-headers bambi-core)
 bambi_warnings(bambi-ui)

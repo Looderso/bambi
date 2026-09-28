@@ -36,7 +36,7 @@ cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON
 cmake --build build-plugin
 ```
 
-This builds VST3, CLAP and a standalone app of each plugin, each plugin's check suite, and the conformance
+This builds VST3 and CLAP of each plugin, each plugin's check suite, and the conformance
 suite. On macOS the plugins are copied into `~/Library/Audio/Plug-Ins` after building; `-DBAMBI_COPY_PLUGIN=OFF`
 turns that off. On Windows, copying into `C:\Program Files\Common Files` needs an administrator prompt.
 

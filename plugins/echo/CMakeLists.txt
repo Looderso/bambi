@@ -19,7 +19,7 @@ juce_add_plugin(BambiEcho
     PLUGIN_MANUFACTURER_CODE ${BAMBI_MANUFACTURER_CODE}
     PLUGIN_CODE ${BAMBI_ECHO_CODE}
     BUNDLE_ID "${BAMBI_ECHO_BUNDLE_ID}"
-    FORMATS VST3 Standalone          # and CLAP, below.
+    FORMATS VST3                     # and CLAP, below.
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
@@ -30,23 +30,13 @@ juce_add_plugin(BambiEcho
     NEEDS_WEB_BROWSER FALSE
     NEEDS_CURL FALSE)
 
-# The plugin's own code as an INTERFACE library, so the plugin and its harnesses compile exactly the
-# same sources with the same flags, each with its own copy of the JUCE modules.
-add_library(bambi-echo-code INTERFACE)
-target_sources(bambi-echo-code INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginProcessor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Controls.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Strip.cpp)
-target_include_directories(bambi-echo-code INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
-target_link_libraries(bambi-echo-code INTERFACE
-    bambi-echo
-    bambi-host
-    bambi-ui
-    bambi-editor
-    clap_juce_extensions
-    juce::juce_audio_utils)
+bambi_plugin_code(bambi-echo-code NAME "${BAMBI_ECHO_NAME}" LIBRARIES bambi-echo
+    SOURCES
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp
+        Source/UI/Controls.cpp
+        Source/UI/Panel.cpp
+        Source/UI/Strip.cpp)
 
 #  The wrapper's entry point is the PLUGIN's, not the shared code's: a harness may link two
 #  plugins' sources at once, and two createPluginFilter definitions do not link.

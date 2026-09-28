@@ -19,7 +19,7 @@ juce_add_plugin(BambiEncoder
     PLUGIN_MANUFACTURER_CODE ${BAMBI_MANUFACTURER_CODE}
     PLUGIN_CODE ${BAMBI_PLUGIN_CODE}
     BUNDLE_ID "${BAMBI_BUNDLE_ID}"
-    FORMATS VST3 Standalone          # and CLAP, below.
+    FORMATS VST3                     # and CLAP, below.
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
@@ -30,27 +30,17 @@ juce_add_plugin(BambiEncoder
     NEEDS_WEB_BROWSER FALSE
     NEEDS_CURL FALSE)
 
-# The plugin's own code as an INTERFACE library, so the plugin and its harnesses compile exactly the
-# same sources with the same flags, each with its own copy of the JUCE modules.
-add_library(bambi-encoder-code INTERFACE)
-target_sources(bambi-encoder-code INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginProcessor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/SceneModel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/SphereView.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Controls.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/ParameterTabs.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/SourceSettings.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/FrameTrace.cpp)
-target_include_directories(bambi-encoder-code INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
-target_link_libraries(bambi-encoder-code INTERFACE
-    bambi-encode
-    bambi-host
-    bambi-ui
-    bambi-editor
-    clap_juce_extensions
-    juce::juce_audio_utils)
+bambi_plugin_code(bambi-encoder-code NAME "${BAMBI_PLUGIN_NAME}" LIBRARIES bambi-encode
+    SOURCES
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp
+        Source/UI/SceneModel.cpp
+        Source/UI/SphereView.cpp
+        Source/UI/Panels.cpp
+        Source/UI/Controls.cpp
+        Source/UI/ParameterTabs.cpp
+        Source/UI/SourceSettings.cpp
+        Source/UI/FrameTrace.cpp)
 
 #  The wrapper's entry point is the PLUGIN's, not the shared code's: the conformance suite links
 #  every plugin's sources at once, and three createPluginFilter definitions do not link.

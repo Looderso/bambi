@@ -40,20 +40,48 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/clap-juce-extensions
 # plugin -- so they are configured once, here, for all of them. No web view, no curl, no VST2.
 add_compile_definitions(JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
 
+# JUCE, compiled once, for the tools. A module links its sources into every target that links it, so the
+# libraries below take only its headers and settings (bambi-juce-headers), and each binary gets exactly one
+# copy of JUCE: a plugin the one JUCE's plugin wrapper compiles into it, a tool this one.
+add_library(bambi-juce STATIC)
+target_link_libraries(bambi-juce PRIVATE juce::juce_audio_processors PUBLIC juce::juce_recommended_config_flags)
+add_library(bambi-juce-headers INTERFACE)
+target_include_directories(bambi-juce-headers INTERFACE $<TARGET_PROPERTY:bambi-juce,INCLUDE_DIRECTORIES>)
+target_compile_definitions(bambi-juce-headers INTERFACE $<TARGET_PROPERTY:bambi-juce,COMPILE_DEFINITIONS>)
+target_link_libraries(bambi-juce INTERFACE bambi-juce-headers)
+
 add_subdirectory(${PROJECT_SOURCE_DIR}/ui ${CMAKE_BINARY_DIR}/ui)
 add_subdirectory(${PROJECT_SOURCE_DIR}/host ${CMAKE_BINARY_DIR}/host)
 add_subdirectory(${PROJECT_SOURCE_DIR}/editor ${CMAKE_BINARY_DIR}/editor)
 
-# A console app over plugin code, with no host: a check suite, a picture tool, a bench. Its main thread
-# gets the 8 MB stack macOS gives, where Windows would give 1 MB: a check holds several processors on
-# the stack, at about 290 KB each.
+# A plugin's own code as a library, compiled once and linked by the plugin and by its tools: its sources, its
+# engine, and the host, interface and editor every plugin shares. Link-time optimised, as the plugin is.
+function(bambi_plugin_code target)
+  cmake_parse_arguments(C "" "NAME" "SOURCES;LIBRARIES" ${ARGN})
+  add_library(${target} STATIC ${C_SOURCES})
+  target_include_directories(${target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+  target_compile_definitions(${target} PRIVATE "JucePlugin_Name=\"${C_NAME}\"")
+  target_link_libraries(${target}
+      PUBLIC ${C_LIBRARIES} bambi-host bambi-ui bambi-editor clap_juce_extensions
+      PRIVATE juce::juce_recommended_config_flags juce::juce_recommended_lto_flags
+              juce::juce_recommended_warning_flags)
+endfunction()
+
+# A console app over plugin code, with no host: a check suite, a picture tool, a bench. It links the shared
+# JUCE, and no link-time optimisation of its own: that is for the plugins. OWN_JUCE compiles a copy of its
+# own instead, for a tool that needs JUCE configured differently. Its main thread gets the 8 MB stack macOS
+# gives, where Windows would give 1 MB: a check holds several processors on the stack, at about 290 KB each.
 function(bambi_plugin_tool target)
-  cmake_parse_arguments(T "" "NAME" "SOURCES;LIBRARIES" ${ARGN})
+  cmake_parse_arguments(T "OWN_JUCE" "NAME" "SOURCES;LIBRARIES" ${ARGN})
   juce_add_console_app(${target} PRODUCT_NAME "${target}")
   target_sources(${target} PRIVATE ${T_SOURCES})
   target_compile_definitions(${target} PRIVATE "JucePlugin_Name=\"${T_NAME}\"")
-  target_link_libraries(${target}
-      PRIVATE ${T_LIBRARIES} juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
+  if(T_OWN_JUCE)
+    target_link_libraries(${target} PRIVATE juce::juce_audio_processors)
+  else()
+    target_link_libraries(${target} PRIVATE bambi-juce)
+  endif()
+  target_link_libraries(${target} PRIVATE ${T_LIBRARIES} juce::juce_recommended_config_flags)
   if(MSVC)
     target_link_options(${target} PRIVATE /STACK:8388608)
   endif()

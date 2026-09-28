@@ -1,7 +1,8 @@
 #  Every push and pull request: the repository's checks, core's tests on three systems, and the plugins built
 #  and checked on three systems. A tag `v*` also publishes the plugins as a release.
 #
-#  Link-time optimisation makes a JUCE link need a lot of memory, so links run two at a time.
+#  Link-time optimisation makes a JUCE link need a lot of memory, so links run two at a time, and ccache keeps
+#  what did not change from being compiled again.
 
 name: build
 
@@ -50,6 +51,10 @@ jobs:
         run: brew install ninja
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ninja-build
+      #  Unchanged files are not compiled again between runs; the build finds ccache on the path.
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: core-${{ matrix.os }}
       - run: cmake -B build -G Ninja
       - run: cmake --build build
       - run: ./build/bambi-tests
@@ -89,6 +94,10 @@ jobs:
           sudo apt-get install -y ninja-build xvfb libasound2-dev libfreetype-dev libfontconfig1-dev \
             libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
             libxrender-dev libglu1-mesa-dev mesa-common-dev
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: plugins-${{ matrix.os }}
+          max-size: 2G
       - name: configure
         shell: bash
         run: >
