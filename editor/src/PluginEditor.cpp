@@ -4,6 +4,7 @@
 #include <algorithm>
 
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/Tiles.h"
 #include "bambi/ui/Widgets.h"
 
 namespace bambi::editor {
@@ -367,9 +368,19 @@ void PluginEditor::doubleClickTile(ParamId id) {
     if (auto* owner = controlOf(id, box)) owner->doubleClickAt(box.getCentre());
 }
 
-void PluginEditor::dragTile(ParamId id, float dy) {
+void PluginEditor::dragTile(ParamId id, float dy, float dx) {
     juce::Rectangle<float> box;
-    if (auto* owner = controlOf(id, box)) owner->dragBetween(box.getCentre(), box.getCentre().translated(0.0f, dy));
+    if (auto* owner = controlOf(id, box)) owner->dragBetween(box.getCentre(), box.getCentre().translated(dx, dy));
+}
+
+bool PluginEditor::clickTileBar(ParamId id, float share) {
+    juce::Rectangle<float> box;
+    auto* owner = controlOf(id, box);
+    if (owner == nullptr) return false;
+    namespace ctl = ui::theme::controls;
+    const auto bar = ui::tileBar(box.reduced(ctl::tileBoxPadX, ctl::tileBoxPadY));
+    owner->clickAt({bar.getX() + share * bar.getWidth(), bar.getCentreY()});
+    return true;
 }
 
 bool PluginEditor::drawnSomewhere(ParamId id) {

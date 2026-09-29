@@ -249,7 +249,7 @@ void ParameterTabs::paintTrajectory(juce::Graphics& g, juce::Rectangle<float> co
                 bambi::generatorDefaults(s.trajectory.generator, defaults);
                 s.trajectory.genParams[i] = defaults[i];
             },
-            {}, p.min, p.max, p.wraps);
+            {}, p.min, p.max, p.wraps, {tileBar(tile), p.min, p.max});
     }
     const auto rows = static_cast<float>((info.size() + 1) / 2);
     y += rows * (height + ctl::tileRowGap) - ctl::tileRowGap + ctl::sectionGap;

@@ -57,7 +57,10 @@ public:
     bool touchParameter(ParamId id);
     juce::Rectangle<float> tileAreaOf(ParamId id);
     void doubleClickTile(ParamId id);
-    void dragTile(ParamId id, float dy);
+    /// Drag a parameter's value box from its centre, `dy` down and `dx` right.
+    void dragTile(ParamId id, float dy, float dx = 0.0f);
+    /// Click a parameter's bar `share` of the way along it. False when its box is not in view.
+    bool clickTileBar(ParamId id, float share);
     /// Whether this parameter has a box on what is in view. Paints first, so it reports what a paint actually produced.
     bool drawnSomewhere(ParamId id);
     /// The same, of the page alone: for a check that a control which lives in the column or the footer is not drawn twice.

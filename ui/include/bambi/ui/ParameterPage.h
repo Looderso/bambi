@@ -147,20 +147,22 @@ public:
     void addParameterTile(juce::Graphics& g, juce::Rectangle<float> tile, ParamId id, const juce::String& name = {},
                           bool enabled = true);
 
-    /// The drag, click and double-click of a host parameter, on an area already drawn.
-    void addHostDrag(juce::Rectangle<float> area, ParamId id, bool stepped, bool addsRow = false);
+    /// The drag, click and double-click of a host parameter, on an area already drawn; `bar` where it has one.
+    void addHostDrag(juce::Rectangle<float> area, ParamId id, bool stepped, bool addsRow = false,
+                     juce::Rectangle<float> bar = {});
 
     /*  A drag on a value that is state rather than a host parameter: `span` of it over a whole drag,
      *  in `step`s, held within [`low`, `high`], as one undo step called `name` -- the caller's own
      *  word, shown in the host's undo menu. A click runs `click` when there is one; a double-click,
      *  `reset`. `low` and `high` are open by default, for a value whose setter already holds it in
-     *  range; a raw field with no setter passes its own bounds. */
+     *  range; a raw field with no setter passes its own bounds. A value drawn on a bar passes it: a click on
+     *  it sets the value there, and a sideways drag moves at its width. */
     using StateSet = std::function<void(PluginState&, double)>;
     using StateEdit = std::function<void(PluginState&)>;
     void addStateDrag(juce::Rectangle<float> area, std::string_view name, std::string key, double from, double span,
                       double step, StateSet set, StateEdit reset, std::function<void()> click = {},
                       double low = -std::numeric_limits<double>::infinity(),
-                      double high = std::numeric_limits<double>::infinity(), bool wraps = false);
+                      double high = std::numeric_limits<double>::infinity(), bool wraps = false, ValueBar bar = {});
 
     //  ---- what a plugin answers -----------------------------------------------------------
     /// What the engine is applying for this parameter right now, as against what the patch says: a
@@ -246,8 +248,8 @@ public:
      *  trajectory's shape parameters are one -- and they must feel identical to the shared ones. */
     std::array<juce::Rectangle<float>, 2> stepAreas_{};
     EnvelopeGraph envelope_;
-    float dragStart_{0.0f}, dragY_{0.0f};
-    HostDrag hostDrag_;  ///< a host parameter's drag, between its press and its moves
+    juce::Point<float> dragFrom_{};  ///< where a state value's drag was pressed
+    HostDrag hostDrag_;              ///< a host parameter's drag, between its press and its moves
     double stateDragStart_{0.0}, stateDragLast_{0.0};
 
 private:

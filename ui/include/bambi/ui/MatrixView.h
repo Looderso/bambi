@@ -50,7 +50,7 @@ private:
     std::array<juce::Rectangle<float>, 4> tabAreas_{};
     std::array<juce::Rectangle<float>, kSourcesPerTab> columnHeads_{};
     float dragStart_{0.0f};
-    float dragY_{0.0f};
+    juce::Point<float> dragFrom_{};  ///< where a depth's drag was pressed
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MatrixView)
 };

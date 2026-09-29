@@ -34,6 +34,8 @@ float tileHeight(float valueSize);
 /// The box a value lives in: drag anywhere in it to set the value, click it to give it a matrix row.
 /// One target, so the name and the bar read as a label and a reading, not two separate controls.
 juce::Rectangle<float> tileBox(juce::Rectangle<float> tile);
+/// Where a tile's bar is drawn: along its bottom edge, the tile's width.
+juce::Rectangle<float> tileBar(juce::Rectangle<float> tile);
 /// Draws the tile and returns the region that moves on its own: the live mark's extent, past the tile's bottom edge.
 juce::Rectangle<float> drawTile(juce::Graphics& g, juce::Rectangle<float> tile, const TileContent& t);
 

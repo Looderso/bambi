@@ -28,6 +28,8 @@ float tilesBottom(float y, int count, float valueSize) {
     return y + rows * (tileHeight(valueSize) + ctl::tileRowGap) - ctl::tileRowGap;
 }
 
+juce::Rectangle<float> tileBar(juce::Rectangle<float> tile) { return tile.withTop(tile.getBottom() - ctl::barHeight); }
+
 juce::Rectangle<float> tileBox(juce::Rectangle<float> tile) {
     return tile.expanded(ctl::tileBoxPadX, ctl::tileBoxPadY);
 }
@@ -67,13 +69,11 @@ juce::Rectangle<float> drawTile(juce::Graphics& g, juce::Rectangle<float> tile, 
     bar.live = t.live;
     bar.hasLive = t.hasLive;
     bar.ink = t.modulationInk ? colour::modulation() : colour::valueFill;
-    const juce::Rectangle<float> barArea{tile.getX(), valueTop + valueHeight + ctl::tileValueGap, tile.getWidth(),
-                                         ctl::barHeight};
-    drawValueBar(g, barArea, bar);
+    drawValueBar(g, tileBar(tile), bar);
 
     /*  The bar sits flush with the tile's bottom edge, so the mark's overshoot falls outside the tile; a
         caller that registers the tile alone leaves the old mark's foot standing until a full repaint. */
-    return t.hasLive ? barArea.expanded(0.0f, ctl::liveMarkOver) : juce::Rectangle<float>{};
+    return t.hasLive ? tileBar(tile).expanded(0.0f, ctl::liveMarkOver) : juce::Rectangle<float>{};
 }
 
 double normalised(const ParamManifest& m, ParamId id, double value) {

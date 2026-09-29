@@ -350,6 +350,7 @@ namespace controls
     inline constexpr float dragPixels    = 200.0f;     ///< a parameter's whole range
     inline constexpr float depthPixels   = 60.0f;      ///< a cell's whole depth
     inline constexpr float fineDrag      = 0.1f;       ///< with shift held
+    inline constexpr float barHitMargin  = 5.0f;       ///< above and below a value's bar, where a click still sets it
     inline constexpr float stepTolerance = 1.0e-4f;
 
     //  a source's settings: the temporary tab a matrix column opens
