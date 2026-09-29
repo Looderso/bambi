@@ -1,19 +1,12 @@
 # bambi
 
-A free and open-source ambisonics plugin suite: an **Encoder**, an **Echo** and a **Reverb**, sharing one
-core, one look, one modulation matrix and a link between instances. VST3 and CLAP, on macOS, Windows and
-Linux.
+Intuitive yet powerful spatialization: a free and open-source ambisonics plugin suite. Every plugin shares one
+core, one look, one modulation matrix and a link between instances, and works in AmbiX at any order the host
+carries. VST3 and CLAP, on macOS, Windows and Linux.
 
-- **Encoder** — places a mono or stereo source on the sphere and moves it along a path you draw. How fast it
-  travels can follow the input: silence parks the source, loud material moves it.
-- **Echo** — four loops fed from a region of the field, each placed, rotated and filtered a little further
-  with every pass.
-- **Reverb** — one room around the whole field: early reflections from the direction each part of it arrives
-  from, and a diffuse tail.
-
-The website is **[bambi.wiki](https://bambi.wiki)**, and builds are on the
-[releases page](https://github.com/Looderso/bambi/releases). bambi is in **alpha**: expect changes, and
-report what breaks.
+The website is **[bambi.wiki](https://bambi.wiki)**, with what each [plugin](https://bambi.wiki/plugins)
+does, and builds are on the [releases page](https://github.com/Looderso/bambi/releases). bambi is in **alpha**:
+expect changes, and report what breaks.
 
 ## Conventions
 
@@ -24,10 +17,10 @@ report what breaks.
 ## Layout
 
 ```
-core/         the engines, modulation, state and the link bus: C++20, no JUCE, tested in seconds
+core/         the engines, modulation, state and the link bus: C++20, no JUCE
 host/         the shared plugin processor: buses, parameters, state handoff, the link
 ui/ editor/   the shared interface: theme, controls, scene, matrix, the editor frame
-plugins/      encoder, echo, reverb: each plugin's own processor, panel and check suite
+plugins/      one folder per plugin: its own processor, panel, check suite and picture tool
 tools/        render, bench and inspection tools, and the repository's checks
 tests/        golden scenarios and the host-contract conformance suite
 third_party/  vendored dependencies, and JUCE as a submodule (THIRD-PARTY.md)
