@@ -187,9 +187,11 @@ void ParameterPage::paintButton(juce::Graphics& g, juce::Rectangle<float> area, 
     if (enabled) addRegion({area, {}, {}, {}, std::move(click), {}});
 }
 
-void ParameterPage::addHostDrag(juce::Rectangle<float> area, ParamId id, bool stepped, bool addsRow) {
+void ParameterPage::addHostDrag(juce::Rectangle<float> area, ParamId id, bool stepped, bool addsRow,
+                                juce::Rectangle<float> bar) {
     //  how a host parameter is moved is one statement, shared with the level column
-    bambi::ui::addHostDrag(*this, model_, hostDrag_, area, id, stepped, addsRow, [this, id] { onDefaultRestored(id); });
+    bambi::ui::addHostDrag(
+        *this, model_, hostDrag_, area, id, stepped, addsRow, [this, id] { onDefaultRestored(id); }, bar);
 }
 
 void ParameterPage::addParameterTile(juce::Graphics& g, juce::Rectangle<float> tile, ParamId id,
@@ -235,11 +237,11 @@ void ParameterPage::addParameterTile(juce::Graphics& g, juce::Rectangle<float> t
     live_ = live_.getUnion(drawTile(g, tile, t));
     noteContentBottom(tile.getBottom() + scroll());
 
-    //  One box for the whole value: drag it to set, click it to give it a row.
+    //  One box for the whole value: drag it to set, click its bar to put it there, click the rest to give it a row.
     const auto box = tileBox(tile);
     tileAreas_[static_cast<std::size_t>(id)] = box;
     tileEnabled_[static_cast<std::size_t>(id)] = enabled;
-    if (enabled) addHostDrag(box, id, d.type != ParamType::Float, target);
+    if (enabled) addHostDrag(box, id, d.type != ParamType::Float, target, tileBar(tile));
 }
 
 bool ParameterPage::repaintMoving() {
@@ -268,24 +270,33 @@ bool ParameterPage::repaintMoving() {
 
 void ParameterPage::addStateDrag(juce::Rectangle<float> area, std::string_view name, std::string key, double from,
                                  double span, double step, StateSet set, StateEdit reset, std::function<void()> click,
-                                 double low, double high, bool wraps) {
+                                 double low, double high, bool wraps, ValueBar bar) {
     Region region;
     region.area = area;
     region.press = [this, from](juce::Point<float> p) {
         stateDragStart_ = from;
         stateDragLast_ = from;
-        dragY_ = p.y;
+        dragFrom_ = p;
     };
     region.drag = [this, label = std::string(name), dragKey = std::move(key), span, step, low, high, wraps,
-                   apply = std::move(set)](juce::Point<float> p, bool fine) {
-        const auto delta = static_cast<double>((dragY_ - p.y) / ctl::dragPixels * (fine ? ctl::fineDrag : 1.0f)) * span;
+                   width = bar.area.getWidth(), apply = set](juce::Point<float> p, bool fine) {
+        const auto delta = dragShare(dragFrom_, p, width, ctl::dragPixels, fine) * span;
         const auto next = draggedValue(stateDragStart_, delta, step, low, high, wraps);
         if (juce::exactlyEqual(next, stateDragLast_)) return;
         stateDragLast_ = next;
         model_.applyEditDrag(label, dragKey, [apply, next](PluginState& s) { apply(s, next); });
     };
     region.release = [this] { model_.finishDrag(); };
-    region.click = std::move(click);
+    //  on the bar a click puts the value there, as one undo step; elsewhere it is the caller's
+    region.click = [this, label = std::string(name), step, low, high, wraps, bar, apply = std::move(set),
+                    own = std::move(click)] {
+        if (onBar(bar, dragFrom_)) {
+            const auto next = draggedValue(valueOnBar(bar, dragFrom_.x), 0.0, step, low, high, wraps);
+            model_.applyEdit(label, [apply, next](PluginState& s) { apply(s, next); });
+        } else if (own) {
+            own();
+        }
+    };
     region.doubleClick = [this, label = std::string(name), toDefault = std::move(reset)] {
         model_.applyEdit(label, toDefault);
     };

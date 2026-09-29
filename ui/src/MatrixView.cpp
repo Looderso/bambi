@@ -8,6 +8,7 @@
 #include <string>
 
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/HostDrag.h"
 #include "bambi/ui/RegionEditor.h"
 #include "bambi/ui/Widgets.h"
 
@@ -265,10 +266,12 @@ void MatrixView::paint(juce::Graphics& g) {
             addRegion({cell.withY(row.getY()).withHeight(rowHeight),
                        [this, tab, column, id](juce::Point<float> p) {
                            dragStart_ = static_cast<float>(bambi::cellDepth(model_.state(), tab, column, id));
-                           dragY_ = p.y;
+                           dragFrom_ = p;
                        },
-                       [this, tab, column, id, key, set](juce::Point<float> p, bool fine) {
-                           const auto delta = (dragY_ - p.y) / ctl::depthPixels * (fine ? ctl::fineDrag : 1.0f);
+                       //  a depth runs from -1 to 1, so the cell's width is two across
+                       [this, tab, column, id, key, set, width = cell.getWidth()](juce::Point<float> p, bool fine) {
+                           const auto delta =
+                               2.0f * static_cast<float>(dragShare(dragFrom_, p, width, 2.0f * ctl::depthPixels, fine));
                            const auto next = std::round(std::clamp(dragStart_ + delta, -1.0f, 1.0f) * 100.0f) / 100.0f;
                            if (!juce::exactlyEqual(static_cast<double>(next),
                                                    bambi::cellDepth(model_.state(), tab, column, id)))

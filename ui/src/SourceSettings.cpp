@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
 #include <string>
 
 #include "bambi/mod/matrix.hpp"
@@ -265,7 +266,9 @@ float paintTrigger(ParameterPage& page, juce::Graphics& g, juce::Rectangle<float
         page.addStateDrag(
             values(velocityTile), "trigger", key("velocity"), t.velocity, ctl::unitDragSpan, ctl::triggerStep,
             [e](PluginState& s, double v) { setTriggerVelocity(s.envTriggers[e], v); },
-            [e, defaults](PluginState& s) { setTriggerVelocity(s.envTriggers[e], defaults.velocity); });
+            [e, defaults](PluginState& s) { setTriggerVelocity(s.envTriggers[e], defaults.velocity); }, {},
+            -std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), false,
+            {tileBar(velocityTile), 0.0, 1.0});
 
         //  learn: the next note played sets the notes and the channel
         //  greyed where a plugin has none, never hidden and never live-looking-and-dead
@@ -323,7 +326,9 @@ float paintTrigger(ParameterPage& page, juce::Graphics& g, juce::Rectangle<float
     page.addStateDrag(
         values(thresholdTile), "trigger", key("threshold"), t.threshold, ctl::unitDragSpan, ctl::triggerStep,
         [e](PluginState& s, double v) { setTriggerThreshold(s.envTriggers[e], v); },
-        [e, defaults](PluginState& s) { setTriggerThreshold(s.envTriggers[e], defaults.threshold); });
+        [e, defaults](PluginState& s) { setTriggerThreshold(s.envTriggers[e], defaults.threshold); }, {},
+        -std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), false,
+        {tileBar(thresholdTile), 0.0, 1.0});
 
     const auto hysteresisTile = tileCell(content, y, 2);
     TileContent hysteresis;

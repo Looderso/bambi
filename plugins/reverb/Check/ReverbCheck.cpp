@@ -337,6 +337,31 @@ int main(int argc, char** argv) {
                   juce::String(key) + " moves when it is dragged (" + juce::String(before, 3) + " -> " +
                       juce::String(after, 3) + ")");
         }
+        /*  A value moves sideways as well as up, and sideways its fill stays under the pointer; a click on its bar
+            puts it where the bar was clicked, and gives it no matrix row, which a click on the rest of it does.
+            Catches: a drag that reads one axis only; a sideways drag not scaled to the bar; the bar's click
+            missing, or falling through to the row as well. */
+        {
+            const auto size = static_cast<bambi::ParamId>(m.byKey("room.size"));
+            auto* sizeParam = proc.hostParameter(size);
+            rev->showTab(0);
+            if (sizeParam != nullptr) sizeParam->setValueNotifyingHost(0.2f);
+            rev->tick();
+            rev->paintNow();
+            const auto barWidth = rev->tileAreaOf(size).getWidth() - 2.0f * bambi::ui::theme::controls::tileBoxPadX;
+            rev->dragTile(size, 0.0f, 0.5f * barWidth);
+            const float dragged = sizeParam == nullptr ? -1.0f : sizeParam->getValue();
+            check(std::abs(dragged - 0.7f) < 0.02f,
+                  "a value dragged sideways half its bar moves half its range (0.200 -> " + juce::String(dragged, 3) +
+                      ")");
+            rev->paintNow();
+            check(rev->clickTileBar(size, 0.25f), "a value's bar can be clicked");
+            const float clicked = sizeParam == nullptr ? -1.0f : sizeParam->getValue();
+            check(std::abs(clicked - 0.25f) < 0.02f,
+                  "a click a quarter along its bar puts it there (" + juce::String(clicked, 3) + ")");
+            check(rev->provisionalRow() == bambi::kNoParamId, "and gives it no matrix row");
+        }
+
         /*  One turn wraps: a region's yaw dragged up past 180 comes in again at -180, and a value
             with real ends stops at its top. Catches: the drag clamps every value, or wraps every value. */
         {

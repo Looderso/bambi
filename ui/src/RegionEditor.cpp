@@ -314,7 +314,7 @@ float paintRegionEditor(ParameterPage& page, juce::Graphics& g, juce::Rectangle<
                         s.regions[static_cast<std::size_t>(at)].shape.seed = static_cast<int>(v);
                     },
                     [at = slot.index](PluginState& s) { s.regions[static_cast<std::size_t>(at)].shape.seed = 1; }, {},
-                    1.0, kMaxCloudSeed);
+                    1.0, kMaxCloudSeed, false, {tileBar(tile), 1.0, static_cast<double>(kMaxCloudSeed)});
             }
             for (const char* field : shapeFields(shape.kind))
                 page.addParameterTile(g, tileCell(content, y, cell++), id(field));
