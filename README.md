@@ -34,7 +34,8 @@ third_party/  vendored dependencies, and JUCE as a submodule (THIRD-PARTY.md)
 ```
 
 `core/` carries no JUCE dependency on purpose: everything musical here is pure computation over buffers
-and stays testable without building a plugin. How to build and test is in [BUILDING.md](BUILDING.md).
+and stays testable without building a plugin. How to build and test is in [BUILDING.md](BUILDING.md), and how
+to contribute in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
