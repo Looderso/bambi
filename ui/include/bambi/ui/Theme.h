@@ -79,9 +79,9 @@ namespace colour
     inline const juce::Colour otherInstance = palette::silver;     ///< other instances' paths, sources, labels
     inline const juce::Colour node          = palette::black;      ///< a custom chain's nodes, while editing
     inline const juce::Colour nodeFill      = palette::offWhite;
-    inline const juce::Colour handle        = palette::violet;     ///< the selected node's handles and their stems
+    inline const juce::Colour handle        = palette::black;      ///< what is grabbed to reshape: a node's handles and stems, a region's handles, an envelope's points
     inline const juce::Colour insertMark    = palette::orange;     ///< where a click would insert a node
-    inline const juce::Colour selectedNode  = palette::orange;     ///< the ring round the selected or hovered node
+    inline const juce::Colour touched       = palette::orange;     ///< the node or handle being held, or the node selected
     inline const juce::Colour width         = palette::orange;     ///< the selected source's width, filled faintly
     /// The added colour: the incoming field is orange and what a plugin adds is blue.
     inline const juce::Colour added         = palette::blue;

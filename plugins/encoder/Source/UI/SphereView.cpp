@@ -259,7 +259,8 @@ void SphereView::paintChain(juce::Graphics& g, const bambi::Viewport& vp) {
             const bool hidden = globe && s.depth <= 0.0;
             const bool hot = state_.hoveredHandle && state_.hoveredWhich == which;
             const auto r = hot ? scene::handleRadius + 1.5f : scene::handleRadius;
-            g.setColour(hidden ? colour::handle.withMultipliedAlpha(scene::backAlpha) : colour::handle);
+            const auto ink = hot && drag_ == Drag::Handle ? colour::touched : colour::handle;
+            g.setColour(hidden ? ink.withMultipliedAlpha(scene::backAlpha) : ink);
             g.fillEllipse(juce::Rectangle<float>(2.0f * r, 2.0f * r)
                               .withCentre({static_cast<float>(s.x), static_cast<float>(s.y)}));
         }
@@ -275,7 +276,7 @@ void SphereView::paintChain(juce::Graphics& g, const bambi::Viewport& vp) {
         const auto ink = hidden ? colour::node.withMultipliedAlpha(scene::backAlpha) : colour::node;
 
         if (isSelected || isHovered) {
-            g.setColour(isSelected ? colour::selectedNode : colour::selectedNode.withMultipliedAlpha(scene::backAlpha));
+            g.setColour(isSelected ? colour::touched : colour::touched.withMultipliedAlpha(scene::backAlpha));
             g.drawEllipse(
                 juce::Rectangle<float>(2.0f * scene::nodeHoverRing, 2.0f * scene::nodeHoverRing).withCentre(at),
                 theme::stroke::rule);

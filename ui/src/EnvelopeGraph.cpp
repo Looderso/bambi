@@ -102,15 +102,16 @@ float EnvelopeGraph::paint(ParameterPage& page, juce::Graphics& g, juce::Rectang
         handles_[index(grab)] = where;
         return where;
     };
-    //  the curve handles use the same handle role a trajectory node's do, already violet; the
-    //  curve itself is `output`, the same role as the bar above it
-    g.setColour(colour::handle);
-    for (const auto grab : {EnvelopeGrab::AttackCurve, EnvelopeGrab::DecayCurve, EnvelopeGrab::ReleaseCurve})
+    //  every point and curve handle in the handle ink, the one held in the touched colour; the curve itself
+    //  is `output`, the same role as the bar above it
+    for (const auto grab : {EnvelopeGrab::AttackCurve, EnvelopeGrab::DecayCurve, EnvelopeGrab::ReleaseCurve}) {
+        g.setColour(grab == held_ ? colour::touched : colour::handle);
         diamond(g, handle(grab), ctl::envelopeHandle);
+    }
     for (const auto grab :
          {EnvelopeGrab::Attack, EnvelopeGrab::DecaySustain, EnvelopeGrab::SustainEdge, EnvelopeGrab::Release}) {
         const auto at = handle(grab);
-        g.setColour(grab == held_ ? colour::handle : colour::text);
+        g.setColour(grab == held_ ? colour::touched : colour::handle);
         g.fillEllipse(at.x - ctl::envelopePoint, at.y - ctl::envelopePoint, 2.0f * ctl::envelopePoint,
                       2.0f * ctl::envelopePoint);
     }
