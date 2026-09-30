@@ -78,6 +78,26 @@ Above −30° the array is even and sharp. Below it has nothing: a source there 
 off, and up to 10 dB quiet at order 3. Heard through the prototype, a source straight behind comes out 5 dB louder
 on the array than in the reference — the two loudspeakers at ±145° reach the ears more than a source at 180° does.
 
+### 3.3 Placing the loudspeakers by looking at them
+
+**The plugin plays a burst on one channel; the listener looks at the loudspeaker that sounds and presses a key.**
+One gesture gives both the loudspeaker's direction and which channel it is — and a wrong channel mapping is the most
+common fault of a new array. It needs nothing but the head tracker the listener already wears (§7), and it is the
+same "where am I looking" the Lens uses. *Opinion: a USP, and the strongest use of head tracking beyond the
+binaural decode.*
+
+- **The reference first.** A tracker's orientation is relative to where it started, and its yaw drifts. The
+  calibration begins by looking at the front loudspeaker and recentring, and ends by looking at it again: the drift
+  over the calibration is shown as a number, and a large one asks for a repeat.
+- **From the listening position.** The directions are as seen from where the head is; standing off-centre puts a
+  parallax error on every loudspeaker.
+- **Accuracy is measured, not assumed.** People aim with their eyes more than their head; head pointing may scatter
+  by 5–10°, and more in elevation. AllRAD tolerates a few degrees. The scatter is found by repeating the
+  calibration, and a loudspeaker whose repeats disagree is flagged.
+- **Distance is not seen.** It is typed in, or measured: with a measurement microphone at the listening position the
+  same burst gives each loudspeaker's delay and level, which is the distance compensation of §3 without a tape.
+- **The result is a layout file**, the same as an imported one, and editable afterwards.
+
 ## 4. Binaural
 
 - **MagLS**, with the diffuse-field covariance constraint — the current standard for orders ≤ 3, which keeps the
@@ -108,7 +128,7 @@ timbre (colouration rated 16 against 8 for an individualised set) — its modera
 population. A listener adapts to a set that is not theirs; they do not adapt to one that sounds bad.
 
 **Every bundled set is checked for its licence first** — several databases forbid commercial use, which would
-also bind any model built from them (§5.2).
+also bind any model built from them (§5.3).
 
 **Loading a SOFA file** is supported, for anyone with a measured set of their own.
 
@@ -143,7 +163,29 @@ Parameters with a known physical meaning, cheap to compute from the default set:
 
 *Opinion: ship this first.* It needs no dataset, and it may already carry most of the gain.
 
-### 5.2 Stage two — a model from many listeners
+### 5.2 Regions by spherical-harmonic order
+
+**The direction-dependent part of the HRTF, expanded in spherical harmonics, is personalised order by order — coarse
+regions first, finer ones only where needed.** In place of the thesis's fixed directions with a Gaussian weight
+around each, a region is what an SH order resolves, and a blur of a given width is a spherical cap — in SH, one
+weight per order, the same kernel the encoder's width uses.
+
+- **What is expanded**: the direction-dependent magnitude, in dB, per frequency band. The ITD stays apart, as head
+  size (§5.1).
+- **Order 0 is the timbre.** The order-0 coefficient of that expansion is its average over all directions — the
+  diffuse-field spectrum. Keeping order 0 on the KU100's and personalising orders 1 and up is the split of §5 made
+  exact: space is personalised, colour is not.
+- **Rising order, rising resolution.** Order 1 is the broad front/back and up/down balance, orders 2–3 quadrants;
+  the pinna notches that carry elevation sit at high frequencies and need high orders. A listener tunes a few
+  parameters first and more regions only as far as they help.
+- **Without a database** (stage one): a cue depth per order on the KU100 itself — for instance the order-1
+  front/back difference between 4 and 10 kHz, exaggerated or flattened.
+- **With a database** (stage two): the clustering or PCA across listeners is done per order band, and the tuning
+  walks the bands from low to high.
+- **Open**: which order the KU100's elevation notches need, measured on the set before any control is designed
+  around it; and whether regions tuned independently still sound like one head.
+
+### 5.3 Stage two — a model from many listeners
 
 The thesis's own future work: **PCA over a unified multi-database set**, and a few sliders each moving one
 principal component, in place of the thesis's single sorted-index slider. It ships as a mean and a few
@@ -151,7 +193,7 @@ components, not a database. **The thesis's pipeline is not available**, so this 
 unification, the normalisation and the model are rebuilt, and the licence of each source database decides what
 may go in.
 
-### 5.3 Portability
+### 5.4 Portability
 
 **The personal numbers are saved in the session**, not only in a per-user file: a binaural bounce reopened on
 another machine renders as it did. A per-user profile may *seed* a new instance; it never silently changes an
@@ -177,6 +219,7 @@ of the same field, independent of any HRTF.
 - **The rotation is applied to the scene before the binaural decode** — (N+1)² × (N+1)² per block, negligible.
   For the Lens it steers the window. For an array it does nothing: the listener's head is really in the room.
 - **Recentre** on a key.
+- **It also places the loudspeakers** of an array (§3.3).
 - The tracker's orientation is also what the link bus would fan out to other plugins that want it.
 - **A bounce renders facing front.** Head tracking is live input; an offline render that followed it would not
   match what the mix is. Tracking applies only to real-time playback.
@@ -208,5 +251,7 @@ All in the browser, under `prototypes/decoder/`:
    bridge, since a browser cannot receive UDP.
 2. **The array heard on headphones** (§3.1) — *built*, `listen/`, against the direct decode and an order-7
    reference, with distance compensation on and off; waiting on ears.
-3. **Stage-one personalisation** (§5.1): head size, ear size, cue depth, on the KU100.
+3. **Stage-one personalisation** (§5.1, §5.2): head size, ear size, and cue depth per SH order, on the KU100.
 4. **The Lens** (§6), on the stereo pair.
+5. **Placing loudspeakers by looking** (§3.3), with a real tracker through the OSC bridge: how far head pointing
+   scatters, and how far yaw drifts over a calibration.
