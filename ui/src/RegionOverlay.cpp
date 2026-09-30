@@ -380,15 +380,17 @@ void paintRegionHandles(juce::Graphics& g, Projection projection, const Camera& 
         const bool hot = static_cast<int>(i) == held || static_cast<int>(i) == hovered;
         const bool aim = h.kind == RegionHandle::Kind::Aim;
 
-        //  the aim is a node -- white with a thin black outline -- and every other handle one filled
-        //  colour, so what moves the region reads apart from what shapes it. Hovered or held, larger.
+        //  the aim is a node -- white with a thin black outline -- and every other handle filled in the handle
+        //  ink, so what moves the region reads apart from what shapes it. Hovered or held, larger; held, in the
+        //  touched colour.
         const auto radius = (aim ? sc::nodeRadius : sc::handleRadius) + (hot ? sc::handleHotGrow : 0.0f);
         const juce::Rectangle<float> dot{static_cast<float>(at.x) - radius, static_cast<float>(at.y) - radius,
                                          2.0f * radius, 2.0f * radius};
-        g.setColour((aim ? colour::nodeFill : colour::handle).withAlpha(dim));
+        const bool isHeld = static_cast<int>(i) == held;
+        g.setColour((aim ? colour::nodeFill : isHeld ? colour::touched : colour::handle).withAlpha(dim));
         g.fillEllipse(dot);
         if (aim) {
-            g.setColour(colour::node.withAlpha(dim));
+            g.setColour((isHeld ? colour::touched : colour::node).withAlpha(dim));
             g.drawEllipse(dot, theme::stroke::rule);
         }
     }
