@@ -1,0 +1,184 @@
+# Decoder — feature set
+
+The last plugin in the chain: ambisonics in, headphones or loudspeakers out. It holds what was the Lens
+monitoring tool as one of its outputs. Input to prototyping; describes *what the plugin does*, not how. Opinions
+are marked; open questions are listed rather than guessed. Nothing here is built; the first prototype is
+`prototypes/decoder/binaural/` (§10).
+
+---
+
+## 1. What it is for
+
+**Compose in 3D at home, move to an array without changing the mix.** The ambisonic mix is the work; the decoder
+is how it is heard. Headphones and a stereo pair are what nearly everyone has, an array is what some have
+sometimes — the decoder serves all three from the same scene, and the step from one to another is a change of
+output, not of session.
+
+It is **not an effect**. It sits once, on the master, and it is the one plugin whose output is not ambisonics.
+It draws no "what it added"; it draws what comes out where.
+
+## 2. Outputs
+
+One ambisonic input (order 1–3, AmbiX), three things it can produce:
+
+| output | for | engine |
+|---|---|---|
+| **Headphones** | listening to the scene as a listener | binaural decode, head-tracked (§4, §5) |
+| **Speakers** | a stereo pair, a 5.1/7.1.4 room, a dome | AllRAD decode of a loaded layout (§3) |
+| **Lens** | inspecting one region of the scene on a stereo pair | a steerable directional window, then a stereo decode (§6) |
+
+Headphones and a speaker output run **at once**, on separate outputs, so headphones on and speakers on can be
+switched at the interface without touching the plugin. Which pair of outputs goes where is the operating
+system's or the host's routing, not the plugin's.
+
+## 3. Speakers — a layout, not a preset list
+
+- **AllRAD** over a loaded layout: max-rE weighting, a **two-band decode** (basic below the crossover, max-rE
+  above), **imaginary loudspeakers** filling the gaps of an incomplete layout (no lower half, no ceiling).
+- **Per-speaker delay and gain from its distance**, so a room that is not a perfect sphere still images.
+- **A layout is a file.** Import the one array format that is actually on hand first (§9); the IEM
+  AllRADecoder's layout format is the likely second, since most university arrays publish one.
+- **Standard layouts built in**: stereo, 5.1, 7.1.4, 9.1.6. A **stereo pair** is the smallest layout — a
+  virtual-microphone downmix, which doubles as the check that the mix survives stereo.
+- **Crosstalk cancellation** (3D from two speakers) is **not a feature**: a sweet spot of a head's width and a
+  treated room. It stays a research question until a prototype says otherwise.
+
+### 3.1 Hear the array on headphones
+
+**The layout's speakers, rendered through the HRTF as virtual sources.** At home, with the array's own layout
+file, one hears what *that* array will do to the mix: its gaps, its order limit, its missing lower half. This is
+the bridge between the two worlds, and no decoder we know of offers it. *Opinion: the feature that makes
+this decoder worth choosing.*
+
+## 4. Binaural
+
+- **MagLS**, with the diffuse-field covariance constraint — the current standard for orders ≤ 3, which keeps the
+  high-frequency timbre that a least-squares decode at low order loses.
+- **Headphone EQ** as an optional loaded curve; off by default.
+- **Latency**: 64 samples (1.3 ms), a bulk delay that keeps the part of a response ahead of the head's centre
+  causal. The convolution is 2 × (N+1)² filters of 256 taps; its cost is measured before any claim.
+
+**Measured on the KU100** (the prototype's `build-filters.py`, magnitude error over all 8802 directions, weighted
+by area):
+
+| order | method | 1–4 kHz | 4–8 kHz | 8–16 kHz | diffuse field, worst |
+|---|---|---|---|---|---|
+| 1 | LS | 9.4 dB | 16.0 | 21.8 | 32.8 dB |
+| 1 | MagLS | 3.4 | 6.4 | 7.6 | 0.0 |
+| 3 | LS | 4.8 | 12.5 | 16.8 | 22.6 |
+| 3 | MagLS | 1.8 | 3.1 | 5.4 | 0.0 |
+
+Plain least squares loses the top octaves at any order the suite uses; MagLS keeps them. **The set's common delay
+must be removed before the design**: magnitude LS carries each bin's phase from the one below and so drops a bulk
+delay above the cutoff — with the KU100's 108 samples left in, the highs came out ahead of the lows, wrapped round
+the filter's end, and a front source leaned 3.7 dB to the right.
+
+### 4.1 Which HRTF
+
+**Default: the KU100.** It sounds good out of the box, and the thesis behind §5 found it the clear winner on
+timbre (colouration rated 16 against 8 for an individualised set) — its moderate spectral features suit a broad
+population. A listener adapts to a set that is not theirs; they do not adapt to one that sounds bad.
+
+**Every bundled set is checked for its licence first** — several databases forbid commercial use, which would
+also bind any model built from them (§5.2).
+
+**Loading a SOFA file** is supported, for anyone with a measured set of their own.
+
+## 5. Personalisation — perceptual, not anthropometric
+
+What a 2024 master's thesis on perceptual HRTF individualisation (KUG Graz) established, and what follows from it:
+
+- Choosing by ear, in two phases — rough (up only), then fine (front, front-up, up, back-up, back) — took a
+  median 17 minutes.
+- The chosen set **beat the KU100 on externalisation**, most at the rear (15 against 9) and overhead (13 against
+  8), and slightly on front-up localisation.
+- It **lost on timbre**. Individualisation bought space and paid in colour.
+
+So the design splits the two: **the direction-dependent cues are personalised, the timbre stays the KU100's.**
+The adjustment moves how one direction differs from another; the average across directions is held on the
+KU100's. *Caveat: the thesis evaluation disabled SPARTA's diffuse-field EQ because it hurt externalisation. That
+was a flat EQ on the output, which this is not — but it is a warning, and the split is settled by ear.*
+
+Personalisation is a **guided page**, rough then fine, as in the thesis — not controls always on screen. Its
+result is a handful of numbers.
+
+### 5.1 Stage one — no database needed
+
+Parameters with a known physical meaning, cheap to compute from the default set:
+
+- **Head size** → scales the ITD. The largest single cue for azimuth, and the cheapest.
+- **Ear size** → scales the direction cues along frequency. Scaling a DTF in frequency is the known first-order
+  model of how pinnae differ between people; it moves the elevation notches where a bigger or smaller ear would
+  put them.
+- **Cue depth** → how strongly direction cues are expressed, from flattened to exaggerated. Exaggerated elevation
+  cues are a known aid where the fit is imperfect.
+
+*Opinion: ship this first.* It needs no dataset, and it may already carry most of the gain.
+
+### 5.2 Stage two — a model from many listeners
+
+The thesis's own future work: **PCA over a unified multi-database set**, and a few sliders each moving one
+principal component, in place of the thesis's single sorted-index slider. It ships as a mean and a few
+components, not a database. **The thesis's pipeline is not available**, so this is new work: the dataset
+unification, the normalisation and the model are rebuilt, and the licence of each source database decides what
+may go in.
+
+### 5.3 Portability
+
+**The personal numbers are saved in the session**, not only in a per-user file: a binaural bounce reopened on
+another machine renders as it did. A per-user profile may *seed* a new instance; it never silently changes an
+existing one.
+
+## 6. Lens — a stereo pair as a probe
+
+**Headphones experience the scene; the Lens inspects it.** Binaural elevation is ambiguous for many listeners,
+and a dense scene makes it hard to tell a spatial problem in the mix from one in the HRTF. The Lens projects one
+region of the sphere — a directional window — onto the physical stereo pair: a second, physically grounded view
+of the same field, independent of any HRTF.
+
+- **Steered by the head** (§7): the window looks where the head points. *Open: the sketch this came from had
+  "tilt down → upper hemisphere"; the direction and whether it is invertible are settled in the prototype.*
+- **Steered by hand** when no tracker is present: the window is dragged on the sphere view.
+- **Width** of the window: from a narrow beam to a hemisphere.
+- It is **diagnostic, not a simulation** of the headphone render, and the UI never presents it as one.
+
+## 7. Head tracking
+
+- **OSC in**: yaw, pitch, roll, or a quaternion, on a configurable port and address. **Headitude** (AirPods →
+  OSC) works with no other hardware; any tracker that sends OSC works.
+- **The rotation is applied to the scene before the binaural decode** — (N+1)² × (N+1)² per block, negligible.
+  For the Lens it steers the window. For an array it does nothing: the listener's head is really in the room.
+- **Recentre** on a key.
+- The tracker's orientation is also what the link bus would fan out to other plugins that want it.
+- **A bounce renders facing front.** Head tracking is live input; an offline render that followed it would not
+  match what the mix is. Tracking applies only to real-time playback.
+
+## 8. The layout of the plugin
+
+**Not the effects' layout.** The same shell, theme, controls and sphere view; a different centre:
+
+- **The sphere shows the incoming scene's energy**, with the output drawn over it — the layout's speakers as
+  dots, or a head at the tracked orientation, or the Lens's window.
+- **An output selector** where the effects keep their pages: Headphones · Speakers · Lens, and the layout
+  loader under Speakers.
+- **Personalisation is its own page**, entered on purpose, left when done.
+
+## 9. Open questions
+
+- **Name.** "Decoder" is a working title. Does it keep the name *Lens*, or take another?
+- **The one array on hand**: which format are its layout and decoder files in? That format is imported first.
+- **Buses**: headphones and a speaker output at once means an output bus of 2 + N channels, which hosts
+  negotiate differently — to settle with the conformance suite before it is promised.
+- **Orders**: 1–3 like the rest of the suite, or higher for arrays that can use it?
+- **Does stage one (§5.1) already give most of the thesis's gain?** Settled by listening, against the KU100 and
+  against a deliberately poor set, as the thesis did.
+
+## 10. Prototypes, in order
+
+All in the browser, under `prototypes/decoder/`:
+
+1. **MagLS binaural with head rotation** from the mouse — *built*, `binaural/`; waiting on ears. Real tracker input needs a small OSC → WebSocket
+   bridge, since a browser cannot receive UDP.
+2. **The array heard on headphones** (§3.1), from the one array's layout file.
+3. **Stage-one personalisation** (§5.1): head size, ear size, cue depth, on the KU100.
+4. **The Lens** (§6), on the stereo pair.

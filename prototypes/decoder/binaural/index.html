@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bambi · Decoder · Binaural</title>
+<style>
+  :root{ --ground:#efede7; --panel:#e5e2db; --sandL:#e1ddd4; --sand:#d5d1c8; --greyL:#c8c4ba;
+         --greyM:#b7b2a8; --silver:#a9a59c; --greyD:#6f6b62; --ink:#1b1a17; --orange:#d4873a; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);overflow:hidden;
+       font:11px/1.45 "Helvetica Neue",Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums}
+  #app{display:grid;grid-template-columns:minmax(0,1fr) 340px;height:100vh}
+  #stage{display:grid;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:12px;min-width:0;min-height:0}
+  .viewbox{position:relative;background:var(--panel);border-top:1px solid var(--ink);min-width:0;min-height:0}
+  .viewbox canvas{position:absolute;inset:0;display:block;touch-action:none;width:100%;height:100%}
+  .vlabel{position:absolute;left:8px;top:6px;right:8px;font-size:9px;color:var(--greyD);pointer-events:none;letter-spacing:.06em}
+  #panel{background:var(--ground);border-left:1px solid var(--ink);overflow-y:auto;padding:12px 16px 40px}
+  h1{font-size:15px;font-weight:500;margin:0 0 10px;letter-spacing:.02em}
+  h2{font-size:9px;font-weight:600;margin:18px 0 8px;padding-top:6px;border-top:1px solid var(--ink);letter-spacing:.06em}
+  .note{color:var(--greyD);font-size:10px;margin:6px 0 0;line-height:1.55}
+  .note b{color:var(--ink);font-weight:600}
+  .row{display:flex;gap:4px;margin:6px 0;flex-wrap:wrap}
+  button{flex:1;background:transparent;color:var(--ink);border:1px solid var(--greyL);border-radius:0;
+         padding:4px 5px;font:inherit;cursor:pointer;white-space:nowrap}
+  button:hover{border-color:var(--ink)}
+  button.on{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+  button.go{background:var(--orange);border-color:var(--orange);color:var(--ground)}
+  .seg{display:flex;margin:3px 0 7px}
+  .seg button{border-right-width:0;padding:4px 2px;font-size:10px;min-width:0}
+  .seg button:last-child{border-right-width:1px}
+  .ctl{margin:5px 0 8px;user-select:none}
+  .ctl-top{display:flex;justify-content:space-between;margin-bottom:3px}
+  .ctl-top .lab{color:var(--greyD)}
+  .bar{position:relative;height:9px;background:var(--sand);cursor:ew-resize}
+  .bar .fill{position:absolute;top:0;bottom:0;background:var(--ink)}
+  .src{border-left:2px solid var(--orange);padding-left:8px;margin:10px 0}
+  .src .name{display:flex;justify-content:space-between;align-items:center}
+  input[type=file]{font:inherit;font-size:10px;width:100%;margin:4px 0}
+  kbd{border:1px solid var(--greyL);padding:0 3px;font:inherit;font-size:9px;color:var(--greyD)}
+  @media (max-width:900px){
+    body{overflow:auto}
+    #app{display:block;height:auto}
+    #stage{grid-template-rows:300px 300px;padding:12px 16px}
+    #panel{border-left:0;border-top:1px solid var(--ink);padding:12px 16px 40px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div class="viewbox"><canvas id="cvWorld"></canvas><span class="vlabel">the scene · world frame · drag a source · the ring is where the head looks</span></div>
+    <div class="viewbox"><canvas id="cvHead"></canvas><span class="vlabel">as the head hears it · drag to turn the head · arrows yaw and pitch, Q/E roll, R recentre</span></div>
+  </div>
+  <div id="panel">
+    <h1>Decoder · Binaural</h1>
+    <div class="row"><button id="bStart" class="go">Start audio</button></div>
+    <p class="note">KU100 (SADIE II), 48 kHz. Headphones. The scene is rotated against the head before the decode —
+      what a tracker will drive. Here the mouse drives it.</p>
+
+    <h2>DECODE</h2>
+    <div class="sub note">order</div>
+    <div class="seg" id="segOrder"></div>
+    <div class="sub note">method <kbd>space</kbd> toggles</div>
+    <div class="seg" id="segMethod"></div>
+    <p class="note" id="methodNote"></p>
+
+    <h2>HEAD</h2>
+    <div id="headCtl"></div>
+    <div class="row"><button id="bRecentre">Recentre <kbd>R</kbd></button><button id="bSweep">Sweep yaw</button></div>
+    <div class="row"><button id="bTrack" class="on">Rotation follows head</button></div>
+    <p class="note"><b>Sweep</b> turns the head ±60° slowly, hands free. With <b>rotation off</b> the scene turns
+      with the head, as headphones without tracking do.</p>
+
+    <h2>SOURCES</h2>
+    <div id="sources"></div>
+
+    <h2>AMBIX FILE</h2>
+    <input type="file" id="file" accept="audio/*">
+    <div class="row"><button id="bFile" disabled>Play file</button></div>
+    <div id="fileCtl"></div>
+    <p class="note" id="fileNote">A 4, 9 or 16 channel AmbiX file (ACN, SN3D), looped. Its order above the decode's is cut.</p>
+
+    <h2>OUTPUT</h2>
+    <div id="outCtl"></div>
+
+    <h2>LISTEN FOR</h2>
+    <p class="note"><b>Order and method.</b> LS at order 1–3 goes dull and inside the head; MagLS keeps the top end.
+      Order 1 MagLS against order 3 MagLS: how much does the order still buy?</p>
+    <p class="note"><b>Rotation.</b> Turn toward a source: does it stay put in the world, or drag along? Front–back:
+      a source behind turns to the side when the head turns, which is the cue a static decode never gives.</p>
+    <p class="note"><b>Elevation.</b> The source above: is it above, or only "somewhere"? Pitch the head up to it.</p>
+  </div>
+</div>
+
+<script src="filters.js"></script>
+<script>
+"use strict";
+const SR = 48000, NSH = 16, D2R = Math.PI / 180;
+
+// ---------- spherical harmonics: real, SN3D, ACN, order 3 ----------
+function sh3(x, y, z) {
+  const s3 = Math.sqrt(3), s5 = Math.sqrt(5), s15 = Math.sqrt(15);
+  return [1,
+    y, z, x,
+    s3 * x * y, s3 * y * z, 0.5 * (3 * z * z - 1), s3 * x * z, 0.5 * s3 * (x * x - y * y),
+    Math.sqrt(5 / 8) * y * (3 * x * x - y * y), s15 * x * y * z, Math.sqrt(3 / 8) * y * (5 * z * z - 1),
+    0.5 * z * (5 * z * z - 3), Math.sqrt(3 / 8) * x * (5 * z * z - 1), 0.5 * s15 * z * (x * x - y * y),
+    Math.sqrt(5 / 8) * x * (x * x - 3 * y * y)];
+}
+const dirOf = (az, el) => [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)];
+const angOf = v => [Math.atan2(v[1], v[0]), Math.asin(Math.max(-1, Math.min(1, v[2])))];
+
+// 3x3 rotations, row-major
+const mul3 = (a, b) => a.map((_, i) => { const r = Math.floor(i / 3), c = i % 3;
+  return a[r * 3] * b[c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c]; });
+const app3 = (m, v) => [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+                        m[6] * v[0] + m[7] * v[1] + m[8] * v[2]];
+const tr3 = m => [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]];
+const rz = a => [Math.cos(a), -Math.sin(a), 0, Math.sin(a), Math.cos(a), 0, 0, 0, 1];
+const ry = a => [Math.cos(a), 0, Math.sin(a), 0, 1, 0, -Math.sin(a), 0, Math.cos(a)];
+const rx = a => [1, 0, 0, 0, Math.cos(a), -Math.sin(a), 0, Math.sin(a), Math.cos(a)];
+// The head's orientation in the world: yaw left-positive, pitch up-positive, roll right-ear-down positive.
+const headRot = h => mul3(mul3(rz(h.yaw * D2R), ry(-h.pitch * D2R)), rx(h.roll * D2R));
+
+// The SH rotation matrix D with D·y(v) = y(Rᵀv), fitted on a point set: exact, since each order is closed under
+// rotation. P = Y (YᵀY)⁻¹ is fixed; D = Yrᵀ P.
+const FIT = (() => {
+  const K = 200, pts = [], ga = Math.PI * (3 - Math.sqrt(5));
+  for (let k = 0; k < K; k++) { const z = 1 - 2 * (k + 0.5) / K, r = Math.sqrt(1 - z * z);
+    pts.push([r * Math.cos(k * ga), r * Math.sin(k * ga), z]); }
+  const Y = pts.map(p => sh3(...p));
+  const G = Array.from({ length: NSH }, (_, i) => Array.from({ length: NSH }, (_, j) =>
+    Y.reduce((s, row) => s + row[i] * row[j], 0)));
+  const inv = invert(G);
+  const P = Y.map(row => inv.map(col => col.reduce((s, g, j) => s + g * row[j], 0)));
+  return { pts, P };
+})();
+function invert(a) {
+  const n = a.length, m = a.map((r, i) => [...r, ...Array.from({ length: n }, (_, j) => +(i === j))]);
+  for (let c = 0; c < n; c++) {
+    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(m[r][c]) > Math.abs(m[p][c])) p = r;
+    [m[c], m[p]] = [m[p], m[c]];
+    const d = m[c][c]; for (let j = 0; j < 2 * n; j++) m[c][j] /= d;
+    for (let r = 0; r < n; r++) if (r !== c) { const f = m[r][c]; for (let j = 0; j < 2 * n; j++) m[r][j] -= f * m[c][j]; }
+  }
+  return m.map(r => r.slice(n));
+}
+function shRotation(R) {
+  const Rt = tr3(R), Yr = FIT.pts.map(p => sh3(...app3(Rt, p)));
+  const D = new Float32Array(NSH * NSH);
+  for (let i = 0; i < NSH; i++) for (let j = 0; j < NSH; j++) {
+    let s = 0; for (let k = 0; k < Yr.length; k++) s += Yr[k][i] * FIT.P[k][j];
+    D[i * NSH + j] = Math.abs(s) < 1e-7 ? 0 : s;
+  }
+  return D;
+}
+
+// ---------- state ----------
+const S = {
+  order: 3, method: "magls", track: true, sweep: false,
+  head: { yaw: 0, pitch: 0, roll: 0 },
+  out: 0.5, fileGain: 1, fileOrder: 0, filePlaying: false,
+  sources: [
+    { name: "A", az: 30, el: 0, signal: "bursts", on: true, gain: 0.7 },
+    { name: "B", az: 150, el: 0, signal: "clicks", on: true, gain: 0.6 },
+    { name: "C", az: -60, el: 55, signal: "tone", on: false, gain: 0.5 },
+  ],
+};
+const SIGNALS = ["bursts", "clicks", "tone", "noise"];
+
+// ---------- audio ----------
+let ctx, sceneNode, splitter, master, decoder = null, fileBuffer = null, fileSrc = null;
+const srcNodes = [];
+
+const WORKLET = `
+class Scene extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.n = 16; this.gains = [0,1,2].map(() => new Float32Array(16)); this.prevGains = this.gains.map(g => g.slice());
+    this.D = new Float32Array(256); for (let i = 0; i < 16; i++) this.D[i * 17] = 1; this.prevD = this.D.slice();
+    this.fileMask = 0; this.buf = Array.from({ length: 16 }, () => new Float32Array(128));
+    this.port.onmessage = e => { const m = e.data;
+      if (m.gains) this.gains = m.gains.map(g => Float32Array.from(g));
+      if (m.D) this.D = Float32Array.from(m.D);
+      if (m.fileChannels !== undefined) this.fileMask = m.fileChannels; };
+  }
+  process(inputs, outputs) {
+    const out = outputs[0], N = out[0].length, a = this.buf;
+    for (let c = 0; c < 16; c++) a[c].fill(0);
+    for (let s = 0; s < 3; s++) {
+      const x = inputs[s][0]; if (!x) continue;
+      const g0 = this.prevGains[s], g1 = this.gains[s];
+      for (let c = 0; c < 16; c++) { const ac = a[c], d = (g1[c] - g0[c]) / N;
+        for (let i = 0; i < N; i++) ac[i] += x[i] * (g0[c] + d * i); }
+      this.prevGains[s] = g1.slice();
+    }
+    const f = inputs[3];
+    for (let c = 0; c < Math.min(this.fileMask, f.length); c++) { const ac = a[c], x = f[c];
+      for (let i = 0; i < N; i++) ac[i] += x[i]; }
+    const D0 = this.prevD, D1 = this.D;
+    for (let r = 0; r < 16; r++) { const o = out[r]; o.fill(0);
+      for (let c = 0; c < 16; c++) { const k = r * 16 + c, d0 = D0[k], dd = (D1[k] - d0) / N;
+        if (d0 === 0 && dd === 0) continue; const ac = a[c];
+        for (let i = 0; i < N; i++) o[i] += ac[i] * (d0 + dd * i); } }
+    this.prevD = D1.slice();
+    return true;
+  }
+}
+registerProcessor("scene", Scene);`;
+
+function makeSignal(kind) {
+  const len = SR * 4, b = ctx.createBuffer(1, len, SR), x = b.getChannelData(0);
+  let b0 = 0, b1 = 0, b2 = 0;
+  const pink = () => { const w = Math.random() * 2 - 1;
+    b0 = 0.99765 * b0 + w * 0.099; b1 = 0.963 * b1 + w * 0.2965; b2 = 0.57 * b2 + w * 1.0527;
+    return (b0 + b1 + b2 + w * 0.1848) * 0.2; };
+  for (let i = 0; i < len; i++) {
+    const t = i / SR;
+    if (kind === "noise") x[i] = pink();
+    else if (kind === "bursts") { const ph = t % 0.6, env = ph < 0.2 ? Math.min(1, ph / 0.005, (0.2 - ph) / 0.005) : 0;
+      x[i] = pink() * env * 1.6; }
+    else if (kind === "clicks") { const ph = t % 0.25; x[i] = ph < 0.002 ? (Math.random() * 2 - 1) * Math.exp(-ph / 0.0004) : 0; }
+    else { const f0 = 220 * (1 + 0.006 * Math.sin(2 * Math.PI * 5 * t)); let s = 0;
+      for (let h = 1; h <= 14; h++) s += Math.sin(2 * Math.PI * f0 * h * t) / h;
+      x[i] = s * 0.25 * (0.6 + 0.4 * Math.sin(2 * Math.PI * 0.5 * t)); }
+  }
+  return b;
+}
+
+function decodeBuffers(method, order) {
+  const n = (order + 1) ** 2, raw = Uint8Array.from(atob(FILTERS[method + order]), c => c.charCodeAt(0));
+  const f = new Float32Array(raw.buffer), bufs = [];
+  for (let c = 0; c < n; c++) {
+    const b = ctx.createBuffer(2, FILTER_TAPS, SR);
+    for (let e = 0; e < 2; e++) b.copyToChannel(f.subarray((e * n + c) * FILTER_TAPS, (e * n + c + 1) * FILTER_TAPS), e);
+    bufs.push(b);
+  }
+  return bufs;
+}
+
+function buildDecoder() {
+  const bufs = decodeBuffers(S.method, S.order), out = ctx.createGain(), convs = [];
+  out.gain.value = 0;
+  bufs.forEach((b, c) => { const cv = ctx.createConvolver(); cv.normalize = false; cv.buffer = b;
+    splitter.connect(cv, c); cv.connect(out); convs.push(cv); });
+  out.connect(master);
+  out.gain.setTargetAtTime(1, ctx.currentTime, 0.01);
+  if (decoder) { const old = decoder; old.out.gain.setTargetAtTime(0, ctx.currentTime, 0.01);
+    setTimeout(() => { old.convs.forEach(c => c.disconnect()); old.out.disconnect(); }, 200); }
+  decoder = { out, convs };
+}
+
+async function start() {
+  ctx = new AudioContext({ sampleRate: SR });
+  const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+  await ctx.audioWorklet.addModule(url);
+  sceneNode = new AudioWorkletNode(ctx, "scene", { numberOfInputs: 4, numberOfOutputs: 1, outputChannelCount: [NSH] });
+  splitter = ctx.createChannelSplitter(NSH);
+  master = ctx.createGain(); master.gain.value = S.out;
+  sceneNode.connect(splitter); master.connect(ctx.destination);
+  S.sources.forEach((s, i) => { srcNodes[i] = null; if (s.on) startSource(i); });
+  buildDecoder(); pushScene();
+  $("bStart").textContent = "Stop audio"; $("bStart").classList.remove("go");
+}
+function startSource(i) {
+  const s = S.sources[i], n = ctx.createBufferSource();
+  n.buffer = makeSignal(s.signal); n.loop = true; n.connect(sceneNode, 0, i); n.start();
+  srcNodes[i] = n;
+}
+function stopSource(i) { if (srcNodes[i]) { srcNodes[i].stop(); srcNodes[i].disconnect(); srcNodes[i] = null; } }
+
+function currentRotation() { return S.track ? headRot(S.head) : [1, 0, 0, 0, 1, 0, 0, 0, 1]; }
+function pushScene() {
+  if (!sceneNode) return;
+  const gains = S.sources.map(s => sh3(...dirOf(s.az * D2R, s.el * D2R)).map(v => v * (s.on ? s.gain : 0)));
+  sceneNode.port.postMessage({ gains, D: Array.from(shRotation(currentRotation())), fileChannels: S.filePlaying ? (S.fileOrder + 1) ** 2 : 0 });
+}
+
+// ---------- the file ----------
+$("file").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (!ctx) await start();
+  try {
+    fileBuffer = await ctx.decodeAudioData(await f.arrayBuffer());
+    const ch = fileBuffer.numberOfChannels, ord = Math.floor(Math.sqrt(ch)) - 1;
+    if ((ord + 1) ** 2 !== ch && ch < 16) throw new Error(ch + " channels is not an ambisonic order");
+    S.fileOrder = Math.min(3, ord);
+    $("fileNote").textContent = `${f.name}: ${ch} channels, order ${ord}${ord > 3 ? " (cut to 3)" : ""}, ${fileBuffer.duration.toFixed(1)} s.`;
+    $("bFile").disabled = false;
+  } catch (err) { $("fileNote").textContent = "Could not read it: " + err.message; }
+};
+$("bFile").onclick = () => {
+  if (S.filePlaying) { fileSrc.stop(); fileSrc.disconnect(); S.filePlaying = false; }
+  else {
+    const g = ctx.createGain(); g.gain.value = S.fileGain; g.channelCountMode = "explicit";
+    g.channelCount = fileBuffer.numberOfChannels; g.channelInterpretation = "discrete";
+    fileSrc = ctx.createBufferSource(); fileSrc.buffer = fileBuffer; fileSrc.loop = true;
+    fileSrc.channelInterpretation = "discrete"; fileSrc.connect(g); g.connect(sceneNode, 0, 3); fileSrc.start();
+    fileSrc.gainNode = g; S.filePlaying = true;
+  }
+  $("bFile").classList.toggle("on", S.filePlaying);
+  $("bFile").textContent = S.filePlaying ? "Stop file" : "Play file";
+  pushScene();
+};
+
+// ---------- controls ----------
+function $(id) { return document.getElementById(id); }
+function seg(el, items, get, set, label = x => x) {
+  el.innerHTML = "";
+  items.forEach(it => { const b = document.createElement("button"); b.textContent = label(it);
+    b.onclick = () => { set(it); seg(el, items, get, set, label); }; if (get() === it) b.classList.add("on"); el.appendChild(b); });
+}
+// A value: drag sideways or up (the two add), a click on the bar sets it there, shift is fine.
+function ctl(parent, label, min, max, get, set, fmt) {
+  const d = document.createElement("div"); d.className = "ctl";
+  d.innerHTML = `<div class="ctl-top"><span class="lab">${label}</span><span class="val"></span></div><div class="bar"><div class="fill"></div></div>`;
+  parent.appendChild(d);
+  const bar = d.querySelector(".bar"), fill = d.querySelector(".fill"), val = d.querySelector(".val");
+  const draw = () => { const v = get(), z = Math.max(min, Math.min(max, 0)), a = (Math.min(v, z) - min) / (max - min), b = (Math.max(v, z) - min) / (max - min);
+    fill.style.left = a * 100 + "%"; fill.style.width = (b - a) * 100 + "%"; val.textContent = fmt(v); };
+  bar.onpointerdown = e => {
+    const r = bar.getBoundingClientRect(); set(min + (max - min) * Math.max(0, Math.min(1, (e.clientX - r.left) / r.width))); draw();
+    let x0 = e.clientX, y0 = e.clientY; bar.setPointerCapture(e.pointerId);
+    bar.onpointermove = m => { const k = m.shiftKey ? 0.1 : 1;
+      const dv = ((m.clientX - x0) / r.width + (y0 - m.clientY) / 200) * (max - min) * k;
+      x0 = m.clientX; y0 = m.clientY; set(Math.max(min, Math.min(max, get() + dv))); draw(); };
+    bar.onpointerup = () => { bar.onpointermove = null; };
+  };
+  draw(); return draw;
+}
+
+const METHOD_NOTE = {
+  ls: "Complex least squares at every frequency. At order 3 the diffuse-field spectrum falls up to 23 dB in the highs.",
+  magls: "Least squares below the cutoff, magnitude least squares above, and the diffuse-field covariance constraint. The diffuse field matches the HRTF set to 0.1 dB at every order.",
+};
+function drawDecodeCtl() {
+  seg($("segOrder"), [1, 2, 3], () => S.order, v => { S.order = v; if (ctx) buildDecoder(); });
+  seg($("segMethod"), ["ls", "magls"], () => S.method, v => { S.method = v; $("methodNote").textContent = METHOD_NOTE[v]; if (ctx) buildDecoder(); },
+      v => v === "ls" ? "LS" : "MagLS");
+  $("methodNote").textContent = METHOD_NOTE[S.method];
+}
+drawDecodeCtl();
+
+const headDraws = [
+  ctl($("headCtl"), "yaw", -180, 180, () => S.head.yaw, v => { S.head.yaw = v; pushScene(); }, v => v.toFixed(0) + "°"),
+  ctl($("headCtl"), "pitch", -90, 90, () => S.head.pitch, v => { S.head.pitch = v; pushScene(); }, v => v.toFixed(0) + "°"),
+  ctl($("headCtl"), "roll", -90, 90, () => S.head.roll, v => { S.head.roll = v; pushScene(); }, v => v.toFixed(0) + "°"),
+];
+const redrawHead = () => headDraws.forEach(f => f());
+$("bRecentre").onclick = () => { S.head = { yaw: 0, pitch: 0, roll: 0 }; S.sweep = false; $("bSweep").classList.remove("on"); redrawHead(); pushScene(); };
+$("bSweep").onclick = () => { S.sweep = !S.sweep; $("bSweep").classList.toggle("on", S.sweep); };
+$("bTrack").onclick = () => { S.track = !S.track; $("bTrack").classList.toggle("on", S.track);
+  $("bTrack").textContent = S.track ? "Rotation follows head" : "Rotation off"; pushScene(); };
+
+S.sources.forEach((s, i) => {
+  const d = document.createElement("div"); d.className = "src";
+  d.innerHTML = `<div class="name"><b>${s.name}</b></div><div class="seg"></div><div class="row"><button>${s.on ? "On" : "Off"}</button></div>`;
+  $("sources").appendChild(d);
+  const onB = d.querySelector(".row button"); onB.classList.toggle("on", s.on);
+  onB.onclick = () => { s.on = !s.on; onB.classList.toggle("on", s.on); onB.textContent = s.on ? "On" : "Off";
+    if (ctx) { if (s.on) startSource(i); else stopSource(i); } pushScene(); };
+  seg(d.querySelector(".seg"), SIGNALS, () => s.signal, v => { s.signal = v; if (ctx && s.on) { stopSource(i); startSource(i); } });
+  ctl(d, "level", 0, 1, () => s.gain, v => { s.gain = v; pushScene(); }, v => (20 * Math.log10(Math.max(v, 1e-4))).toFixed(1) + " dB");
+});
+ctl($("fileCtl"), "file level", 0, 2, () => S.fileGain, v => { S.fileGain = v; if (fileSrc?.gainNode) fileSrc.gainNode.gain.value = v; },
+    v => (20 * Math.log10(Math.max(v, 1e-4))).toFixed(1) + " dB");
+ctl($("outCtl"), "output", 0, 1, () => S.out, v => { S.out = v; if (master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.01); },
+    v => (20 * Math.log10(Math.max(v, 1e-4))).toFixed(1) + " dB");
+
+$("bStart").onclick = async () => {
+  if (!ctx) return start();
+  if (ctx.state === "running") { await ctx.suspend(); $("bStart").textContent = "Resume audio"; }
+  else { await ctx.resume(); $("bStart").textContent = "Stop audio"; }
+};
+
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  const step = e.shiftKey ? 1 : 10, h = S.head;
+  if (e.key === "ArrowLeft") h.yaw += step; else if (e.key === "ArrowRight") h.yaw -= step;
+  else if (e.key === "ArrowUp") h.pitch = Math.min(90, h.pitch + step); else if (e.key === "ArrowDown") h.pitch = Math.max(-90, h.pitch - step);
+  else if (e.key === "q" || e.key === "Q") h.roll -= step; else if (e.key === "e" || e.key === "E") h.roll += step;
+  else if (e.key === "r" || e.key === "R") return $("bRecentre").onclick();
+  else if (e.key === " ") { S.method = S.method === "ls" ? "magls" : "ls"; drawDecodeCtl(); if (ctx) buildDecoder(); e.preventDefault(); return; }
+  else return;
+  h.yaw = ((h.yaw + 540) % 360) - 180; h.roll = Math.max(-90, Math.min(90, h.roll));
+  e.preventDefault(); redrawHead(); pushScene();
+});
+
+// ---------- the two maps ----------
+// Equirectangular, front in the middle, left on the left: x from azimuth +180 (left edge) to -180.
+const cvW = $("cvWorld"), cvH = $("cvHead");
+function mapGeom(cv) { const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+  const pad = 24 * dpr, w = cv.width - 2 * pad, h = Math.min(cv.height - 2 * pad - 10 * dpr, w / 2);
+  return { dpr, x0: pad + (w - 2 * h) / 2 * (w > 2 * h), y0: (cv.height - h) / 2 + 6 * dpr, w: Math.min(w, 2 * h), h }; }
+const toXY = (g, az, el) => [g.x0 + (180 - az) / 360 * g.w, g.y0 + (90 - el) / 180 * g.h];
+const fromXY = (g, x, y) => [180 - (x - g.x0) / g.w * 360, 90 - (y - g.y0) / g.h * 180];
+
+function drawGrid(c, g) {
+  c.fillStyle = "#efede7"; c.fillRect(g.x0, g.y0, g.w, g.h);
+  c.strokeStyle = "#c8c4ba"; c.lineWidth = g.dpr;
+  for (let az = -180; az <= 180; az += 45) { const [x] = toXY(g, az, 0); c.beginPath(); c.moveTo(x, g.y0); c.lineTo(x, g.y0 + g.h); c.stroke(); }
+  for (let el = -90; el <= 90; el += 45) { const [, y] = toXY(g, 0, el); c.beginPath(); c.moveTo(g.x0, y); c.lineTo(g.x0 + g.w, y); c.stroke(); }
+  c.fillStyle = "#6f6b62"; c.font = `${9 * g.dpr}px Helvetica Neue, sans-serif`; c.textAlign = "center";
+  [[180, "back"], [90, "left"], [0, "front"], [-90, "right"], [-180, "back"]].forEach(([az, t]) => { const [x] = toXY(g, az, 0); c.fillText(t, x, g.y0 + g.h + 12 * g.dpr); });
+}
+function drawSource(c, g, az, el, s) {
+  const [x, y] = toXY(g, az, el), r = 7 * g.dpr;
+  c.globalAlpha = s.on ? 1 : 0.35; c.fillStyle = "#d4873a"; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+  c.fillStyle = "#efede7"; c.font = `600 ${9 * g.dpr}px Helvetica Neue, sans-serif`; c.textAlign = "center"; c.fillText(s.name, x, y + 3 * g.dpr);
+  c.globalAlpha = 1;
+}
+function draw() {
+  if (S.sweep) { S.head.yaw = 60 * Math.sin(performance.now() / 1000 * 2 * Math.PI / 8); redrawHead(); pushScene(); }
+  const R = headRot(S.head), Rs = currentRotation(), Rst = tr3(Rs);
+  let c = cvW.getContext("2d"), g = mapGeom(cvW); c.clearRect(0, 0, cvW.width, cvW.height); drawGrid(c, g);
+  S.sources.forEach(s => drawSource(c, g, s.az, s.el, s));
+  const [la, le] = angOf(app3(R, [1, 0, 0])), [lx, ly] = toXY(g, la / D2R, le / D2R);
+  c.strokeStyle = "#1b1a17"; c.lineWidth = 1.5 * g.dpr; c.beginPath(); c.arc(lx, ly, 11 * g.dpr, 0, 7); c.stroke();
+  c = cvH.getContext("2d"); g = mapGeom(cvH); c.clearRect(0, 0, cvH.width, cvH.height); drawGrid(c, g);
+  S.sources.forEach(s => { const [a, e] = angOf(app3(Rst, dirOf(s.az * D2R, s.el * D2R))); drawSource(c, g, a / D2R, e / D2R, s); });
+  const [cx, cy] = toXY(g, 0, 0); c.strokeStyle = "#1b1a17"; c.lineWidth = g.dpr;
+  c.beginPath(); c.moveTo(cx - 8 * g.dpr, cy); c.lineTo(cx + 8 * g.dpr, cy); c.moveTo(cx, cy - 8 * g.dpr); c.lineTo(cx, cy + 8 * g.dpr); c.stroke();
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+// Drag a source on the world map.
+let dragSrc = null;
+cvW.onpointerdown = e => { const g = mapGeom(cvW), px = e.offsetX * g.dpr, py = e.offsetY * g.dpr;
+  dragSrc = S.sources.find(s => { const [x, y] = toXY(g, s.az, s.el); return Math.hypot(px - x, py - y) < 12 * g.dpr; });
+  if (dragSrc) cvW.setPointerCapture(e.pointerId); };
+cvW.onpointermove = e => { if (!dragSrc) return; const g = mapGeom(cvW);
+  const [az, el] = fromXY(g, e.offsetX * g.dpr, e.offsetY * g.dpr);
+  dragSrc.az = Math.max(-180, Math.min(180, az)); dragSrc.el = Math.max(-90, Math.min(90, el)); pushScene(); };
+cvW.onpointerup = () => { dragSrc = null; };
+// Drag the heard map to turn the head: the scene is grabbed, so dragging it right turns the head left.
+let headDrag = null;
+cvH.onpointerdown = e => { headDrag = [e.clientX, e.clientY]; cvH.setPointerCapture(e.pointerId); S.sweep = false; $("bSweep").classList.remove("on"); };
+cvH.onpointermove = e => { if (!headDrag) return; const g = mapGeom(cvH), k = 360 / (g.w / g.dpr);
+  S.head.yaw = ((S.head.yaw + (e.clientX - headDrag[0]) * k + 540) % 360) - 180;
+  S.head.pitch = Math.max(-90, Math.min(90, S.head.pitch + (e.clientY - headDrag[1]) * k));
+  headDrag = [e.clientX, e.clientY]; redrawHead(); pushScene(); };
+cvH.onpointerup = () => { headDrag = null; };
+</script>
+</body>
+</html>
