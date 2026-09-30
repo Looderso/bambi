@@ -44,7 +44,7 @@ namespace palette
     inline const juce::Colour violet    { 0xff8b7ba8 };
     //  each plugin's own: the encoder's is `blue`
     inline const juce::Colour reverbViolet { 0xff967bb2 };
-    inline const juce::Colour echoGreen    { 0xff7cb27b };
+    inline const juce::Colour echoSage     { 0xff6f9a74 };
 } // namespace palette
 
 // ---- colour roles ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ namespace colour
         switch (p)
         {
             case Product::Reverb:  return palette::reverbViolet;
-            case Product::Echo:    return palette::echoGreen;
+            case Product::Echo:    return palette::echoSage;
             case Product::Encoder: return palette::blue;
             case Product::Unknown: return palette::blue;
         }
