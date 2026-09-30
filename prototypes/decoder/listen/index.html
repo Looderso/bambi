@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>bambi · Decoder · Binaural</title>
+<title>bambi · Decoder · Listen</title>
 <style>
   :root{ --ground:#efede7; --panel:#e5e2db; --sandL:#e1ddd4; --sand:#d5d1c8; --greyL:#c8c4ba;
          --greyM:#b7b2a8; --silver:#a9a59c; --greyD:#6f6b62; --ink:#1b1a17; --orange:#d4873a; }
@@ -35,6 +35,7 @@
   .bar{position:relative;height:9px;background:var(--sand);cursor:ew-resize}
   .bar .fill{position:absolute;top:0;bottom:0;background:var(--ink)}
   .src{border-left:2px solid var(--orange);padding-left:8px;margin:10px 0}
+  button:disabled{color:var(--silver);border-color:var(--sandL);cursor:default}
   .src .name{display:flex;justify-content:space-between;align-items:center}
   input[type=file]{font:inherit;font-size:10px;width:100%;margin:4px 0}
   kbd{border:1px solid var(--greyL);padding:0 3px;font:inherit;font-size:9px;color:var(--greyD)}
@@ -49,21 +50,28 @@
 <body>
 <div id="app">
   <div id="stage">
-    <div class="viewbox"><canvas id="cvWorld"></canvas><span class="vlabel">the scene · world frame · drag a source · the ring is where the head looks</span></div>
+    <div class="viewbox"><canvas id="cvWorld"></canvas><span class="vlabel">the scene · world frame · drag a source · the ring is where the head looks · squares are the array</span></div>
     <div class="viewbox"><canvas id="cvHead"></canvas><span class="vlabel">as the head hears it · drag to turn the head · arrows yaw and pitch, Q/E roll, R recentre</span></div>
   </div>
   <div id="panel">
-    <h1>Decoder · Binaural</h1>
+    <h1>Decoder · Listen</h1>
     <div class="row"><button id="bStart" class="go">Start audio</button></div>
-    <p class="note">KU100 (SADIE II), 48 kHz. Headphones. The scene is rotated against the head before the decode —
-      what a tracker will drive. Here the mouse drives it.</p>
+    <p class="note">KU100 (SADIE II), 48 kHz. Headphones. The head turns against the world — what a tracker will
+      drive. Here the mouse drives it.</p>
+
+    <h2>OUTPUT <kbd>A</kbd> headphones ↔ array</h2>
+    <div class="seg" id="segOutput"></div>
+    <p class="note" id="outputNote"></p>
 
     <h2>DECODE</h2>
     <div class="sub note">order</div>
     <div class="seg" id="segOrder"></div>
-    <div class="sub note">method <kbd>space</kbd> toggles</div>
+    <div class="sub note">method, for headphones <kbd>space</kbd> toggles</div>
     <div class="seg" id="segMethod"></div>
     <p class="note" id="methodNote"></p>
+    <div class="row"><button id="bComp" class="on">Distance compensation</button></div>
+    <p class="note">The array's loudspeakers stand 1.30–1.65 m away. Off, the nearer ones arrive up to 1 ms early and
+      2 dB loud, as they would in the room with no compensation.</p>
 
     <h2>HEAD</h2>
     <div id="headCtl"></div>
@@ -81,32 +89,47 @@
     <div id="fileCtl"></div>
     <p class="note" id="fileNote">A 4, 9 or 16 channel AmbiX file (ACN, SN3D), looped. Its order above the decode's is cut.</p>
 
-    <h2>OUTPUT</h2>
+    <h2>LEVEL</h2>
     <div id="outCtl"></div>
 
     <h2>LISTEN FOR</h2>
-    <p class="note"><b>Order and method.</b> LS at order 1–3 goes dull and inside the head; MagLS keeps the top end.
-      Order 1 MagLS against order 3 MagLS: how much does the order still buy?</p>
-    <p class="note"><b>Rotation.</b> Turn toward a source: does it stay put in the world, or drag along? Front–back:
-      a source behind turns to the side when the head turns, which is the cue a static decode never gives.</p>
-    <p class="note"><b>Elevation.</b> The source above: is it above, or only "somewhere"? Pitch the head up to it.</p>
+    <p class="note"><b>Headphones against the array</b> (<kbd>A</kbd>). The array is 16 loudspeakers heard as points;
+      where its rings are sparse a source goes wide or jumps to a loudspeaker. Drag a source <b>below the ear
+      ring</b>: there is no loudspeaker down there, and it lands on the lowest ring.</p>
+    <p class="note"><b>Against the reference.</b> The sources at order 7, near the HRTF itself: the ceiling any decode
+      at order 3 is measured against.</p>
+    <p class="note"><b>Order and method.</b> LS goes dull and inside the head; MagLS keeps the top end.</p>
+    <p class="note"><b>Rotation.</b> Turn toward a source: does it stay put in the world? A source behind turns to the
+      side when the head turns — the cue a static decode never gives.</p>
   </div>
 </div>
 
 <script src="filters.js"></script>
+<script src="array.js"></script>
 <script>
 "use strict";
-const SR = 48000, NSH = 16, D2R = Math.PI / 180;
+const SR = 48000, D2R = Math.PI / 180, N7 = 7, C7 = 64;
 
-// ---------- spherical harmonics: real, SN3D, ACN, order 3 ----------
-function sh3(x, y, z) {
-  const s3 = Math.sqrt(3), s5 = Math.sqrt(5), s15 = Math.sqrt(15);
-  return [1,
-    y, z, x,
-    s3 * x * y, s3 * y * z, 0.5 * (3 * z * z - 1), s3 * x * z, 0.5 * s3 * (x * x - y * y),
-    Math.sqrt(5 / 8) * y * (3 * x * x - y * y), s15 * x * y * z, Math.sqrt(3 / 8) * y * (5 * z * z - 1),
-    0.5 * z * (5 * z * z - 3), Math.sqrt(3 / 8) * x * (5 * z * z - 1), 0.5 * s15 * z * (x * x - y * y),
-    Math.sqrt(5 / 8) * x * (x * x - 3 * y * y)];
+// ---------- spherical harmonics: real, SN3D, ACN, no Condon-Shortley phase ----------
+const FACT = [1]; for (let i = 1; i <= 2 * N7; i++) FACT[i] = FACT[i - 1] * i;
+function shN(N, x, y, z) {
+  const az = Math.atan2(y, x), s = Math.max(-1, Math.min(1, z)), c = Math.sqrt(Math.max(0, 1 - s * s));
+  const out = new Float64Array((N + 1) ** 2);
+  for (let m = 0; m <= N; m++) {
+    let pmm = 1; for (let i = 1; i <= m; i++) pmm *= (2 * i - 1) * c;      // P_m^m(s)
+    let p0 = 0, p1 = pmm;
+    for (let n = m; n <= N; n++) {
+      let p;
+      if (n === m) p = pmm;
+      else if (n === m + 1) p = s * (2 * m + 1) * pmm;
+      else p = ((2 * n - 1) * s * p1 - (n + m - 1) * p0) / (n - m);
+      if (n > m) { p0 = p1; p1 = p; } else { p1 = p; }
+      const norm = Math.sqrt((m === 0 ? 1 : 2) * FACT[n - m] / FACT[n + m]) * p;
+      if (m === 0) out[n * n + n] = norm;
+      else { out[n * n + n + m] = norm * Math.cos(m * az); out[n * n + n - m] = norm * Math.sin(m * az); }
+    }
+  }
+  return out;
 }
 const dirOf = (az, el) => [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)];
 const angOf = v => [Math.atan2(v[1], v[0]), Math.asin(Math.max(-1, Math.min(1, v[2])))];
@@ -123,17 +146,20 @@ const rx = a => [1, 0, 0, 0, Math.cos(a), -Math.sin(a), 0, Math.sin(a), Math.cos
 // The head's orientation in the world: yaw left-positive, pitch up-positive, roll right-ear-down positive.
 const headRot = h => mul3(mul3(rz(h.yaw * D2R), ry(-h.pitch * D2R)), rx(h.roll * D2R));
 
-// The SH rotation matrix D with D·y(v) = y(Rᵀv), fitted on a point set: exact, since each order is closed under
-// rotation. P = Y (YᵀY)⁻¹ is fixed; D = Yrᵀ P.
+// The SH rotation, one block per order: D_n·y_n(v) = y_n(Rᵀv), fitted on a point set — exact, since each order is
+// closed under rotation. P_n = Y_n (Y_nᵀY_n)⁻¹ is fixed; D_n = Y_n(rotated)ᵀ P_n. Blocks are packed order by order.
+const BLOCKS = 680;   // Σ (2n+1)² for n ≤ 7
 const FIT = (() => {
-  const K = 200, pts = [], ga = Math.PI * (3 - Math.sqrt(5));
+  const K = 300, pts = [], ga = Math.PI * (3 - Math.sqrt(5));
   for (let k = 0; k < K; k++) { const z = 1 - 2 * (k + 0.5) / K, r = Math.sqrt(1 - z * z);
     pts.push([r * Math.cos(k * ga), r * Math.sin(k * ga), z]); }
-  const Y = pts.map(p => sh3(...p));
-  const G = Array.from({ length: NSH }, (_, i) => Array.from({ length: NSH }, (_, j) =>
-    Y.reduce((s, row) => s + row[i] * row[j], 0)));
-  const inv = invert(G);
-  const P = Y.map(row => inv.map(col => col.reduce((s, g, j) => s + g * row[j], 0)));
+  const Y = pts.map(p => shN(N7, ...p)), P = [];
+  for (let n = 0; n <= N7; n++) {
+    const b = n * n, sz = 2 * n + 1, Yn = Y.map(r => Array.from(r.slice(b, b + sz)));
+    const inv = invert(Array.from({ length: sz }, (_, i) => Array.from({ length: sz }, (_, j) =>
+      Yn.reduce((s, r) => s + r[i] * r[j], 0))));
+    P.push(Yn.map(r => inv.map(col => col.reduce((s, g, j) => s + g * r[j], 0))));
+  }
   return { pts, P };
 })();
 function invert(a) {
@@ -147,18 +173,22 @@ function invert(a) {
   return m.map(r => r.slice(n));
 }
 function shRotation(R) {
-  const Rt = tr3(R), Yr = FIT.pts.map(p => sh3(...app3(Rt, p)));
-  const D = new Float32Array(NSH * NSH);
-  for (let i = 0; i < NSH; i++) for (let j = 0; j < NSH; j++) {
-    let s = 0; for (let k = 0; k < Yr.length; k++) s += Yr[k][i] * FIT.P[k][j];
-    D[i * NSH + j] = Math.abs(s) < 1e-7 ? 0 : s;
+  const Rt = tr3(R), Yr = FIT.pts.map(p => shN(N7, ...app3(Rt, p))), D = new Float32Array(BLOCKS);
+  let off = 0;
+  for (let n = 0; n <= N7; n++) {
+    const b = n * n, sz = 2 * n + 1, P = FIT.P[n];
+    for (let i = 0; i < sz; i++) for (let j = 0; j < sz; j++) {
+      let s = 0; for (let k = 0; k < Yr.length; k++) s += Yr[k][b + i] * P[k][j];
+      D[off + i * sz + j] = Math.abs(s) < 1e-7 ? 0 : s;
+    }
+    off += sz * sz;
   }
   return D;
 }
 
 // ---------- state ----------
 const S = {
-  order: 3, method: "magls", track: true, sweep: false,
+  output: "headphones", order: 3, method: "magls", comp: true, track: true, sweep: false,
   head: { yaw: 0, pitch: 0, roll: 0 },
   out: 0.5, fileGain: 1, fileOrder: 0, filePlaying: false,
   sources: [
@@ -168,42 +198,86 @@ const S = {
   ],
 };
 const SIGNALS = ["bursts", "clicks", "tone", "noise"];
+const OUTPUTS = { headphones: "Headphones", array: "This array", reference: "Reference" };
+const OUTPUT_NOTE = {
+  headphones: "The scene decoded straight to the ears, at the order and method below.",
+  array: `The scene decoded by AllRAD to the array's ${ARRAY.speakers.length} loudspeakers (max-rE, the point below the listener imaginary), each heard as a point through the HRTF at order 7. The subwoofer is not rendered.`,
+  reference: "The sources straight to the ears at order 7 — the ceiling. The file plays at its own order.",
+};
 
 // ---------- audio ----------
-let ctx, sceneNode, splitter, master, decoder = null, fileBuffer = null, fileSrc = null;
+let ctx, sceneNode, splitN, split7a, split7b, master, decoder = null, fileBuffer = null, fileSrc = null;
 const srcNodes = [];
 
+// World-frame SH at order 7 in, three views out: [0],[1] the head-frame order-7 field (channels 0–31, 32–63) for the
+// array or the reference; [2] the head-frame field at the decode order, for headphones.
 const WORKLET = `
+const C7 = 64, BLOCKS = 680;
 class Scene extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.n = 16; this.gains = [0,1,2].map(() => new Float32Array(16)); this.prevGains = this.gains.map(g => g.slice());
-    this.D = new Float32Array(256); for (let i = 0; i < 16; i++) this.D[i * 17] = 1; this.prevD = this.D.slice();
-    this.fileMask = 0; this.buf = Array.from({ length: 16 }, () => new Float32Array(128));
+    this.world = Array.from({ length: C7 }, () => new Float32Array(128));
+    this.field = Array.from({ length: C7 }, () => new Float32Array(128));
+    this.gains = [0, 1, 2].map(() => new Float32Array(C7)); this.prevGains = this.gains.map(g => g.slice());
+    this.rot = new Float32Array(BLOCKS); let off = 0;
+    for (let n = 0; n <= 7; n++) { const sz = 2 * n + 1; for (let i = 0; i < sz; i++) this.rot[off + i * sz + i] = 1; off += sz * sz; }
+    this.prevRot = this.rot.slice();
+    this.mode = "headphones"; this.order = 3; this.fileCh = 0;
+    this.S = 0; this.A = null; this.E = null; this.delays = null;
+    this.ring = null; this.w = 0; this.spk = null;
     this.port.onmessage = e => { const m = e.data;
       if (m.gains) this.gains = m.gains.map(g => Float32Array.from(g));
-      if (m.D) this.D = Float32Array.from(m.D);
-      if (m.fileChannels !== undefined) this.fileMask = m.fileChannels; };
+      if (m.rot) this.rot = Float32Array.from(m.rot);
+      if (m.mode) { this.mode = m.mode; this.order = m.order; }
+      if (m.fileCh !== undefined) this.fileCh = m.fileCh;
+      if (m.A) { this.S = m.S; this.A = Float32Array.from(m.A); this.E = Float32Array.from(m.E); this.delays = Int32Array.from(m.delays);
+        if (!this.ring || this.ring.length !== this.S) { this.ring = Array.from({ length: this.S }, () => new Float32Array(512));
+          this.spk = Array.from({ length: this.S }, () => new Float32Array(128)); } } };
+  }
+  rotate(src, out, order, len) {
+    let off = 0;
+    for (let n = 0; n <= order; n++) {
+      const sz = 2 * n + 1, b = n * n;
+      for (let i = 0; i < sz; i++) { const o = out[b + i]; o.fill(0);
+        for (let j = 0; j < sz; j++) { const k = off + i * sz + j, d0 = this.prevRot[k], dd = (this.rot[k] - d0) / len;
+          if (d0 === 0 && dd === 0) continue; const x = src[b + j];
+          for (let t = 0; t < len; t++) o[t] += x[t] * (d0 + dd * t); } }
+      off += sz * sz;
+    }
   }
   process(inputs, outputs) {
-    const out = outputs[0], N = out[0].length, a = this.buf;
-    for (let c = 0; c < 16; c++) a[c].fill(0);
+    const outN = outputs[2], len = outN[0].length, w = this.world;
+    for (let c = 0; c < C7; c++) w[c].fill(0);
     for (let s = 0; s < 3; s++) {
       const x = inputs[s][0]; if (!x) continue;
       const g0 = this.prevGains[s], g1 = this.gains[s];
-      for (let c = 0; c < 16; c++) { const ac = a[c], d = (g1[c] - g0[c]) / N;
-        for (let i = 0; i < N; i++) ac[i] += x[i] * (g0[c] + d * i); }
+      for (let c = 0; c < C7; c++) { if (g0[c] === 0 && g1[c] === 0) continue; const wc = w[c], d = (g1[c] - g0[c]) / len;
+        for (let t = 0; t < len; t++) wc[t] += x[t] * (g0[c] + d * t); }
       this.prevGains[s] = g1.slice();
     }
     const f = inputs[3];
-    for (let c = 0; c < Math.min(this.fileMask, f.length); c++) { const ac = a[c], x = f[c];
-      for (let i = 0; i < N; i++) ac[i] += x[i]; }
-    const D0 = this.prevD, D1 = this.D;
-    for (let r = 0; r < 16; r++) { const o = out[r]; o.fill(0);
-      for (let c = 0; c < 16; c++) { const k = r * 16 + c, d0 = D0[k], dd = (D1[k] - d0) / N;
-        if (d0 === 0 && dd === 0) continue; const ac = a[c];
-        for (let i = 0; i < N; i++) o[i] += ac[i] * (d0 + dd * i); } }
-    this.prevD = D1.slice();
+    for (let c = 0; c < Math.min(this.fileCh, f.length, 16); c++) { const wc = w[c], x = f[c]; for (let t = 0; t < len; t++) wc[t] += x[t]; }
+
+    const nN = (this.order + 1) ** 2;
+    this.rotate(w, outN, this.order, len);
+    for (let c = nN; c < outN.length; c++) outN[c].fill(0);
+
+    const o7 = [...outputs[0], ...outputs[1]];
+    if (this.mode === "reference") this.rotate(w, o7, 7, len);
+    else if (this.mode === "array" && this.A) {
+      const S = this.S, A = this.A, E = this.E, fld = this.field;
+      for (let s = 0; s < S; s++) { const sp = this.spk[s]; sp.fill(0);
+        for (let c = 0; c < nN; c++) { const a = A[s * 16 + c]; if (a === 0) continue; const wc = w[c];
+          for (let t = 0; t < len; t++) sp[t] += a * wc[t]; }
+        const r = this.ring[s], d = this.delays[s];
+        for (let t = 0, p = this.w; t < len; t++, p = (p + 1) & 511) { r[p] = sp[t]; sp[t] = r[(p - d) & 511]; } }
+      this.w = (this.w + len) & 511;
+      for (let c = 0; c < C7; c++) { const o = fld[c]; o.fill(0);
+        for (let s = 0; s < S; s++) { const e = E[c * S + s]; if (e === 0) continue; const sp = this.spk[s];
+          for (let t = 0; t < len; t++) o[t] += e * sp[t]; } }
+      this.rotate(fld, o7, 7, len);
+    } else for (const o of o7) o.fill(0);
+    this.prevRot = this.rot.slice();
     return true;
   }
 }
@@ -240,10 +314,12 @@ function decodeBuffers(method, order) {
 }
 
 function buildDecoder() {
-  const bufs = decodeBuffers(S.method, S.order), out = ctx.createGain(), convs = [];
+  const hp = S.output === "headphones", bufs = hp ? decodeBuffers(S.method, S.order) : decodeBuffers("magls", N7);
+  const out = ctx.createGain(), convs = [];
   out.gain.value = 0;
   bufs.forEach((b, c) => { const cv = ctx.createConvolver(); cv.normalize = false; cv.buffer = b;
-    splitter.connect(cv, c); cv.connect(out); convs.push(cv); });
+    if (hp) splitN.connect(cv, c); else if (c < 32) split7a.connect(cv, c); else split7b.connect(cv, c - 32);
+    cv.connect(out); convs.push(cv); });
   out.connect(master);
   out.gain.setTargetAtTime(1, ctx.currentTime, 0.01);
   if (decoder) { const old = decoder; old.out.gain.setTargetAtTime(0, ctx.currentTime, 0.01);
@@ -255,12 +331,12 @@ async function start() {
   ctx = new AudioContext({ sampleRate: SR });
   const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
   await ctx.audioWorklet.addModule(url);
-  sceneNode = new AudioWorkletNode(ctx, "scene", { numberOfInputs: 4, numberOfOutputs: 1, outputChannelCount: [NSH] });
-  splitter = ctx.createChannelSplitter(NSH);
-  master = ctx.createGain(); master.gain.value = S.out;
-  sceneNode.connect(splitter); master.connect(ctx.destination);
+  sceneNode = new AudioWorkletNode(ctx, "scene", { numberOfInputs: 4, numberOfOutputs: 3, outputChannelCount: [32, 32, 16] });
+  splitN = ctx.createChannelSplitter(16); split7a = ctx.createChannelSplitter(32); split7b = ctx.createChannelSplitter(32);
+  sceneNode.connect(split7a, 0); sceneNode.connect(split7b, 1); sceneNode.connect(splitN, 2);
+  master = ctx.createGain(); master.gain.value = S.out; master.connect(ctx.destination);
   S.sources.forEach((s, i) => { srcNodes[i] = null; if (s.on) startSource(i); });
-  buildDecoder(); pushScene();
+  pushArray(); pushMode(); pushScene(); buildDecoder();
   $("bStart").textContent = "Stop audio"; $("bStart").classList.remove("go");
 }
 function startSource(i) {
@@ -273,8 +349,23 @@ function stopSource(i) { if (srcNodes[i]) { srcNodes[i].stop(); srcNodes[i].disc
 function currentRotation() { return S.track ? headRot(S.head) : [1, 0, 0, 0, 1, 0, 0, 0, 1]; }
 function pushScene() {
   if (!sceneNode) return;
-  const gains = S.sources.map(s => sh3(...dirOf(s.az * D2R, s.el * D2R)).map(v => v * (s.on ? s.gain : 0)));
-  sceneNode.port.postMessage({ gains, D: Array.from(shRotation(currentRotation())), fileChannels: S.filePlaying ? (S.fileOrder + 1) ** 2 : 0 });
+  const gains = S.sources.map(s => Array.from(shN(N7, ...dirOf(s.az * D2R, s.el * D2R)), v => v * (s.on ? s.gain : 0)));
+  sceneNode.port.postMessage({ gains, rot: Array.from(shRotation(currentRotation())), fileCh: S.filePlaying ? (S.fileOrder + 1) ** 2 : 0 });
+}
+function pushMode() { if (sceneNode) sceneNode.port.postMessage({ mode: S.output, order: S.order }); }
+// The array's decoder at the current order, each loudspeaker encoded as a point at order 7, and — without distance
+// compensation — each one's extra delay and level against the farthest.
+function pushArray() {
+  if (!sceneNode) return;
+  const spk = ARRAY.speakers, n = spk.length, D = ARRAY["order" + S.order], rMax = Math.max(...spk.map(s => s.r));
+  const A = new Float32Array(n * 16), E = new Float32Array(C7 * n), delays = new Int32Array(n);
+  spk.forEach((s, i) => {
+    D[i].forEach((v, c) => { A[i * 16 + c] = v; });
+    const y = shN(N7, ...dirOf(s.az * D2R, s.el * D2R)), g = S.comp ? 1 : rMax / s.r;
+    for (let c = 0; c < C7; c++) E[c * n + i] = y[c] * g;
+    delays[i] = S.comp ? 0 : Math.round((rMax - s.r) / 343 * SR);
+  });
+  sceneNode.port.postMessage({ S: n, A, E, delays });
 }
 
 // ---------- the file ----------
@@ -306,10 +397,10 @@ $("bFile").onclick = () => {
 
 // ---------- controls ----------
 function $(id) { return document.getElementById(id); }
-function seg(el, items, get, set, label = x => x) {
+function seg(el, items, get, set, label = x => x, disabled = () => false) {
   el.innerHTML = "";
-  items.forEach(it => { const b = document.createElement("button"); b.textContent = label(it);
-    b.onclick = () => { set(it); seg(el, items, get, set, label); }; if (get() === it) b.classList.add("on"); el.appendChild(b); });
+  items.forEach(it => { const b = document.createElement("button"); b.textContent = label(it); b.disabled = disabled(it);
+    b.onclick = () => { set(it); seg(el, items, get, set, label, disabled); }; if (get() === it) b.classList.add("on"); el.appendChild(b); });
 }
 // A value: drag sideways or up (the two add), a click on the bar sets it there, shift is fine.
 function ctl(parent, label, min, max, get, set, fmt) {
@@ -334,13 +425,20 @@ const METHOD_NOTE = {
   ls: "Complex least squares at every frequency. At order 3 the diffuse-field spectrum falls up to 23 dB in the highs.",
   magls: "Least squares below the cutoff, magnitude least squares above, and the diffuse-field covariance constraint. The diffuse field matches the HRTF set to 0.1 dB at every order.",
 };
+function setOutput(v) { S.output = v; pushMode(); if (ctx) buildDecoder(); drawDecodeCtl(); }
 function drawDecodeCtl() {
-  seg($("segOrder"), [1, 2, 3], () => S.order, v => { S.order = v; if (ctx) buildDecoder(); });
+  seg($("segOutput"), Object.keys(OUTPUTS), () => S.output, setOutput, v => OUTPUTS[v]);
+  $("outputNote").textContent = OUTPUT_NOTE[S.output];
+  seg($("segOrder"), [1, 2, 3], () => S.order, v => { S.order = v; pushMode(); pushArray(); if (ctx && S.output === "headphones") buildDecoder(); },
+      x => x, () => S.output === "reference");
   seg($("segMethod"), ["ls", "magls"], () => S.method, v => { S.method = v; $("methodNote").textContent = METHOD_NOTE[v]; if (ctx) buildDecoder(); },
-      v => v === "ls" ? "LS" : "MagLS");
+      v => v === "ls" ? "LS" : "MagLS", () => S.output !== "headphones");
   $("methodNote").textContent = METHOD_NOTE[S.method];
+  $("bComp").disabled = S.output !== "array";
 }
 drawDecodeCtl();
+$("bComp").onclick = () => { S.comp = !S.comp; $("bComp").classList.toggle("on", S.comp);
+  $("bComp").textContent = S.comp ? "Distance compensation" : "No distance compensation"; pushArray(); };
 
 const headDraws = [
   ctl($("headCtl"), "yaw", -180, 180, () => S.head.yaw, v => { S.head.yaw = v; pushScene(); }, v => v.toFixed(0) + "°"),
@@ -365,7 +463,7 @@ S.sources.forEach((s, i) => {
 });
 ctl($("fileCtl"), "file level", 0, 2, () => S.fileGain, v => { S.fileGain = v; if (fileSrc?.gainNode) fileSrc.gainNode.gain.value = v; },
     v => (20 * Math.log10(Math.max(v, 1e-4))).toFixed(1) + " dB");
-ctl($("outCtl"), "output", 0, 1, () => S.out, v => { S.out = v; if (master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.01); },
+ctl($("outCtl"), "level", 0, 1, () => S.out, v => { S.out = v; if (master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.01); },
     v => (20 * Math.log10(Math.max(v, 1e-4))).toFixed(1) + " dB");
 
 $("bStart").onclick = async () => {
@@ -381,7 +479,9 @@ addEventListener("keydown", e => {
   else if (e.key === "ArrowUp") h.pitch = Math.min(90, h.pitch + step); else if (e.key === "ArrowDown") h.pitch = Math.max(-90, h.pitch - step);
   else if (e.key === "q" || e.key === "Q") h.roll -= step; else if (e.key === "e" || e.key === "E") h.roll += step;
   else if (e.key === "r" || e.key === "R") return $("bRecentre").onclick();
-  else if (e.key === " ") { S.method = S.method === "ls" ? "magls" : "ls"; drawDecodeCtl(); if (ctx) buildDecoder(); e.preventDefault(); return; }
+  else if (e.key === "a" || e.key === "A") return setOutput(S.output === "array" ? "headphones" : "array");
+  else if (e.key === " ") { e.preventDefault(); if (S.output !== "headphones") return;
+    S.method = S.method === "ls" ? "magls" : "ls"; drawDecodeCtl(); if (ctx) buildDecoder(); return; }
   else return;
   h.yaw = ((h.yaw + 540) % 360) - 180; h.roll = Math.max(-90, Math.min(90, h.roll));
   e.preventDefault(); redrawHead(); pushScene();
@@ -405,20 +505,31 @@ function drawGrid(c, g) {
   c.fillStyle = "#6f6b62"; c.font = `${9 * g.dpr}px Helvetica Neue, sans-serif`; c.textAlign = "center";
   [[180, "back"], [90, "left"], [0, "front"], [-90, "right"], [-180, "back"]].forEach(([az, t]) => { const [x] = toXY(g, az, 0); c.fillText(t, x, g.y0 + g.h + 12 * g.dpr); });
 }
+function drawSpeakers(c, g, R) {
+  const on = S.output === "array", sz = 5 * g.dpr;
+  c.globalAlpha = on ? 1 : 0.3; c.lineWidth = g.dpr;
+  const at = s => { const [a, e] = angOf(app3(R, dirOf(s.az * D2R, s.el * D2R))); return toXY(g, a / D2R, e / D2R); };
+  c.fillStyle = "#1b1a17"; ARRAY.speakers.forEach(s => { const [x, y] = at(s); c.fillRect(x - sz / 2, y - sz / 2, sz, sz); });
+  c.strokeStyle = "#1b1a17"; ARRAY.imaginary.forEach(s => { const [x, y] = at(s); c.strokeRect(x - sz / 2, y - sz / 2, sz, sz); });
+  c.globalAlpha = 1;
+}
 function drawSource(c, g, az, el, s) {
   const [x, y] = toXY(g, az, el), r = 7 * g.dpr;
   c.globalAlpha = s.on ? 1 : 0.35; c.fillStyle = "#d4873a"; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
   c.fillStyle = "#efede7"; c.font = `600 ${9 * g.dpr}px Helvetica Neue, sans-serif`; c.textAlign = "center"; c.fillText(s.name, x, y + 3 * g.dpr);
   c.globalAlpha = 1;
 }
+const I3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 function draw() {
   if (S.sweep) { S.head.yaw = 60 * Math.sin(performance.now() / 1000 * 2 * Math.PI / 8); redrawHead(); pushScene(); }
-  const R = headRot(S.head), Rs = currentRotation(), Rst = tr3(Rs);
+  const R = headRot(S.head), Rst = tr3(currentRotation());
   let c = cvW.getContext("2d"), g = mapGeom(cvW); c.clearRect(0, 0, cvW.width, cvW.height); drawGrid(c, g);
+  drawSpeakers(c, g, I3);
   S.sources.forEach(s => drawSource(c, g, s.az, s.el, s));
   const [la, le] = angOf(app3(R, [1, 0, 0])), [lx, ly] = toXY(g, la / D2R, le / D2R);
   c.strokeStyle = "#1b1a17"; c.lineWidth = 1.5 * g.dpr; c.beginPath(); c.arc(lx, ly, 11 * g.dpr, 0, 7); c.stroke();
   c = cvH.getContext("2d"); g = mapGeom(cvH); c.clearRect(0, 0, cvH.width, cvH.height); drawGrid(c, g);
+  drawSpeakers(c, g, Rst);
   S.sources.forEach(s => { const [a, e] = angOf(app3(Rst, dirOf(s.az * D2R, s.el * D2R))); drawSource(c, g, a / D2R, e / D2R, s); });
   const [cx, cy] = toXY(g, 0, 0); c.strokeStyle = "#1b1a17"; c.lineWidth = g.dpr;
   c.beginPath(); c.moveTo(cx - 8 * g.dpr, cy); c.lineTo(cx + 8 * g.dpr, cy); c.moveTo(cx, cy - 8 * g.dpr); c.lineTo(cx, cy + 8 * g.dpr); c.stroke();

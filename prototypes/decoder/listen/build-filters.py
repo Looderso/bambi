@@ -1,6 +1,6 @@
 """Binaural decode filters for the prototype, from the SADIE II KU100 (subject D1, 48 kHz, 8802 directions).
 
-Writes filters.js: for orders 1-3 and two methods, one FIR per ACN channel and ear, for AmbiX (SN3D) input.
+Writes filters.js: for orders 1-3 and two methods, and order 7 MagLS for rendering loudspeakers as points, one FIR per ACN channel and ear, for AmbiX (SN3D) input.
 
   ls     complex least squares at every frequency
   magls  least squares below the cutoff, magnitude least squares above (the phase carried from the bin below),
@@ -119,10 +119,10 @@ def main(path):
     e = np.sum(hrir[front] ** 2, -1)
     print(f"front source, left minus right, measured: {10 * np.log10(e[0] / e[1]):.2f} dB")
     print("order method   fc    |mag err dB  0.2-1k  1-4k  4-8k  8-16k|  diffuse max dB | front L-R | outside 0-192")
-    for order in (1, 2, 3):
+    for order, methods in ((1, ("ls", "magls")), (2, ("ls", "magls")), (3, ("ls", "magls")), (7, ("magls",))):
         y = sh_sn3d(order, az, el)
         dn = np.array([1.0 / (2 * n + 1) for n in range(order + 1) for _ in range(2 * n + 1)])
-        for method in ("ls", "magls"):
+        for method in methods:
             b, ir, fc = design(order, y, hf, wq, freqs, method)
             bands, df = errors(b, y, hf, wq, freqs, dn)
             outside = np.sum(ir[192:] ** 2) / np.sum(ir ** 2)

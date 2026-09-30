@@ -3,7 +3,7 @@
 The last plugin in the chain: ambisonics in, headphones or loudspeakers out. It holds what was the Lens
 monitoring tool as one of its outputs. Input to prototyping; describes *what the plugin does*, not how. Opinions
 are marked; open questions are listed rather than guessed. Nothing here is built; the first prototype is
-`prototypes/decoder/binaural/` (§10).
+`prototypes/decoder/listen/` (§10).
 
 ---
 
@@ -36,8 +36,12 @@ system's or the host's routing, not the plugin's.
 - **AllRAD** over a loaded layout: max-rE weighting, a **two-band decode** (basic below the crossover, max-rE
   above), **imaginary loudspeakers** filling the gaps of an incomplete layout (no lower half, no ceiling).
 - **Per-speaker delay and gain from its distance**, so a room that is not a perfect sphere still images.
-- **A layout is a file.** Import the one array format that is actually on hand first (§9); the IEM
-  AllRADecoder's layout format is the likely second, since most university arrays publish one.
+- **A layout is a file.** The IEM AllRADecoder's configuration first: it is what the array on hand comes as, and
+  most university arrays publish one. It carries the layout and the matrix; the layout is what is read, and the
+  decoder is designed here at the suite's order.
+- **A loudspeaker can be imaginary**: it takes part in the triangulation and its signal is dropped. A layout with
+  nothing below the listener gets a point there, so a source below pans to the lowest ring instead of vanishing.
+- **The subwoofer channel** is skipped by the decoder; bass management is a question of its own.
 - **Standard layouts built in**: stereo, 5.1, 7.1.4, 9.1.6. A **stereo pair** is the smallest layout — a
   virtual-microphone downmix, which doubles as the check that the mix survives stereo.
 - **Crosstalk cancellation** (3D from two speakers) is **not a feature**: a sweet spot of a head's width and a
@@ -49,6 +53,30 @@ system's or the host's routing, not the plugin's.
 file, one hears what *that* array will do to the mix: its gaps, its order limit, its missing lower half. This is
 the bridge between the two worlds, and no decoder we know of offers it. *Opinion: the feature that makes
 this decoder worth choosing.*
+
+The loudspeakers are heard as points: each is encoded at order 7 and decoded by MagLS at order 7, well above the
+array's own order, so what is heard is the array's panning and not a second blur on top of it. The head turns
+against the room, as it would standing in it.
+
+### 3.2 Measured on the array on hand
+
+16 loudspeakers and one imaginary point below: seven at ear level (0°, ±30°, ±90°, ±145°), four at about 25°, four
+at about 56°, one at the top; 1.30–1.65 m away.
+
+- **The design matches the IEM plug-in's.** At the file's order 5, N3D, unweighted, the matrix designed here is
+  within 0.02 % of the file's — the difference shrinks as the design grid grows (0.20 % at 800 points), so both
+  converge on the same AllRAD.
+- **Order 3 is this array's order.** 16 loudspeakers carry (3+1)² channels; the file's order 5 buys nothing.
+
+| order | energy above −30° | energy below | rE above | direction error above | below |
+|---|---|---|---|---|---|
+| 1 | −0.8 … +0.9 dB | −1.5 … +0.6 | 0.64 | 7.1° | 52° |
+| 2 | −0.9 … +1.7 | −5.6 … +1.0 | 0.80 | 3.8° | 49° |
+| 3 | −1.0 … +2.0 | −9.7 … +1.1 | 0.86 | 3.9° | 49° |
+
+Above −30° the array is even and sharp. Below it has nothing: a source there comes from the lowest ring, about 50°
+off, and up to 10 dB quiet at order 3. Heard through the prototype, a source straight behind comes out 5 dB louder
+on the array than in the reference — the two loudspeakers at ±145° reach the ears more than a source at 180° does.
 
 ## 4. Binaural
 
@@ -166,7 +194,6 @@ of the same field, independent of any HRTF.
 ## 9. Open questions
 
 - **Name.** "Decoder" is a working title. Does it keep the name *Lens*, or take another?
-- **The one array on hand**: which format are its layout and decoder files in? That format is imported first.
 - **Buses**: headphones and a speaker output at once means an output bus of 2 + N channels, which hosts
   negotiate differently — to settle with the conformance suite before it is promised.
 - **Orders**: 1–3 like the rest of the suite, or higher for arrays that can use it?
@@ -177,8 +204,9 @@ of the same field, independent of any HRTF.
 
 All in the browser, under `prototypes/decoder/`:
 
-1. **MagLS binaural with head rotation** from the mouse — *built*, `binaural/`; waiting on ears. Real tracker input needs a small OSC → WebSocket
+1. **MagLS binaural with head rotation** from the mouse — *built*, `listen/`; waiting on ears. Real tracker input needs a small OSC → WebSocket
    bridge, since a browser cannot receive UDP.
-2. **The array heard on headphones** (§3.1), from the one array's layout file.
+2. **The array heard on headphones** (§3.1) — *built*, `listen/`, against the direct decode and an order-7
+   reference, with distance compensation on and off; waiting on ears.
 3. **Stage-one personalisation** (§5.1): head size, ear size, cue depth, on the KU100.
 4. **The Lens** (§6), on the stereo pair.
