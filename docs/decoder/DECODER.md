@@ -178,38 +178,41 @@ place.
 
 ### 5.1 Stage one — no database needed
 
-Parameters with a known physical meaning, cheap to compute from the default set:
+Two parameters with a known physical meaning, computed from the default set:
 
-- **Head size** → scales the ITD. The largest single cue for azimuth, and the cheapest.
-- **Ear size** → scales the direction cues along frequency. Scaling a DTF in frequency is the known first-order
+- **Head size** → scales the interaural time difference. The largest single cue for azimuth, and the cheapest.
+- **Ear size** → stretches the direction cues along frequency. Scaling a DTF in frequency is the known first-order
   model of how pinnae differ between people; it moves the elevation notches where a bigger or smaller ear would
-  put them.
-- **Cue depth** → how strongly direction cues are expressed, from flattened to exaggerated. Exaggerated elevation
-  cues are a known aid where the fit is imperfect.
+  put them. Only the direction-dependent part moves; the average over all directions — the timbre — stays put.
 
-*Opinion: ship this first.* It needs no dataset, and it may already carry most of the gain.
+*Opinion: try this first.* It needs no dataset, and it may already carry most of the gain.
 
-### 5.2 Regions by spherical-harmonic order
+**How the KU100 is rendered for it** (`prototypes/decoder/match/`): each ear's magnitude in dB as spherical
+harmonics per frequency bin, made minimum-phase for whatever direction the head is at, plus the measured
+interaural delay added on top.
 
-**The direction-dependent part of the HRTF, expanded in spherical harmonics, is personalised order by order — coarse
-regions first, finer ones only where needed.** In place of the thesis's fixed directions with a Gaussian weight
-around each, a region is what an SH order resolves, and a blur of a given width is a spherical cap — in SH, one
-weight per order, the same kernel the encoder's width uses.
+- **Order 20** holds the elevation cues: in the median plane at 8–16 kHz it is within 0.74 dB RMS of the measured
+  set (order 10: 1.6 dB, order 25: 0.5 dB).
+- **The interaural delay is the KU100's own**, measured below 1.5 kHz and expanded to order 10 (3 µs RMS
+  residual), so it keeps its elevation dependence; head size scales it. A spherical-head model fits it only with
+  an effective radius of 11.9 cm and errs by up to 95 µs.
+- **The minimum-phase pair carries up to 193 µs of interaural delay by itself**, so the delay added is head size ×
+  measured − that. Rendered this way, the 300 directions tested come within 0.62 dB (median) of the measured
+  magnitudes and 3 µs (median, 10 µs worst) of the measured delay.
+- **Ear size moves the notches as intended**: the left ear's main notch in front, 7.7 kHz, goes to 6.9 kHz at 110 %
+  and 8.6 kHz at 90 %; it rises to 10.1 kHz at 30° up, as a pinna notch does.
 
-- **What is expanded**: the direction-dependent magnitude, in dB, per frequency band. The ITD stays apart, as head
-  size (§5.1).
-- **Order 0 is the timbre.** The order-0 coefficient of that expansion is its average over all directions — the
-  diffuse-field spectrum. Keeping order 0 on the KU100's and personalising orders 1 and up is the split of §5 made
-  exact: space is personalised, colour is not.
-- **Rising order, rising resolution.** Order 1 is the broad front/back and up/down balance, orders 2–3 quadrants;
-  the pinna notches that carry elevation sit at high frequencies and need high orders. A listener tunes a few
-  parameters first and more regions only as far as they help.
-- **Without a database** (stage one): a cue depth per order on the KU100 itself — for instance the order-1
-  front/back difference between 4 and 10 kHz, exaggerated or flattened.
-- **With a database** (stage two): the clustering or PCA across listeners is done per order band, and the tuning
-  walks the bands from low to high.
-- **Open**: which order the KU100's elevation notches need, measured on the set before any control is designed
-  around it; and whether regions tuned independently still sound like one head.
+### 5.2 Averaging by spherical-harmonic order — to be discussed
+
+The idea: average an HRTF set's direction information with spherical-harmonic orders as the weights, so that a set
+has a directional average that sharpens as the order rises — and average the same way *across* sets, giving a
+coarse-to-fine family between "what all heads share" and "this head". In place of the thesis's fixed directions
+with a Gaussian weight around each, the region averaged over is what an order resolves; a blur of a given width
+is a spherical cap, one weight per order, the same kernel the encoder's width uses.
+
+What the renderer of §5.1 already establishes for it: the KU100's magnitude is held to 0.74 dB by order 20 in the
+median plane, and its order-0 term is the average over all directions — the timbre. How the averaging becomes
+something a listener chooses between is not settled; it is discussed before anything is built.
 
 ### 5.3 Stage two — a model from many listeners
 
@@ -341,8 +344,9 @@ All in the browser, under `prototypes/decoder/`:
    section of `listen/`. Every format of §7.1 reads back the orientation it was sent, to 0.01°, including the
    split addresses some apps use and both ways of holding a phone; a synthetic head (`--demo`) drives it end to end.
    *Waiting on real devices*: AirPods through Headitude, an Android phone through Sensors2OSC.
-4. **Personalisation against a real loudspeaker** (§5.0), head-tracked through the bridge, with the parameters of
-   §5.1 and §5.2 on the KU100. A browser can send two audio contexts to two output devices.
+4. **Personalisation against a real loudspeaker** (§5.0, §5.1) — *built*, `match/`: head size and ear size on the
+   KU100, the loudspeaker located by looking at it, real and virtual bursts alternated, one audio context per output
+   device. The renderer and the audio path check against the Python chain exactly. *Waiting on ears.*
 5. **The Lens** (§6), on the stereo pair.
 6. **Placing loudspeakers by looking** (§3.3): how far head pointing scatters, and how far yaw drifts over a
    calibration.

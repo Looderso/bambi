@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bambi · Decoder · Match</title>
+<link rel="stylesheet" href="../common.css">
+<style>
+  #stage{grid-template-rows:minmax(0,1fr) auto}
+  select{font:inherit;font-size:10px;width:100%;margin:3px 0 6px;background:transparent;border:1px solid var(--greyL);border-radius:0;padding:3px}
+  .readout{font-size:10px;color:var(--greyD);padding:8px 4px}
+  .readout b{color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div class="viewbox"><canvas id="cvWorld"></canvas><span class="vlabel">the room · world frame · the square is the loudspeaker, the ring is where the head looks</span></div>
+    <div class="readout" id="readout"></div>
+  </div>
+  <div id="panel">
+    <h1>Decoder · Match</h1>
+    <div class="row"><button id="bStart" class="go">Start audio</button></div>
+    <p class="note">A burst from a real loudspeaker, then the same burst from a virtual one on the headphones, placed
+      where the real one is and held there as the head turns. Adjust until they come from the same place.</p>
+
+    <h2>OUTPUTS</h2>
+    <div class="row"><button id="bDevices">List devices</button></div>
+    <div class="sub note">headphones — the virtual loudspeaker</div>
+    <select id="selVirtual"><option value="">system output</option></select>
+    <div class="sub note">loudspeakers — the real one</div>
+    <select id="selReal"><option value="">system output</option></select>
+    <div class="sub note">which loudspeaker</div>
+    <div class="seg" id="segChannel"></div>
+    <p class="note" id="deviceNote">Listing names needs microphone permission once; the microphone is closed again
+      at once. AirPods: keep them the system output (they report motion only then) and in transparency mode, so the
+      loudspeaker is heard through them.</p>
+
+    <div id="tracker"></div>
+
+    <h2>LOCATE</h2>
+    <div class="row"><button id="bLocate">Play the loudspeaker</button><button id="bSet">Set where I look <kbd>L</kbd></button></div>
+    <div id="spkCtl"></div>
+    <p class="note">Play it, look straight at it, press <kbd>L</kbd>. Without a tracker, set its direction by hand.</p>
+
+    <h2>HEAD</h2>
+    <div id="headCtl"></div>
+    <p class="note">Without a tracker: arrows turn and tilt the head, <kbd>R</kbd> recentres.</p>
+
+    <h2>COMPARE <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></h2>
+    <div class="seg" id="segMode"></div>
+    <div class="seg" id="segBurst"></div>
+    <div id="levelCtl"></div>
+
+    <h2>MATCH</h2>
+    <div id="matchCtl"></div>
+    <div class="row"><button id="bReset">KU100 as measured</button></div>
+    <p class="note"><b>Head size</b> scales the time between the ears. <b>Ear size</b> moves the direction cues in
+      frequency — a larger ear puts them lower; the timbre, the average over all directions, stays the KU100's.</p>
+
+    <h2>LISTEN FOR</h2>
+    <p class="note"><b>Turn the head</b> slowly, left and right of the loudspeaker: the virtual one should stay on it.
+      If it swims — moves with the head, or drifts the other way — head size is off.</p>
+    <p class="note"><b>Tilt the head</b> down and up, so the loudspeaker is above or below you: the virtual one should
+      rise and fall with it. If it stays level, or flips front to back, try ear size.</p>
+    <p class="note">Match <b>where</b>, not what: the real loudspeaker has a room around it, the virtual one has none.</p>
+  </div>
+</div>
+
+<script src="../common.js"></script>
+<script src="match.js"></script>
+<script>
+"use strict";
+const SR = 48000, TAPS = 256, BASE = 40;     // BASE: samples of delay both ears share, so either can be the later
+
+// ---------- the KU100, as coefficients ----------
+const unpack = s => new Float32Array(Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer);
+const MAG = unpack(MATCH.mag), ITD = unpack(MATCH.itd), ITDMP = unpack(MATCH.itdMinPhase);
+const NC = (MATCH.magOrder + 1) ** 2, NB = MATCH.bins, NI = (MATCH.itdOrder + 1) ** 2;
+
+// ---------- state ----------
+const S = { head: { yaw: 0, pitch: 0, roll: 0 }, spk: { az: 30, el: 0 }, channel: 0, mode: "alternate", burst: "noise",
+  headScale: 1, earScale: 1, virtualDb: 0, realDb: -6, locating: false, sinkV: "", sinkR: "" };
+const DEFAULTS = { headScale: 1, earScale: 1 };
+
+// ---------- a direction → two minimum-phase filters and two delays ----------
+// Radix-2 complex FFT in place; inverse when inv.
+function fft(re, im, inv) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) { let b = n >> 1; for (; j & b; b >>= 1) j ^= b; j ^= b;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+  for (let len = 2; len <= n; len <<= 1) {
+    const a = (inv ? 2 : -2) * Math.PI / len, wr = Math.cos(a), wi = Math.sin(a);
+    for (let i = 0; i < n; i += len) { let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const ur = re[i + k], ui = im[i + k], j = i + k + len / 2;
+        const vr = re[j] * cr - im[j] * ci, vi = re[j] * ci + im[j] * cr;
+        re[i + k] = ur + vr; im[i + k] = ui + vi; re[j] = ur - vr; im[j] = ui - vi;
+        [cr, ci] = [cr * wr - ci * wi, cr * wi + ci * wr]; } } }
+  if (inv) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+// A minimum-phase response of TAPS taps from a magnitude in dB on the 129-bin grid (real cepstrum, 512 points).
+function minPhase(db) {
+  const n = 2 * TAPS, re = new Float64Array(n), im = new Float64Array(n);
+  for (let k = 0; k <= n / 2; k++) {
+    const x = k * (NB - 1) / (n / 2), i = Math.min(NB - 2, Math.floor(x)), f = x - i;
+    re[k] = (db[i] * (1 - f) + db[i + 1] * f) * Math.LN10 / 20;
+    if (k > 0 && k < n / 2) re[n - k] = re[k];
+  }
+  fft(re, im, true);                                   // real cepstrum
+  for (let k = 1; k < n / 2; k++) { re[k] *= 2; re[n - k] = 0; } re[n / 2] = re[n / 2]; im.fill(0);
+  fft(re, im, false);
+  for (let k = 0; k < n; k++) { const m = Math.exp(re[k]); re[k] = m * Math.cos(im[k]); im[k] = m * Math.sin(im[k]); }
+  fft(re, im, true);
+  return Float32Array.from(re.subarray(0, TAPS));
+}
+// The head-relative direction u → filters and per-ear delays (samples), at the current head and ear scale.
+function render(u) {
+  const y = shN(MATCH.magOrder, ...u), out = { h: [], d: [] };
+  for (let e = 0; e < 2; e++) {
+    const base = e * NC * NB, dir = new Float64Array(NB), db = new Float64Array(NB);
+    for (let c = 1; c < NC; c++) { const yc = y[c], off = base + c * NB; for (let b = 0; b < NB; b++) dir[b] += yc * MAG[off + b]; }
+    for (let b = 0; b < NB; b++) {
+      const x = Math.min(NB - 1, b * S.earScale), i = Math.min(NB - 2, Math.floor(x)), f = x - i;
+      db[b] = y[0] * MAG[base + b] + dir[i] * (1 - f) + dir[i + 1] * f;
+    }
+    out.h.push(minPhase(db));
+  }
+  let itd = 0, mp = 0; for (let c = 0; c < NI; c++) { itd += y[c] * ITD[c]; mp += y[c] * ITDMP[c]; }
+  const d = (S.headScale * itd - mp) * SR;            // tL − tR to add, in samples
+  out.d = [BASE + d / 2, BASE - d / 2];
+  out.itd = S.headScale * itd;
+  return out;
+}
+
+// ---------- audio: one context per output device ----------
+const WORKLET = `
+class Binaural extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    const init = options.processorOptions || {};
+    this.h = init.h || [new Float32Array(${TAPS}), new Float32Array(${TAPS})]; if (!init.h) this.h[0][0] = this.h[1][0] = 1;
+    this.old = null; this.d = init.d || [${BASE}, ${BASE}]; this.prevD = this.d.slice();
+    this.x = new Float32Array(2048); this.w = 0;
+    this.y = [new Float32Array(512), new Float32Array(512)]; this.wy = 0;
+    this.port.onmessage = e => { this.old = this.h; this.h = e.data.h; this.d = e.data.d; };
+  }
+  process(inputs, outputs) {
+    const inp = inputs[0][0], out = outputs[0], n = out[0].length, T = ${TAPS};
+    const old = this.old; this.old = null;
+    for (let t = 0; t < n; t++) {
+      this.x[this.w & 2047] = inp ? inp[t] : 0;
+      for (let e = 0; e < 2; e++) {
+        const d = this.prevD[e] + (this.d[e] - this.prevD[e]) * t / n, p = this.w - d, i = Math.floor(p), f = p - i;
+        const ye = this.y[e];
+        ye[this.wy & 511] = this.x[i & 2047] * (1 - f) + this.x[(i + 1) & 2047] * f;
+        const h = this.h[e]; let acc = 0;
+        for (let k = 0; k < T; k++) acc += h[k] * ye[(this.wy - k) & 511];
+        if (old) { const ho = old[e]; let ao = 0; for (let k = 0; k < T; k++) ao += ho[k] * ye[(this.wy - k) & 511];
+          const g = t / n; acc = acc * g + ao * (1 - g); }
+        out[e][t] = acc;
+      }
+      this.w++; this.wy++;
+    }
+    this.prevD = this.d.slice();
+    return true;
+  }
+}
+registerProcessor("binaural", Binaural);`;
+
+let ctxV, ctxR, node, gainV, gainR, mergerR, bufV = {}, bufR = {}, timer = null, nextAt = 0, turn = 0;
+function makeBurst(ctx, kind) {
+  const len = Math.round(SR * 0.25), b = ctx.createBuffer(1, len, SR), x = b.getChannelData(0);
+  let b0 = 0, b1 = 0, b2 = 0;
+  for (let i = 0; i < len; i++) {
+    const t = i / SR;
+    if (kind === "noise") { const w = Math.random() * 2 - 1;
+      b0 = 0.99765 * b0 + w * 0.099; b1 = 0.963 * b1 + w * 0.2965; b2 = 0.57 * b2 + w * 1.0527;
+      x[i] = (b0 + b1 + b2 + w * 0.1848) * 0.25 * Math.min(1, t / 0.005, (0.25 - t) / 0.005); }
+    else { const ph = t % 0.08; x[i] = ph < 0.002 ? (Math.random() * 2 - 1) * Math.exp(-ph / 0.0004) * 0.8 : 0; }
+  }
+  return b;
+}
+// Both paths go through the same band, 300 Hz – 10 kHz: what laptop loudspeakers play.
+function band(ctx) { const hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter();
+  hp.type = "highpass"; hp.frequency.value = 300; lp.type = "lowpass"; lp.frequency.value = 10000; hp.connect(lp); return [hp, lp]; }
+
+async function start() {
+  ctxV = new AudioContext({ sampleRate: SR, latencyHint: "interactive" });
+  ctxR = new AudioContext({ sampleRate: SR, latencyHint: "interactive" });
+  await ctxV.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+  const u = app3(tr3(headMatrix()), dirOf(S.spk.az * D2R, S.spk.el * D2R)), first = render(u);
+  node = new AudioWorkletNode(ctxV, "binaural", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+    processorOptions: { h: first.h, d: first.d } });
+  gainV = ctxV.createGain(); node.connect(gainV); gainV.connect(ctxV.destination);
+  gainR = ctxR.createGain(); mergerR = ctxR.createChannelMerger(2); gainR.connect(mergerR, 0, S.channel); mergerR.connect(ctxR.destination);
+  for (const k of ["noise", "clicks"]) { bufV[k] = makeBurst(ctxV, k); bufR[k] = makeBurst(ctxR, k); }
+  await applySinks(); levels(); update();
+  timer = setInterval(schedule, 25);
+  $("bStart").textContent = "Stop audio"; $("bStart").classList.remove("go");
+}
+async function applySinks() {
+  for (const [c, id] of [[ctxV, S.sinkV], [ctxR, S.sinkR]]) {
+    if (!c) continue;
+    if (!c.setSinkId) { $("deviceNote").textContent = "This browser cannot choose an output per context; use Chrome."; return; }
+    try { await c.setSinkId(id); } catch (e) { $("deviceNote").textContent = "Could not use that device: " + e.message; }
+  }
+}
+function levels() { if (!ctxV) return;
+  gainV.gain.setTargetAtTime(10 ** (S.virtualDb / 20), ctxV.currentTime, 0.01);
+  gainR.gain.setTargetAtTime(10 ** (S.realDb / 20), ctxR.currentTime, 0.01); }
+function play(which) {
+  const c = which === "real" ? ctxR : ctxV, s = c.createBufferSource();
+  s.buffer = (which === "real" ? bufR : bufV)[S.burst];
+  const [hp, lp] = band(c); s.connect(hp); lp.connect(which === "real" ? gainR : node);
+  s.start(c.currentTime + 0.02);
+}
+// Alternate: real, gap, virtual, gap — the two outputs have different latencies, so they never sound together.
+function schedule() {
+  const now = performance.now();
+  if (now < nextAt) return;
+  nextAt = now + 450;
+  if (S.locating) return play("real");
+  if (S.mode === "real") return play("real");
+  if (S.mode === "virtual") return play("virtual");
+  play(turn++ % 2 ? "virtual" : "real");
+}
+$("bStart").onclick = async () => {
+  if (!ctxV) return start();
+  const running = ctxV.state === "running";
+  for (const c of [ctxV, ctxR]) running ? await c.suspend() : await c.resume();
+  $("bStart").textContent = running ? "Resume audio" : "Stop audio";
+};
+
+// ---------- the head, the loudspeaker and the filters ----------
+const headMatrix = () => (T.on && T.R ? T.R : headRot(S.head));
+let pending = false, last = null;
+// Coalesced, and not tied to the animation frame: a hidden tab must still follow the head.
+function update() {
+  if (pending) return; pending = true;
+  setTimeout(() => {
+    pending = false;
+    const u = app3(tr3(headMatrix()), dirOf(S.spk.az * D2R, S.spk.el * D2R));
+    last = { u, ...render(u) };
+    if (node) node.port.postMessage({ h: last.h, d: last.d });
+    drawReadout();
+  }, 0);
+}
+function drawReadout() {
+  if (!last) return;
+  const [a, e] = angOf(last.u);
+  $("readout").innerHTML = `loudspeaker relative to the head: <b>${(a / D2R).toFixed(0)}°</b> azimuth, <b>${(e / D2R).toFixed(0)}°</b> elevation
+    · interaural time difference <b>${(last.itd * 1e6).toFixed(0)} µs</b>
+    · head size <b>${(S.headScale * 100).toFixed(0)} %</b>, ear size <b>${(S.earScale * 100).toFixed(0)} %</b>`;
+}
+
+// ---------- controls ----------
+$("bDevices").onclick = async () => {
+  try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); } catch (e) {}
+  const outs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput" && d.deviceId !== "default");
+  for (const sel of [$("selVirtual"), $("selReal")]) {
+    const keep = sel.value; sel.innerHTML = '<option value="">system output</option>' +
+      outs.map(d => `<option value="${d.deviceId}">${d.label || "unnamed output"}</option>`).join(""); sel.value = keep;
+  }
+  $("deviceNote").textContent = `${outs.length} outputs found.`;
+};
+$("selVirtual").onchange = e => { S.sinkV = e.target.value; applySinks(); };
+$("selReal").onchange = e => { S.sinkR = e.target.value; applySinks(); };
+seg($("segChannel"), [0, 1], () => S.channel, v => { S.channel = v;
+  if (gainR) { gainR.disconnect(); gainR.connect(mergerR, 0, v); } }, v => v ? "right" : "left");
+
+mountTracker($("tracker"), { onHead: (R, ypr) => { S.head = ypr; redrawHead(); update(); }, onToggle: () => update() });
+
+const spkDraws = [
+  ctl($("spkCtl"), "loudspeaker azimuth", -180, 180, () => S.spk.az, v => { S.spk.az = v; update(); }, v => v.toFixed(0) + "°"),
+  ctl($("spkCtl"), "loudspeaker elevation", -90, 90, () => S.spk.el, v => { S.spk.el = v; update(); }, v => v.toFixed(0) + "°"),
+];
+function setHere() {
+  const f = app3(headMatrix(), [1, 0, 0]), [a, e] = angOf(f);
+  S.spk = { az: a / D2R, el: e / D2R }; spkDraws.forEach(d => d()); S.locating = false;
+  $("bLocate").classList.remove("on"); $("bLocate").textContent = "Play the loudspeaker"; update();
+}
+$("bSet").onclick = setHere;
+$("bLocate").onclick = () => { S.locating = !S.locating; $("bLocate").classList.toggle("on", S.locating);
+  $("bLocate").textContent = S.locating ? "Playing — look at it" : "Play the loudspeaker"; };
+
+const headDraws = [
+  ctl($("headCtl"), "yaw", -180, 180, () => S.head.yaw, v => { S.head.yaw = v; update(); }, v => v.toFixed(0) + "°"),
+  ctl($("headCtl"), "pitch", -90, 90, () => S.head.pitch, v => { S.head.pitch = v; update(); }, v => v.toFixed(0) + "°"),
+];
+const redrawHead = () => headDraws.forEach(d => d());
+
+const MODES = { alternate: "Alternate", real: "Real only", virtual: "Virtual only" };
+const drawMode = () => seg($("segMode"), Object.keys(MODES), () => S.mode, v => { S.mode = v; }, v => MODES[v]);
+drawMode();
+seg($("segBurst"), ["noise", "clicks"], () => S.burst, v => { S.burst = v; }, v => v === "noise" ? "Noise burst" : "Clicks");
+ctl($("levelCtl"), "virtual level", -24, 12, () => S.virtualDb, v => { S.virtualDb = v; levels(); }, v => v.toFixed(1) + " dB");
+ctl($("levelCtl"), "real level", -36, 0, () => S.realDb, v => { S.realDb = v; levels(); }, v => v.toFixed(1) + " dB");
+const matchDraws = [
+  ctl($("matchCtl"), "head size", 0.7, 1.4, () => S.headScale, v => { S.headScale = v; update(); }, v => (v * 100).toFixed(0) + " %"),
+  ctl($("matchCtl"), "ear size", 0.8, 1.25, () => S.earScale, v => { S.earScale = v; update(); }, v => (v * 100).toFixed(0) + " %"),
+];
+$("bReset").onclick = () => { Object.assign(S, DEFAULTS); matchDraws.forEach(d => d()); update(); };
+
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  const k = e.key, step = e.shiftKey ? 1 : 10;
+  if (k === "l" || k === "L") return setHere();
+  if (k === "1" || k === "2" || k === "3") { S.mode = ["alternate", "real", "virtual"][+k - 1]; return drawMode(); }
+  if (k === "r" || k === "R") { if (T.on) { if (T.raw) T.yaw0 = yawOf(T.raw); } else { S.head = { yaw: 0, pitch: 0, roll: 0 }; redrawHead(); } return update(); }
+  if (T.on) return;
+  if (k === "ArrowLeft") S.head.yaw += step; else if (k === "ArrowRight") S.head.yaw -= step;
+  else if (k === "ArrowUp") S.head.pitch = Math.min(90, S.head.pitch + step);
+  else if (k === "ArrowDown") S.head.pitch = Math.max(-90, S.head.pitch - step); else return;
+  S.head.yaw = ((S.head.yaw + 540) % 360) - 180; e.preventDefault(); redrawHead(); update();
+});
+
+// ---------- the map ----------
+const cv = $("cvWorld");
+function draw() {
+  const c = cv.getContext("2d"), g = mapGeom(cv); c.clearRect(0, 0, cv.width, cv.height); drawGrid(c, g);
+  const [sx, sy] = toXY(g, S.spk.az, S.spk.el), sz = 9 * g.dpr;
+  c.fillStyle = "#1b1a17"; c.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
+  c.strokeStyle = "#d4873a"; c.lineWidth = 2 * g.dpr; c.beginPath(); c.arc(sx, sy, 8 * g.dpr, 0, 7); c.stroke();
+  const [la, le] = angOf(app3(headMatrix(), [1, 0, 0])), [lx, ly] = toXY(g, la / D2R, le / D2R);
+  c.strokeStyle = "#1b1a17"; c.lineWidth = 1.5 * g.dpr; c.beginPath(); c.arc(lx, ly, 12 * g.dpr, 0, 7); c.stroke();
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+update();
+</script>
+</body>
+</html>
