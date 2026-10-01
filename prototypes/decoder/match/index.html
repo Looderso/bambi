@@ -85,7 +85,8 @@
 <script src="model.js" onerror="void 0"></script>
 <script>
 "use strict";
-const SR = 48000, TAPS = 256, BASE = 40;     // BASE: samples of delay both ears share, so either can be the later
+// TAPS: 512 — at 256 the minimum-phase responses of deep, narrow notches were cut short, which filled the notches in.
+const SR = 48000, TAPS = 512, BASE = 40;     // BASE: samples of delay both ears share, so either can be the later
 
 // ---------- the KU100, as coefficients ----------
 const unpack = s => new Float32Array(Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer);
@@ -103,14 +104,64 @@ const DEFAULTS = { headScale: 1, earScale: 1, shift: 0 };
 // (ERB; positive moves the notches down): the population baseline plus the pattern read at ERB + s, each a set of
 // orthonormal SH per point of the ERB axis. Below 1 and above 18 kHz the model fades to the KU100's own cues.
 const HAS_MODEL = !!window.MODEL;
-const MPAT = HAS_MODEL ? unpackModel(MODEL.patterns) : null, MBASE = HAS_MODEL ? unpackModel(MODEL.baseline) : null;
+const MPAT = HAS_MODEL && MODEL.patterns ? unpackModel(MODEL.patterns) : null, MBASE = HAS_MODEL ? unpackModel(MODEL.baseline) : null;
 const MNC = HAS_MODEL ? (MODEL.order + 1) ** 2 : 0, ME = HAS_MODEL ? MODEL.erb.length : 0;
 // The population's average ILD and ITD, in place of the KU100's while the model's cues are on.
 const POP_ILD = HAS_MODEL && MODEL.populationIld ? unpackModel(MODEL.populationIld) : null;
 const POP_ITD = HAS_MODEL && MODEL.populationItd ? unpackModel(MODEL.populationItd) : null;
 function unpackModel(s) { return new Float32Array(Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer); }
-// A model is either one free input with a shift (MODEL.t) or two free inputs on a grid (MODEL.grid, no shift).
-const GRID = HAS_MODEL && MODEL.grid;
+// A model is one free input with a shift (MODEL.t), two free inputs on a grid (MODEL.grid), or two free inputs and the
+// decoder itself (MODEL.kind "decoder"): the page runs the network and gets the pattern's SH coefficients exactly.
+const DEC = HAS_MODEL && MODEL.kind === "decoder";
+const GRID = HAS_MODEL && (MODEL.grid || DEC);
+const DECW = DEC ? Object.fromEntries(Object.entries(MODEL.layers).map(([k, v]) => [k, { shape: v.shape, w: unpackModel(v.data) }])) : null;
+// GELU with erf from Abramowitz–Stegun 7.1.26 (error below 1.5e-7), as PyTorch's default.
+function erf(x) {
+  const s = Math.sign(x), a = Math.abs(x), t = 1 / (1 + 0.3275911 * a);
+  return s * (1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-a * a));
+}
+const gelu = x => 0.5 * x * (1 + erf(x / Math.SQRT2));
+// x: C·L (channel-major); w: out·C·k; zero padding pad on both sides; length kept.
+function conv1d(x, C, L, w, b, out, k, pad) {
+  const y = new Float32Array(out * L);
+  for (let o = 0; o < out; o++) {
+    const yo = o * L; y.fill(b[o], yo, yo + L);
+    for (let i = 0; i < C; i++) { const xi = i * L, wo = (o * C + i) * k;
+      for (let kk = 0; kk < k; kk++) { const wv = w[wo + kk], sh = kk - pad, t0 = Math.max(0, -sh), t1 = Math.min(L, L - sh);
+        for (let tt = t0; tt < t1; tt++) y[yo + tt] += wv * x[xi + tt + sh]; } }
+  }
+  return y;
+}
+// Transposed convolution, w: C·out·k; output length (L − 1)·stride − 2·pad + k.
+function convT1d(x, C, L, w, b, out, k, stride, pad) {
+  const Lo = (L - 1) * stride - 2 * pad + k, y = new Float32Array(out * Lo);
+  for (let o = 0; o < out; o++) y.fill(b[o], o * Lo, (o + 1) * Lo);
+  for (let i = 0; i < C; i++) for (let o = 0; o < out; o++) { const wo = (i * out + o) * k, yo = o * Lo;
+    for (let s = 0; s < L; s++) { const xv = x[i * L + s];
+      for (let kk = 0; kk < k; kk++) { const tt = s * stride - pad + kk; if (tt >= 0 && tt < Lo) y[yo + tt] += xv * w[wo + kk]; } } }
+  return [y, Lo];
+}
+// The decoder for pad inputs p1, p2 (0…1): SH coefficients (coefficient-major) of the notch layer, in dB.
+function decodePattern(p1, p2) {
+  const z = [MODEL.lo[0] + (MODEL.hi[0] - MODEL.lo[0]) * p1, MODEL.lo[1] + (MODEL.hi[1] - MODEL.lo[1]) * p2];
+  const H = MODEL.hidden, l0 = (MODEL.length + 3) >> 2, Wi = DECW["dec_in.weight"].w, Bi = DECW["dec_in.bias"].w;
+  let x = new Float32Array(H * l0);
+  for (let j = 0; j < H * l0; j++) x[j] = gelu(Bi[j] + Wi[2 * j] * z[0] + Wi[2 * j + 1] * z[1]);
+  let L = l0, r;
+  r = convT1d(x, H, L, DECW["dec.1.weight"].w, DECW["dec.1.bias"].w, H, 4, 2, 1); x = r[0].map(gelu); L = r[1];
+  x = conv1d(x, H, L, DECW["dec.3.weight"].w, DECW["dec.3.bias"].w, H, 5, 2).map(gelu);
+  r = convT1d(x, H, L, DECW["dec.5.weight"].w, DECW["dec.5.bias"].w, H, 4, 2, 1); x = r[0].map(gelu); L = r[1];
+  const NCo = DECW["dec.7.weight"].shape[0], y = conv1d(x, H, L, DECW["dec.7.weight"].w, DECW["dec.7.bias"].w, NCo, 5, 2);
+  const E = MODEL.length, out = new Float32Array(NCo * E);
+  for (let c = 0; c < NCo; c++) for (let e = 0; e < E; e++) out[c * E + e] = y[c * L + e] * MODEL.scale;
+  return out;
+}
+let patCache = { key: null, coefs: null };
+function patternCoefs() {
+  const key = S.pattern + "," + S.p2;
+  if (patCache.key !== key) patCache = { key, coefs: decodePattern(S.pattern, S.p2) };
+  return patCache.coefs;
+}
 const medianOf = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
 if (HAS_MODEL) { S.pattern = medianOf(MODEL.fitted.map(p => p[0])); if (GRID) S.p2 = medianOf(MODEL.fitted.map(p => p[1])); }
 // The grid patterns to blend for the current inputs, as [index, weight] pairs.
@@ -128,21 +179,22 @@ function shOrth(order, u) {
   for (let n = 0; n <= order; n++) { const k = Math.sqrt((2 * n + 1) / (4 * Math.PI)); for (let m = -n; m <= n; m++) y[n * n + n + m] *= k; }
   return y;
 }
-// The model's CLL DTF at direction u on the renderer's linear bins, blended into kuDtf outside 1–18 kHz.
+// The model's CLL DTF at direction u on the fine bins, blended into kuDtf (fine bins) outside 1–18 kHz.
 function modelDtf(u, kuDtf) {
-  const y = shOrth(MODEL.order, u), pw = patternWeights();
+  const y = shOrth(MODEL.order, u), pw = DEC ? null : patternWeights(), PC = DEC ? patternCoefs() : null;
   const pat = new Float64Array(ME), base = new Float64Array(ME);
   for (let c = 0; c < MNC; c++) {
     const yc = y[c], ob = c * ME;
     for (let e = 0; e < ME; e++) base[e] += yc * MBASE[ob + e];
+    if (DEC) { for (let e = 0; e < ME; e++) pat[e] += yc * PC[ob + e]; continue; }
     for (const [g, w] of pw) { if (!w) continue; const o = (g * MNC + c) * ME, k = yc * w; for (let e = 0; e < ME; e++) pat[e] += k * MPAT[o + e]; }
   }
   const shiftErb = GRID ? 0 : S.shift;
-  const step = MODEL.erb[1] - MODEL.erb[0], out = new Float64Array(NB);
+  const step = MODEL.erb[1] - MODEL.erb[0], out = new Float64Array(NFINE);
   const read = (arr, x) => { const xc = Math.max(0, Math.min(ME - 1, x)), j = Math.min(ME - 2, Math.floor(xc)), fr = xc - j; return arr[j] * (1 - fr) + arr[j + 1] * fr; };
   const ramp = (x, lo, hi) => Math.max(0, Math.min(1, (x - lo) / (hi - lo)));
-  for (let b = 0; b < NB; b++) {
-    const f = b * SR / (2 * (NB - 1)), idx = (21.4 * Math.log10(1 + 0.00437 * f) - MODEL.erb[0]) / step;
+  for (let b = 0; b < NFINE; b++) {
+    const f = b * SR / (2 * (NFINE - 1)), idx = (21.4 * Math.log10(1 + 0.00437 * f) - MODEL.erb[0]) / step;
     const w = ramp(f, 900, 1100) * (1 - ramp(f, 17000, 19000));
     out[b] = w * (read(base, idx) + read(pat, idx + shiftErb / step)) + (1 - w) * kuDtf[b];
   }
@@ -165,12 +217,19 @@ function fft(re, im, inv) {
         [cr, ci] = [cr * wr - ci * wi, cr * wi + ci * wr]; } } }
   if (inv) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
 }
-// A minimum-phase response of TAPS taps from a magnitude in dB on the 129-bin grid (real cepstrum, 512 points).
+// The magnitudes are built on the minimum-phase FFT's own grid, NFINE bins: built on the data's 129 bins and
+// interpolated afterwards, a notch was interpolated twice and came out wider and shallower.
+const NFINE = TAPS + 1;
+function toFine(x) {
+  const y = new Float64Array(NFINE);
+  for (let k = 0; k < NFINE; k++) { const p = k * (NB - 1) / (NFINE - 1), i = Math.min(NB - 2, Math.floor(p)), f = p - i; y[k] = x[i] * (1 - f) + x[i + 1] * f; }
+  return y;
+}
+// A minimum-phase response of TAPS taps from a magnitude in dB on the fine grid (real cepstrum, 2·TAPS points).
 function minPhase(db) {
   const n = 2 * TAPS, re = new Float64Array(n), im = new Float64Array(n);
   for (let k = 0; k <= n / 2; k++) {
-    const x = k * (NB - 1) / (n / 2), i = Math.min(NB - 2, Math.floor(x)), f = x - i;
-    re[k] = (db[i] * (1 - f) + db[i + 1] * f) * Math.LN10 / 20;
+    re[k] = db[k] * Math.LN10 / 20;
     if (k > 0 && k < n / 2) re[n - k] = re[k];
   }
   fft(re, im, true);                                   // real cepstrum
@@ -190,7 +249,7 @@ function warp(x, scale) {
 // tL − tR in seconds: the cross-correlation of two responses weighted by a 4th-order Butterworth low-pass applied
 // forward and backward to each (|B|⁴), at 1/itdUp of a sample — the estimator build-match.py measured the KU100 with.
 function itdEstimate(hl, hr) {
-  const n = MATCH.itdN, up = MATCH.itdUp, N = n * up;
+  const n = Math.max(MATCH.itdN, 2 * TAPS), up = MATCH.itdUp, N = n * up;      // long enough for a linear correlation
   const lr = new Float64Array(n), li = new Float64Array(n), rr = new Float64Array(n), ri = new Float64Array(n);
   lr.set(hl); rr.set(hr); fft(lr, li, false); fft(rr, ri, false);
   const re = new Float64Array(N), im = new Float64Array(N);
@@ -217,15 +276,18 @@ function render(u) {
     const yp = MODEL.populationIldOrder === MATCH.order ? y : shN(MODEL.populationIldOrder, ...u);
     for (let c = 0; c < yp.length; c++) { const yc = yp[c], off = c * NB; for (let b = 0; b < NB; b++) ild[b] += yc * POP_ILD[off + b]; }
   }
-  const cw = S.cues === "model" && HAS_MODEL ? modelDtf(u, cdir) : warp(cdir, S.earScale);
-  const iw = warp(ild, S.headScale), L = new Float64Array(NB), R = new Float64Array(NB);
-  for (let b = 0; b < NB; b++) {
-    const cll = y[0] * CLL[b] + cw[b], i = Math.max(-MATCH.ildLimitDb, Math.min(MATCH.ildLimitDb, iw[b])), r = 10 ** (i / 10);
-    L[b] = cll + 10 * Math.log10(r / (1 + r)); R[b] = cll - 10 * Math.log10(1 + r);
+  const cwF = S.cues === "model" && HAS_MODEL ? modelDtf(u, toFine(cdir)) : toFine(warp(cdir, S.earScale));
+  const iw = warp(ild, S.headScale), iwF = toFine(iw), timbreF = toFine(Float64Array.from({ length: NB }, (_, b) => y[0] * CLL[b]));
+  const L = new Float64Array(NFINE), R = new Float64Array(NFINE);
+  for (let k = 0; k < NFINE; k++) {
+    const cll = timbreF[k] + cwF[k], i = Math.max(-MATCH.ildLimitDb, Math.min(MATCH.ildLimitDb, iwF[k])), r = 10 ** (i / 10);
+    L[k] = cll + 10 * Math.log10(r / (1 + r)); R[k] = cll - 10 * Math.log10(1 + r);
   }
   const out = { h: [minPhase(L), minPhase(R)] };
   const clip = x => Math.max(-MATCH.ildLimitDb, Math.min(MATCH.ildLimitDb, x));
-  out.cll = Float64Array.from(cw, (v, b) => y[0] * CLL[b] + v); out.cll0 = Float64Array.from(cdir, (v, b) => y[0] * CLL[b] + v);
+  const every = (NFINE - 1) / (NB - 1);                                // the data's bins are every 4th fine bin
+  out.cll = Float64Array.from({ length: NB }, (_, b) => y[0] * CLL[b] + cwF[b * every]);
+  out.cll0 = Float64Array.from(cdir, (v, b) => y[0] * CLL[b] + v);
   out.ild = Float64Array.from(iw, clip); out.ild0 = Float64Array.from(kuIld, clip);
   let kuItd = 0; for (let c = 0; c < NI; c++) kuItd += y[c] * ITD[c];
   let itd = kuItd;
@@ -246,7 +308,7 @@ class Binaural extends AudioWorkletProcessor {
     this.h = init.h || [new Float32Array(${TAPS}), new Float32Array(${TAPS})]; if (!init.h) this.h[0][0] = this.h[1][0] = 1;
     this.old = null; this.d = init.d || [${BASE}, ${BASE}]; this.prevD = this.d.slice();
     this.x = new Float32Array(2048); this.w = 0;
-    this.y = [new Float32Array(512), new Float32Array(512)]; this.wy = 0;
+    this.y = [new Float32Array(1024), new Float32Array(1024)]; this.wy = 0;
     this.port.onmessage = e => { this.old = this.h; this.h = e.data.h; this.d = e.data.d; };
   }
   process(inputs, outputs) {
@@ -257,10 +319,10 @@ class Binaural extends AudioWorkletProcessor {
       for (let e = 0; e < 2; e++) {
         const d = this.prevD[e] + (this.d[e] - this.prevD[e]) * t / n, p = this.w - d, i = Math.floor(p), f = p - i;
         const ye = this.y[e];
-        ye[this.wy & 511] = this.x[i & 2047] * (1 - f) + this.x[(i + 1) & 2047] * f;
+        ye[this.wy & 1023] = this.x[i & 2047] * (1 - f) + this.x[(i + 1) & 2047] * f;
         const h = this.h[e]; let acc = 0;
-        for (let k = 0; k < T; k++) acc += h[k] * ye[(this.wy - k) & 511];
-        if (old) { const ho = old[e]; let ao = 0; for (let k = 0; k < T; k++) ao += ho[k] * ye[(this.wy - k) & 511];
+        for (let k = 0; k < T; k++) acc += h[k] * ye[(this.wy - k) & 1023];
+        if (old) { const ho = old[e]; let ao = 0; for (let k = 0; k < T; k++) ao += ho[k] * ye[(this.wy - k) & 1023];
           const g = t / n; acc = acc * g + ao * (1 - g); }
         out[e][t] = acc;
       }
@@ -397,7 +459,7 @@ function drawReadout() {
   $("readout").innerHTML = `loudspeaker relative to the head: <b>${(a / D2R).toFixed(0)}°</b> azimuth, <b>${(e / D2R).toFixed(0)}°</b> elevation
     · ITD <b>${(last.itd * 1e6).toFixed(0)} µs</b> (KU100 ${(last.itd0 * 1e6).toFixed(0)} µs)
     · head size <b>${(S.headScale * 100).toFixed(0)} %</b>, ` + (S.cues === "model"
-      ? (GRID ? `model ${MODEL.variant}: inputs <b>${S.pattern.toFixed(2)}</b>, <b>${S.p2.toFixed(2)}</b>`
+      ? (GRID ? `model ${MODEL.variant || "V4"}: inputs <b>${S.pattern.toFixed(2)}</b>, <b>${S.p2.toFixed(2)}</b>`
               : `model: pattern <b>${S.pattern.toFixed(2)}</b>, shift <b>${S.shift.toFixed(2)} ERB</b>`)
       : `ear size <b>${(S.earScale * 100).toFixed(0)} %</b>`);
 }

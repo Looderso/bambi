@@ -163,6 +163,33 @@ The last is on the pad: two free inputs, notches as deep as the heads', 38 % clo
 `export-model.py` turns it into `prototypes/decoder/match/model.js` (outside version control: SONICOM data), which the
 match prototype plays as "Model" cues on a pad — both inputs free, interpolated between a 13 × 13 grid.
 
+### 5.1 Where the notches widened, and the fix
+
+Listened to, the notches were still too wide. Measured stage by stage (`stages.py`) on the 68 held-out heads at their
+best place, 20 directions of the frontal median plane, the deepest notch of 4–14 kHz in the 3-ERB notch layer
+(width at half depth, in quarter-ERB steps):
+
+| stage | depth | width |
+|---|---|---|
+| real head | 4.7 dB (100 %) | 1.00 ERB (100 %) |
+| two-input model (V2b) | 71 % | 100 % |
+| exported with order-8 SH, as it played | 61 % | 150 % |
+| … through the renderer, as it was heard | 53 % | 175 % |
+| a real head through that renderer | 92 % | 125 % |
+| a real head through the renderer built on the fine grid | 98 % | 100 % |
+| **V4, the decoder giving order-20 SH itself** | **75 %** | **100 %** |
+| **V4 through the fine-grid renderer, as it now plays** | **71 %** | **100 %** |
+
+- **The model kept the width; the export and the renderer lost it.** Order-8 SH mixed neighbouring directions, whose
+  notches sit at other frequencies (+50 %); the renderer built its magnitudes on the data's 129 bins and interpolated
+  them again for the minimum-phase FFT (+25 %). 512 taps instead of 256 alone changed nothing.
+- **The fixes**: the decoder's last layer gives order-20 SH (`pattern-models4.py`, loss on 961 directions, plus a term
+  for the deepest notch's depth), the page runs the decoder itself (`export-decoder.py`; 65 ms when the pad moves),
+  and the renderer builds the magnitudes on the minimum-phase FFT's own grid, 512 taps. The notches now play as wide
+  as a real head's.
+- **Depth is what is left**: 71 % of a real head's as it plays. V4 holds the rest: 39 % closer than the KU100, the
+  notch range 99 % of the heads', the pad's largest step 1.6× the median.
+
 ## 6. The horizontal cues
 
 Measured (`horizontal.py`) on all 274 heads, 400 directions: the ILD smoothed to about one ERB (RMS dB over 1.5–16 kHz),

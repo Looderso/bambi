@@ -12,7 +12,10 @@ split of extract.py, taken alike at every stage): its depth, and its width at ha
                      KU100's timbre and the population ILD, minimum phase, 256 taps, back to the ERB axis
   real head, rendered  the real head through the same renderer — what the renderer alone costs
 
-  python stages.py <data set .npz> <...-models3.npz>
+  V4                 pattern-models4.py's decoder, which gives order-20 SH itself, at the head's best place
+  V4, rendered       that through the renderer as the page now has it: 512 taps, built on the fine FFT grid
+
+  python stages.py <data set .npz> <...-models3.npz> [<...-model4.pt>]
 """
 import os, sys
 from importlib.util import spec_from_file_location, module_from_spec
@@ -56,23 +59,28 @@ def sh_fit_eval(pattern, az, el, sphere, out_idx, order):
     return ge.sh_orth(order, az[out_idx], el[out_idx]) @ c
 
 
-def render(dtf_erb, timbre_lin, ild_lin, fr):
+def render(dtf_erb, timbre_lin, ild_lin, fr, taps=256, fine=False):
     """The page's chain for directions: ERB-axis DTF → linear bins (+ timbre) → ears with the ILD → minimum phase →
     magnitude → CLL → ERB axis DTF (less the timbre)."""
     out = []
-    e_of_f = 21.4 * np.log10(1 + 0.00437 * fr)
+    n = 2 * taps
+    fo = np.fft.rfftfreq(n, 1 / 48000)
+    grid = fo if fine else fr                                          # fine: the minimum-phase FFT's own grid
+    e_of_f = 21.4 * np.log10(1 + 0.00437 * grid)
+    timbre_g = np.interp(grid, fr, timbre_lin)
     for d, ild in zip(dtf_erb, ild_lin):
-        cll = np.interp(e_of_f, ex.ERB, d) + timbre_lin
+        ild = np.interp(grid, fr, ild)
+        cll = np.interp(e_of_f, ex.ERB, d) + timbre_g
         r = 10 ** (np.clip(ild, -40, 40) / 10)
         l_db, r_db = cll + 10 * np.log10(r / (1 + r)), cll - 10 * np.log10(1 + r)
-        hl, hr = bm.min_phase(l_db), bm.min_phase(r_db)
-        pl, pr = (np.abs(np.fft.rfft(h, 256)) ** 2 for h in (hl, hr))
-        cll_out = 10 * np.log10(np.maximum(pl + pr, 1e-6)) - timbre_lin
-        out.append(np.interp(ex.FREQ, fr, cll_out))
+        hl, hr = bm.min_phase(l_db, n), bm.min_phase(r_db, n)
+        pl, pr = (np.abs(np.fft.rfft(h, n)) ** 2 for h in (hl, hr))
+        cll_out = 10 * np.log10(np.maximum(pl + pr, 1e-6)) - np.interp(fo, fr, timbre_lin)
+        out.append(np.interp(ex.FREQ, fo, cll_out))
     return np.array(out)
 
 
-def main(data_path, models_path):
+def main(data_path, models_path, model4_path=None):
     data, m = np.load(data_path), np.load(models_path)
     az, el, sphere = m["az"], m["el"], m["sphere"]
     med = np.setdiff1d(np.arange(len(az)), sphere)
@@ -92,7 +100,18 @@ def main(data_path, models_path):
     ild = ge.sh_orth(order, az[front], el[front]) @ data["grand_mean"].astype(float)[:, nb:]
 
     stages = {k: [] for k in ("real head", "VAE", "export, order 8", "export, order 15", "export, order 20",
-                              "grid node (order 8)", "grid cell middle (order 8)", "renderer", "real head, rendered")}
+                              "grid node (order 8)", "grid cell middle (order 8)", "renderer", "real head, rendered",
+                              "real head, rendered, 512 taps", "real head, rendered, 512 taps, fine grid",
+                              "renderer, 512 taps, fine grid", "V4", "V4, rendered (512 taps, fine grid)")}
+    if model4_path:
+        import torch
+        p4 = _load("p4", os.path.join(_d, "pattern-models4.py"))
+        ck = torch.load(model4_path, weights_only=False)
+        net = p4.SHNet(961, len(ex.ERB), 2, 128); net.load_state_dict(ck["state"]); net.eval()
+        with torch.no_grad():
+            v4c = net.decode(torch.tensor(ck["fitted"], dtype=torch.float32)).numpy() * p4.SCALE   # test heads x 441 x E
+        y4 = ge.sh_orth(20, az[front], el[front])
+        v4_base = y4 @ ck["base_c"].astype(float)
     for h, z in zip(test, fitted):
         gi = int(np.argmin(np.sum((zz - z) ** 2, 1)))
         i, j = divmod(gi, 25)
@@ -112,16 +131,26 @@ def main(data_path, models_path):
         stages["grid cell middle (order 8)"].append(measure(mid_d))
         stages["renderer"].append(measure(render(mid_d, timbre, ild, fr)))
         stages["real head, rendered"].append(measure(render(full[h][front], timbre, ild, fr)))
+        stages["real head, rendered, 512 taps"].append(measure(render(full[h][front], timbre, ild, fr, 512)))
+        stages["real head, rendered, 512 taps, fine grid"].append(measure(render(full[h][front], timbre, ild, fr, 512, True)))
+        stages["renderer, 512 taps, fine grid"].append(measure(render(mid_d, timbre, ild, fr, 512, True)))
+        if model4_path:
+            k4 = int(np.where(test == h)[0][0])
+            v4 = v4_base + y4 @ v4c[k4]
+            stages["V4"].append(measure(v4))
+            stages["V4, rendered (512 taps, fine grid)"].append(measure(render(v4, timbre, ild, fr, 512, True)))
 
     print(f"{len(test)} held-out heads × {len(front)} directions of the frontal median plane; the deepest notch 4–14 kHz "
           f"of each, in the 3-ERB notch layer. Median over heads and directions:")
     ref_d = np.nanmedian(np.concatenate(stages["real head"])[:, 0])
     ref_w = np.nanmedian(np.concatenate(stages["real head"])[:, 1])
     for k, v in stages.items():
+        if not v:
+            continue
         a = np.concatenate(v)
         d, w = np.nanmedian(a[:, 0]), np.nanmedian(a[:, 1])
         print(f"  {k:28s} depth {d:5.1f} dB ({100 * d / ref_d:4.0f} %)   width at half depth {w:4.2f} ERB ({100 * w / ref_w:4.0f} %)")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(*sys.argv[1:])
