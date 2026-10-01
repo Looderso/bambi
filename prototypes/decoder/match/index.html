@@ -105,6 +105,9 @@ const DEFAULTS = { headScale: 1, earScale: 1, shift: 0 };
 const HAS_MODEL = !!window.MODEL;
 const MPAT = HAS_MODEL ? unpackModel(MODEL.patterns) : null, MBASE = HAS_MODEL ? unpackModel(MODEL.baseline) : null;
 const MNC = HAS_MODEL ? (MODEL.order + 1) ** 2 : 0, ME = HAS_MODEL ? MODEL.erb.length : 0;
+// The population's average ILD and ITD, in place of the KU100's while the model's cues are on.
+const POP_ILD = HAS_MODEL && MODEL.populationIld ? unpackModel(MODEL.populationIld) : null;
+const POP_ITD = HAS_MODEL && MODEL.populationItd ? unpackModel(MODEL.populationItd) : null;
 function unpackModel(s) { return new Float32Array(Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer); }
 // A model is either one free input with a shift (MODEL.t) or two free inputs on a grid (MODEL.grid, no shift).
 const GRID = HAS_MODEL && MODEL.grid;
@@ -204,9 +207,16 @@ function itdEstimate(hl, hr) {
 // The head-relative direction u → two minimum-phase filters and per-ear delays (samples). Ear size stretches the
 // CLL's direction-dependent part; head size stretches the ILD and scales the ITD; the CLL's order 0, the timbre, stays.
 function render(u) {
-  const y = shN(MATCH.order, ...u), cdir = new Float64Array(NB), ild = new Float64Array(NB);
+  const y = shN(MATCH.order, ...u), cdir = new Float64Array(NB), kuIld = new Float64Array(NB);
   for (let c = 0; c < NC; c++) { const yc = y[c], off = c * NB;
-    for (let b = 0; b < NB; b++) { ild[b] += yc * ILD[off + b]; if (c > 0) cdir[b] += yc * CLL[off + b]; } }
+    for (let b = 0; b < NB; b++) { kuIld[b] += yc * ILD[off + b]; if (c > 0) cdir[b] += yc * CLL[off + b]; } }
+  const popOn = S.cues === "model" && POP_ILD;
+  let ild = kuIld;
+  if (popOn) {
+    ild = new Float64Array(NB);
+    const yp = MODEL.populationIldOrder === MATCH.order ? y : shN(MODEL.populationIldOrder, ...u);
+    for (let c = 0; c < yp.length; c++) { const yc = yp[c], off = c * NB; for (let b = 0; b < NB; b++) ild[b] += yc * POP_ILD[off + b]; }
+  }
   const cw = S.cues === "model" && HAS_MODEL ? modelDtf(u, cdir) : warp(cdir, S.earScale);
   const iw = warp(ild, S.headScale), L = new Float64Array(NB), R = new Float64Array(NB);
   for (let b = 0; b < NB; b++) {
@@ -216,9 +226,11 @@ function render(u) {
   const out = { h: [minPhase(L), minPhase(R)] };
   const clip = x => Math.max(-MATCH.ildLimitDb, Math.min(MATCH.ildLimitDb, x));
   out.cll = Float64Array.from(cw, (v, b) => y[0] * CLL[b] + v); out.cll0 = Float64Array.from(cdir, (v, b) => y[0] * CLL[b] + v);
-  out.ild = Float64Array.from(iw, clip); out.ild0 = Float64Array.from(ild, clip);
-  let itd = 0; for (let c = 0; c < NI; c++) itd += y[c] * ITD[c];
-  out.itd0 = itd;
+  out.ild = Float64Array.from(iw, clip); out.ild0 = Float64Array.from(kuIld, clip);
+  let kuItd = 0; for (let c = 0; c < NI; c++) kuItd += y[c] * ITD[c];
+  let itd = kuItd;
+  if (popOn && POP_ITD) { itd = 0; const yi = shN(MODEL.populationItdOrder, ...u); for (let c = 0; c < yi.length; c++) itd += yi[c] * POP_ITD[c]; }
+  out.itd0 = kuItd;
   const d = (S.headScale * itd - itdEstimate(out.h[0], out.h[1])) * SR;    // tL − tR to add, in samples
   out.d = [BASE + d / 2, BASE - d / 2];
   out.itd = S.headScale * itd;
@@ -451,7 +463,8 @@ function drawCues() {
   $("padBox").style.display = S.cues === "model" ? "" : "none";
   matchDraws[1](); document.querySelectorAll("#matchCtl .ctl")[1].style.opacity = S.cues === "model" ? 0.35 : 1;
   $("cuesNote").textContent = !HAS_MODEL ? "No model.js — run hrtf-data/export-model.py to make one."
-    : S.cues === "model" ? (GRID ? "The vertical cues (CLL) from the two-input model on the KU100's timbre; ILD and ITD stay the KU100's, with head size. Ear size is off."
+    : S.cues === "model" ? (GRID ? (POP_ILD ? "The vertical cues (CLL) from the two-input model, the horizontal (ILD, ITD) the population's average — head size scales them — all on the KU100's timbre. Ear size is off."
+        : "The vertical cues (CLL) from the two-input model on the KU100's timbre; ILD and ITD stay the KU100's, with head size. Ear size is off.")
       : "The vertical cues (CLL) from the model on the KU100's timbre; ILD and ITD stay the KU100's, with head size. Ear size is off: the pad's shift takes its place.")
     : "The KU100's own cues; ear size stretches them.";
   drawPad();

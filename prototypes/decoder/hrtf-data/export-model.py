@@ -10,7 +10,11 @@ A two-free-input model (pattern-models3.py) is a grid over both inputs; it is th
 to keep the file small, and the page interpolates between neighbours.
 
   python export-model.py <...-model.npz> <out.js>                 the one-input model with a shift
-  python export-model.py <...-models3.npz> <out.js> <variant>     a two-input model, e.g. V2b
+  python export-model.py <...-models3.npz> <out.js> <variant> [<data set .npz>]
+                                                                  a two-input model, e.g. V2b; with the data set,
+                                                                  also the population average ILD and ITD
+The population average ILD and ITD are the data set's common average (after normalisation every database's average
+sits on it), converted to the match page's SN3D coefficients — on the page's own bins, so they replace the KU100's.
 """
 import base64, os, sys
 from importlib.util import spec_from_file_location, module_from_spec
@@ -23,7 +27,7 @@ ORDERS = (8, 10, 12, 15)
 LAM = 1e-4
 
 
-def main(path, out, variant=None):
+def main(path, out, variant=None, dataset=None):
     m = np.load(path)
     az, el, sphere = m["az"], m["el"], m["sphere"]
     med = np.setdiff1d(np.arange(len(az)), sphere)
@@ -69,6 +73,14 @@ def main(path, out, variant=None):
             js.write(f"  erb: {np.round(m['erb'], 4).tolist()},\n  freq: {np.round(m['freq'], 2).tolist()},\n")
             js.write(f"  shiftMin: {float(m['shifts'][0])}, shiftMax: {float(m['shifts'][-1])},\n")
             js.write(f"  fitted: {np.round(m['fitted'], 3).tolist()},\n")
+        if dataset:
+            d = np.load(dataset)
+            o, io, nb = int(d["order"]), int(d["itd_order"]), int(d["nfft"]) // 2 + 1
+            to_sn3d = lambda order: np.array([np.sqrt((2 * n + 1) / (4 * np.pi)) for n in range(order + 1) for _ in range(2 * n + 1)])
+            ild = d["grand_mean"].astype(float)[:, nb:] * to_sn3d(o)[:, None]           # coefs x bins, SN3D
+            itd = d["itd_grand_mean"].astype(float) * to_sn3d(io)
+            js.write(f"  populationIld: \"{blob(ild)}\", populationIldOrder: {o},\n")
+            js.write(f"  populationItd: \"{blob(itd)}\", populationItdOrder: {io},\n")
         js.write(f"  patterns: \"{blob(c[:-1])}\",\n  baseline: \"{blob(c[-1])}\" }};\n")
     print(f"written {out}: {os.path.getsize(out) / 1e6:.1f} MB")
     # Reference values for checking the browser: one direction, two (t, s).

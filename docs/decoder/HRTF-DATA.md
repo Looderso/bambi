@@ -163,7 +163,29 @@ The last is on the pad: two free inputs, notches as deep as the heads', 38 % clo
 `export-model.py` turns it into `prototypes/decoder/match/model.js` (outside version control: SONICOM data), which the
 match prototype plays as "Model" cues on a pad — both inputs free, interpolated between a 13 × 13 grid.
 
-## 6. Next
+## 6. The horizontal cues
+
+Measured (`horizontal.py`) on all 274 heads, 400 directions: the ILD smoothed to about one ERB (RMS dB over 1.5–16 kHz),
+the ITD in µs. Distance from each head, median:
+
+| | ILD | ITD |
+|---|---|---|
+| the KU100 as it is | 5.05 dB | 50.3 µs |
+| the KU100 at the head's best head size | 4.95 dB (2 % closer) | 43.7 µs (13 % closer) |
+| **the population average (of the other 273)** | **3.19 dB (37 % closer)** | **27.6 µs (45 % closer)** |
+
+- **Head size explains little.** The KU100's ILD and ITD differ from human heads in shape, not size — the KU100 acts
+  like a slightly large head (best ITD scales 0.89–1.00), and its ILD and ITD scales agree only moderately (r = 0.41).
+- **The population average is the gain**, as it was for the baseline. It is the default of the match prototype's
+  model cues, head size scaling it; the KU100 stays the reference in the plots.
+- **The ILD's individuality is mostly smooth**: replacing a head's ILD baseline (3 ERB) by the population's moves it
+  72 % of the way to the average, its notch layer 50 % — the reverse of the CLL.
+- **The ITD is not one scale factor**: one factor takes out 14 % of a head's difference from the average; about 30 µs
+  remains, alike at every elevation. Part of it may be where a subject sat rather than their head — a few millimetres
+  off centre bends the ITD with azimuth — which this data cannot tell apart.
+
+## 7. Next
+
 
 
 1. **The unified data set** — *built* (`build-dataset.py`, kept outside the repository: it holds SONICOM data). 274
