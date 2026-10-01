@@ -82,68 +82,81 @@ def equalise(heads, w, ref_ctf):
     return dtf + ref_ctf.mean(0)[None, None, None, :], ctf
 
 
-def main(ku_path, hutubs_dir, d3a_dir):
-    kaz, kel, kir, kfs = ge.load(ku_path)
-    ku = ears_db(windowed(kir, kfs))
-    ku_ctf = np.einsum("d,deb->eb", ge.areas(kaz, kel), ku)
-
-    dbs = {"HUTUBS": load_db(hutubs_dir, "pp*_HRIRs_measured.sofa"), "3D3A": load_db(d3a_dir, "Subject*_HRIRs.sofa")}
-    for n, (az, el, h) in dbs.items():
-        print(f"{n}: {h.shape[0]} heads, {h.shape[1]} directions, elevation {np.degrees(el).min():.0f}…{np.degrees(el).max():.0f}°")
-
-    # Common directions: a Fibonacci set, evaluated in both, restricted to where both measured.
-    k = 2000
+def common_directions(k=2000):
+    """A Fibonacci set, restricted to where both databases measured (−57…75°)."""
     i = np.arange(k) + 0.5
-    z = 1 - 2 * i / k
-    caz, cel = np.pi * (3 - np.sqrt(5)) * i, np.arcsin(z)
-    common = (np.degrees(cel) >= -57) & (np.degrees(cel) <= 75)
-    y_common = ge.sh_orth(ORDER, caz, cel)
-    wc = np.full(k, 1 / k)
+    caz, cel = np.pi * (3 - np.sqrt(5)) * i, np.arcsin(1 - 2 * i / k)
+    keep = (np.degrees(cel) >= -57) & (np.degrees(cel) <= 75)
+    return caz[keep], cel[keep]
 
-    out = {}
-    for stage in ("raw", "equalised"):
-        coefs, fit_err = {}, {}
-        hut_avg_c = None
-        for n in ("HUTUBS", "3D3A"):
-            az, el, h = dbs[n]
-            w = ge.areas(az, el)
-            if stage == "equalised":
-                h, ctf = equalise(h, w, ku_ctf)
+
+def load_all(ku_path, hutubs_dir, d3a_dir):
+    kaz, kel, kir, kfs = ge.load(ku_path)
+    ku_ctf = np.einsum("d,deb->eb", ge.areas(kaz, kel), ears_db(windowed(kir, kfs)))
+    dbs = {"HUTUBS": load_db(hutubs_dir, "pp*_HRIRs_measured.sofa"), "3D3A": load_db(d3a_dir, "Subject*_HRIRs.sofa")}
+    return ku_ctf, dbs
+
+
+def unified(dbs, ku_ctf, stage, caz, cel, report=False):
+    """Every head's CLL and ILD on the common directions: heads x directions x (2·bins), per database."""
+    coefs, hut_avg_c = {}, None
+    for n in ("HUTUBS", "3D3A"):
+        az, el, h = dbs[n]
+        w = ge.areas(az, el)
+        if stage == "equalised":
+            h, ctf = equalise(h, w, ku_ctf)
+            if report:
                 lr = ctf[:, 0, :] - ctf[:, 1, :]
                 print(f"{n}: the left/right CTF difference removed from the ILD — mean {np.mean(np.abs(lr[:, BAND])):.2f} dB, "
                       f"largest {np.max(np.abs(lr[:, BAND])):.2f} dB over 2–16 kHz")
-            q = np.stack([cll_ild_of(x) for x in h])                      # heads x dirs x (2·bins)
-            y = ge.sh_orth(ORDER, az, el)
-            avg = q.mean(0)
-            if n == "HUTUBS":
-                avg_c = ge.solve(y, w, avg, LAM_FULL, ORDER)
-                hut_avg_c = avg_c
-                lam = LAM_FULL
-            else:
-                avg_c = hut_avg_c + ge.solve(y, w, avg - y @ hut_avg_c, LAM_GAPS, ORDER)
-                lam = LAM_GAPS
-            prior = y @ avg_c
-            coefs[n] = np.stack([avg_c + ge.solve(y, w, x - prior, lam, ORDER) for x in q])
-        cols_cll = np.r_[BAND, np.zeros(nb, bool)]
-        cols_ild = np.r_[np.zeros(nb, bool), BAND]
-        ev = {n: np.einsum("dc,hcf->hdf", y_common[common], c) for n, c in coefs.items()}   # heads x common dirs x cols
+        q = np.stack([cll_ild_of(x) for x in h])                          # heads x dirs x (2·bins)
+        y = ge.sh_orth(ORDER, az, el)
+        avg = q.mean(0)
+        if n == "HUTUBS":
+            avg_c = hut_avg_c = ge.solve(y, w, avg, LAM_FULL, ORDER)
+            lam = LAM_FULL
+        else:
+            avg_c = hut_avg_c + ge.solve(y, w, avg - y @ hut_avg_c, LAM_GAPS, ORDER)
+            lam = LAM_GAPS
+        prior = y @ avg_c
+        coefs[n] = np.stack([avg_c + ge.solve(y, w, x - prior, lam, ORDER) for x in q])
+    y_common = ge.sh_orth(ORDER, caz, cel)
+    return {n: np.einsum("dc,hcf->hdf", y_common, c) for n, c in coefs.items()}
+
+
+COLS_CLL = np.r_[BAND, np.zeros(nb, bool)]
+COLS_ILD = np.r_[np.zeros(nb, bool), BAND]
+
+
+def database_accuracy(ev):
+    """Balanced accuracy of telling the database from a head's CLL and ILD (2–16 kHz): standardised, 20 principal
+    components, logistic regression, 5-fold cross-validation. 50 % is chance."""
+    X = np.concatenate([v[:, :, COLS_CLL | COLS_ILD].reshape(len(v), -1) for v in ev.values()])
+    yl = np.concatenate([np.full(len(v), i) for i, v in enumerate(ev.values())])
+    clf = make_pipeline(StandardScaler(), PCA(n_components=20), LogisticRegression(max_iter=2000, class_weight="balanced"))
+    return balanced_accuracy_score(yl, cross_val_predict(clf, X, yl, cv=StratifiedKFold(5, shuffle=True, random_state=0)))
+
+
+def main(ku_path, hutubs_dir, d3a_dir):
+    ku_ctf, dbs = load_all(ku_path, hutubs_dir, d3a_dir)
+    for n, (az, el, h) in dbs.items():
+        print(f"{n}: {h.shape[0]} heads, {h.shape[1]} directions, elevation {np.degrees(el).min():.0f}…{np.degrees(el).max():.0f}°")
+    caz, cel = common_directions()
+    out = {}
+    for stage in ("raw", "equalised"):
+        ev = unified(dbs, ku_ctf, stage, caz, cel, report=True)
         means = {n: v.mean(0) for n, v in ev.items()}
         d = means["HUTUBS"] - means["3D3A"]
-        between = [np.sqrt(np.mean(d[:, cols] ** 2)) for cols in (cols_cll, cols_ild)]
-        within = {n: [np.mean(np.sqrt(np.mean((v - means[n])[:, :, cols] ** 2, axis=(1, 2)))) for cols in (cols_cll, cols_ild)]
+        between = [np.sqrt(np.mean(d[:, cols] ** 2)) for cols in (COLS_CLL, COLS_ILD)]
+        within = {n: [np.mean(np.sqrt(np.mean((v - means[n])[:, :, cols] ** 2, axis=(1, 2)))) for cols in (COLS_CLL, COLS_ILD)]
                   for n, v in ev.items()}
-        # Classifier: which database? Features: CLL and ILD at the common directions, 2–16 kHz.
-        X = np.concatenate([ev[n][:, :, np.r_[cols_cll | cols_ild]].reshape(len(ev[n]), -1) for n in ev])
-        yl = np.r_[np.zeros(len(ev["HUTUBS"])), np.ones(len(ev["3D3A"]))]
-        clf = make_pipeline(StandardScaler(), PCA(n_components=20), LogisticRegression(max_iter=2000, class_weight="balanced"))
-        pred = cross_val_predict(clf, X, yl, cv=StratifiedKFold(5, shuffle=True, random_state=0))
-        acc = balanced_accuracy_score(yl, pred)
+        acc = database_accuracy(ev)
         print(f"\n{stage}: the databases' averages differ by {between[0]:.2f} dB (CLL), {between[1]:.2f} dB (ILD); "
               f"a head differs from its own database's average by {within['HUTUBS'][0]:.2f} / {within['HUTUBS'][1]:.2f} (HUTUBS), "
               f"{within['3D3A'][0]:.2f} / {within['3D3A'][1]:.2f} (3D3A); a classifier tells the database apart at "
               f"{100 * acc:.0f} % balanced accuracy (chance 50 %)")
         out[stage] = (means, d)
-    plot(out, caz[common], cel[common])
+    plot(out, caz, cel)
 
 
 def plot(out, az, el):

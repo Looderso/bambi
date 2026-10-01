@@ -96,11 +96,32 @@ deviation-from-average fit (3D3A's gaps filled from the HUTUBS average). Compare
   HUTUBS's 5.7: 3D3A measured at 0.76 m, HUTUBS at 1.47 m, and a nearer source makes a larger ILD. At 2–16 kHz the
   two agree within 1 dB. A correction for distance would take that part out before the fingerprint is judged.
 
-## 4. Next
+## 4. Removing the database fingerprint
 
-1. **Correct for measurement distance** (a near-field correction from a spherical head, at least for the ILD below
-   a few kHz).
-2. **Remove the database fingerprint** while keeping the binaural cues — per-direction normalisation by each
-   database's average, or PCA as the thesis suggested — and measure it with the same classifier, which should fall
-   towards 50 %.
-3. **Then the model.**
+Measured (`normalise.py`): each direction normalised — a head minus its database's average, plus the average of the
+databases, each database weighted equally. In the cross-validation a test head is normalised with the average of
+its database's training heads only. 2–16 kHz, on the directions both measured:
+
+| | the classifier names the database — linear | — kernel SVM | heads around their own database's average (CLL / ILD) | all heads around the common average |
+|---|---|---|---|---|
+| equalised | 98 % | 97 % | 3.39–3.46 / 4.80–4.93 dB | 3.61 / 5.07 dB |
+| normalised | **50 %** | **55 %** | 3.39–3.46 / 4.80–4.93 dB | 3.41 / 4.89 dB |
+
+- **The fingerprint lived in the average.** Once each database's average is moved to the common one, neither a
+  linear classifier nor a kernel SVM — the kind the literature used to find the fingerprint — tells the databases
+  apart better than chance (50 %; 55 % is within the noise of 134 heads).
+- **The differences between heads are untouched**: a shift leaves each head's distance from its own database's
+  average as it was (3.39–3.46 dB CLL, 4.80–4.93 dB ILD). What the pooled spread loses, 3.61 → 3.41 dB (CLL), is the
+  offset between the databases.
+- **The two databases spread alike**: 3D3A's heads vary 1.02× as widely as HUTUBS's in CLL and 0.98× in ILD (median
+  over directions, 2–16 kHz) — no second-order fingerprint to remove, so no PCA step is needed for these two.
+- **The caveat of two databases**: normalising the average also removes any real difference between the two groups
+  of people, and the measurement distance's effect on the low-frequency ILD (§3) with it. A third database is what
+  would separate a fingerprint from a population.
+
+## 5. Next
+
+1. **The unified data set**: every HUTUBS and 3D3A head, equalised, normalised and on one SH representation — 134
+   heads, the input to the model.
+2. **The model** — what parameterises a head along the horizontal (ILD, ITD) and the vertical (CLL) axis, with shifts
+   in frequency handled; not PCA.
