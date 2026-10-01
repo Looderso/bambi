@@ -57,6 +57,12 @@
     <div class="seg" id="segBurst"></div>
     <div id="levelCtl"></div>
 
+    <h2>CUES</h2>
+    <div class="seg" id="segCues"></div>
+    <div id="padBox"><canvas id="cvPad" style="width:100%;height:170px;display:block;background:var(--panel);touch-action:none;cursor:crosshair"></canvas>
+      <p class="note" id="padNote"></p></div>
+    <p class="note" id="cuesNote"></p>
+
     <h2>MATCH</h2>
     <div id="matchCtl"></div>
     <div class="row"><button id="bReset">KU100 as measured</button></div>
@@ -76,6 +82,7 @@
 
 <script src="../common.js"></script>
 <script src="match.js"></script>
+<script src="model.js" onerror="void 0"></script>
 <script>
 "use strict";
 const SR = 48000, TAPS = 256, BASE = 40;     // BASE: samples of delay both ears share, so either can be the later
@@ -87,8 +94,43 @@ const NC = (MATCH.order + 1) ** 2, NB = MATCH.bins, NI = (MATCH.itdOrder + 1) **
 
 // ---------- state ----------
 const S = { head: { yaw: 0, pitch: 0, roll: 0 }, spk: { az: 30, el: 0 }, channel: 0, mode: "alternate", burst: "noise",
-  headScale: 1, earScale: 1, virtualDb: -6, realDb: -6, locating: false, sinkV: "", sinkR: "" };
-const DEFAULTS = { headScale: 1, earScale: 1 };
+  headScale: 1, earScale: 1, virtualDb: -6, realDb: -6, locating: false, sinkV: "", sinkR: "",
+  cues: "ku100", pattern: 0.5, shift: 0 };
+const DEFAULTS = { headScale: 1, earScale: 1, shift: 0 };
+
+// ---------- the two-input model (model.js, generated locally by hrtf-data/export-model.py) ----------
+// The CLL's direction cues from a pattern t (0…1, the VAE's axis respaced to equal perceptual steps) and a shift s
+// (ERB; positive moves the notches down): the population baseline plus the pattern read at ERB + s, each a set of
+// orthonormal SH per point of the ERB axis. Below 1 and above 18 kHz the model fades to the KU100's own cues.
+const HAS_MODEL = !!window.MODEL;
+const MPAT = HAS_MODEL ? unpackModel(MODEL.patterns) : null, MBASE = HAS_MODEL ? unpackModel(MODEL.baseline) : null;
+const MNC = HAS_MODEL ? (MODEL.order + 1) ** 2 : 0, ME = HAS_MODEL ? MODEL.erb.length : 0;
+function unpackModel(s) { return new Float32Array(Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer); }
+if (HAS_MODEL) { const ts = MODEL.fitted.map(p => p[0]).sort((a, b) => a - b); S.pattern = ts[Math.floor(ts.length / 2)]; }
+function shOrth(order, u) {
+  const y = shN(order, ...u);
+  for (let n = 0; n <= order; n++) { const k = Math.sqrt((2 * n + 1) / (4 * Math.PI)); for (let m = -n; m <= n; m++) y[n * n + n + m] *= k; }
+  return y;
+}
+// The model's CLL DTF at direction u on the renderer's linear bins, blended into kuDtf outside 1–18 kHz.
+function modelDtf(u, kuDtf) {
+  const y = shOrth(MODEL.order, u), T = MODEL.t.length;
+  const tp = Math.max(0, Math.min(1, S.pattern)) * (T - 1), i0 = Math.min(T - 2, Math.floor(tp)), a = tp - i0;
+  const pat = new Float64Array(ME), base = new Float64Array(ME);
+  for (let c = 0; c < MNC; c++) {
+    const yc = y[c], o0 = (i0 * MNC + c) * ME, o1 = ((i0 + 1) * MNC + c) * ME, ob = c * ME;
+    for (let e = 0; e < ME; e++) { pat[e] += yc * ((1 - a) * MPAT[o0 + e] + a * MPAT[o1 + e]); base[e] += yc * MBASE[ob + e]; }
+  }
+  const step = MODEL.erb[1] - MODEL.erb[0], out = new Float64Array(NB);
+  const read = (arr, x) => { const xc = Math.max(0, Math.min(ME - 1, x)), j = Math.min(ME - 2, Math.floor(xc)), fr = xc - j; return arr[j] * (1 - fr) + arr[j + 1] * fr; };
+  const ramp = (x, lo, hi) => Math.max(0, Math.min(1, (x - lo) / (hi - lo)));
+  for (let b = 0; b < NB; b++) {
+    const f = b * SR / (2 * (NB - 1)), idx = (21.4 * Math.log10(1 + 0.00437 * f) - MODEL.erb[0]) / step;
+    const w = ramp(f, 900, 1100) * (1 - ramp(f, 17000, 19000));
+    out[b] = w * (read(base, idx) + read(pat, idx + S.shift / step)) + (1 - w) * kuDtf[b];
+  }
+  return out;
+}
 
 // ---------- a direction → two minimum-phase filters and two delays ----------
 // Radix-2 complex FFT in place; inverse when inv.
@@ -151,7 +193,8 @@ function render(u) {
   const y = shN(MATCH.order, ...u), cdir = new Float64Array(NB), ild = new Float64Array(NB);
   for (let c = 0; c < NC; c++) { const yc = y[c], off = c * NB;
     for (let b = 0; b < NB; b++) { ild[b] += yc * ILD[off + b]; if (c > 0) cdir[b] += yc * CLL[off + b]; } }
-  const cw = warp(cdir, S.earScale), iw = warp(ild, S.headScale), L = new Float64Array(NB), R = new Float64Array(NB);
+  const cw = S.cues === "model" && HAS_MODEL ? modelDtf(u, cdir) : warp(cdir, S.earScale);
+  const iw = warp(ild, S.headScale), L = new Float64Array(NB), R = new Float64Array(NB);
   for (let b = 0; b < NB; b++) {
     const cll = y[0] * CLL[b] + cw[b], i = Math.max(-MATCH.ildLimitDb, Math.min(MATCH.ildLimitDb, iw[b])), r = 10 ** (i / 10);
     L[b] = cll + 10 * Math.log10(r / (1 + r)); R[b] = cll - 10 * Math.log10(1 + r);
@@ -327,7 +370,9 @@ function drawReadout() {
   const [a, e] = angOf(last.u);
   $("readout").innerHTML = `loudspeaker relative to the head: <b>${(a / D2R).toFixed(0)}°</b> azimuth, <b>${(e / D2R).toFixed(0)}°</b> elevation
     · ITD <b>${(last.itd * 1e6).toFixed(0)} µs</b> (KU100 ${(last.itd0 * 1e6).toFixed(0)} µs)
-    · head size <b>${(S.headScale * 100).toFixed(0)} %</b>, ear size <b>${(S.earScale * 100).toFixed(0)} %</b>`;
+    · head size <b>${(S.headScale * 100).toFixed(0)} %</b>, ` + (S.cues === "model"
+      ? `model: pattern <b>${S.pattern.toFixed(2)}</b>, shift <b>${S.shift.toFixed(2)} ERB</b>`
+      : `ear size <b>${(S.earScale * 100).toFixed(0)} %</b>`);
 }
 
 // ---------- controls ----------
@@ -382,7 +427,48 @@ const matchDraws = [
   ctl($("matchCtl"), "head size", 0.7, 1.4, () => S.headScale, v => { S.headScale = v; update(); }, v => (v * 100).toFixed(0) + " %"),
   ctl($("matchCtl"), "ear size", 0.8, 1.25, () => S.earScale, v => { S.earScale = v; update(); }, v => (v * 100).toFixed(0) + " %"),
 ];
-$("bReset").onclick = () => { Object.assign(S, DEFAULTS); matchDraws.forEach(d => d()); update(); };
+$("bReset").onclick = () => { Object.assign(S, DEFAULTS); matchDraws.forEach(d => d()); drawPad(); update(); };
+
+// ---------- the cues: the KU100's, or the model's on a pad — pattern across, shift up and down ----------
+const CUES = { ku100: "KU100", model: "Model" };
+function drawCues() {
+  seg($("segCues"), Object.keys(CUES), () => S.cues, v => { S.cues = v; drawCues(); update(); }, v => CUES[v], v => v === "model" && !HAS_MODEL);
+  $("padBox").style.display = S.cues === "model" ? "" : "none";
+  matchDraws[1](); document.querySelectorAll("#matchCtl .ctl")[1].style.opacity = S.cues === "model" ? 0.35 : 1;
+  $("cuesNote").textContent = !HAS_MODEL ? "No model.js — run hrtf-data/export-model.py to make one."
+    : S.cues === "model" ? "The vertical cues (CLL) from the model on the KU100's timbre; ILD and ITD stay the KU100's, with head size. Ear size is off: the pad's shift takes its place."
+    : "The KU100's own cues; ear size stretches them.";
+  drawPad();
+}
+const padY = s => (MODEL.shiftMax - s) / (MODEL.shiftMax - MODEL.shiftMin);           // 0 top … 1 bottom
+function drawPad() {
+  if (!HAS_MODEL || S.cues !== "model") return;
+  const cv = $("cvPad"), r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+  const c = cv.getContext("2d"), W = cv.width, H = cv.height;
+  c.clearRect(0, 0, W, H);
+  c.strokeStyle = "#c8c4ba"; c.lineWidth = dpr;
+  c.beginPath(); c.moveTo(0, padY(0) * H); c.lineTo(W, padY(0) * H); c.stroke();
+  c.fillStyle = "rgba(27,26,23,0.25)";
+  for (const [tt, ss] of MODEL.fitted) { c.beginPath(); c.arc(tt * W, (1 - padY(ss)) * H, 2.5 * dpr, 0, 7); c.fill(); }
+  c.fillStyle = "#d4873a"; c.beginPath(); c.arc(S.pattern * W, (1 - padY(S.shift)) * H, 6 * dpr, 0, 7); c.fill();
+  c.fillStyle = "#6f6b62"; c.font = `${9 * dpr}px Helvetica Neue, sans-serif`;
+  c.textAlign = "left"; c.fillText("notches higher ↑", 6 * dpr, 12 * dpr); c.fillText("notches lower ↓", 6 * dpr, H - 6 * dpr);
+  c.textAlign = "right"; c.fillText("pattern →", W - 6 * dpr, H - 6 * dpr);
+  $("padNote").textContent = `pattern ${S.pattern.toFixed(2)}, shift ${S.shift >= 0 ? "+" : ""}${S.shift.toFixed(2)} ERB — grey: where held-out heads fit best`;
+}
+// Up on the pad moves the notches up in frequency: a negative shift.
+if (HAS_MODEL) {
+  const pad = $("cvPad");
+  const setFrom = e => { const r = pad.getBoundingClientRect();
+    S.pattern = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    const yy = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+    S.shift = MODEL.shiftMax - (1 - yy) * (MODEL.shiftMax - MODEL.shiftMin);
+    drawPad(); update(); };
+  pad.onpointerdown = e => { pad.setPointerCapture(e.pointerId); setFrom(e); pad.onpointermove = setFrom; };
+  pad.onpointerup = () => { pad.onpointermove = null; };
+}
+drawCues();
 
 addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;

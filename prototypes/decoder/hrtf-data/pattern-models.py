@@ -18,6 +18,10 @@ best any pattern can do here — the head's own shift-free pattern at its best s
 The measure: positive gradients across ERB bands of the DTF smoothed to about one ERB, 2–16 kHz (extract.py), as
 RMS over directions and bands, dB per ERB.
 
+Saves, beside the data set, <name>-model.npz: the VAE's patterns on its respaced axis, the population baseline, the
+directions and ERB axis they live on, and where the held-out heads fit — what export-model.py turns into the match
+prototype's model.
+
   python pattern-models.py <data set .npz>
 """
 import os, sys, time
@@ -292,6 +296,12 @@ def main(path):
         f = np.array(fits[name])
         print(f"  {name}: held-out heads' best pattern spread over t {np.percentile(f[:, 0], 5):.2f}…{np.percentile(f[:, 0], 95):.2f}; "
               f"pattern and shift correlate at r = {np.corrcoef(f[:, 0], f[:, 1])[0, 1]:+.2f}")
+    grid_t = np.linspace(0, 1, 41)
+    out = os.path.splitext(path)[0] + "-model.npz"
+    np.savez_compressed(out, t=grid_t, patterns=np.stack([V(t) for t in grid_t]).astype(np.float32),
+                        baseline=base.astype(np.float32), az=az, el=el, sphere=np.arange(300), erb=ex.ERB, freq=ex.FREQ,
+                        fitted=np.array(fits["VAE"]), shifts=SHIFTS)
+    log(f"saved {out}")
     print(f"\n({time.time() - t0:.0f} s)")
     plot(A, V, base, polar, med, rows, fits)
 

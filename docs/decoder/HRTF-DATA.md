@@ -118,7 +118,32 @@ its database's training heads only. Three databases, chance is 33 %:
   order 15, 10, 8 or 5 leaves it at 54–56 % — **nor of spread** — scaling each database's spread to the common one
   leaves it at 59 %. SONICOM's heads do vary a little more widely than HUTUBS's, 1.06× (CLL) and 1.09× (ILD).
 
-## 5. Next
+## 5. A two-input model of the vertical cues
+
+The CLL's DTF split at 3 ERB (`extract.py`) into a baseline and a notch layer. The baseline is fixed — the population's
+average: a head's baseline sits 1.4–2.4 dB from it (5th–95th percentile, no outliers), the KU100's 3.3 dB, further
+than any human head, almost all of it below the ear (5.8 dB there; a head without a torso). The notch layer comes from
+two inputs: a **shift** along the ERB axis, a fixed operation, and a **pattern**, a free axis learned from the heads'
+notch layers with their own shift taken out (`pattern-models.py`). Held out, 68 heads, auditory measure (dB per ERB,
+median):
+
+| | distance from the head | against the KU100 |
+|---|---|---|
+| the KU100 as it is | 2.16 | — |
+| the KU100's notch layer on the population baseline, at its best shift | 1.79 | 17 % closer |
+| spectral ordering of the heads (best pattern, shift) | 1.44 | 33 % closer |
+| **one-dimensional VAE (best pattern, shift)** | **1.31** | **39 % closer** |
+| the head's own pattern at its best shift — the limit of this representation | 0.52 | 76 % closer |
+
+Every one of the 68 heads comes closer than with the KU100. The VAE's axis is smooth (even steps) and its two inputs
+are independent (r = −0.04); the ordering's axis zigzags. **The VAE blurs**: its notches are 5.0 dB deep against
+7.3 dB for real heads — the first thing to listen for, and to improve. Trained on the Apple GPU in about 1.5 minutes.
+
+`export-model.py` turns it into `prototypes/decoder/match/model.js` (outside version control: SONICOM data), which the
+match prototype plays as "Model" cues on a pad — pattern across, shift up and down.
+
+## 6. Next
+
 
 1. **The unified data set** — *built* (`build-dataset.py`, kept outside the repository: it holds SONICOM data). 274
    heads: CLL and ILD at order 20 per bin, ITD at order 10, each equalised and normalised; the KU100 beside them in
