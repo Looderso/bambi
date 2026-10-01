@@ -25,7 +25,7 @@ One ambisonic input (order 1–3, AmbiX), three things it can produce:
 |---|---|---|
 | **Headphones** | listening to the scene as a listener | binaural decode, head-tracked (§4, §5) |
 | **Speakers** | a stereo pair, a 5.1/7.1.4 room, a dome | AllRAD decode of a loaded layout (§3) |
-| **Lens** | inspecting one region of the scene on a stereo pair | a steerable directional window, then a stereo decode (§6) |
+| **Lens** | inspecting one slice of the scene on a stereo pair | the field turned by the head, then a stereo layout's decode (§6) |
 
 Headphones and a speaker output run **at once**, on separate outputs, so headphones on and speakers on can be
 switched at the interface without touching the plugin. Which pair of outputs goes where is the operating
@@ -36,14 +36,19 @@ system's or the host's routing, not the plugin's.
 - **AllRAD** over a loaded layout: max-rE weighting, a **two-band decode** (basic below the crossover, max-rE
   above), **imaginary loudspeakers** filling the gaps of an incomplete layout (no lower half, no ceiling).
 - **Per-speaker delay and gain from its distance**, so a room that is not a perfect sphere still images.
-- **A layout is a file.** The IEM AllRADecoder's configuration first: it is what the array on hand comes as, and
-  most university arrays publish one. It carries the layout and the matrix; the layout is what is read, and the
-  decoder is designed here at the suite's order.
+- **A layout comes in every way it is commonly found**, and the decoder is always designed here, at the suite's
+  order, from the positions alone:
+  - **IEM JSON** — the AllRADecoder's configuration, and the same format SPARTA's plug-ins import and export, so
+    one reader serves both suites. The array on hand comes as one.
+  - **AmbDec `.ambdec`** — the format of the Ambisonic Decoder Toolbox and the Linux decoders.
+  - **The ITU BS.2051 layouts**, built in: 0+2+0 (stereo), 0+5+0, 2+5+0, 4+5+0, 4+7+0 (7.1.4), 4+9+0 (9.1.6) and on.
+  - **Typed in**, or pasted as a list of azimuth, elevation and distance.
+  - **Placed by looking** (§3.3).
 - **A loudspeaker can be imaginary**: it takes part in the triangulation and its signal is dropped. A layout with
   nothing below the listener gets a point there, so a source below pans to the lowest ring instead of vanishing.
 - **The subwoofer channel** is skipped by the decoder; bass management is a question of its own.
-- **Standard layouts built in**: stereo, 5.1, 7.1.4, 9.1.6. A **stereo pair** is the smallest layout — a
-  virtual-microphone downmix, which doubles as the check that the mix survives stereo.
+- **A stereo pair** is the smallest layout — a virtual-microphone downmix, which doubles as the check that the mix
+  survives stereo.
 - **Crosstalk cancellation** (3D from two speakers) is **not a feature**: a sweet spot of a head's width and a
   treated room. It stays a research question until a prototype says otherwise.
 
@@ -51,7 +56,8 @@ system's or the host's routing, not the plugin's.
 
 **The layout's speakers, rendered through the HRTF as virtual sources.** At home, with the array's own layout
 file, one hears what *that* array will do to the mix: its gaps, its order limit, its missing lower half. This is
-the bridge between the two worlds, and no decoder we know of offers it. *Opinion: the feature that makes
+the bridge between the two worlds. SPARTA's AmbiDEC also renders its loudspeakers binaurally; what is this
+decoder's own is doing it head-tracked, from the same layout file the room uses, in the workflow around it. *Opinion: the feature that makes
 this decoder worth choosing.*
 
 The loudspeakers are heard as points: each is encoded at order 7 and decoded by MagLS at order 7, well above the
@@ -103,6 +109,8 @@ binaural decode.*
 - **MagLS**, with the diffuse-field covariance constraint — the current standard for orders ≤ 3, which keeps the
   high-frequency timbre that a least-squares decode at low order loses.
 - **Headphone EQ** as an optional loaded curve; off by default.
+- **No room.** A little room helps a dry binaural render out of the head, but a room is Reverb's job, chained
+  before the decoder when wanted. The decoder adds nothing to the field.
 - **Latency**: 64 samples (1.3 ms), a bulk delay that keeps the part of a response ahead of the head's centre
   causal. The convolution is 2 × (N+1)² filters of 256 taps; its cost is measured before any claim.
 
@@ -148,7 +156,25 @@ KU100's. *Caveat: the thesis evaluation disabled SPARTA's diffuse-field EQ becau
 was a flat EQ on the output, which this is not — but it is a warning, and the split is settled by ear.*
 
 Personalisation is a **guided page**, rough then fine, as in the thesis — not controls always on screen. Its
-result is a handful of numbers.
+result is a handful of numbers. **No SOFA file is needed**: the people this is for have none.
+
+### 5.0 Against a real loudspeaker
+
+**The stereo pair the listener already owns is the reference.** A burst from one real loudspeaker, then the same
+burst from a virtual source placed where that loudspeaker is; the listener adjusts until the two come from the same
+place.
+
+- **Alternated, never at once.** The two paths arrive with different delays — Bluetooth headphones add 150–250 ms —
+  so the comparison is a ping-pong with a gap, and latency does not matter.
+- **Head tracking multiplies the directions.** The virtual source is world-fixed. Turning the head puts the real
+  loudspeaker at another azimuth relative to the head; tilting it puts the loudspeaker above or below. One
+  loudspeaker and a moving head sample many head-relative directions — elevation included, which is where
+  personalisation matters most. If the HRTF fits, real and virtual stay together however the head moves.
+- **The loudspeaker must be heard through the headphones**: AirPods in transparency mode, or open headphones —
+  the thesis used acoustically transparent ones for this reason.
+- **Where, not what.** The real loudspeaker brings the room's reflections and the virtual one is dry; the task is
+  to match the position, not the character.
+- The neck's range limits the directions reached; how far is measured in the prototype.
 
 ### 5.1 Stage one — no database needed
 
@@ -195,21 +221,28 @@ may go in.
 
 ### 5.4 Portability
 
-**The personal numbers are saved in the session**, not only in a per-user file: a binaural bounce reopened on
-another machine renders as it did. A per-user profile may *seed* a new instance; it never silently changes an
-existing one.
+**The session stores everything it can**: the personal numbers, the layout's contents (not a path to its file),
+the decoder's settings, the OSC configuration. A session reopened on another machine renders as it did. A
+per-user profile may *seed* a new instance; it never silently changes an existing one.
 
 ## 6. Lens — a stereo pair as a probe
 
 **Headphones experience the scene; the Lens inspects it.** Binaural elevation is ambiguous for many listeners,
-and a dense scene makes it hard to tell a spatial problem in the mix from one in the HRTF. The Lens projects one
-region of the sphere — a directional window — onto the physical stereo pair: a second, physically grounded view
-of the same field, independent of any HRTF.
+and a dense scene makes it hard to tell a spatial problem in the mix from one in the HRTF. The Lens plays one
+slice of the sphere on the physical stereo pair: a second, physically grounded view of the same field,
+independent of any HRTF.
 
-- **Steered by the head** (§7): the window looks where the head points. *Open: the sketch this came from had
-  "tilt down → upper hemisphere"; the direction and whether it is invertible are settled in the prototype.*
-- **Steered by hand** when no tracker is present: the window is dragged on the sphere view.
-- **Width** of the window: from a narrow beam to a hemisphere.
+**The loudspeakers stay where they are; the head chooses the slice.** The field is turned by the head's
+orientation before a stereo layout's decode, so whatever the head points at lands in front, between the two
+loudspeakers. On headphones the same turn keeps the scene still; here it moves the scene past loudspeakers that
+do not move — look up, and what is above plays on the pair.
+
+**There is no Lens engine.** It is the rotation of §7 and a speaker decode (§3), as any layout is: what lies in a
+loudspeaker's region plays on that loudspeaker. A stereo layout alone would fold everything behind and above onto
+the pair; the rest of the sphere is filled with **imaginary loudspeakers**, whose signals are dropped, so only the
+slice in front reaches it. How wide the slice is, is where that imaginary ring sits.
+
+- **Steered by hand** when no tracker is present: the slice is dragged on the sphere view.
 - It is **diagnostic, not a simulation** of the headphone render, and the UI never presents it as one.
 
 ## 7. Head tracking and OSC orientation
@@ -248,8 +281,10 @@ Phone apps — Sensors2OSC on Android (`/rotationvector`, w last), ZIG SIM, GyrO
 - **Placing the loudspeakers** of an array (§3.3).
 - **Nothing on an array's output**: the listener's head is really in the room.
 - **Recentre** on a key.
-- **A bounce renders facing front.** Head tracking is live input; an offline render that followed it would not
-  match what the mix is. Tracking applies only to real-time playback.
+- **OSC on overrides; OSC off returns.** With OSC switched on, the orientation it sends replaces yaw, pitch and
+  roll — their automation and their sliders are ignored. Switched off, automation and sliders apply again.
+- **An offline render takes the automation.** No OSC arrives in an offline render, so it renders yaw, pitch and
+  roll as automated: a bounce never captures a head's movements.
 
 ### 7.3 Not here: OSC into the encoder
 
@@ -276,8 +311,10 @@ library when the second plugin needs it, not before.
 ## 9. Open questions
 
 - **Name.** "Decoder" is a working title. Does it keep the name *Lens*, or take another?
-- **Buses**: headphones and a speaker output at once means an output bus of 2 + N channels, which hosts
-  negotiate differently — to settle with the conformance suite before it is promised.
+- **Buses**: headphones and a speaker output at once is an output of 2 + N channels. **REAPER is the host for it**
+  (128 channels a track); Pro Tools Ultimate takes ambisonic tracks to order 7, Nuendo, Cubase and Studio One to
+  16 channels, so they can feed the decoder but not run headphones and an array of 16 at once. Those hosts get
+  headphones or a standard layout. What each negotiates is settled with the conformance suite.
 - **Orders**: 1–3 like the rest of the suite, or higher for arrays that can use it?
 - **Does stage one (§5.1) already give most of the thesis's gain?** Settled by listening, against the KU100 and
   against a deliberately poor set, as the thesis did.
@@ -286,11 +323,14 @@ library when the second plugin needs it, not before.
 
 All in the browser, under `prototypes/decoder/`:
 
-1. **MagLS binaural with head rotation** from the mouse — *built*, `listen/`; waiting on ears. Real tracker input needs a small OSC → WebSocket
-   bridge, since a browser cannot receive UDP.
+1. **MagLS binaural with head rotation** from the mouse — *built*, `listen/`; waiting on ears.
 2. **The array heard on headphones** (§3.1) — *built*, `listen/`, against the direct decode and an order-7
    reference, with distance compensation on and off; waiting on ears.
-3. **Stage-one personalisation** (§5.1, §5.2): head size, ear size, and cue depth per SH order, on the KU100.
-4. **The Lens** (§6), on the stereo pair.
-5. **Placing loudspeakers by looking** (§3.3), with a real tracker through the OSC bridge: how far head pointing
-   scatters, and how far yaw drifts over a calibration.
+3. **An OSC → WebSocket bridge**, since a browser cannot receive UDP — and with it the formats of §7.1 tried
+   against real devices: AirPods through Headitude, an Android phone through Sensors2OSC.
+4. **Personalisation against a real loudspeaker** (§5.0), head-tracked through the bridge, with the parameters of
+   §5.1 and §5.2 on the KU100. A browser can send two audio contexts to two output devices.
+5. **The Lens** (§6), on the stereo pair.
+6. **Placing loudspeakers by looking** (§3.3): how far head pointing scatters, and how far yaw drifts over a
+   calibration.
+7. **Layout import** (§3): AmbDec and the BS.2051 layouts beside the IEM JSON already read.
