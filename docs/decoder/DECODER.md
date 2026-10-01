@@ -272,7 +272,14 @@ Phone apps — Sensors2OSC on Android (`/rotationvector`, w last), ZIG SIM, GyrO
   a sluggish feel has a visible cause.
 - **Local only until asked.** A phone needs the port open on the network, which opens it to the whole network; the
   receiver binds to this computer until the user switches the network on.
-- **One port, one receiver.** The decoder exists once per session, so one listening port is enough.
+- **One port, one receiver, its number chosen.** The decoder exists once per session, so one listening port is
+  enough — but 9000 is everyone's default, and on the machine the prototype was built on REAPER itself already held
+  it. A port that is taken is said so plainly, with the program to look for, not left silent.
+- **Recentring takes off the yaw only.** Pitch and roll stay against gravity: recentring while looking down and then
+  turning keeps the head looking down, where taking off the whole orientation added a false roll of 9° to a plain
+  turn.
+- **Applied on arrival, not on a frame.** The orientation is applied as each message lands; the prototype first
+  applied it on the screen's frame, and it froze whenever its window was hidden.
 
 ### 7.2 What it drives
 
@@ -326,8 +333,10 @@ All in the browser, under `prototypes/decoder/`:
 1. **MagLS binaural with head rotation** from the mouse — *built*, `listen/`; waiting on ears.
 2. **The array heard on headphones** (§3.1) — *built*, `listen/`, against the direct decode and an order-7
    reference, with distance compensation on and off; waiting on ears.
-3. **An OSC → WebSocket bridge**, since a browser cannot receive UDP — and with it the formats of §7.1 tried
-   against real devices: AirPods through Headitude, an Android phone through Sensors2OSC.
+3. **An OSC → WebSocket bridge**, since a browser cannot receive UDP — *built*, `osc-bridge.py` with the tracker
+   section of `listen/`. Every format of §7.1 reads back the orientation it was sent, to 0.01°, including the
+   split addresses some apps use and both ways of holding a phone; a synthetic head (`--demo`) drives it end to end.
+   *Waiting on real devices*: AirPods through Headitude, an Android phone through Sensors2OSC.
 4. **Personalisation against a real loudspeaker** (§5.0), head-tracked through the bridge, with the parameters of
    §5.1 and §5.2 on the KU100. A browser can send two audio contexts to two output devices.
 5. **The Lens** (§6), on the stereo pair.

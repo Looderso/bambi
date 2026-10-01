@@ -80,6 +80,23 @@
     <p class="note"><b>Sweep</b> turns the head ±60° slowly, hands free. With <b>rotation off</b> the scene turns
       with the head, as headphones without tracking do.</p>
 
+    <h2>TRACKER · OSC</h2>
+    <div class="row"><button id="bWs">Connect bridge</button><button id="bOsc" disabled>OSC drives the head</button></div>
+    <p class="note" id="wsNote">Run <b>python3 prototypes/decoder/osc-bridge.py</b> (add <b>--network</b> for a phone),
+      then connect. OSC port 9000; if REAPER or another app holds it, <b>--osc-port 9001</b>.</p>
+    <div class="sub note">read as</div>
+    <div class="seg" id="segRead"></div>
+    <div id="learnBox" style="display:none">
+      <div class="sub note">address</div><div class="seg" id="segAddr"></div>
+      <div class="sub note">its values are</div><div class="seg" id="segInterp"></div>
+      <div class="sub note">flip</div><div class="row" id="rowFlip"></div>
+    </div>
+    <div class="sub note">the device's axes</div>
+    <div class="seg" id="segAxes"></div>
+    <div id="smoothCtl"></div>
+    <p class="note">On, OSC overrides the sliders, the keys and the drag. <kbd>R</kbd> recentres on where the device
+      points now. A phone points with its top edge (held flat) or its back (held upright).</p>
+
     <h2>SOURCES</h2>
     <div id="sources"></div>
 
@@ -346,7 +363,8 @@ function startSource(i) {
 }
 function stopSource(i) { if (srcNodes[i]) { srcNodes[i].stop(); srcNodes[i].disconnect(); srcNodes[i] = null; } }
 
-function currentRotation() { return S.track ? headRot(S.head) : [1, 0, 0, 0, 1, 0, 0, 0, 1]; }
+const headMatrix = () => (T.on && T.R ? T.R : headRot(S.head));
+function currentRotation() { return S.track ? headMatrix() : [1, 0, 0, 0, 1, 0, 0, 0, 1]; }
 function pushScene() {
   if (!sceneNode) return;
   const gains = S.sources.map(s => Array.from(shN(N7, ...dirOf(s.az * D2R, s.el * D2R)), v => v * (s.on ? s.gain : 0)));
@@ -446,7 +464,7 @@ const headDraws = [
   ctl($("headCtl"), "roll", -90, 90, () => S.head.roll, v => { S.head.roll = v; pushScene(); }, v => v.toFixed(0) + "°"),
 ];
 const redrawHead = () => headDraws.forEach(f => f());
-$("bRecentre").onclick = () => { S.head = { yaw: 0, pitch: 0, roll: 0 }; S.sweep = false; $("bSweep").classList.remove("on"); redrawHead(); pushScene(); };
+$("bRecentre").onclick = () => { if (T.on) { if (T.raw) T.yaw0 = yawOf(T.raw); return; } S.head = { yaw: 0, pitch: 0, roll: 0 }; S.sweep = false; $("bSweep").classList.remove("on"); redrawHead(); pushScene(); };
 $("bSweep").onclick = () => { S.sweep = !S.sweep; $("bSweep").classList.toggle("on", S.sweep); };
 $("bTrack").onclick = () => { S.track = !S.track; $("bTrack").classList.toggle("on", S.track);
   $("bTrack").textContent = S.track ? "Rotation follows head" : "Rotation off"; pushScene(); };
@@ -475,6 +493,7 @@ $("bStart").onclick = async () => {
 addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT") return;
   const step = e.shiftKey ? 1 : 10, h = S.head;
+  if (T.on && (e.key.startsWith("Arrow") || "qQeE".includes(e.key))) return;
   if (e.key === "ArrowLeft") h.yaw += step; else if (e.key === "ArrowRight") h.yaw -= step;
   else if (e.key === "ArrowUp") h.pitch = Math.min(90, h.pitch + step); else if (e.key === "ArrowDown") h.pitch = Math.max(-90, h.pitch - step);
   else if (e.key === "q" || e.key === "Q") h.roll -= step; else if (e.key === "e" || e.key === "E") h.roll += step;
@@ -486,6 +505,111 @@ addEventListener("keydown", e => {
   h.yaw = ((h.yaw + 540) % 360) - 180; h.roll = Math.max(-90, Math.min(90, h.roll));
   e.preventDefault(); redrawHead(); pushScene();
 });
+
+// ---------- the tracker: OSC through osc-bridge.py ----------
+// Orientation arrives as a quaternion or as yaw-pitch-roll; either becomes a 3x3 rotation of the device in a
+// gravity-aligned world (z up), is mapped to the head's axes (x front, y left, z up), has the yaw at recentre taken
+// off — pitch and roll stay against gravity — and is smoothed. The result replaces the sliders while OSC is on.
+const T = { ws: null, on: false, read: "auto", addr: null, interp: "quat-wxyz", flip: [false, false, false],
+  axes: "head", smooth: 0.05, raw: null, yaw0: null, R: null, q: [1, 0, 0, 0], target: null,
+  seen: {}, parts: {}, count: 0, rate: 0, last: "", tick: performance.now() };
+const KNOWN = { "/adm/lis/ypr": "ypr-deg", "/ypr": "ypr-deg", "/SceneRotator/ypr": "ypr-deg",
+  "/quaternion": "quat-wxyz", "/SceneRotator/quaternions": "quat-wxyz", "/rotationvector": "quat-xyzw" };
+const INTERP = { "quat-wxyz": "quat w x y z", "quat-xyzw": "quat x y z w", "ypr-deg": "ypr °", "ypr-rad": "ypr rad" };
+// Rows: the head's front, left and up, in the device's coordinates.
+const AXES = {
+  head: { label: "as sent", M: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+  phoneTop: { label: "phone, top edge", M: [0, 1, 0, -1, 0, 0, 0, 0, 1] },
+  phoneBack: { label: "phone, back", M: [0, 0, -1, -1, 0, 0, 0, 1, 0] },
+};
+const qToM = ([w, x, y, z]) => [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y),
+  2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x),
+  2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)];
+function mToQ(m) {
+  const tr = m[0] + m[4] + m[8]; let w, x, y, z;
+  if (tr > 0) { const s = Math.sqrt(tr + 1) * 2; w = s / 4; x = (m[7] - m[5]) / s; y = (m[2] - m[6]) / s; z = (m[3] - m[1]) / s; }
+  else if (m[0] > m[4] && m[0] > m[8]) { const s = Math.sqrt(1 + m[0] - m[4] - m[8]) * 2; w = (m[7] - m[5]) / s; x = s / 4; y = (m[1] + m[3]) / s; z = (m[2] + m[6]) / s; }
+  else if (m[4] > m[8]) { const s = Math.sqrt(1 + m[4] - m[0] - m[8]) * 2; w = (m[2] - m[6]) / s; x = (m[1] + m[3]) / s; y = s / 4; z = (m[5] + m[7]) / s; }
+  else { const s = Math.sqrt(1 + m[8] - m[0] - m[4]) * 2; w = (m[3] - m[1]) / s; x = (m[2] + m[6]) / s; y = (m[5] + m[7]) / s; z = s / 4; }
+  return [w, x, y, z];
+}
+function slerp(a, b, k) {
+  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+  if (d < 0) { b = b.map(v => -v); d = -d; }
+  const r = d > 0.9995 ? a.map((v, i) => v + k * (b[i] - v)) : (() => { const th = Math.acos(d), s = Math.sin(th);
+    return a.map((v, i) => (Math.sin((1 - k) * th) * v + Math.sin(k * th) * b[i]) / s); })();
+  const n = Math.hypot(...r); return r.map(v => v / n);
+}
+function toMatrix(interp, v) {
+  const f = T.flip;
+  if (interp.startsWith("quat")) {
+    let [w, x, y, z] = interp === "quat-wxyz" ? v : [v[3], v[0], v[1], v[2]];
+    const n = Math.hypot(w, x, y, z) || 1; [w, x, y, z] = [w / n, x / n, y / n, z / n];
+    return qToM([w, f[0] ? -x : x, f[1] ? -y : y, f[2] ? -z : z]);
+  }
+  const k = interp === "ypr-rad" ? 180 / Math.PI : 1;
+  return headRot({ yaw: (f[0] ? -1 : 1) * v[0] * k, pitch: (f[1] ? -1 : 1) * v[1] * k, roll: (f[2] ? -1 : 1) * v[2] * k });
+}
+const yawOf = m => Math.atan2(m[3], m[0]);
+function onOsc(m) {
+  T.count++; T.seen[m.address] = m.args; T.last = m.address;
+  let interp = null, v = m.args;
+  // Some apps send each value under its own address; gather them.
+  const part = m.address.match(/^(\/rotationvector|\/SceneRotator)\/(X|Y|Z|cos|yaw|pitch|roll)$/i);
+  if (part) { const g = T.parts[part[1]] ||= {}; g[part[2].toLowerCase()] = v[0];
+    if (part[1] === "/rotationvector" && part[2] === "cos" && "x" in g) { interp = "quat-xyzw"; v = [g.x, g.y, g.z, g.cos]; }
+    else if (part[1] === "/SceneRotator" && "yaw" in g) { interp = "ypr-deg"; v = [g.yaw, g.pitch ?? 0, g.roll ?? 0]; } }
+  if (T.read === "auto" && KNOWN[m.address]) interp = KNOWN[m.address];
+  if (T.read === "learn") { if (m.address !== T.addr) return; interp = T.interp; }
+  if (!interp || v.length < (interp.startsWith("quat") ? 4 : 3) || v.some(x => typeof x !== "number")) return;
+  T.raw = mul3(toMatrix(interp, v), tr3(AXES[T.axes].M));    // the head's axes in the world
+  if (T.yaw0 === null) T.yaw0 = yawOf(T.raw);
+  T.target = mToQ(mul3(rz(-T.yaw0), T.raw));
+  trackerFrame();
+}
+// Run on every message, not on the animation frame: a hidden tab stops its animation frames, and the head must
+// keep turning while another window is in front.
+function trackerFrame() {
+  const now = performance.now(), dt = (now - T.tick) / 1000, step = Math.min(0.1, (now - (T.stepAt ?? now)) / 1000);
+  T.stepAt = now;
+  if (dt > 1) { T.rate = T.count / dt; T.count = 0; T.tick = now; drawTrackerNote(); if (T.read === "learn") drawLearn(); }
+  if (!T.on || !T.target) return;
+  T.q = slerp(T.q, T.target, T.smooth > 0 ? 1 - Math.exp(-step / T.smooth) : 1);
+  T.R = qToM(T.q);
+  const f = app3(T.R, [1, 0, 0]);
+  S.head = { yaw: Math.atan2(f[1], f[0]) / D2R, pitch: Math.asin(Math.max(-1, Math.min(1, f[2]))) / D2R,
+             roll: Math.atan2(T.R[7], T.R[8]) / D2R };
+  redrawHead(); pushScene();
+}
+function drawTrackerNote() {
+  if (!T.ws) return;
+  const known = KNOWN[T.last] ? ` — ${INTERP[KNOWN[T.last]]}` : (T.last ? " — unknown, use learn" : "");
+  $("wsNote").textContent = T.ws.readyState === 1
+    ? (T.rate ? `${T.rate.toFixed(0)} messages/s, last ${T.last}${known}` : "Connected. Nothing arriving yet — check the sender's address and port.")
+    : "Not connected — is osc-bridge.py running?";
+}
+function drawLearn() {
+  $("learnBox").style.display = T.read === "learn" ? "" : "none";
+  const addrs = Object.keys(T.seen);
+  seg($("segAddr"), addrs.length ? addrs : ["(nothing yet)"], () => T.addr, v => { T.addr = v; T.yaw0 = null; });
+  seg($("segInterp"), Object.keys(INTERP), () => T.interp, v => { T.interp = v; T.yaw0 = null; }, v => INTERP[v]);
+}
+seg($("segRead"), ["auto", "learn"], () => T.read, v => { T.read = v; T.yaw0 = null; drawLearn(); },
+    v => v === "auto" ? "Known formats" : "Learn");
+seg($("segAxes"), Object.keys(AXES), () => T.axes, v => { T.axes = v; T.yaw0 = null; }, v => AXES[v].label);
+["x / yaw", "y / pitch", "z / roll"].forEach((lab, i) => { const b = document.createElement("button"); b.textContent = lab;
+  b.onclick = () => { T.flip[i] = !T.flip[i]; b.classList.toggle("on", T.flip[i]); T.yaw0 = null; }; $("rowFlip").appendChild(b); });
+ctl($("smoothCtl"), "smoothing", 0, 0.3, () => T.smooth, v => { T.smooth = v; }, v => (v * 1000).toFixed(0) + " ms");
+$("bWs").onclick = () => {
+  if (T.ws) { T.ws.close(); return; }
+  const ws = new WebSocket("ws://127.0.0.1:8766"); T.ws = ws;
+  ws.onopen = () => { $("bWs").textContent = "Disconnect"; $("bOsc").disabled = false; drawTrackerNote(); };
+  ws.onmessage = e => onOsc(JSON.parse(e.data));
+  ws.onclose = () => { T.ws = null; T.on = false; $("bWs").textContent = "Connect bridge"; $("bOsc").disabled = true;
+    $("bOsc").classList.remove("on"); $("wsNote").textContent = "Disconnected — is osc-bridge.py running?"; };
+};
+$("bOsc").onclick = () => { T.on = !T.on; $("bOsc").classList.toggle("on", T.on); T.yaw0 = null; T.q = [1, 0, 0, 0];
+  if (T.on) { S.sweep = false; $("bSweep").classList.remove("on"); } };
 
 // ---------- the two maps ----------
 // Equirectangular, front in the middle, left on the left: x from azimuth +180 (left edge) to -180.
@@ -521,8 +645,8 @@ function drawSource(c, g, az, el, s) {
 }
 const I3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 function draw() {
-  if (S.sweep) { S.head.yaw = 60 * Math.sin(performance.now() / 1000 * 2 * Math.PI / 8); redrawHead(); pushScene(); }
-  const R = headRot(S.head), Rst = tr3(currentRotation());
+  if (S.sweep && !T.on) { S.head.yaw = 60 * Math.sin(performance.now() / 1000 * 2 * Math.PI / 8); redrawHead(); pushScene(); }
+  const R = headMatrix(), Rst = tr3(currentRotation());
   let c = cvW.getContext("2d"), g = mapGeom(cvW); c.clearRect(0, 0, cvW.width, cvW.height); drawGrid(c, g);
   drawSpeakers(c, g, I3);
   S.sources.forEach(s => drawSource(c, g, s.az, s.el, s));
@@ -548,7 +672,7 @@ cvW.onpointermove = e => { if (!dragSrc) return; const g = mapGeom(cvW);
 cvW.onpointerup = () => { dragSrc = null; };
 // Drag the heard map to turn the head: the scene is grabbed, so dragging it right turns the head left.
 let headDrag = null;
-cvH.onpointerdown = e => { headDrag = [e.clientX, e.clientY]; cvH.setPointerCapture(e.pointerId); S.sweep = false; $("bSweep").classList.remove("on"); };
+cvH.onpointerdown = e => { if (T.on) return; headDrag = [e.clientX, e.clientY]; cvH.setPointerCapture(e.pointerId); S.sweep = false; $("bSweep").classList.remove("on"); };
 cvH.onpointermove = e => { if (!headDrag) return; const g = mapGeom(cvH), k = 360 / (g.w / g.dpr);
   S.head.yaw = ((S.head.yaw + (e.clientX - headDrag[0]) * k + 540) % 360) - 180;
   S.head.pitch = Math.max(-90, Math.min(90, S.head.pitch + (e.clientY - headDrag[1]) * k));
