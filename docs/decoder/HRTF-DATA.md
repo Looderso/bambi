@@ -139,8 +139,29 @@ Every one of the 68 heads comes closer than with the KU100. The VAE's axis is sm
 are independent (r = −0.04); the ordering's axis zigzags. **The VAE blurs**: its notches are 5.0 dB deep against
 7.3 dB for real heads — the first thing to listen for, and to improve. Trained on the Apple GPU in about 1.5 minutes.
 
+**Too weak to hear, and fixed.** Listened to in the match prototype, the one-input VAE's notches were too weak to
+move elevation. Two more rounds (`pattern-models2.py`, `pattern-models3.py`), held out as before:
+
+| variant | distance | notch depth at the best place, of the head's own | pad: largest step ÷ median |
+|---|---|---|---|
+| one free input + shift, as before | 1.35 | 78 % | 1.2× |
+| one free input + shift, dips weighted, mirrored, β 0.005 | 1.35 | 144 % | 2.6× |
+| two free inputs, the same | 1.33 | 140 % | 3.4× |
+| two free, mirrored, depth term symmetric, β 0.02 | 1.33 | 108 % | 2.4× |
+| — the same, β 0.05 | 1.33 | 102 % | 2.3× |
+| **— the same, β 0.02, randomly shifted ±1.5 ERB while training** | **1.34** | **98 %** | **1.6×** |
+
+- **A loss that weights the dips deepens the notches**; only penalising a shallower notch overshoots (140 %), a
+  symmetric depth term lands on the heads' own.
+- **Two free inputs do as well as one input and a shift**, so the fixed shift is not needed.
+- **Shifting the training heads at random makes the pad even**: the latent space comes out smoother.
+- **Every variant overfits early**: the validation loss is best after 200–1300 steps and worse after; with 206
+  heads (412 mirrored) more steps do not help, and the best step is kept.
+
+The last is on the pad: two free inputs, notches as deep as the heads', 38 % closer than the KU100.
+
 `export-model.py` turns it into `prototypes/decoder/match/model.js` (outside version control: SONICOM data), which the
-match prototype plays as "Model" cues on a pad — pattern across, shift up and down.
+match prototype plays as "Model" cues on a pad — both inputs free, interpolated between a 13 × 13 grid.
 
 ## 6. Next
 

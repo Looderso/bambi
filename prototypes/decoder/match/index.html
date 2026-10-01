@@ -95,7 +95,7 @@ const NC = (MATCH.order + 1) ** 2, NB = MATCH.bins, NI = (MATCH.itdOrder + 1) **
 // ---------- state ----------
 const S = { head: { yaw: 0, pitch: 0, roll: 0 }, spk: { az: 30, el: 0 }, channel: 0, mode: "alternate", burst: "noise",
   headScale: 1, earScale: 1, virtualDb: -6, realDb: -6, locating: false, sinkV: "", sinkR: "",
-  cues: "ku100", pattern: 0.5, shift: 0 };
+  cues: "ku100", pattern: 0.5, shift: 0, p2: 0.5 };
 const DEFAULTS = { headScale: 1, earScale: 1, shift: 0 };
 
 // ---------- the two-input model (model.js, generated locally by hrtf-data/export-model.py) ----------
@@ -106,7 +106,20 @@ const HAS_MODEL = !!window.MODEL;
 const MPAT = HAS_MODEL ? unpackModel(MODEL.patterns) : null, MBASE = HAS_MODEL ? unpackModel(MODEL.baseline) : null;
 const MNC = HAS_MODEL ? (MODEL.order + 1) ** 2 : 0, ME = HAS_MODEL ? MODEL.erb.length : 0;
 function unpackModel(s) { return new Float32Array(Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer); }
-if (HAS_MODEL) { const ts = MODEL.fitted.map(p => p[0]).sort((a, b) => a - b); S.pattern = ts[Math.floor(ts.length / 2)]; }
+// A model is either one free input with a shift (MODEL.t) or two free inputs on a grid (MODEL.grid, no shift).
+const GRID = HAS_MODEL && MODEL.grid;
+const medianOf = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+if (HAS_MODEL) { S.pattern = medianOf(MODEL.fitted.map(p => p[0])); if (GRID) S.p2 = medianOf(MODEL.fitted.map(p => p[1])); }
+// The grid patterns to blend for the current inputs, as [index, weight] pairs.
+function patternWeights() {
+  if (GRID) {
+    const [n1, n2] = MODEL.grid, x = Math.max(0, Math.min(1, S.pattern)) * (n1 - 1), y = Math.max(0, Math.min(1, S.p2)) * (n2 - 1);
+    const i = Math.min(n1 - 2, Math.floor(x)), j = Math.min(n2 - 2, Math.floor(y)), a = x - i, b = y - j;
+    return [[i * n2 + j, (1 - a) * (1 - b)], [(i + 1) * n2 + j, a * (1 - b)], [i * n2 + j + 1, (1 - a) * b], [(i + 1) * n2 + j + 1, a * b]];
+  }
+  const T = MODEL.t.length, tp = Math.max(0, Math.min(1, S.pattern)) * (T - 1), i0 = Math.min(T - 2, Math.floor(tp)), a = tp - i0;
+  return [[i0, 1 - a], [i0 + 1, a]];
+}
 function shOrth(order, u) {
   const y = shN(order, ...u);
   for (let n = 0; n <= order; n++) { const k = Math.sqrt((2 * n + 1) / (4 * Math.PI)); for (let m = -n; m <= n; m++) y[n * n + n + m] *= k; }
@@ -114,20 +127,21 @@ function shOrth(order, u) {
 }
 // The model's CLL DTF at direction u on the renderer's linear bins, blended into kuDtf outside 1–18 kHz.
 function modelDtf(u, kuDtf) {
-  const y = shOrth(MODEL.order, u), T = MODEL.t.length;
-  const tp = Math.max(0, Math.min(1, S.pattern)) * (T - 1), i0 = Math.min(T - 2, Math.floor(tp)), a = tp - i0;
+  const y = shOrth(MODEL.order, u), pw = patternWeights();
   const pat = new Float64Array(ME), base = new Float64Array(ME);
   for (let c = 0; c < MNC; c++) {
-    const yc = y[c], o0 = (i0 * MNC + c) * ME, o1 = ((i0 + 1) * MNC + c) * ME, ob = c * ME;
-    for (let e = 0; e < ME; e++) { pat[e] += yc * ((1 - a) * MPAT[o0 + e] + a * MPAT[o1 + e]); base[e] += yc * MBASE[ob + e]; }
+    const yc = y[c], ob = c * ME;
+    for (let e = 0; e < ME; e++) base[e] += yc * MBASE[ob + e];
+    for (const [g, w] of pw) { if (!w) continue; const o = (g * MNC + c) * ME, k = yc * w; for (let e = 0; e < ME; e++) pat[e] += k * MPAT[o + e]; }
   }
+  const shiftErb = GRID ? 0 : S.shift;
   const step = MODEL.erb[1] - MODEL.erb[0], out = new Float64Array(NB);
   const read = (arr, x) => { const xc = Math.max(0, Math.min(ME - 1, x)), j = Math.min(ME - 2, Math.floor(xc)), fr = xc - j; return arr[j] * (1 - fr) + arr[j + 1] * fr; };
   const ramp = (x, lo, hi) => Math.max(0, Math.min(1, (x - lo) / (hi - lo)));
   for (let b = 0; b < NB; b++) {
     const f = b * SR / (2 * (NB - 1)), idx = (21.4 * Math.log10(1 + 0.00437 * f) - MODEL.erb[0]) / step;
     const w = ramp(f, 900, 1100) * (1 - ramp(f, 17000, 19000));
-    out[b] = w * (read(base, idx) + read(pat, idx + S.shift / step)) + (1 - w) * kuDtf[b];
+    out[b] = w * (read(base, idx) + read(pat, idx + shiftErb / step)) + (1 - w) * kuDtf[b];
   }
   return out;
 }
@@ -371,7 +385,8 @@ function drawReadout() {
   $("readout").innerHTML = `loudspeaker relative to the head: <b>${(a / D2R).toFixed(0)}°</b> azimuth, <b>${(e / D2R).toFixed(0)}°</b> elevation
     · ITD <b>${(last.itd * 1e6).toFixed(0)} µs</b> (KU100 ${(last.itd0 * 1e6).toFixed(0)} µs)
     · head size <b>${(S.headScale * 100).toFixed(0)} %</b>, ` + (S.cues === "model"
-      ? `model: pattern <b>${S.pattern.toFixed(2)}</b>, shift <b>${S.shift.toFixed(2)} ERB</b>`
+      ? (GRID ? `model ${MODEL.variant}: inputs <b>${S.pattern.toFixed(2)}</b>, <b>${S.p2.toFixed(2)}</b>`
+              : `model: pattern <b>${S.pattern.toFixed(2)}</b>, shift <b>${S.shift.toFixed(2)} ERB</b>`)
       : `ear size <b>${(S.earScale * 100).toFixed(0)} %</b>`);
 }
 
@@ -436,11 +451,15 @@ function drawCues() {
   $("padBox").style.display = S.cues === "model" ? "" : "none";
   matchDraws[1](); document.querySelectorAll("#matchCtl .ctl")[1].style.opacity = S.cues === "model" ? 0.35 : 1;
   $("cuesNote").textContent = !HAS_MODEL ? "No model.js — run hrtf-data/export-model.py to make one."
-    : S.cues === "model" ? "The vertical cues (CLL) from the model on the KU100's timbre; ILD and ITD stay the KU100's, with head size. Ear size is off: the pad's shift takes its place."
+    : S.cues === "model" ? (GRID ? "The vertical cues (CLL) from the two-input model on the KU100's timbre; ILD and ITD stay the KU100's, with head size. Ear size is off."
+      : "The vertical cues (CLL) from the model on the KU100's timbre; ILD and ITD stay the KU100's, with head size. Ear size is off: the pad's shift takes its place.")
     : "The KU100's own cues; ear size stretches them.";
   drawPad();
 }
-const padY = s => (MODEL.shiftMax - s) / (MODEL.shiftMax - MODEL.shiftMin);           // 0 top … 1 bottom
+// The pad's vertical position, 0 bottom … 1 top: input 2 on a grid model, the (negated) shift otherwise.
+const upOfShift = s => (MODEL.shiftMax - s) / (MODEL.shiftMax - MODEL.shiftMin);        // most negative shift at the top
+const padUp = () => GRID ? S.p2 : upOfShift(S.shift);
+const fittedUp = p => GRID ? p[1] : upOfShift(p[1]);
 function drawPad() {
   if (!HAS_MODEL || S.cues !== "model") return;
   const cv = $("cvPad"), r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
@@ -448,14 +467,16 @@ function drawPad() {
   const c = cv.getContext("2d"), W = cv.width, H = cv.height;
   c.clearRect(0, 0, W, H);
   c.strokeStyle = "#c8c4ba"; c.lineWidth = dpr;
-  c.beginPath(); c.moveTo(0, padY(0) * H); c.lineTo(W, padY(0) * H); c.stroke();
+  if (!GRID) { const y0 = (1 - fittedUp([0, 0])) * H; c.beginPath(); c.moveTo(0, y0); c.lineTo(W, y0); c.stroke(); }
   c.fillStyle = "rgba(27,26,23,0.25)";
-  for (const [tt, ss] of MODEL.fitted) { c.beginPath(); c.arc(tt * W, (1 - padY(ss)) * H, 2.5 * dpr, 0, 7); c.fill(); }
-  c.fillStyle = "#d4873a"; c.beginPath(); c.arc(S.pattern * W, (1 - padY(S.shift)) * H, 6 * dpr, 0, 7); c.fill();
+  for (const p of MODEL.fitted) { c.beginPath(); c.arc(p[0] * W, (1 - fittedUp(p)) * H, 2.5 * dpr, 0, 7); c.fill(); }
+  c.fillStyle = "#d4873a"; c.beginPath(); c.arc(S.pattern * W, (1 - padUp()) * H, 6 * dpr, 0, 7); c.fill();
   c.fillStyle = "#6f6b62"; c.font = `${9 * dpr}px Helvetica Neue, sans-serif`;
-  c.textAlign = "left"; c.fillText("notches higher ↑", 6 * dpr, 12 * dpr); c.fillText("notches lower ↓", 6 * dpr, H - 6 * dpr);
-  c.textAlign = "right"; c.fillText("pattern →", W - 6 * dpr, H - 6 * dpr);
-  $("padNote").textContent = `pattern ${S.pattern.toFixed(2)}, shift ${S.shift >= 0 ? "+" : ""}${S.shift.toFixed(2)} ERB — grey: where held-out heads fit best`;
+  c.textAlign = "left"; c.fillText(GRID ? "input 2 ↑" : "notches higher ↑", 6 * dpr, 12 * dpr);
+  if (!GRID) c.fillText("notches lower ↓", 6 * dpr, H - 6 * dpr);
+  c.textAlign = "right"; c.fillText(GRID ? "input 1 →" : "pattern →", W - 6 * dpr, H - 6 * dpr);
+  $("padNote").textContent = (GRID ? `inputs ${S.pattern.toFixed(2)}, ${S.p2.toFixed(2)}`
+    : `pattern ${S.pattern.toFixed(2)}, shift ${S.shift >= 0 ? "+" : ""}${S.shift.toFixed(2)} ERB`) + " — grey: where held-out heads fit best";
 }
 // Up on the pad moves the notches up in frequency: a negative shift.
 if (HAS_MODEL) {
@@ -463,7 +484,7 @@ if (HAS_MODEL) {
   const setFrom = e => { const r = pad.getBoundingClientRect();
     S.pattern = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
     const yy = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
-    S.shift = MODEL.shiftMax - (1 - yy) * (MODEL.shiftMax - MODEL.shiftMin);
+    if (GRID) S.p2 = 1 - yy; else S.shift = MODEL.shiftMax - (1 - yy) * (MODEL.shiftMax - MODEL.shiftMin);
     drawPad(); update(); };
   pad.onpointerdown = e => { pad.setPointerCapture(e.pointerId); setFrom(e); pad.onpointermove = setFrom; };
   pad.onpointerup = () => { pad.onpointermove = null; };

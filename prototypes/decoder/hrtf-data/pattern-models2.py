@@ -76,7 +76,9 @@ def loss_fn(rec, x, b, smooth, band, k_mask, depth_weight):
         d_rec = (rec * SCALE)[..., k_mask]; d_x = (x * SCALE)[..., k_mask]
         depth_rec = d_rec.max(-1).values - d_rec.min(-1).values
         depth_x = d_x.max(-1).values - d_x.min(-1).values
-        loss = loss + 0.02 * torch.mean(torch.relu(depth_x - depth_rec) ** 2)  # a shallower notch than the head's costs
+        gap = depth_x - depth_rec
+        # "shallow": only a shallower notch than the head's costs (it overshoots); "both": too deep costs alike
+        loss = loss + 0.02 * torch.mean((gap if depth_weight == "both" else torch.relu(gap)) ** 2)
     else:
         loss = loss + 0.05 * torch.mean(err ** 2)
     return loss

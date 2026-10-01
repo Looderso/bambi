@@ -6,7 +6,11 @@ the 300 (the roughness penalty of the grid experiments), the order chosen by the
 
 Writes the model as JavaScript, outside version control: it is derived from SONICOM data, whose licence is unclear.
 
-  python export-model.py <...-model.npz> <out.js>
+A two-free-input model (pattern-models3.py) is a grid over both inputs; it is thinned to every second point (13 x 13)
+to keep the file small, and the page interpolates between neighbours.
+
+  python export-model.py <...-model.npz> <out.js>                 the one-input model with a shift
+  python export-model.py <...-models3.npz> <out.js> <variant>     a two-input model, e.g. V2b
 """
 import base64, os, sys
 from importlib.util import spec_from_file_location, module_from_spec
@@ -19,11 +23,20 @@ ORDERS = (8, 10, 12, 15)
 LAM = 1e-4
 
 
-def main(path, out):
+def main(path, out, variant=None):
     m = np.load(path)
     az, el, sphere = m["az"], m["el"], m["sphere"]
     med = np.setdiff1d(np.arange(len(az)), sphere)
-    pats, base = m["patterns"].astype(float), m["baseline"].astype(float)          # T x dirs x E, dirs x E
+    if variant:
+        g = m[f"{variant}_grid"].astype(float).reshape(25, 25, len(az), -1)[::2, ::2]   # 13 x 13 x dirs x E
+        zz = m[f"{variant}_z"].reshape(25, 25, 2)[::2, ::2]
+        lo, hi = zz[0, 0], zz[-1, -1]
+        fitted = (m[f"{variant}_fitted"] - lo) / (hi - lo)                              # held-out heads, 0…1 on the pad
+        pats, base = g.reshape(-1, len(az), g.shape[-1]), m["base"].astype(float)
+        kind = {"grid": [13, 13], "fitted": np.round(fitted, 3).tolist()}
+    else:
+        pats, base = m["patterns"].astype(float), m["baseline"].astype(float)          # T x dirs x E, dirs x E
+        kind = None
     w = np.full(len(sphere), 1 / len(sphere))
     allv = np.concatenate([pats, base[None]])                                       # (T+1) x dirs x E
     chosen = None
@@ -47,10 +60,15 @@ def main(path, out):
         js.write("// (ERB). Patterns: [t][coef][erb] and baseline [coef][erb], orthonormal real SH (SN3D·sqrt((2n+1)/4π)), ACN.\n")
         # A property of window, not a const: a page checks for it with window.MODEL, which a failed or missing
         # file leaves simply undefined.
-        js.write(f"window.MODEL = {{ order: {order}, t: {np.round(m['t'], 6).tolist()},\n")
-        js.write(f"  erb: {np.round(m['erb'], 4).tolist()},\n  freq: {np.round(m['freq'], 2).tolist()},\n")
-        js.write(f"  shiftMin: {float(m['shifts'][0])}, shiftMax: {float(m['shifts'][-1])},\n")
-        js.write(f"  fitted: {np.round(m['fitted'], 3).tolist()},\n")
+        if kind:
+            js.write(f"window.MODEL = {{ order: {order}, grid: {kind['grid']}, variant: \"{variant}\",\n")
+            js.write(f"  erb: {np.round(m['erb'], 4).tolist()},\n  freq: {np.round(m['freq'], 2).tolist()},\n")
+            js.write(f"  fitted: {kind['fitted']},\n")
+        else:
+            js.write(f"window.MODEL = {{ order: {order}, t: {np.round(m['t'], 6).tolist()},\n")
+            js.write(f"  erb: {np.round(m['erb'], 4).tolist()},\n  freq: {np.round(m['freq'], 2).tolist()},\n")
+            js.write(f"  shiftMin: {float(m['shifts'][0])}, shiftMax: {float(m['shifts'][-1])},\n")
+            js.write(f"  fitted: {np.round(m['fitted'], 3).tolist()},\n")
         js.write(f"  patterns: \"{blob(c[:-1])}\",\n  baseline: \"{blob(c[-1])}\" }};\n")
     print(f"written {out}: {os.path.getsize(out) / 1e6:.1f} MB")
     # Reference values for checking the browser: one direction, two (t, s).
@@ -60,4 +78,4 @@ def main(path, out):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(*sys.argv[1:])
