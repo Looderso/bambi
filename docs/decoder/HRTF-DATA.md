@@ -72,11 +72,35 @@ KU100's gaps — did worse than smoothing alone: the wrong head is worse than no
 - **The ILD is harder than the CLL.** Even from a dense whole-sphere grid, order 20 leaves 1.9 dB of ILD error, from
   the far ear's sharp notches (held at ±40 dB). A gentler representation of the far-ear ILD may be needed.
 
-## 3. Next
+## 3. Equalising across databases
 
-1. **Equalise each database onto a common CTF**, as the thesis did (the DTF of a set plus the KU100's CTF), and
-   measure how far a database's average then sits from another's.
-2. **Unify every licensed set** with the deviation-from-average fit — the average built across databases once they
-   are equalised.
-3. **Measure the database fingerprint** that remains: how well a classifier still tells which database a head came
-   from.
+Measured (`equalise.py`) on the two databases that may ship, HUTUBS (96 heads) and 3D3A (38): each head resampled to
+48 kHz, windowed to 256 samples from its onset, equalised onto the KU100's CTF as the thesis did — the CTF a head's
+magnitude averaged over directions, here weighted by area since the grids are not uniform — and unified by the
+deviation-from-average fit (3D3A's gaps filled from the HUTUBS average). Compared on the directions both measured
+(−57…75°), 2–16 kHz:
+
+| | the two databases' averages apart (CLL / ILD) | a head from its own database's average | a classifier tells the database |
+|---|---|---|---|
+| raw | 12.37 / 2.73 dB | 4.4 / 5.4–5.9 dB | 99 % |
+| equalised | **2.35** / 2.69 dB | 3.4 / 4.8–4.9 dB | **98 %** |
+
+- **Equalisation removes the level and colour a database carries**: the averages' CLL comes 12.4 → 2.4 dB apart,
+  less than heads differ within one database.
+- **The fingerprint survives it**: a classifier still names the database 98 % of the time — as the study the thesis
+  cites found (> 95 %). Removing it is the next step; it is what PCA or a per-direction average normalisation is for.
+- **The CTF is taken per ear**, so a fixed left/right difference of the measurement chain leaves the ILD too (the
+  thesis held the ILD unchanged). The difference averages about 2 dB but passes 6 dB at some frequency for 56 of
+  the 96 HUTUBS heads and 14 of the 38 3D3A heads.
+- **Part of the ILD gap is distance, not fingerprint.** To the side, below 1.5 kHz, 3D3A's ILD is 7.5 dB against
+  HUTUBS's 5.7: 3D3A measured at 0.76 m, HUTUBS at 1.47 m, and a nearer source makes a larger ILD. At 2–16 kHz the
+  two agree within 1 dB. A correction for distance would take that part out before the fingerprint is judged.
+
+## 4. Next
+
+1. **Correct for measurement distance** (a near-field correction from a spherical head, at least for the ILD below
+   a few kHz).
+2. **Remove the database fingerprint** while keeping the binaural cues — per-direction normalisation by each
+   database's average, or PCA as the thesis suggested — and measure it with the same classifier, which should fall
+   towards 50 %.
+3. **Then the model.**
