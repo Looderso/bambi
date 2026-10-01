@@ -227,7 +227,7 @@ function makeSignal(kind) {
       for (let h = 1; h <= 14; h++) s += Math.sin(2 * Math.PI * f0 * h * t) / h;
       x[i] = s * 0.25 * (0.6 + 0.4 * Math.sin(2 * Math.PI * 0.5 * t)); }
   }
-  return b;
+  return normalizeRms(b);
 }
 
 function decodeBuffers(method, order) {
@@ -262,7 +262,8 @@ async function start() {
   sceneNode = new AudioWorkletNode(ctx, "scene", { numberOfInputs: 4, numberOfOutputs: 3, outputChannelCount: [32, 32, 16] });
   splitN = ctx.createChannelSplitter(16); split7a = ctx.createChannelSplitter(32); split7b = ctx.createChannelSplitter(32);
   sceneNode.connect(split7a, 0); sceneNode.connect(split7b, 1); sceneNode.connect(splitN, 2);
-  master = ctx.createGain(); master.gain.value = S.out; master.connect(ctx.destination);
+  master = ctx.createGain(); master.gain.value = 0; master.connect(safeOutput(ctx));
+  master.gain.setTargetAtTime(S.out, ctx.currentTime, 0.1);
   S.sources.forEach((s, i) => { srcNodes[i] = null; if (s.on) startSource(i); });
   pushArray(); pushMode(); pushScene(); buildDecoder();
   $("bStart").textContent = "Stop audio"; $("bStart").classList.remove("go");
@@ -366,7 +367,7 @@ S.sources.forEach((s, i) => {
   seg(d.querySelector(".seg"), SIGNALS, () => s.signal, v => { s.signal = v; if (ctx && s.on) { stopSource(i); startSource(i); } });
   ctl(d, "level", 0, 1, () => s.gain, v => { s.gain = v; pushScene(); }, v => (20 * Math.log10(Math.max(v, 1e-4))).toFixed(1) + " dB");
 });
-ctl($("fileCtl"), "file level", 0, 2, () => S.fileGain, v => { S.fileGain = v; if (fileSrc?.gainNode) fileSrc.gainNode.gain.value = v; },
+ctl($("fileCtl"), "file level", 0, 1, () => S.fileGain, v => { S.fileGain = v; if (fileSrc?.gainNode) fileSrc.gainNode.gain.value = v; },
     v => (20 * Math.log10(Math.max(v, 1e-4))).toFixed(1) + " dB");
 ctl($("outCtl"), "level", 0, 1, () => S.out, v => { S.out = v; if (master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.01); },
     v => (20 * Math.log10(Math.max(v, 1e-4))).toFixed(1) + " dB");

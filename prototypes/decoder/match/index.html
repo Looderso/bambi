@@ -80,7 +80,7 @@ const NC = (MATCH.magOrder + 1) ** 2, NB = MATCH.bins, NI = (MATCH.itdOrder + 1)
 
 // ---------- state ----------
 const S = { head: { yaw: 0, pitch: 0, roll: 0 }, spk: { az: 30, el: 0 }, channel: 0, mode: "alternate", burst: "noise",
-  headScale: 1, earScale: 1, virtualDb: 0, realDb: -6, locating: false, sinkV: "", sinkR: "" };
+  headScale: 1, earScale: 1, virtualDb: -6, realDb: -6, locating: false, sinkV: "", sinkR: "" };
 const DEFAULTS = { headScale: 1, earScale: 1 };
 
 // ---------- a direction → two minimum-phase filters and two delays ----------
@@ -177,9 +177,9 @@ function makeBurst(ctx, kind) {
     if (kind === "noise") { const w = Math.random() * 2 - 1;
       b0 = 0.99765 * b0 + w * 0.099; b1 = 0.963 * b1 + w * 0.2965; b2 = 0.57 * b2 + w * 1.0527;
       x[i] = (b0 + b1 + b2 + w * 0.1848) * 0.25 * Math.min(1, t / 0.005, (0.25 - t) / 0.005); }
-    else { const ph = t % 0.08; x[i] = ph < 0.002 ? (Math.random() * 2 - 1) * Math.exp(-ph / 0.0004) * 0.8 : 0; }
+    else { const ph = t % 0.08; x[i] = ph < 0.002 ? (Math.random() * 2 - 1) * Math.exp(-ph / 0.0004) : 0; }
   }
-  return b;
+  return normalizeRms(b);
 }
 // Both paths go through the same band, 300 Hz – 10 kHz: what laptop loudspeakers play.
 function band(ctx) { const hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter();
@@ -192,8 +192,9 @@ async function start() {
   const u = app3(tr3(headMatrix()), dirOf(S.spk.az * D2R, S.spk.el * D2R)), first = render(u);
   node = new AudioWorkletNode(ctxV, "binaural", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
     processorOptions: { h: first.h, d: first.d } });
-  gainV = ctxV.createGain(); node.connect(gainV); gainV.connect(ctxV.destination);
-  gainR = ctxR.createGain(); mergerR = ctxR.createChannelMerger(2); gainR.connect(mergerR, 0, S.channel); mergerR.connect(ctxR.destination);
+  gainV = ctxV.createGain(); gainV.gain.value = 0; node.connect(gainV); gainV.connect(safeOutput(ctxV));
+  gainR = ctxR.createGain(); gainR.gain.value = 0; mergerR = ctxR.createChannelMerger(2);
+  gainR.connect(mergerR, 0, S.channel); mergerR.connect(safeOutput(ctxR));
   for (const k of ["noise", "clicks"]) { bufV[k] = makeBurst(ctxV, k); bufR[k] = makeBurst(ctxR, k); }
   await applySinks(); levels(); update();
   timer = setInterval(schedule, 25);
@@ -212,9 +213,10 @@ async function applySinks() {
   $("deviceNote").textContent = `Headphones → ${v}. Loudspeakers → ${r}.` +
     (ctxV.sinkId === ctxR.sinkId ? " Both go to the same device — choose the loudspeakers in the second list." : "");
 }
+// Levels glide, never jump: 0.1 s to settle, and from silence at start.
 function levels() { if (!ctxV) return;
-  gainV.gain.setTargetAtTime(10 ** (S.virtualDb / 20), ctxV.currentTime, 0.01);
-  gainR.gain.setTargetAtTime(10 ** (S.realDb / 20), ctxR.currentTime, 0.01); }
+  gainV.gain.setTargetAtTime(10 ** (S.virtualDb / 20), ctxV.currentTime, 0.1);
+  gainR.gain.setTargetAtTime(10 ** (S.realDb / 20), ctxR.currentTime, 0.1); }
 function play(which) {
   const c = which === "real" ? ctxR : ctxV, s = c.createBufferSource();
   s.buffer = (which === "real" ? bufR : bufV)[S.burst];
@@ -306,8 +308,8 @@ const MODES = { alternate: "Alternate", real: "Real only", virtual: "Virtual onl
 const drawMode = () => seg($("segMode"), Object.keys(MODES), () => S.mode, v => { S.mode = v; }, v => MODES[v]);
 drawMode();
 seg($("segBurst"), ["noise", "clicks"], () => S.burst, v => { S.burst = v; }, v => v === "noise" ? "Noise burst" : "Clicks");
-ctl($("levelCtl"), "virtual level", -24, 12, () => S.virtualDb, v => { S.virtualDb = v; levels(); }, v => v.toFixed(1) + " dB");
-ctl($("levelCtl"), "real level", -36, 0, () => S.realDb, v => { S.realDb = v; levels(); }, v => v.toFixed(1) + " dB");
+ctl($("levelCtl"), "virtual level", -40, 0, () => S.virtualDb, v => { S.virtualDb = v; levels(); }, v => v.toFixed(1) + " dB");
+ctl($("levelCtl"), "real level", -40, 0, () => S.realDb, v => { S.realDb = v; levels(); }, v => v.toFixed(1) + " dB");
 const matchDraws = [
   ctl($("matchCtl"), "head size", 0.7, 1.4, () => S.headScale, v => { S.headScale = v; update(); }, v => (v * 100).toFixed(0) + " %"),
   ctl($("matchCtl"), "ear size", 0.8, 1.25, () => S.earScale, v => { S.earScale = v; update(); }, v => (v * 100).toFixed(0) + " %"),
