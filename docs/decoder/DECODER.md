@@ -212,17 +212,56 @@ of the same field, independent of any HRTF.
 - **Width** of the window: from a narrow beam to a hemisphere.
 - It is **diagnostic, not a simulation** of the headphone render, and the UI never presents it as one.
 
-## 7. Head tracking
+## 7. Head tracking and OSC orientation
 
-- **OSC in**: yaw, pitch, roll, or a quaternion, on a configurable port and address. **Headitude** (AirPods →
-  OSC) works with no other hardware; any tracker that sends OSC works.
-- **The rotation is applied to the scene before the binaural decode** — (N+1)² × (N+1)² per block, negligible.
-  For the Lens it steers the window. For an array it does nothing: the listener's head is really in the room.
+**The decoder receives orientation over OSC, and keeps it.** A head, a phone or any tracker turns the whole scene,
+and the decoder is the one place at the end of the chain where that happens — nothing is forwarded to other plugins.
+
+### 7.1 What it accepts
+
+There is one standard and two formats that became standards by use; everything else is read through a learn mode.
+
+| family | addresses | form |
+|---|---|---|
+| **ADM-OSC** — the industry standard, understood by L-ISA, Spat Revolution, Holophonix and others | `/adm/lis/ypr` | degrees; yaw right negative, pitch down negative — the suite's own convention, no remapping |
+| **SPARTA** | `/ypr`, `/quaternion` | degrees; quaternion w, x, y, z |
+| **IEM SceneRotator** | `/SceneRotator/ypr`, `/SceneRotator/quaternions` | the same two forms |
+| **Learn** — anything else | whatever arrives | the plugin shows each incoming address; the user picks quaternion (w first or last) or yaw-pitch-roll, degrees or radians, and which axes flip. Saved as a preset |
+
+Headitude (AirPods), the bridge apps of hardware trackers and most existing setups send one of the first three.
+Phone apps — Sensors2OSC on Android (`/rotationvector`, w last), ZIG SIM, GyrOSC — go through learn.
+
+- **Quaternions inside.** Phones and AirPods measure a quaternion; Euler input is converted on arrival, so nothing
+  gimbal-locks.
+- **A phone points with one of its axes** — its top edge or its screen normal, chosen — since its orientation is
+  against the world, with yaw a compass heading. Point at the front and recentre.
+- **Smoothed, with the rate shown.** Phones over Wi-Fi send unevenly at 50–100 Hz; the incoming rate is displayed so
+  a sluggish feel has a visible cause.
+- **Local only until asked.** A phone needs the port open on the network, which opens it to the whole network; the
+  receiver binds to this computer until the user switches the network on.
+- **One port, one receiver.** The decoder exists once per session, so one listening port is enough.
+
+### 7.2 What it drives
+
+- **The scene before the binaural decode** — a rotation of (N+1)² × (N+1)² per block, negligible.
+- **The Lens's window** (§6).
+- **Placing the loudspeakers** of an array (§3.3).
+- **Nothing on an array's output**: the listener's head is really in the room.
 - **Recentre** on a key.
-- **It also places the loudspeakers** of an array (§3.3).
-- The tracker's orientation is also what the link bus would fan out to other plugins that want it.
 - **A bounce renders facing front.** Head tracking is live input; an offline render that followed it would not
   match what the mix is. Tracking applies only to real-time playback.
+
+### 7.3 Not here: OSC into the encoder
+
+Moving a *source* belongs to the encoder, which already keeps OSC as a modulation source for its transform — a
+controller, a show-control cue, another application driving yaw. Pointing a phone to place a source would be one
+more input there. It is a later feature of the encoder, not of the decoder: each encoder instance takes its own
+port or its own ADM-OSC object (`/adm/obj/n/azim`, `/elev`, `/aed`), so nothing fans out through the decoder. And
+since a bounce must match what was heard, it lands on parameters the host records as automation, never as a live
+value only.
+
+**Shared between the two: the receiver** — parsing, the format presets, learn, smoothing — extracted into the shared
+library when the second plugin needs it, not before.
 
 ## 8. The layout of the plugin
 
