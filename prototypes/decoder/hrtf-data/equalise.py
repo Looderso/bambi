@@ -66,14 +66,22 @@ def cll_ild_of(db):
     return np.concatenate([10 * np.log10(pl + pr), np.clip(db[:, 0] - db[:, 1], -ge.ILD_LIMIT, ge.ILD_LIMIT)], 1)
 
 
-def load_db(directory, pattern):
-    heads, az, el = [], None, None
+def load_db(directory, pattern, per_head=None):
+    """Every head of a database: its magnitudes in dB (heads x dirs x 2 x bins). per_head(windowed IRs) is called on
+    each head as it loads, and what it returns is collected — so nothing needs the IRs kept."""
+    heads, extra, files, az, el = [], [], [], None, None
     for p in sorted(glob.glob(os.path.join(directory, pattern))):
         a, e, ir, fs = ge.load(p)
         if az is None:
             az, el = a, e
-        heads.append(ears_db(windowed(ir, fs)))
-    return az, el, np.stack(heads)                                       # heads x dirs x 2 x bins
+        win = windowed(ir, fs)
+        heads.append(ears_db(win))
+        files.append(os.path.basename(p))
+        if per_head:
+            extra.append(per_head(win))
+    if per_head:
+        return az, el, np.stack(heads), np.stack(extra), files
+    return az, el, np.stack(heads)
 
 
 def equalise(heads, w, ref_ctf):
@@ -103,7 +111,7 @@ def load_all(ku_path, dirs):
     return ku_ctf, {n: load_db(d, PATTERNS[n]) for n, d in dirs.items()}
 
 
-def unified(dbs, ku_ctf, stage, caz, cel, report=False, max_order=ORDER):
+def unified(dbs, ku_ctf, stage, caz, cel, report=False, max_order=ORDER, coefficients=False):
     """Every head's CLL and ILD on the common directions: heads x directions x (2·bins), per database. max_order
     keeps only the SH orders up to it — the resolution every database's grid can carry alike."""
     coefs, base_c = {}, None
@@ -126,6 +134,8 @@ def unified(dbs, ku_ctf, stage, caz, cel, report=False, max_order=ORDER):
             lam = LAM_GAPS
         prior = y @ avg_c
         coefs[n] = np.stack([avg_c + ge.solve(y, w, x - prior, lam, ORDER) for x in q])
+    if coefficients:
+        return coefs                                                     # heads x SH coefficients x (2·bins), per database
     keep = (max_order + 1) ** 2
     y_common = ge.sh_orth(ORDER, caz, cel)[:, :keep]
     return {n: np.einsum("dc,hcf->hdf", y_common, c[:, :keep]) for n, c in coefs.items()}

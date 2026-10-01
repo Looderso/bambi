@@ -120,8 +120,11 @@ its database's training heads only. Three databases, chance is 33 %:
 
 ## 5. Next
 
-1. **The unified data set**: every head of the three, equalised, normalised and on one SH representation — 274
-   heads, the input to the model. The kernel classifier stays a standing check on it.
+1. **The unified data set** — *built* (`build-dataset.py`, kept outside the repository: it holds SONICOM data). 274
+   heads: CLL and ILD at order 20 per bin, ITD at order 10, each equalised and normalised; the KU100 beside them in
+   the same representation, unnormalised; the averages the normalisation used, so it can be undone. Every database's
+   average sits on the common one; each one's spread between heads is unchanged. The ITD varies between heads by
+   24–37 µs (mean over directions); the databases' averages had differed from the common one by 11–20 µs.
 2. **The model** — what parameterises a head along the horizontal (ILD, ITD) and the vertical (CLL) axis, with shifts
    in frequency handled; not PCA. A model that has to ignore the database could take the non-linear remainder out
    in its own training, where a fixed normalisation cannot.
