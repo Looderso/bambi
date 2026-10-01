@@ -1,16 +1,16 @@
-"""The KU100 as the matching prototype renders it: a magnitude and an interaural delay for any direction.
+"""The KU100 as the matching prototype renders it, split the way the thesis split it.
 
-Writes match.js:
-  - the magnitude of each ear in dB, as spherical harmonics of order MAG_ORDER per frequency bin (256-point FFT);
-    order 0 is the average over all directions — the timbre — and the rest is the direction-dependent part,
-    which is what "ear size" stretches in frequency
-  - the interaural time difference tL − tR (seconds, negative when the left ear hears first), as spherical
-    harmonics of order ITD_ORDER — measured, so it keeps the head's own elevation dependence; "head size" scales it
-  - the ITD the two minimum-phase filters already carry by themselves, the same way: the page delays the ears by
-    scale × ITD − that, so the delay is not counted twice
+Writes match.js, all in spherical harmonics (SN3D, ACN) per frequency bin of a 256-point FFT at 48 kHz:
+  - CLL, the composite loudness level 10·log10(P_L + P_R): what both ears share, where the pinna's elevation
+    cues are. Order 0 is its average over all directions, the timbre. "Ear size" stretches the rest in frequency.
+  - ILD, the interaural level difference 10·log10(P_L / P_R): the head's shadow. "Head size" stretches it in
+    frequency, as a larger head shadows from a lower frequency up.
+  - ITD, the interaural time difference tL − tR in seconds (negative when the left ear hears first), measured, so it
+    keeps the head's own elevation dependence. "Head size" scales it.
+The two ears come back exactly: P_L = 10^(CLL/10)·r/(1+r), P_R = 10^(CLL/10)/(1+r), r = 10^(ILD/10).
 
-The page turns a direction into two minimum-phase filters and a delay. This script runs that chain here too and
-compares it with the measured HRIRs, so what is rendered is known to be the KU100 before anything is changed.
+The page makes each ear minimum-phase, measures the ITD that pair already carries with the estimator below, and
+delays the ears by the rest. This script runs the same chain and compares it with the measured HRIRs.
 
   python build-match.py path/to/D1_48K_24bit_256tap_FIR_SOFA.sofa
 """
@@ -18,30 +18,27 @@ import base64, sys
 from importlib.util import spec_from_file_location, module_from_spec
 import h5py
 import numpy as np
-from scipy.signal import butter, sosfiltfilt
 from scipy.spatial import SphericalVoronoi
 
 _s = spec_from_file_location("bf", "../listen/build-filters.py"); bf = module_from_spec(_s); _s.loader.exec_module(bf)
 
 FS, NFFT = 48000, 256
-MAG_ORDER, ITD_ORDER = 20, 10
+ORDER, ITD_ORDER = 20, 10
 FLOOR_DB = -60.0
-UP = 8                          # cross-correlation resolution: 1/UP of a sample
+ILD_LIMIT_DB = 40.0             # an ILD beyond this is the far ear in a notch; held there
+ITD_N, ITD_UP, ITD_FC = 512, 8, 1500.0
 
 
-def lowpass(x):
-    """Below 1.5 kHz, zero-phase, padded with silence on both sides: a filtfilt's own edge padding distorts a
-    response that starts at its first sample, as a minimum-phase one does."""
-    pad = 256
-    return sosfiltfilt(butter(4, 1500, fs=FS, output="sos"), np.pad(x, (pad, pad)), axis=-1)
-
-
-def itd_of(l, r):
-    """tL − tR in seconds, from the cross-correlation of the two ears (already low-passed)."""
-    n = 2 * len(l)
-    cc = np.fft.irfft(np.fft.rfft(l, n) * np.conj(np.fft.rfft(r, n)), n * UP)
-    cc = np.concatenate([cc[-len(l) * UP:], cc[:len(l) * UP]])
-    return (np.argmax(cc) - len(l) * UP) / UP / FS
+def itd_estimate(hl, hr):
+    """tL − tR in seconds: the cross-correlation of the two ears weighted by a 4th-order Butterworth low-pass at
+    1.5 kHz applied forward and backward to each (|B|⁴), at 1/ITD_UP of a sample. The page computes exactly this."""
+    f = np.fft.rfftfreq(ITD_N, 1 / FS)
+    w = 1 / (1 + (f / ITD_FC) ** 8) ** 2
+    c = np.fft.rfft(hl, ITD_N) * np.conj(np.fft.rfft(hr, ITD_N)) * w
+    cc = np.fft.irfft(c, ITD_N * ITD_UP)
+    m = 80 * ITD_UP
+    cc = np.concatenate([cc[-m:], cc[:m + 1]])
+    return (np.argmax(cc) - m) / ITD_UP / FS
 
 
 def min_phase(mag_db, nfft=512):
@@ -56,6 +53,27 @@ def min_phase(mag_db, nfft=512):
     return np.fft.irfft(np.exp(np.fft.rfft(fold)), nfft)[:nfft // 2]
 
 
+def ears(cll, ild):
+    """Left and right magnitude in dB from CLL and ILD in dB."""
+    r = 10 ** (ild / 10)
+    return cll + 10 * np.log10(r / (1 + r)), cll - 10 * np.log10(1 + r)
+
+
+def warp(x, scale):
+    """x(f · scale) on the same bins, held at the last bin beyond it."""
+    b = np.arange(len(x))
+    return np.interp(np.minimum(b * scale, len(x) - 1), b, x)
+
+
+def render(y, cll_c, ild_c, itd_c, head=1.0, ear=1.0):
+    """The page's chain: two minimum-phase filters and the delay to add, tL − tR in seconds."""
+    cll = y[0] * cll_c[0] + warp(y[1:] @ cll_c[1:], ear)
+    ild = np.clip(warp(y @ ild_c, head), -ILD_LIMIT_DB, ILD_LIMIT_DB)
+    l_db, r_db = ears(cll, ild)
+    hl, hr = min_phase(l_db), min_phase(r_db)
+    return hl, hr, head * (y[:(ITD_ORDER + 1) ** 2] @ itd_c) - itd_estimate(hl, hr)
+
+
 def main(path):
     f = h5py.File(path)
     pos, h = f["SourcePosition"][:], f["Data.IR"][:]
@@ -64,53 +82,70 @@ def main(path):
     w = SphericalVoronoi(xyz).calculate_areas(); w /= w.sum()
     sw = np.sqrt(w)[:, None]
 
-    db = 20 * np.log10(np.maximum(np.abs(np.fft.rfft(h, NFFT, axis=-1)), 10 ** (FLOOR_DB / 20)))
-    y = bf.sh_sn3d(MAG_ORDER, az, el)
-    p = np.linalg.pinv(y * sw)
-    mag = np.stack([p @ (db[:, e, :] * sw) for e in range(2)])            # ears x coefs x bins
+    floor = 10 ** (FLOOR_DB / 10)
+    p = np.abs(np.fft.rfft(h, NFFT, axis=-1)) ** 2                          # dirs x ears x bins
+    db = 10 * np.log10(np.maximum(p, floor))
+    cll = 10 * np.log10(np.maximum(p[:, 0] + p[:, 1], floor))
+    ild = np.clip(10 * np.log10(np.maximum(p[:, 0], floor) / np.maximum(p[:, 1], floor)), -ILD_LIMIT_DB, ILD_LIMIT_DB)
 
-    itd = np.array([itd_of(lowpass(h[i, 0]), lowpass(h[i, 1])) for i in range(len(h))])
-    yi = bf.sh_sn3d(ITD_ORDER, az, el)
+    y = bf.sh_sn3d(ORDER, az, el)
+    pinv = np.linalg.pinv(y * sw)
+    cll_c, ild_c = pinv @ (cll * sw), pinv @ (ild * sw)                       # coefs x bins
+
+    fr = np.fft.rfftfreq(NFFT, 1 / FS)
+    med = (np.abs(pos[:, 0]) < 1) | (np.abs(np.abs(pos[:, 0]) - 180) < 1)
+    k = (fr >= 8000) & (fr < 16000)
+    for name, x, c in (("CLL", cll, cll_c), ("ILD", ild, ild_c)):
+        e = y @ c - x
+        print(f"{name} at order {ORDER}: weighted RMS {np.sqrt(np.sum(w[:, None] * e ** 2) / e.shape[1]):.2f} dB, "
+              f"median plane 8–16 kHz {np.sqrt(np.mean(e[med][:, k] ** 2)):.2f} dB")
+
+    itd = np.array([itd_estimate(h[i, 0], h[i, 1]) for i in range(len(h))])
+    yi = y[:, :(ITD_ORDER + 1) ** 2]
     itd_c = np.linalg.pinv(yi * sw) @ (itd * sw[:, 0])
     res = yi @ itd_c - itd
-    itd_mp = np.array([itd_of(lowpass(min_phase(y[i] @ mag[0])), lowpass(min_phase(y[i] @ mag[1])))
-                       for i in range(len(h))])
-    mp_c = np.linalg.pinv(yi * sw) @ (itd_mp * sw[:, 0])
-    print(f"ITD of the minimum-phase pair alone: up to {1e6 * np.abs(itd_mp).max():.0f} µs")
-    print(f"ITD: largest {1e6 * np.abs(itd).max():.0f} µs; order-{ITD_ORDER} fit residual RMS "
+    print(f"ITD: largest {1e6 * np.abs(itd).max():.0f} µs; order-{ITD_ORDER} residual RMS "
           f"{1e6 * np.sqrt(np.sum(w * res ** 2)):.1f} µs, worst {1e6 * np.abs(res).max():.0f} µs")
 
-    # The page's chain, here: magnitude from the coefficients, minimum phase, the delay from the ITD coefficients.
-    fr = np.fft.rfftfreq(NFFT, 1 / FS)
+    # The chain against the measured HRIRs, at the KU100's own size.
     rng = np.random.default_rng(1)
-    test = rng.choice(len(h), 300, replace=False)
     mag_err, itd_err = [], []
-    for i in test:
-        for e in range(2):
-            m = y[i] @ mag[e]
-            hm = min_phase(m)
-            got = 20 * np.log10(np.maximum(np.abs(np.fft.rfft(hm, NFFT)), 10 ** (FLOOR_DB / 20)))
-            k = (fr >= 200) & (fr < 16000) & (db[i, e] > -30)
-            mag_err.append(np.sqrt(np.mean((got[k] - db[i, e, k]) ** 2)))
-        d = yi[i] @ itd_c - yi[i] @ mp_c
-        hl, hr = min_phase(y[i] @ mag[0]), min_phase(y[i] @ mag[1])
-        shift = d * FS                                                    # tL − tR in samples
+    for i in rng.choice(len(h), 300, replace=False):
+        hl, hr, d = render(y[i], cll_c, ild_c, itd_c)
+        for e, he in ((0, hl), (1, hr)):
+            got = 10 * np.log10(np.maximum(np.abs(np.fft.rfft(he, NFFT)) ** 2, floor))
+            m = (fr >= 200) & (fr < 16000) & (db[i, e] > -30)
+            mag_err.append(np.sqrt(np.mean((got[m] - db[i, e, m]) ** 2)))
         n = 1024
-        ph = np.exp(-2j * np.pi * np.fft.rfftfreq(n) * np.array([max(shift, 0), max(-shift, 0)])[:, None])
-        l, r = (np.fft.irfft(np.fft.rfft(x, n) * p_, n) for x, p_ in zip((hl, hr), ph))
-        itd_err.append(itd_of(lowpass(l), lowpass(r)) - itd[i])
-    print(f"the page's chain against the measured HRIRs, 300 directions: magnitude RMS {np.median(mag_err):.2f} dB "
-          f"(median over ears and directions, 0.2–16 kHz, where above −30 dB), ITD error median "
-          f"{1e6 * np.median(np.abs(itd_err)):.0f} µs, worst {1e6 * np.max(np.abs(itd_err)):.0f} µs")
+        sh = np.exp(-2j * np.pi * np.fft.rfftfreq(n) * np.array([max(d, 0), max(-d, 0)])[:, None] * FS)
+        l, r = (np.fft.irfft(np.fft.rfft(x, n) * s, n) for x, s in zip((hl, hr), sh))
+        itd_err.append(itd_estimate(l[:ITD_N], r[:ITD_N]) - itd[i])
+    print(f"the chain against the measured HRIRs, 300 directions: magnitude RMS {np.median(mag_err):.2f} dB median "
+          f"(0.2–16 kHz, where above −30 dB); ITD error median {1e6 * np.median(np.abs(itd_err)):.0f} µs, "
+          f"worst {1e6 * np.max(np.abs(itd_err)):.0f} µs")
+
+    # What each control moves, and what it must leave alone, at 60° left.
+    i = np.argmin(np.abs(pos[:, 0] - 60) + np.abs(pos[:, 1]))
+    hl0, hr0, _ = render(y[i], cll_c, ild_c, itd_c)
+    ild_of = lambda hl, hr: 20 * np.log10(np.abs(np.fft.rfft(hl, NFFT)) / np.abs(np.fft.rfft(hr, NFFT)))
+    cll_of = lambda hl, hr: 10 * np.log10(np.abs(np.fft.rfft(hl, NFFT)) ** 2 + np.abs(np.fft.rfft(hr, NFFT)) ** 2)
+    for s in (0.9, 1.1):
+        hl, hr, _ = render(y[i], cll_c, ild_c, itd_c, ear=s)
+        print(f"ear size {s:.0%}: the rendered CLL moves up to {np.abs(cll_of(hl, hr) - cll_of(hl0, hr0)).max():.1f} dB, "
+              f"the rendered ILD up to {np.abs(ild_of(hl, hr) - ild_of(hl0, hr0)).max():.2f} dB")
+        hl, hr, _ = render(y[i], cll_c, ild_c, itd_c, head=s)
+        print(f"head size {s:.0%}: ITD {1e6 * s * (yi[i] @ itd_c):.0f} µs (KU100 {1e6 * yi[i] @ itd_c:.0f}); the rendered "
+              f"ILD moves up to {np.abs(ild_of(hl, hr) - ild_of(hl0, hr0)).max():.1f} dB, the rendered CLL up to "
+              f"{np.abs(cll_of(hl, hr) - cll_of(hl0, hr0)).max():.2f} dB")
 
     blob = lambda a: base64.b64encode(np.ascontiguousarray(a, dtype="<f4").tobytes()).decode()
     with open("match.js", "w") as js:
         js.write("// Generated by build-match.py from the SADIE II KU100 HRIRs (subject D1),\n")
         js.write("// Copyright 2018 University of York, Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).\n")
-        js.write("// MAG: dB per ear, [ear][coef][bin], SN3D ACN, 129 bins of a 256-point FFT at 48 kHz.\n")
-        js.write("// ITD: tL − tR in seconds, [coef]; itdMinPhase: the same, of the minimum-phase pair alone.\n")
-        js.write(f"const MATCH = {{ magOrder: {MAG_ORDER}, itdOrder: {ITD_ORDER}, bins: {NFFT // 2 + 1}, "
-                 f"floorDb: {FLOOR_DB},\n  mag: \"{blob(mag)}\",\n  itd: \"{blob(itd_c)}\",\n  itdMinPhase: \"{blob(mp_c)}\" }};\n")
+        js.write("// CLL, ILD: dB, [coef][bin], SN3D ACN, 129 bins of a 256-point FFT at 48 kHz. ITD: tL − tR in seconds, [coef].\n")
+        js.write(f"const MATCH = {{ order: {ORDER}, itdOrder: {ITD_ORDER}, bins: {NFFT // 2 + 1}, ildLimitDb: {ILD_LIMIT_DB},\n"
+                 f"  itdN: {ITD_N}, itdUp: {ITD_UP}, itdFc: {ITD_FC},\n"
+                 f"  cll: \"{blob(cll_c)}\",\n  ild: \"{blob(ild_c)}\",\n  itd: \"{blob(itd_c)}\" }};\n")
 
 
 if __name__ == "__main__":

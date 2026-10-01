@@ -55,8 +55,10 @@
     <h2>MATCH</h2>
     <div id="matchCtl"></div>
     <div class="row"><button id="bReset">KU100 as measured</button></div>
-    <p class="note"><b>Head size</b> scales the time between the ears. <b>Ear size</b> moves the direction cues in
-      frequency — a larger ear puts them lower; the timbre, the average over all directions, stays the KU100's.</p>
+    <p class="note">The KU100 split as in the thesis: what the ears share (CLL) and how they differ (ILD, ITD).
+      <b>Head size</b> scales the time between the ears and stretches the level difference in frequency — a larger
+      head shadows from lower up. <b>Ear size</b> stretches the shared part's direction cues — a larger ear puts the
+      notches lower. The timbre, the shared part's average over all directions, stays the KU100's.</p>
 
     <h2>LISTEN FOR</h2>
     <p class="note"><b>Turn the head</b> slowly, left and right of the loudspeaker: the virtual one should stay on it.
@@ -75,8 +77,8 @@ const SR = 48000, TAPS = 256, BASE = 40;     // BASE: samples of delay both ears
 
 // ---------- the KU100, as coefficients ----------
 const unpack = s => new Float32Array(Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer);
-const MAG = unpack(MATCH.mag), ITD = unpack(MATCH.itd), ITDMP = unpack(MATCH.itdMinPhase);
-const NC = (MATCH.magOrder + 1) ** 2, NB = MATCH.bins, NI = (MATCH.itdOrder + 1) ** 2;
+const CLL = unpack(MATCH.cll), ILD = unpack(MATCH.ild), ITD = unpack(MATCH.itd);
+const NC = (MATCH.order + 1) ** 2, NB = MATCH.bins, NI = (MATCH.itdOrder + 1) ** 2;
 
 // ---------- state ----------
 const S = { head: { yaw: 0, pitch: 0, roll: 0 }, spk: { az: 30, el: 0 }, channel: 0, mode: "alternate", burst: "noise",
@@ -114,20 +116,44 @@ function minPhase(db) {
   fft(re, im, true);
   return Float32Array.from(re.subarray(0, TAPS));
 }
-// The head-relative direction u → filters and per-ear delays (samples), at the current head and ear scale.
-function render(u) {
-  const y = shN(MATCH.magOrder, ...u), out = { h: [], d: [] };
-  for (let e = 0; e < 2; e++) {
-    const base = e * NC * NB, dir = new Float64Array(NB), db = new Float64Array(NB);
-    for (let c = 1; c < NC; c++) { const yc = y[c], off = base + c * NB; for (let b = 0; b < NB; b++) dir[b] += yc * MAG[off + b]; }
-    for (let b = 0; b < NB; b++) {
-      const x = Math.min(NB - 1, b * S.earScale), i = Math.min(NB - 2, Math.floor(x)), f = x - i;
-      db[b] = y[0] * MAG[base + b] + dir[i] * (1 - f) + dir[i + 1] * f;
-    }
-    out.h.push(minPhase(db));
+// x(f · scale) on the same bins, held at the last bin beyond it.
+function warp(x, scale) {
+  const y = new Float64Array(NB);
+  for (let b = 0; b < NB; b++) { const p = Math.min(NB - 1, b * scale), i = Math.min(NB - 2, Math.floor(p)), f = p - i;
+    y[b] = x[i] * (1 - f) + x[i + 1] * f; }
+  return y;
+}
+// tL − tR in seconds: the cross-correlation of two responses weighted by a 4th-order Butterworth low-pass applied
+// forward and backward to each (|B|⁴), at 1/itdUp of a sample — the estimator build-match.py measured the KU100 with.
+function itdEstimate(hl, hr) {
+  const n = MATCH.itdN, up = MATCH.itdUp, N = n * up;
+  const lr = new Float64Array(n), li = new Float64Array(n), rr = new Float64Array(n), ri = new Float64Array(n);
+  lr.set(hl); rr.set(hr); fft(lr, li, false); fft(rr, ri, false);
+  const re = new Float64Array(N), im = new Float64Array(N);
+  for (let k = 0; k <= n / 2; k++) {
+    const f = k * SR / n, w = 1 / (1 + (f / MATCH.itdFc) ** 8) ** 2;
+    const cr = (lr[k] * rr[k] + li[k] * ri[k]) * w, ci = (li[k] * rr[k] - lr[k] * ri[k]) * w;
+    re[k] = cr; im[k] = ci; if (k > 0) { re[N - k] = cr; im[N - k] = -ci; }
   }
-  let itd = 0, mp = 0; for (let c = 0; c < NI; c++) { itd += y[c] * ITD[c]; mp += y[c] * ITDMP[c]; }
-  const d = (S.headScale * itd - mp) * SR;            // tL − tR to add, in samples
+  fft(re, im, true);
+  const m = 80 * up; let best = -Infinity, lag = 0;
+  for (let L = -m; L <= m; L++) { const v = re[(L + N) % N]; if (v > best) { best = v; lag = L; } }
+  return lag / up / SR;
+}
+// The head-relative direction u → two minimum-phase filters and per-ear delays (samples). Ear size stretches the
+// CLL's direction-dependent part; head size stretches the ILD and scales the ITD; the CLL's order 0, the timbre, stays.
+function render(u) {
+  const y = shN(MATCH.order, ...u), cdir = new Float64Array(NB), ild = new Float64Array(NB);
+  for (let c = 0; c < NC; c++) { const yc = y[c], off = c * NB;
+    for (let b = 0; b < NB; b++) { ild[b] += yc * ILD[off + b]; if (c > 0) cdir[b] += yc * CLL[off + b]; } }
+  const cw = warp(cdir, S.earScale), iw = warp(ild, S.headScale), L = new Float64Array(NB), R = new Float64Array(NB);
+  for (let b = 0; b < NB; b++) {
+    const cll = y[0] * CLL[b] + cw[b], i = Math.max(-MATCH.ildLimitDb, Math.min(MATCH.ildLimitDb, iw[b])), r = 10 ** (i / 10);
+    L[b] = cll + 10 * Math.log10(r / (1 + r)); R[b] = cll - 10 * Math.log10(1 + r);
+  }
+  const out = { h: [minPhase(L), minPhase(R)] };
+  let itd = 0; for (let c = 0; c < NI; c++) itd += y[c] * ITD[c];
+  const d = (S.headScale * itd - itdEstimate(out.h[0], out.h[1])) * SR;    // tL − tR to add, in samples
   out.d = [BASE + d / 2, BASE - d / 2];
   out.itd = S.headScale * itd;
   return out;

@@ -178,29 +178,36 @@ place.
 
 ### 5.1 Stage one — no database needed
 
-Two parameters with a known physical meaning, computed from the default set:
+The HRTF is split as the thesis split it: what the ears share, the **CLL** = 10·log₁₀(P_L + P_R), where the pinna's
+elevation cues are; and how they differ, the **ILD** = 10·log₁₀(P_L / P_R) and the **ITD**. The two ears come back
+from CLL and ILD exactly. Two parameters, each acting on its own part:
 
-- **Head size** → scales the interaural time difference. The largest single cue for azimuth, and the cheapest.
-- **Ear size** → stretches the direction cues along frequency. Scaling a DTF in frequency is the known first-order
-  model of how pinnae differ between people; it moves the elevation notches where a bigger or smaller ear would
-  put them. Only the direction-dependent part moves; the average over all directions — the timbre — stays put.
+- **Head size** → scales the ITD and stretches the ILD in frequency: a larger head shadows from a lower frequency
+  up. The horizontal cues.
+- **Ear size** → stretches the CLL's direction-dependent part in frequency. Scaling a DTF in frequency is the known
+  first-order model of how pinnae differ between people; it moves the elevation notches where a bigger or smaller
+  ear would put them. The vertical cues. The CLL's order 0 — its average over all directions, the timbre — stays
+  the KU100's.
 
 *Opinion: try this first.* It needs no dataset, and it may already carry most of the gain.
 
-**How the KU100 is rendered for it** (`prototypes/decoder/match/`): each ear's magnitude in dB as spherical
-harmonics per frequency bin, made minimum-phase for whatever direction the head is at, plus the measured
-interaural delay added on top.
+**How the KU100 is rendered for it** (`prototypes/decoder/match/`): CLL and ILD as spherical harmonics per frequency
+bin, turned into the two ears and made minimum-phase for whatever direction the head is at; the measured ITD added
+on top, less what the minimum-phase pair already carries.
 
-- **Order 20** holds the elevation cues: in the median plane at 8–16 kHz it is within 0.74 dB RMS of the measured
-  set (order 10: 1.6 dB, order 25: 0.5 dB).
-- **The interaural delay is the KU100's own**, measured below 1.5 kHz and expanded to order 10 (3 µs RMS
-  residual), so it keeps its elevation dependence; head size scales it. A spherical-head model fits it only with
-  an effective radius of 11.9 cm and errs by up to 95 µs.
-- **The minimum-phase pair carries up to 193 µs of interaural delay by itself**, so the delay added is head size ×
-  measured − that. Rendered this way, the 300 directions tested come within 0.62 dB (median) of the measured
-  magnitudes and 3 µs (median, 10 µs worst) of the measured delay.
-- **Ear size moves the notches as intended**: the left ear's main notch in front, 7.7 kHz, goes to 6.9 kHz at 110 %
-  and 8.6 kHz at 90 %; it rises to 10.1 kHz at 30° up, as a pinna notch does.
+- **Order 20** holds the CLL to 0.41 dB RMS in the median plane at 8–16 kHz, the ILD to 1.0 dB (2.1 dB over the
+  whole sphere, where the far ear's notches are — the ILD is held at ±40 dB).
+- **The ITD is the KU100's own**, measured below 1.5 kHz and expanded to order 10 (3 µs RMS residual), so it keeps
+  its elevation dependence. A spherical-head model fits it only with an effective radius of 11.9 cm and errs by up
+  to 95 µs.
+- **The minimum-phase pair carries up to 193 µs of ITD by itself**, and how much changes as head size reshapes the
+  ILD — so the page measures it on every update, with the same estimator the KU100's ITD was measured with.
+- **At the KU100's own size** the chain comes within 0.60 dB (median) of the measured magnitudes and 3 µs (median,
+  10 µs worst) of the measured ITD, over 300 directions.
+- **Each control moves its own part**, measured on the rendered filters at 60° left: ear size ±10 % moves the CLL
+  by up to 14 dB and the ILD by 1.6 dB at most — the minimum-phase reconstruction, not the design; head size ±10 %
+  moves the ITD by ±70 µs and the ILD by up to 16 dB, the CLL by 0.05 dB at most. Ear size moves the left ear's main
+  notch in front from 7.7 kHz to 6.9 kHz at 110 % and 8.6 kHz at 90 %; it rises to 10.1 kHz at 30° up.
 
 ### 5.2 Averaging by spherical-harmonic order — to be discussed
 
