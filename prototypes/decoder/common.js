@@ -219,11 +219,11 @@ function drawGrid(c, g) {
 // Signals are normalised to SIGNAL_RMS_DB and never peak above SIGNAL_PEAK_DB, so switching a kind (noise to clicks:
 // a crest factor of 28 dB) never jumps in level and stays far under the ceiling.
 const CEILING_DB = -12, SIGNAL_RMS_DB = -30, SIGNAL_PEAK_DB = -18;
-function safeOutput(ctx) {
+function safeOutput(ctx, dest = ctx.destination) {
   const clip = ctx.createWaveShaper(), c = 10 ** (CEILING_DB / 20), n = 8193, curve = new Float32Array(n);
   for (let i = 0; i < n; i++) curve[i] = Math.max(-c, Math.min(c, i / (n - 1) * 2 - 1));   // beyond ±1 holds ±c too
   clip.curve = curve;
-  clip.connect(ctx.destination);
+  clip.connect(dest);
   return clip;
 }
 // Scale a buffer in place to an RMS of rmsDb dBFS over its whole length, or lower if its peak would pass peakDb.

@@ -6,7 +6,8 @@
 <title>bambi · Decoder · Match</title>
 <link rel="stylesheet" href="../common.css">
 <style>
-  #stage{grid-template-rows:minmax(0,1fr) auto}
+  #stage{grid-template-rows:minmax(0,1fr) 210px auto}
+  .plots{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-height:0}
   select{font:inherit;font-size:10px;width:100%;margin:3px 0 6px;background:transparent;border:1px solid var(--greyL);border-radius:0;padding:3px}
   .readout{font-size:10px;color:var(--greyD);padding:8px 4px}
   .readout b{color:var(--ink);font-weight:500}
@@ -16,6 +17,10 @@
 <div id="app">
   <div id="stage">
     <div class="viewbox"><canvas id="cvWorld"></canvas><span class="vlabel">the room · world frame · the square is the loudspeaker, the ring is where the head looks</span></div>
+    <div class="plots">
+      <div class="viewbox"><canvas id="cvCll"></canvas><span class="vlabel">CLL · what both ears share · dB · grey: the KU100, ink: now</span></div>
+      <div class="viewbox"><canvas id="cvIld"></canvas><span class="vlabel">ILD · left minus right · dB · grey: the KU100, ink: now</span></div>
+    </div>
     <div class="readout" id="readout"></div>
   </div>
   <div id="panel">
@@ -152,7 +157,11 @@ function render(u) {
     L[b] = cll + 10 * Math.log10(r / (1 + r)); R[b] = cll - 10 * Math.log10(1 + r);
   }
   const out = { h: [minPhase(L), minPhase(R)] };
+  const clip = x => Math.max(-MATCH.ildLimitDb, Math.min(MATCH.ildLimitDb, x));
+  out.cll = Float64Array.from(cw, (v, b) => y[0] * CLL[b] + v); out.cll0 = Float64Array.from(cdir, (v, b) => y[0] * CLL[b] + v);
+  out.ild = Float64Array.from(iw, clip); out.ild0 = Float64Array.from(ild, clip);
   let itd = 0; for (let c = 0; c < NI; c++) itd += y[c] * ITD[c];
+  out.itd0 = itd;
   const d = (S.headScale * itd - itdEstimate(out.h[0], out.h[1])) * SR;    // tL − tR to add, in samples
   out.d = [BASE + d / 2, BASE - d / 2];
   out.itd = S.headScale * itd;
@@ -194,7 +203,7 @@ class Binaural extends AudioWorkletProcessor {
 }
 registerProcessor("binaural", Binaural);`;
 
-let ctxV, ctxR, node, gainV, gainR, mergerR, bufV = {}, bufR = {}, timer = null, nextAt = 0, turn = 0;
+let ctxV, ctxR, node, gainV, gainR, mergerR, speakerEl, bufV = {}, bufR = {}, timer = null, nextAt = 0, turn = 0;
 function makeBurst(ctx, kind) {
   const len = Math.round(SR * 0.25), b = ctx.createBuffer(1, len, SR), x = b.getChannelData(0);
   let b0 = 0, b1 = 0, b2 = 0;
@@ -220,7 +229,12 @@ async function start() {
     processorOptions: { h: first.h, d: first.d } });
   gainV = ctxV.createGain(); gainV.gain.value = 0; node.connect(gainV); gainV.connect(safeOutput(ctxV));
   gainR = ctxR.createGain(); gainR.gain.value = 0; mergerR = ctxR.createChannelMerger(2);
-  gainR.connect(mergerR, 0, S.channel); mergerR.connect(safeOutput(ctxR));
+  gainR.connect(mergerR, 0, S.channel);
+  // The loudspeaker path leaves through an <audio> element and its setSinkId, the long-standing way to choose a
+  // device: routing the context itself (AudioContext.setSinkId) left the loudspeaker sound on the headphones.
+  const toElement = ctxR.createMediaStreamDestination();
+  mergerR.connect(safeOutput(ctxR, toElement));
+  speakerEl = new Audio(); speakerEl.srcObject = toElement.stream; await speakerEl.play();
   for (const k of ["noise", "clicks"]) { bufV[k] = makeBurst(ctxV, k); bufR[k] = makeBurst(ctxR, k); }
   await applySinks(); levels(); update();
   timer = setInterval(schedule, 25);
@@ -230,14 +244,14 @@ let outputs = [];
 const labelOf = id => id ? (outputs.find(d => d.deviceId === id)?.label || "an unnamed output") : "the system output";
 async function applySinks() {
   if (!ctxV) return;
-  for (const [c, id] of [[ctxV, S.sinkV], [ctxR, S.sinkR]]) {
-    if (!c.setSinkId) { $("deviceNote").textContent = "This browser cannot choose an output per context; use Chrome."; return; }
+  for (const [c, id] of [[ctxV, S.sinkV], [speakerEl, S.sinkR]]) {
+    if (!c.setSinkId) { $("deviceNote").textContent = "This browser cannot choose an output device; use Chrome."; return; }
     try { await c.setSinkId(id); } catch (e) { $("deviceNote").textContent = "Could not use that device: " + e.message; return; }
   }
   // Say where each actually went, so a wrong route is seen, not only heard.
-  const v = labelOf(ctxV.sinkId), r = labelOf(ctxR.sinkId);
+  const v = labelOf(ctxV.sinkId), r = labelOf(speakerEl.sinkId);
   $("deviceNote").textContent = `Headphones → ${v}. Loudspeakers → ${r}.` +
-    (ctxV.sinkId === ctxR.sinkId ? " Both go to the same device — choose the loudspeakers in the second list." : "");
+    ((ctxV.sinkId || "") === (speakerEl.sinkId || "") ? " Both go to the same device — choose the loudspeakers in the second list." : "");
 }
 // Levels glide, never jump: 0.1 s to settle, and from silence at start.
 function levels() { if (!ctxV) return;
@@ -263,6 +277,7 @@ $("bStart").onclick = async () => {
   if (!ctxV) return start();
   const running = ctxV.state === "running";
   for (const c of [ctxV, ctxR]) running ? await c.suspend() : await c.resume();
+  running ? speakerEl.pause() : speakerEl.play();
   $("bStart").textContent = running ? "Resume audio" : "Stop audio";
 };
 
@@ -277,14 +292,38 @@ function update() {
     const u = app3(tr3(headMatrix()), dirOf(S.spk.az * D2R, S.spk.el * D2R));
     last = { u, ...render(u) };
     if (node) node.port.postMessage({ h: last.h, d: last.d });
-    drawReadout();
+    drawReadout(); drawPlots();
   }, 0);
 }
+// CLL and ILD over frequency, log axis from 200 Hz to 20 kHz: the KU100 as measured, and as now set.
+function drawPlot(cv, now, ku, symmetric) {
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+  const c = cv.getContext("2d"), W = cv.width, H = cv.height, pl = 34 * dpr, pr = 10 * dpr, pt = 22 * dpr, pb = 18 * dpr;
+  c.clearRect(0, 0, W, H);
+  const f0 = 200, f1 = 20000, bin = SR / (2 * (NB - 1)), x = f => pl + (W - pl - pr) * Math.log(f / f0) / Math.log(f1 / f0);
+  const k0 = Math.ceil(f0 / bin), k1 = Math.min(NB - 1, Math.floor(f1 / bin));
+  let lo = Infinity, hi = -Infinity;
+  for (let k = k0; k <= k1; k++) for (const v of [now[k], ku[k]]) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  if (symmetric) { const m = Math.max(6, Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; } else { lo = Math.floor(lo / 6) * 6 - 3; hi = Math.ceil(hi / 6) * 6 + 3; }
+  const y = v => pt + (H - pt - pb) * (hi - v) / (hi - lo);
+  c.strokeStyle = "#c8c4ba"; c.lineWidth = dpr; c.fillStyle = "#6f6b62"; c.font = `${9 * dpr}px Helvetica Neue, sans-serif`;
+  for (const f of [500, 1000, 2000, 5000, 10000, 20000]) { c.beginPath(); c.moveTo(x(f), pt); c.lineTo(x(f), H - pb); c.stroke();
+    c.textAlign = "center"; c.fillText(f >= 1000 ? f / 1000 + "k" : f, x(f), H - 5 * dpr); }
+  const step = (hi - lo) > 40 ? 12 : 6;
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) { c.beginPath(); c.moveTo(pl, y(v)); c.lineTo(W - pr, y(v)); c.stroke();
+    c.textAlign = "right"; c.fillText(v, pl - 4 * dpr, y(v) + 3 * dpr); }
+  const line = (a, col, w) => { c.strokeStyle = col; c.lineWidth = w * dpr; c.beginPath();
+    for (let k = k0; k <= k1; k++) { const px = x(Math.max(f0, k * bin)), py = y(a[k]); k === k0 ? c.moveTo(px, py) : c.lineTo(px, py); } c.stroke(); };
+  line(ku, "#a9a59c", 2); line(now, "#1b1a17", 1.25);
+}
+function drawPlots() { if (!last) return; drawPlot($("cvCll"), last.cll, last.cll0, false); drawPlot($("cvIld"), last.ild, last.ild0, true); }
+addEventListener("resize", drawPlots);
 function drawReadout() {
   if (!last) return;
   const [a, e] = angOf(last.u);
   $("readout").innerHTML = `loudspeaker relative to the head: <b>${(a / D2R).toFixed(0)}°</b> azimuth, <b>${(e / D2R).toFixed(0)}°</b> elevation
-    · interaural time difference <b>${(last.itd * 1e6).toFixed(0)} µs</b>
+    · ITD <b>${(last.itd * 1e6).toFixed(0)} µs</b> (KU100 ${(last.itd0 * 1e6).toFixed(0)} µs)
     · head size <b>${(S.headScale * 100).toFixed(0)} %</b>, ear size <b>${(S.earScale * 100).toFixed(0)} %</b>`;
 }
 
