@@ -207,7 +207,9 @@ on top, less what the minimum-phase pair already carries.
 - **Each control moves its own part**, measured on the rendered filters at 60° left: ear size ±10 % moves the CLL
   by up to 14 dB and the ILD by 1.6 dB at most — the minimum-phase reconstruction, not the design; head size ±10 %
   moves the ITD by ±70 µs and the ILD by up to 16 dB, the CLL by 0.05 dB at most. Ear size moves the left ear's main
-  notch in front from 7.7 kHz to 6.9 kHz at 110 % and 8.6 kHz at 90 %; it rises to 10.1 kHz at 30° up.
+  notch in front, 7.7 kHz, to 6.9 kHz at 110 % and 8.4 kHz at 90 % (it rises to 10.1 kHz at 30° up). A dip at
+  9.9 kHz stays where it is at every ear size: part of it is in the average over all directions, the timbre, which
+  ear size leaves alone — the price of a fixed timbre, and one to listen for.
 
 ### 5.2 Averaging by spherical-harmonic order — to be discussed
 
