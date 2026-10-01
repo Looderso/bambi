@@ -175,6 +175,12 @@ place.
 - **Where, not what.** The real loudspeaker brings the room's reflections and the virtual one is dry; the task is
   to match the position, not the character.
 - The neck's range limits the directions reached; how far is measured in the prototype.
+- **Parked — one axis renders, the other guards.** While one part is personalised, the other is held at 0 (CLL 0
+  while turning for ITD and ILD; ILD and ITD 0 while nodding for the CLL). One axis of the tracker drives the
+  rendering; the other is not rendered but watched, after centring on the real loudspeaker, with visual feedback
+  when the head drifts in it.
+- **The model behind the controls** is learned from many measured heads — the data side is
+  [HRTF-DATA.md](HRTF-DATA.md).
 
 ### 5.1 Stage one — no database needed
 
