@@ -199,12 +199,18 @@ async function start() {
   timer = setInterval(schedule, 25);
   $("bStart").textContent = "Stop audio"; $("bStart").classList.remove("go");
 }
+let outputs = [];
+const labelOf = id => id ? (outputs.find(d => d.deviceId === id)?.label || "an unnamed output") : "the system output";
 async function applySinks() {
+  if (!ctxV) return;
   for (const [c, id] of [[ctxV, S.sinkV], [ctxR, S.sinkR]]) {
-    if (!c) continue;
     if (!c.setSinkId) { $("deviceNote").textContent = "This browser cannot choose an output per context; use Chrome."; return; }
-    try { await c.setSinkId(id); } catch (e) { $("deviceNote").textContent = "Could not use that device: " + e.message; }
+    try { await c.setSinkId(id); } catch (e) { $("deviceNote").textContent = "Could not use that device: " + e.message; return; }
   }
+  // Say where each actually went, so a wrong route is seen, not only heard.
+  const v = labelOf(ctxV.sinkId), r = labelOf(ctxR.sinkId);
+  $("deviceNote").textContent = `Headphones → ${v}. Loudspeakers → ${r}.` +
+    (ctxV.sinkId === ctxR.sinkId ? " Both go to the same device — choose the loudspeakers in the second list." : "");
 }
 function levels() { if (!ctxV) return;
   gainV.gain.setTargetAtTime(10 ** (S.virtualDb / 20), ctxV.currentTime, 0.01);
@@ -257,12 +263,18 @@ function drawReadout() {
 // ---------- controls ----------
 $("bDevices").onclick = async () => {
   try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); } catch (e) {}
-  const outs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput" && d.deviceId !== "default");
+  outputs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput" && d.deviceId && d.deviceId !== "default");
+  if (!outputs.length) {
+    $("deviceNote").textContent = "This browser gave no output devices to choose from — microphone permission was not " +
+      "granted, or it does not allow it (the app's own browser pane does not). Open the page in Chrome and allow the microphone.";
+    return;
+  }
   for (const sel of [$("selVirtual"), $("selReal")]) {
     const keep = sel.value; sel.innerHTML = '<option value="">system output</option>' +
-      outs.map(d => `<option value="${d.deviceId}">${d.label || "unnamed output"}</option>`).join(""); sel.value = keep;
+      outputs.map(d => `<option value="${d.deviceId}">${d.label || "unnamed output"}</option>`).join(""); sel.value = keep;
   }
-  $("deviceNote").textContent = `${outs.length} outputs found.`;
+  $("deviceNote").textContent = `${outputs.length} outputs found. Choose the loudspeakers in the second list.`;
+  applySinks();
 };
 $("selVirtual").onchange = e => { S.sinkV = e.target.value; applySinks(); };
 $("selReal").onchange = e => { S.sinkR = e.target.value; applySinks(); };
