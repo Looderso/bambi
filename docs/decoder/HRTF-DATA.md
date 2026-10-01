@@ -74,54 +74,55 @@ KU100's gaps — did worse than smoothing alone: the wrong head is worse than no
 
 ## 3. Equalising across databases
 
-Measured (`equalise.py`) on the two databases that may ship, HUTUBS (96 heads) and 3D3A (38): each head resampled to
-48 kHz, windowed to 256 samples from its onset, equalised onto the KU100's CTF as the thesis did — the CTF a head's
-magnitude averaged over directions, here weighted by area since the grids are not uniform — and unified by the
-deviation-from-average fit (3D3A's gaps filled from the HUTUBS average). Compared on the directions both measured
-(−57…75°), 2–16 kHz:
+Measured (`equalise.py`) on HUTUBS (96 heads), 3D3A (38) and SONICOM (140, the mirror's AXD files): each head
+resampled to 48 kHz, windowed to 256 samples from its onset, equalised onto the KU100's CTF as the thesis did — the
+CTF a head's magnitude averaged over directions, here weighted by area since the grids are not uniform — and unified
+by the deviation-from-average fit (HUTUBS first, over the whole sphere; the others' gaps filled from its average).
+Compared on the directions all three measured (−45…75°, 1673 directions), 2–16 kHz:
 
-| | the two databases' averages apart (CLL / ILD) | a head from its own database's average | a classifier tells the database |
-|---|---|---|---|
-| raw | 12.37 / 2.73 dB | 4.4 / 5.4–5.9 dB | 99 % |
-| equalised | **2.35** / 2.69 dB | 3.4 / 4.8–4.9 dB | **98 %** |
+| | averages apart, CLL (pairs) | averages apart, ILD | a head from its own database's average (CLL / ILD) | a classifier names the database |
+|---|---|---|---|---|
+| raw | 6.1 – 17.6 dB | 2.7 – 2.9 dB | 4.2–4.4 / 5.4–5.8 dB | 99 % |
+| equalised | **2.1 – 2.5 dB** | 2.5 – 2.6 dB | 3.4 / 4.8–5.0 dB | **100 %** |
 
-- **Equalisation removes the level and colour a database carries**: the averages' CLL comes 12.4 → 2.4 dB apart,
-  less than heads differ within one database.
-- **The fingerprint survives it**: a classifier still names the database 98 % of the time — as the study the thesis
-  cites found (> 95 %). Removing it is the next step; it is what PCA or a per-direction average normalisation is for.
+- **Equalisation removes the level and colour a database carries**: the averages' CLL comes from up to 17.6 dB apart
+  to 2.1–2.5 dB — less than heads differ within one database.
+- **The fingerprint survives it**: a classifier names the database every time — as the study the thesis cites found
+  (> 95 %).
 - **The CTF is taken per ear**, so a fixed left/right difference of the measurement chain leaves the ILD too (the
-  thesis held the ILD unchanged). The difference averages about 2 dB but passes 6 dB at some frequency for 56 of
-  the 96 HUTUBS heads and 14 of the 38 3D3A heads.
-- **Part of the ILD gap is distance, not fingerprint.** To the side, below 1.5 kHz, 3D3A's ILD is 7.5 dB against
-  HUTUBS's 5.7: 3D3A measured at 0.76 m, HUTUBS at 1.47 m, and a nearer source makes a larger ILD. At 2–16 kHz the
-  two agree within 1 dB. A correction for distance would take that part out before the fingerprint is judged.
+  thesis held the ILD unchanged). It averages about 2 dB in every database, and passes 6 dB at some frequency for
+  56 of the 96 HUTUBS heads and 14 of the 38 3D3A heads.
+- **Part of the ILD gap is distance.** To the side, below 1.5 kHz, 3D3A's ILD is 7.5 dB against HUTUBS's 5.7: 3D3A
+  measured at 0.76 m, HUTUBS at 1.47 m, and a nearer source makes a larger ILD. At 2–16 kHz the two agree within
+  1 dB.
 
 ## 4. Removing the database fingerprint
 
 Measured (`normalise.py`): each direction normalised — a head minus its database's average, plus the average of the
 databases, each database weighted equally. In the cross-validation a test head is normalised with the average of
-its database's training heads only. 2–16 kHz, on the directions both measured:
+its database's training heads only. Three databases, chance is 33 %:
 
-| | the classifier names the database — linear | — kernel SVM | heads around their own database's average (CLL / ILD) | all heads around the common average |
+| | linear classifier | kernel SVM | heads around their own database's average (CLL / ILD) | all heads around the common average |
 |---|---|---|---|---|
-| equalised | 98 % | 97 % | 3.39–3.46 / 4.80–4.93 dB | 3.61 / 5.07 dB |
-| normalised | **50 %** | **55 %** | 3.39–3.46 / 4.80–4.93 dB | 3.41 / 4.89 dB |
+| equalised | 100 % | 99 % | 3.35–3.45 / 4.79–5.01 dB | 3.68 / 5.14 dB |
+| normalised | **33 %** | **54 %** | unchanged | 3.40 / 4.93 dB |
 
-- **The fingerprint lived in the average.** Once each database's average is moved to the common one, neither a
-  linear classifier nor a kernel SVM — the kind the literature used to find the fingerprint — tells the databases
-  apart better than chance (50 %; 55 % is within the noise of 134 heads).
-- **The differences between heads are untouched**: a shift leaves each head's distance from its own database's
-  average as it was (3.39–3.46 dB CLL, 4.80–4.93 dB ILD). What the pooled spread loses, 3.61 → 3.41 dB (CLL), is the
-  offset between the databases.
-- **The two databases spread alike**: 3D3A's heads vary 1.02× as widely as HUTUBS's in CLL and 0.98× in ILD (median
-  over directions, 2–16 kHz) — no second-order fingerprint to remove, so no PCA step is needed for these two.
-- **The caveat of two databases**: normalising the average also removes any real difference between the two groups
-  of people, and the measurement distance's effect on the low-frequency ILD (§3) with it. A third database is what
-  would separate a fingerprint from a population.
+- **The gap between databases is measurement, not people.** Two random groups of heads from within one database,
+  of the databases' sizes, differ at most by 0.69–0.80 dB (CLL) and 0.96–1.10 dB (ILD), 95th percentile of 300 draws;
+  the databases' averages differ by 2.1–2.5 and 2.5–2.6 dB — three times what the choice of people explains. So
+  normalising the averages removes the measurement, not a population.
+- **The linear fingerprint is gone**: a linear classifier names the database at chance, and the differences between
+  heads are untouched.
+- **A non-linear remainder is left**: a kernel SVM still names it at 54 %, nearly all of it telling HUTUBS from
+  SONICOM (3D3A is almost never named). It is **not a difference of resolution** from the fit — cutting every head to
+  order 15, 10, 8 or 5 leaves it at 54–56 % — **nor of spread** — scaling each database's spread to the common one
+  leaves it at 59 %. SONICOM's heads do vary a little more widely than HUTUBS's, 1.06× (CLL) and 1.09× (ILD).
 
 ## 5. Next
 
-1. **The unified data set**: every HUTUBS and 3D3A head, equalised, normalised and on one SH representation — 134
-   heads, the input to the model.
+1. **The unified data set**: every head of the three, equalised, normalised and on one SH representation — 274
+   heads, the input to the model. The kernel classifier stays a standing check on it.
 2. **The model** — what parameterises a head along the horizontal (ILD, ITD) and the vertical (CLL) axis, with shifts
-   in frequency handled; not PCA.
+   in frequency handled; not PCA. A model that has to ignore the database could take the non-linear remainder out
+   in its own training, where a fixed normalisation cannot.
+3. **Licences** before any shipped model: SONICOM's is unclear (§1).

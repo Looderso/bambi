@@ -1,16 +1,18 @@
 """Remove the database fingerprint by normalising each direction: a head minus its database's average, plus the
 average of the databases (each database weighted equally).
 
-Measured on HUTUBS and 3D3A after equalisation (equalise.py), 2–16 kHz, on the directions both measured:
+Measured on the databases after equalisation (equalise.py), 2–16 kHz, on the directions all of them measured:
   - the classifier that names the database, before and after. Within the cross-validation, a test head is normalised
     with the average of its database's *training* heads only, so the test never sees its own answer. In use the
     database a head came from is known, so normalising by it is fair.
   - how widely heads spread: around their own database's average (untouched by a shift, measured to show it), and
     pooled around the common average (where the databases' offsets are what goes)
-  - if the classifier stays high, where the fingerprint then lives: how differently the two databases spread, per
-    frequency
+  - how differently the databases spread, per frequency — a fingerprint the average cannot hold
+  - whether the databases' averages differ by measurement or by people: random groups of heads from within one
+    database, of the real databases' sizes, show how far two averages differ by chance of who was measured. A gap
+    between databases well beyond that is the measurement's.
 
-  python normalise.py <KU100 sofa> <HUTUBS directory> <3D3A directory>
+  python normalise.py <KU100 sofa> <HUTUBS directory> <3D3A directory> [<SONICOM directory>]
 """
 import os, sys
 from importlib.util import spec_from_file_location, module_from_spec
@@ -64,48 +66,60 @@ def spread(v, centre, cols):
     return float(np.mean(np.sqrt(np.mean((v - centre)[:, :, cols] ** 2, axis=(1, 2)))))
 
 
-def main(ku_path, hutubs_dir, d3a_dir):
-    ku_ctf, dbs = eq.load_all(ku_path, hutubs_dir, d3a_dir)
-    caz, cel = eq.common_directions()
+def chance_gap(v, sizes, cols, draws=300, rng=np.random.default_rng(0)):
+    """How far the averages of two random groups of heads from one database differ — the 95th percentile over
+    draws: a gap this large comes from who was measured, not from how."""
+    out = []
+    for _ in range(draws):
+        idx = rng.permutation(len(v))
+        a, b = idx[:sizes[0]], idx[sizes[0]:sizes[0] + sizes[1]]
+        out.append(np.sqrt(np.mean((v[a].mean(0) - v[b].mean(0))[:, cols] ** 2)))
+    return float(np.percentile(out, 95))
+
+
+def main(ku_path, *dirs):
+    ku_ctf, dbs = eq.load_all(ku_path, dict(zip(("HUTUBS", "3D3A", "SONICOM"), dirs)))
+    caz, cel, (lo, hi) = eq.common_directions(dbs)
     ev = eq.unified(dbs, ku_ctf, "equalised", caz, cel)
+    names = list(ev)
     means = {n: v.mean(0) for n, v in ev.items()}
     nv = normalised(ev, means)
     nmeans = {n: v.mean(0) for n, v in nv.items()}
+    print(f"{', '.join(f'{n} {len(v)}' for n, v in ev.items())} heads; {len(caz)} directions, elevation {lo:.0f}…{hi:.0f}°")
 
     for label, e, m in (("equalised", ev, means), ("normalised", nv, nmeans)):
         pooled = np.concatenate(list(e.values()))
         grand = np.mean(list(m.values()), axis=0)
         print(f"\n{label}:")
         for q, cols in (("CLL", eq.COLS_CLL), ("ILD", eq.COLS_ILD)):
-            print(f"  {q}: around its own database's average — HUTUBS {spread(e['HUTUBS'], m['HUTUBS'], cols):.2f} dB, "
-                  f"3D3A {spread(e['3D3A'], m['3D3A'], cols):.2f} dB; all heads around the common average "
+            own = ", ".join(f"{n} {spread(e[n], m[n], cols):.2f}" for n in names)
+            print(f"  {q}: around its own database's average — {own} dB; all heads around the common average "
                   f"{spread(pooled, grand, cols):.2f} dB")
+    chance = 100 / len(names)
     for kernel, name in ((False, "linear"), (True, "kernel SVM")):
         print(f"\n{name} classifier naming the database: equalised {100 * accuracy(ev, False, kernel):.0f} %, "
-              f"normalised (in-fold) {100 * accuracy(ev, True, kernel):.0f} % — chance 50 %")
+              f"normalised (in-fold) {100 * accuracy(ev, True, kernel):.0f} % — chance {chance:.0f} %")
 
-    # Where a remaining fingerprint would live: the ratio of the two databases' spread, per bin.
+    print("\nmeasurement or people — the averages' gap against the 95th percentile of random groups' gap (dB):")
+    big = max(names, key=lambda n: len(ev[n]))
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            row = []
+            for q, cols in (("CLL", eq.COLS_CLL), ("ILD", eq.COLS_ILD)):
+                gap = np.sqrt(np.mean((means[a] - means[b])[:, cols] ** 2))
+                sizes = sorted((len(ev[a]), len(ev[b])))
+                pool = big if len(ev[big]) >= sum(sizes) else None
+                ref = chance_gap(ev[pool], sizes, cols) if pool else chance_gap(ev[big], (len(ev[big]) // 2, len(ev[big]) // 2), cols)
+                row.append(f"{q} {gap:.2f} against {ref:.2f}")
+            print(f"  {a} – {b}: " + ", ".join(row) + (f"  (random groups from {big})"))
+
     fr = np.fft.rfftfreq(eq.NFFT, 1 / eq.FS)
-    sd = {n: v.std(0) for n, v in ev.items()}                          # dirs x cols
-    ratio = np.median(sd["3D3A"] / np.maximum(sd["HUTUBS"], 1e-6), axis=0)
-    for q, off in (("CLL", 0), ("ILD", nb)):
-        r = ratio[off:off + nb][eq.BAND]
-        print(f"  {q}: 3D3A spreads {np.median(r):.2f}× as widely as HUTUBS (median over directions and 2–16 kHz; "
-              f"{r.min():.2f}…{r.max():.2f} over frequency)")
-
-    offset = means["HUTUBS"] - means["3D3A"]
-    fig = make_subplots(rows=1, cols=2, subplot_titles=["CLL", "ILD"])
-    k = (fr >= 200) & (fr <= 20000)
-    for qi, off in enumerate((0, nb)):
-        fig.add_trace(go.Scatter(x=fr[k], y=np.sqrt(np.mean(offset[:, off:off + nb] ** 2, 0))[k], name="the offset removed (RMS over directions)",
-                                 line=dict(color="#1b1a17"), showlegend=qi == 0), row=1, col=qi + 1)
-        fig.add_trace(go.Scatter(x=fr[k], y=ratio[off:off + nb][k], name="3D3A's spread ÷ HUTUBS's (median over directions)",
-                                 line=dict(color="#d4873a"), yaxis="y2" if qi == 0 else "y4", showlegend=qi == 0), row=1, col=qi + 1)
-    fig.update_xaxes(type="log", title_text="Hz"); fig.update_yaxes(title_text="dB / ratio")
-    fig.update_layout(title="What the normalisation removes (ink), and how differently the two databases spread (orange)",
-                      height=460, template="plotly_white")
-    fig.write_html(os.path.join(ge.OUT, "normalise.html"), include_plotlyjs="cdn")
+    sd = {n: v.std(0) for n, v in ev.items()}
+    for n in names[1:]:
+        ratio = np.median(sd[n] / np.maximum(sd[names[0]], 1e-6), axis=0)
+        print(f"  {n} spreads {np.median(ratio[:nb][eq.BAND]):.2f}× (CLL) and {np.median(ratio[nb:][eq.BAND]):.2f}× (ILD) "
+              f"as widely as {names[0]} (median over directions, 2–16 kHz)")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], sys.argv[3])
+    main(*sys.argv[1:])
