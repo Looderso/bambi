@@ -513,9 +513,11 @@ addEventListener("keydown", e => {
 const T = { ws: null, on: false, read: "auto", addr: null, interp: "quat-wxyz", flip: [false, false, false],
   axes: "head", smooth: 0.05, raw: null, yaw0: null, R: null, q: [1, 0, 0, 0], target: null,
   seen: {}, parts: {}, count: 0, rate: 0, last: "", tick: performance.now() };
-const KNOWN = { "/adm/lis/ypr": "ypr-deg", "/ypr": "ypr-deg", "/SceneRotator/ypr": "ypr-deg",
+// ADM-OSC's pitch is up-positive, as the suite's; IEM's and SPARTA's is a rotation about +y (left), so down-positive.
+const KNOWN = { "/adm/lis/ypr": "ypr-deg", "/ypr": "ypr-deg-down", "/SceneRotator/ypr": "ypr-deg-down",
   "/quaternion": "quat-wxyz", "/SceneRotator/quaternions": "quat-wxyz", "/rotationvector": "quat-xyzw" };
-const INTERP = { "quat-wxyz": "quat w x y z", "quat-xyzw": "quat x y z w", "ypr-deg": "ypr °", "ypr-rad": "ypr rad" };
+const INTERP = { "quat-wxyz": "quat w x y z", "quat-xyzw": "quat x y z w", "ypr-deg": "ypr °, pitch up +",
+  "ypr-deg-down": "ypr °, pitch down +", "ypr-rad": "ypr rad, pitch up +" };
 // Rows: the head's front, left and up, in the device's coordinates.
 const AXES = {
   head: { label: "as sent", M: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
@@ -547,8 +549,8 @@ function toMatrix(interp, v) {
     const n = Math.hypot(w, x, y, z) || 1; [w, x, y, z] = [w / n, x / n, y / n, z / n];
     return qToM([w, f[0] ? -x : x, f[1] ? -y : y, f[2] ? -z : z]);
   }
-  const k = interp === "ypr-rad" ? 180 / Math.PI : 1;
-  return headRot({ yaw: (f[0] ? -1 : 1) * v[0] * k, pitch: (f[1] ? -1 : 1) * v[1] * k, roll: (f[2] ? -1 : 1) * v[2] * k });
+  const k = interp === "ypr-rad" ? 180 / Math.PI : 1, down = interp === "ypr-deg-down" ? -1 : 1;
+  return headRot({ yaw: (f[0] ? -1 : 1) * v[0] * k, pitch: (f[1] ? -1 : 1) * down * v[1] * k, roll: (f[2] ? -1 : 1) * v[2] * k });
 }
 const yawOf = m => Math.atan2(m[3], m[0]);
 function onOsc(m) {
@@ -558,7 +560,7 @@ function onOsc(m) {
   const part = m.address.match(/^(\/rotationvector|\/SceneRotator)\/(X|Y|Z|cos|yaw|pitch|roll)$/i);
   if (part) { const g = T.parts[part[1]] ||= {}; g[part[2].toLowerCase()] = v[0];
     if (part[1] === "/rotationvector" && part[2] === "cos" && "x" in g) { interp = "quat-xyzw"; v = [g.x, g.y, g.z, g.cos]; }
-    else if (part[1] === "/SceneRotator" && "yaw" in g) { interp = "ypr-deg"; v = [g.yaw, g.pitch ?? 0, g.roll ?? 0]; } }
+    else if (part[1] === "/SceneRotator" && "yaw" in g) { interp = "ypr-deg-down"; v = [g.yaw, g.pitch ?? 0, g.roll ?? 0]; } }
   if (T.read === "auto" && KNOWN[m.address]) interp = KNOWN[m.address];
   if (T.read === "learn") { if (m.address !== T.addr) return; interp = T.interp; }
   if (!interp || v.length < (interp.startsWith("quat") ? 4 : 3) || v.some(x => typeof x !== "number")) return;

@@ -257,13 +257,17 @@ There is one standard and two formats that became standards by use; everything e
 | family | addresses | form |
 |---|---|---|
 | **ADM-OSC** — the industry standard, understood by L-ISA, Spat Revolution, Holophonix and others | `/adm/lis/ypr` | degrees; yaw right negative, pitch down negative — the suite's own convention, no remapping |
-| **SPARTA** | `/ypr`, `/quaternion` | degrees; quaternion w, x, y, z |
-| **IEM SceneRotator** | `/SceneRotator/ypr`, `/SceneRotator/quaternions` | the same two forms |
+| **SPARTA** | `/ypr`, `/quaternion` | degrees, **pitch down-positive**; quaternion w, x, y, z |
+| **IEM SceneRotator** | `/SceneRotator/ypr`, `/SceneRotator/quaternions` | the same two forms, the same pitch |
 | **Learn** — anything else | whatever arrives | the plugin shows each incoming address; the user picks quaternion (w first or last) or yaw-pitch-roll, degrees or radians, and which axes flip. Saved as a preset |
 
 Headitude (AirPods), the bridge apps of hardware trackers and most existing setups send one of the first three.
 Phone apps — Sensors2OSC on Android (`/rotationvector`, w last), ZIG SIM, GyrOSC — go through learn.
 
+- **Pitch has two signs in use.** ADM-OSC's is up-positive, as the suite's. IEM's and SPARTA's yaw-pitch-roll are
+  Tait-Bryan angles about z, y, x on the same axes, so pitch turns about +y (left) and looking *up* is negative —
+  confirmed for IEM in Headitude's conversion, assumed for SPARTA, which uses the same order. Read with the wrong
+  sign, looking up turned the scene down. Quaternions carry no such choice.
 - **Quaternions inside.** Phones and AirPods measure a quaternion; Euler input is converted on arrival, so nothing
   gimbal-locks.
 - **A phone points with one of its axes** — its top edge or its screen normal, chosen — since its orientation is

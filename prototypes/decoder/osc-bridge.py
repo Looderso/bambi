@@ -1,6 +1,7 @@
 """OSC over UDP in, WebSocket out — so a browser prototype can read a head tracker or a phone.
 
-Every OSC message (bundles unpacked) goes to every connected page as JSON: {"address": "/ypr", "args": [..]}.
+Every OSC message (bundles unpacked) goes to every connected page as JSON: {"address": "/ypr", "args": [..], "t": ..},
+t its arrival in milliseconds of system uptime modulo 100 000 — so a sender that stamps its messages can be timed.
 Python's standard library only.
 
   python osc-bridge.py                   OSC on 127.0.0.1:9000, WebSocket on 127.0.0.1:8766
@@ -59,11 +60,12 @@ def build_osc(address, floats):
 
 class OscIn(asyncio.DatagramProtocol):
     def datagram_received(self, data, addr):
+        arrived = (time.monotonic() * 1000) % 100_000   # ms, the same uptime clock a sender's timestamps use on macOS
         try:
             for address, args in parse_osc(data):
                 stats["count"] += 1
                 stats["addresses"][address] = stats["addresses"].get(address, 0) + 1
-                msg = json.dumps({"address": address, "args": args, "from": addr[0]})
+                msg = json.dumps({"address": address, "args": args, "from": addr[0], "t": arrived})
                 for w in list(clients):
                     send_text(w, msg)
         except Exception as e:
@@ -132,9 +134,9 @@ async def demo(fmt, port):
         w, x, y, z = quat_from_ypr(yaw, pitch, roll)
         packets = {
             "adm": [build_osc("/adm/lis/ypr", [yaw, pitch, roll])],
-            "sparta-ypr": [build_osc("/ypr", [yaw, pitch, roll])],
+            "sparta-ypr": [build_osc("/ypr", [yaw, -pitch, roll])],          # their pitch is down-positive
             "sparta-quat": [build_osc("/quaternion", [w, x, y, z])],
-            "iem-ypr": [build_osc("/SceneRotator/ypr", [yaw, pitch, roll])],
+            "iem-ypr": [build_osc("/SceneRotator/ypr", [yaw, -pitch, roll])],
             "iem-quat": [build_osc("/SceneRotator/quaternions", [w, x, y, z])],
             "android": [build_osc("/rotationvector", [x, y, z, w])],
         }[fmt]
