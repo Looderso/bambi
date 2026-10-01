@@ -203,7 +203,7 @@ class Binaural extends AudioWorkletProcessor {
 }
 registerProcessor("binaural", Binaural);`;
 
-let ctxV, ctxR, node, gainV, gainR, mergerR, speakerEl, bufV = {}, bufR = {}, timer = null, nextAt = 0, turn = 0;
+let ctxV, ctxR, node, gainV, gainR, mergerR, headEl, speakerEl, bufV = {}, bufR = {}, timer = null, nextAt = 0, turn = 0;
 function makeBurst(ctx, kind) {
   const len = Math.round(SR * 0.25), b = ctx.createBuffer(1, len, SR), x = b.getChannelData(0);
   let b0 = 0, b1 = 0, b2 = 0;
@@ -227,31 +227,34 @@ async function start() {
   const u = app3(tr3(headMatrix()), dirOf(S.spk.az * D2R, S.spk.el * D2R)), first = render(u);
   node = new AudioWorkletNode(ctxV, "binaural", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
     processorOptions: { h: first.h, d: first.d } });
-  gainV = ctxV.createGain(); gainV.gain.value = 0; node.connect(gainV); gainV.connect(safeOutput(ctxV));
   gainR = ctxR.createGain(); gainR.gain.value = 0; mergerR = ctxR.createChannelMerger(2);
   gainR.connect(mergerR, 0, S.channel);
-  // The loudspeaker path leaves through an <audio> element and its setSinkId, the long-standing way to choose a
-  // device: routing the context itself (AudioContext.setSinkId) left the loudspeaker sound on the headphones.
-  const toElement = ctxR.createMediaStreamDestination();
-  mergerR.connect(safeOutput(ctxR, toElement));
-  speakerEl = new Audio(); speakerEl.srcObject = toElement.stream; await speakerEl.play();
+  // Each path leaves through an <audio> element carrying the context's output as a stream, and the element chooses
+  // the device: on macOS Chrome, routing a context itself (AudioContext.setSinkId) stayed on the system output.
+  const toHead = ctxV.createMediaStreamDestination(), toSpeaker = ctxR.createMediaStreamDestination();
+  gainV = ctxV.createGain(); gainV.gain.value = 0; node.connect(gainV); gainV.connect(safeOutput(ctxV, toHead));
+  mergerR.connect(safeOutput(ctxR, toSpeaker));
+  headEl = new Audio(); speakerEl = new Audio();
+  await applySinks();
+  headEl.srcObject = toHead.stream; speakerEl.srcObject = toSpeaker.stream;
+  await headEl.play(); await speakerEl.play();
   for (const k of ["noise", "clicks"]) { bufV[k] = makeBurst(ctxV, k); bufR[k] = makeBurst(ctxR, k); }
-  await applySinks(); levels(); update();
+  levels(); update();
   timer = setInterval(schedule, 25);
   $("bStart").textContent = "Stop audio"; $("bStart").classList.remove("go");
 }
 let outputs = [];
 const labelOf = id => id ? (outputs.find(d => d.deviceId === id)?.label || "an unnamed output") : "the system output";
+// Each element is routed on its own, so one failing cannot keep the other on the system output.
 async function applySinks() {
-  if (!ctxV) return;
-  for (const [c, id] of [[ctxV, S.sinkV], [speakerEl, S.sinkR]]) {
-    if (!c.setSinkId) { $("deviceNote").textContent = "This browser cannot choose an output device; use Chrome."; return; }
-    try { await c.setSinkId(id); } catch (e) { $("deviceNote").textContent = "Could not use that device: " + e.message; return; }
+  if (!headEl) return;
+  const errors = [];
+  for (const [el, id, name] of [[headEl, S.sinkV, "headphones"], [speakerEl, S.sinkR, "loudspeakers"]]) {
+    try { await el.setSinkId(id); } catch (e) { errors.push(`${name}: ${e.message}`); }
   }
   // Say where each actually went, so a wrong route is seen, not only heard.
-  const v = labelOf(ctxV.sinkId), r = labelOf(speakerEl.sinkId);
-  $("deviceNote").textContent = `Headphones → ${v}. Loudspeakers → ${r}.` +
-    ((ctxV.sinkId || "") === (speakerEl.sinkId || "") ? " Both go to the same device — choose the loudspeakers in the second list." : "");
+  $("deviceNote").textContent = `Headphones → ${labelOf(headEl.sinkId)}. Loudspeakers → ${labelOf(speakerEl.sinkId)}.` +
+    (headEl.sinkId === speakerEl.sinkId ? " Both go to the same device." : "") + (errors.length ? " Could not: " + errors.join("; ") : "");
 }
 // Levels glide, never jump: 0.1 s to settle, and from silence at start.
 function levels() { if (!ctxV) return;
@@ -277,7 +280,7 @@ $("bStart").onclick = async () => {
   if (!ctxV) return start();
   const running = ctxV.state === "running";
   for (const c of [ctxV, ctxR]) running ? await c.suspend() : await c.resume();
-  running ? speakerEl.pause() : speakerEl.play();
+  for (const el of [headEl, speakerEl]) running ? el.pause() : el.play();
   $("bStart").textContent = running ? "Resume audio" : "Stop audio";
 };
 
