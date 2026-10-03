@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bambi · Decoder · Elevation</title>
+<link rel="stylesheet" href="../common.css">
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div class="viewbox"><canvas id="cv"></canvas><span class="vlabel" id="cvLabel">side view · the head looks right · click where the target is — the bursts, not the steady noise</span></div>
+    <div class="viewbox"><canvas id="cvRes"></canvas><span class="vlabel">results · per condition, target against answer, polar angle · grey diagonal: right · dashed: front–back mirror</span></div>
+  </div>
+  <div id="panel">
+    <h1>Decoder · Elevation</h1>
+    <div class="row"><button id="bStart" class="go">Start audio</button></div>
+    <p class="note" id="loadNote">Renders from <b>out/elevation/</b>, made by elevation.py.</p>
+
+    <h2>HEAR THE PLACES</h2>
+    <p class="note">The target alone, at each place, named. Listen a few times before the test — the KU100 is not your
+      head, so learn what its up and back sound like.</p>
+    <div class="seg" id="segLearn"></div>
+
+    <h2>TEST <kbd>space</kbd> replay</h2>
+    <div class="sub note">repetitions of each place and condition</div>
+    <div class="seg" id="segReps"></div>
+    <div class="row"><button id="bTest">Begin</button></div>
+    <p class="note" id="trialNote">Six conditions, shuffled and unnamed: the target alone, plain or enhanced; with the
+      masker at the side, plain, protected, enhanced, or both. Each trial plays once; space plays it again. Click the
+      place on the circle; the next trial follows.</p>
+
+    <h2>RESULTS</h2>
+    <pre id="table" class="note" style="font-size:10px;color:var(--ink)"></pre>
+    <div class="row"><button id="bSave">Download results</button><button id="bClear">Clear</button></div>
+    <p class="note">Local error: the median angle between target and answer where the answer is not a front–back
+      confusion. Confusion: the answer on the other side of the overhead line, for targets not overhead and answers
+      more than 15° from it.</p>
+
+    <h2>OUTPUT</h2>
+    <div id="volCtl"></div>
+  </div>
+</div>
+<script src="../common.js"></script>
+<script>
+const LABEL = { "-30": "front, below", "0": "front", "30": "front, up", "60": "up, front", "90": "overhead",
+                "120": "up, behind", "150": "behind, up", "180": "behind", "210": "behind, below" };
+const COLOUR = { "quiet": "#a9a59c", "quiet, enhanced": "#6f6b62", "masked": "#1b1a17", "protected": "#d4873a",
+                 "enhanced": "#5d7d8c", "enhanced, protected": "#8c5d7d" };
+const S = { ctx: null, out: null, master: null, man: null, bufs: {}, vol: -6, reps: 2, trials: [], i: -1, node: null,
+            results: [], answered: null };
+try { S.results = JSON.parse(localStorage.getItem("elevation-results") || "[]"); } catch { S.results = []; }
+const save = () => { try { localStorage.setItem("elevation-results", JSON.stringify(S.results)); } catch {} };
+
+seg($("segReps"), [1, 2, 3], () => S.reps, v => { S.reps = v; });
+ctl($("volCtl"), "volume", -30, 0, () => S.vol, v => { S.vol = v; if (S.master) S.master.gain.value = 10 ** (v / 20); },
+    v => v.toFixed(0) + " dB");
+
+async function start() {
+  if (S.ctx) return;
+  S.ctx = new AudioContext({ sampleRate: 48000 });
+  S.out = safeOutput(S.ctx);
+  S.master = S.ctx.createGain(); S.master.gain.value = 10 ** (S.vol / 20); S.master.connect(S.out);
+  $("bStart").textContent = "Audio on"; $("bStart").classList.remove("go");
+  try {
+    S.man = await (await fetch("out/elevation/manifest.json")).json();
+    const jobs = [];
+    for (const c of S.man.conditions) for (const p of S.man.polar) jobs.push((async () => {
+      const r = await fetch("out/elevation/" + S.man.files[c][p]);
+      S.bufs[c + "|" + p] = await S.ctx.decodeAudioData(await r.arrayBuffer()); })());
+    await Promise.all(jobs);
+    $("loadNote").textContent = `Loaded ${jobs.length} renders. Target-to-masker ${S.man.tmr} dB, enhancement ×${S.man.alpha}, masker at azimuth ${S.man.masker[0]}°.`;
+    seg($("segLearn"), S.man.polar, () => null, p => play("quiet", p), p => LABEL[p]);
+    table();
+  } catch (e) { $("loadNote").innerHTML = "Could not load <b>out/elevation/</b> — run elevation.py, serve this folder."; }
+}
+
+function play(c, p) {
+  if (S.node) { try { S.node.stop(); } catch {} }
+  const n = S.ctx.createBufferSource(); n.buffer = S.bufs[c + "|" + p]; n.connect(S.master); n.start(); S.node = n;
+  S.shown = { c, p, at: performance.now() };
+}
+
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function begin() {
+  if (!S.man) return;
+  S.trials = [];
+  for (let r = 0; r < S.reps; r++) for (const c of S.man.conditions) for (const p of S.man.polar) S.trials.push({ c, p });
+  shuffle(S.trials); S.i = 0; S.session = new Date().toISOString(); next(false);
+}
+function next(advance = true) {
+  if (advance) S.i++;
+  if (S.i >= S.trials.length) { S.i = -1; S.shown = null; $("trialNote").textContent = "Done. " + S.trials.length + " answers added."; return; }
+  $("trialNote").textContent = `Trial ${S.i + 1} of ${S.trials.length}. Space plays it again.`;
+  const t = S.trials[S.i]; t.replays = 0; setTimeout(() => play(t.c, t.p), 400);
+}
+function answer(polar) {
+  if (S.i < 0) return;
+  const t = S.trials[S.i];
+  S.results.push({ session: S.session, condition: t.c, target: t.p, answer: Math.round(polar), replays: t.replays,
+                   tmr: S.man.tmr, alpha: S.man.alpha });
+  save(); S.answered = { polar, at: performance.now() }; table(); next();
+}
+
+// Polar angle: 0 front, 90 overhead, 180 behind, on (−90, 270].
+const cv = $("cv");
+function geom(c) { const r = c.getBoundingClientRect(); return { w: r.width, h: r.height, cx: r.width / 2, cy: r.height / 2 + 10,
+  R: Math.min(r.width, r.height) * 0.36 }; }
+function polarAt(g, x, y) { let a = Math.atan2(g.cy - y, x - g.cx) * 180 / Math.PI; if (a <= -90) a += 360; return a; }
+cv.onclick = e => { const r = cv.getBoundingClientRect(), g = geom(cv); answer(polarAt(g, e.clientX - r.left, e.clientY - r.top)); };
+cv.onmousemove = e => { const r = cv.getBoundingClientRect(); S.hover = polarAt(geom(cv), e.clientX - r.left, e.clientY - r.top); };
+cv.onmouseleave = () => { S.hover = null; };
+
+function draw() {
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1, g = geom(cv);
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  const c = cv.getContext("2d"); c.scale(dpr, dpr);
+  const pt = (a, k = 1) => [g.cx + Math.cos(a * Math.PI / 180) * g.R * k, g.cy - Math.sin(a * Math.PI / 180) * g.R * k];
+  c.strokeStyle = "#c8c4ba"; c.lineWidth = 1;
+  c.beginPath(); c.arc(g.cx, g.cy, g.R, 0, 2 * Math.PI); c.stroke();
+  c.beginPath(); c.moveTo(g.cx - g.R * 1.15, g.cy); c.lineTo(g.cx + g.R * 1.15, g.cy); c.stroke();
+  c.setLineDash([3, 3]); c.beginPath(); c.moveTo(g.cx, g.cy - g.R * 1.15); c.lineTo(g.cx, g.cy + g.R * 0.6); c.stroke(); c.setLineDash([]);
+  // the head, looking right, with a nose and an ear
+  c.fillStyle = "#d5d1c8"; c.beginPath(); c.arc(g.cx, g.cy, g.R * 0.16, 0, 2 * Math.PI); c.fill();
+  c.beginPath(); c.moveTo(g.cx + g.R * 0.15, g.cy - g.R * 0.04); c.lineTo(g.cx + g.R * 0.22, g.cy + g.R * 0.02);
+  c.lineTo(g.cx + g.R * 0.15, g.cy + g.R * 0.05); c.fill();
+  c.fillStyle = "#b7b2a8"; c.beginPath(); c.ellipse(g.cx - g.R * 0.02, g.cy, g.R * 0.035, g.R * 0.06, 0, 0, 2 * Math.PI); c.fill();
+  c.fillStyle = "#6f6b62"; c.font = "10px Helvetica Neue, Helvetica, Arial";
+  for (const [a, t] of [[0, "front"], [90, "overhead"], [180, "behind"], [-90, "below"]]) {
+    const [x, y] = pt(a, 1.22); c.textAlign = "center"; c.fillText(t, x, y + 3); }
+  if (S.man) for (const p of S.man.polar) { const [x, y] = pt(p); c.fillStyle = "#b7b2a8"; c.fillRect(x - 2, y - 2, 4, 4); }
+  if (S.hover != null && S.i >= 0) { const [x, y] = pt(S.hover); c.strokeStyle = "#1b1a17";
+    c.beginPath(); c.arc(x, y, 7, 0, 2 * Math.PI); c.stroke(); }
+  if (S.answered && performance.now() - S.answered.at < 400) { const [x, y] = pt(S.answered.polar);
+    c.fillStyle = "#d4873a"; c.beginPath(); c.arc(x, y, 7, 0, 2 * Math.PI); c.fill(); }
+  if (S.shown && S.i < 0 && performance.now() - S.shown.at < 1600) { const [x, y] = pt(S.shown.p);   // learning: show the place
+    c.fillStyle = "#d4873a"; c.beginPath(); c.arc(x, y, 7, 0, 2 * Math.PI); c.fill(); }
+  drawResults();
+  requestAnimationFrame(draw);
+}
+
+const isConfusion = (t, a) => t !== 90 && Math.abs(a - 90) > 15 && Math.sign(90 - t) !== Math.sign(90 - a);
+const angle = (t, a) => Math.abs(((a - t + 540) % 360) - 180);
+const median = v => { if (!v.length) return NaN; const s = [...v].sort((a, b) => a - b), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+function table() {
+  if (!S.man) { $("table").textContent = ""; return; }
+  let out = "condition               n   local error   confusions\n";
+  for (const c of S.man.conditions) {
+    const rs = S.results.filter(r => r.condition === c), conf = rs.filter(r => isConfusion(r.target, r.answer));
+    const loc = rs.filter(r => !isConfusion(r.target, r.answer)).map(r => angle(r.target, r.answer));
+    out += `${c.padEnd(22)}${String(rs.length).padStart(3)}   ${isNaN(median(loc)) ? "    –" : (median(loc).toFixed(0) + "°").padStart(5)}`
+         + `         ${rs.length ? Math.round(100 * conf.length / rs.length) + " %" : "–"}\n`;
+  }
+  $("table").textContent = out;
+}
+function drawResults() {
+  const cr = $("cvRes"), r = cr.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cr.width = r.width * dpr; cr.height = r.height * dpr;
+  const c = cr.getContext("2d"); c.scale(dpr, dpr);
+  if (!S.man) return;
+  const conds = S.man.conditions, cols = 3, rows = 2, pad = 26, w = (r.width - pad) / cols, h = (r.height - pad) / rows;
+  const lo = -90, hi = 270;
+  conds.forEach((cond, k) => {
+    const x0 = pad / 2 + (k % cols) * w + 22, y0 = pad + Math.floor(k / cols) * h, s = Math.min(w - 34, h - 30);
+    const X = v => x0 + (v - lo) / (hi - lo) * s, Y = v => y0 + s - (v - lo) / (hi - lo) * s;
+    c.strokeStyle = "#d5d1c8"; c.strokeRect(x0, y0, s, s);
+    c.beginPath(); c.moveTo(X(lo), Y(lo)); c.lineTo(X(hi), Y(hi)); c.stroke();
+    c.setLineDash([3, 3]); c.beginPath(); c.moveTo(X(0), Y(180)); c.lineTo(X(180), Y(0)); c.stroke(); c.setLineDash([]);
+    c.fillStyle = "#1b1a17"; c.font = "10px Helvetica Neue, Helvetica, Arial"; c.textAlign = "left";
+    c.fillText(cond, x0, y0 - 4);
+    c.fillStyle = COLOUR[cond];
+    for (const res of S.results.filter(q => q.condition === cond)) {
+      c.beginPath(); c.arc(X(res.target), Y(res.answer), 2.5, 0, 2 * Math.PI); c.fill(); }
+  });
+}
+
+$("bStart").onclick = start;
+$("bTest").onclick = async () => { await start(); begin(); };
+$("bSave").onclick = () => { const b = new Blob([JSON.stringify(S.results, null, 1)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "elevation-results.json"; a.click(); };
+$("bClear").onclick = () => { if (confirm("Clear all " + S.results.length + " answers?")) { S.results = []; save(); table(); } };
+addEventListener("keydown", e => {
+  if (e.key === " " && S.i >= 0) { e.preventDefault(); const t = S.trials[S.i]; t.replays++; play(t.c, t.p); }
+});
+draw();
+</script>
+</body>
+</html>

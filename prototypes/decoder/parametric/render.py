@@ -48,6 +48,39 @@ def xyz(az, el):
     return np.stack([np.cos(el) * np.cos(az), np.cos(el) * np.sin(az), np.sin(el)], -1)
 
 
+def load(sofa):
+    """The SOFA set: directions (radians, and unit vectors), HRIRs, their spectra on the STFT's bins (dirs x ears x bins)."""
+    f = h5py.File(sofa)
+    pos, hrir = f["SourcePosition"][:], f["Data.IR"][:]
+    az, el = np.radians(pos[:, 0]), np.radians(pos[:, 1])
+    H = np.fft.rfft(hrir, N, axis=-1).astype(np.complex64)
+    return az, el, xyz(az, el), hrir, H, np.fft.rfftfreq(N, 1 / FS)
+
+
+def notch_mask(H, fr):
+    """Notch shares per direction and bin, 0…1: the CLL below its 3-ERB-smoothed self, over 6 dB; 2–16 kHz only."""
+    cll = 10 * np.log10(np.maximum(np.abs(H[:, 0]) ** 2 + np.abs(H[:, 1]) ** 2, 1e-12))
+    erb = 21.4 * np.log10(1 + 0.00437 * fr)
+    grid = np.arange(erb[1], erb[-1], 0.25)
+    on_grid = np.stack([np.interp(grid, erb, c) for c in cll])
+    base = gaussian_filter1d(on_grid, 3 / 2.355 / 0.25, axis=-1, mode="nearest")
+    gap = np.stack([np.interp(erb, grid, b) for b in base]) - cll
+    mask = np.clip(gap / 6.0, 0, 1).astype(np.float32)
+    mask[:, (fr < 2000) | (fr > 16000)] = 0
+    return mask
+
+
+def protect_gains(dom, ms):
+    """Per source and tile, the gain that clears every other source's notch bands of it in proportion to how much that
+    source leads the tile. dom: S x bins x frames, each source's share of the tile's energy; ms: S x bins, notch shares."""
+    g = np.ones_like(dom)
+    for s in range(len(dom)):
+        for t in range(len(dom)):
+            if t != s:
+                g[t] *= 1 - AMOUNT * ms[s][:, None] * dom[s]
+    return g
+
+
 def noise(rng):
     """Pink-ish noise bursts, 80–400 ms, with gaps of 50–600 ms, different for each source."""
     out = []
@@ -124,24 +157,10 @@ def from_files(paths):
 def main(sofa, out_dir, kind="noise", *files):
     out_dir = os.path.join(out_dir, kind if kind in ("noise", "music") else "files")
     os.makedirs(out_dir, exist_ok=True)
-    f = h5py.File(sofa)
-    pos, hrir = f["SourcePosition"][:], f["Data.IR"][:]
-    az, el = np.radians(pos[:, 0]), np.radians(pos[:, 1])
-    dirs = xyz(az, el)
+    az, el, dirs, hrir, H, fr = load(sofa)
     tree = cKDTree(dirs)
-    H = np.fft.rfft(hrir, N, axis=-1).astype(np.complex64)                # dirs x ears x bins
-    fr = np.fft.rfftfreq(N, 1 / FS)
     nb = len(fr)
-
-    # Notch shares per direction and bin: the CLL below its 3-ERB-smoothed self, over 6 dB.
-    cll = 10 * np.log10(np.maximum(np.abs(H[:, 0]) ** 2 + np.abs(H[:, 1]) ** 2, 1e-12))
-    erb = 21.4 * np.log10(1 + 0.00437 * fr)
-    grid = np.arange(erb[1], erb[-1], 0.25)
-    on_grid = np.stack([np.interp(grid, erb, c) for c in cll])
-    base = gaussian_filter1d(on_grid, 3 / 2.355 / 0.25, axis=-1, mode="nearest")
-    gap = np.stack([np.interp(erb, grid, b) for b in base]) - cll
-    mask = np.clip(gap / 6.0, 0, 1).astype(np.float32)
-    mask[:, (fr < 2000) | (fr > 16000)] = 0
+    mask = notch_mask(H, fr)
 
     # The linear decode: MagLS at order 3 on these bins, the HRIRs' bulk delay put back so it lines up with the direct part.
     w = SphericalVoronoi(dirs).calculate_areas(); w /= w.sum()
@@ -189,12 +208,7 @@ def main(sofa, out_dir, kind="noise", *files):
     P = np.abs(Ssrc) ** 2
     dom = P / np.maximum(P.sum(0, keepdims=True), 1e-12)                  # S x bins x frames
     ms = mask[sidx]                                                       # S x bins
-    g = np.ones_like(dom)
-    for s in range(len(SOURCES)):
-        for t in range(len(SOURCES)):
-            if t != s:
-                g[t] *= 1 - AMOUNT * ms[s][:, None] * dom[s]
-    objects_p = np.einsum("sek,skt->ekt", Hs, Ssrc * g)
+    objects_p = np.einsum("sek,skt->ekt", Hs, Ssrc * protect_gains(dom, ms))
 
     modes = {"1 linear": linear, "2 parametric": para, "3 parametric, cue protection": para_p,
              "4 objects": objects, "5 objects, cue protection": objects_p}
