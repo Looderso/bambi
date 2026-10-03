@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bambi · Decoder · Masking</title>
+<link rel="stylesheet" href="../common.css">
+</head>
+<body>
+<div id="app">
+  <div id="stage" style="grid-template-rows:minmax(0,1fr) auto">
+    <div class="viewbox"><canvas id="cv"></canvas><span class="vlabel">the three sources over time, from their solo renders · click to jump</span></div>
+    <div class="viewbox" style="padding:24px 10px 10px"><span class="vlabel">notch fill / colour, dB · per source, in tiles it has alone | shares with others · from render.py</span>
+      <pre id="table" class="note" style="margin:0;font-size:10px;color:var(--ink)"></pre></div>
+  </div>
+  <div id="panel">
+    <h1>Decoder · Masking</h1>
+    <div class="row"><button id="bStart" class="go">Start audio</button></div>
+    <p class="note" id="loadNote">Served by a local server from this folder (<b>python3 -m http.server</b>), the renders
+      in <b>out/</b> load by themselves. Opened as a file, pick the eight WAVs here:</p>
+    <input type="file" id="files" multiple accept=".wav">
+
+    <h2>MODE <kbd>1</kbd>–<kbd>5</kbd></h2>
+    <div class="seg" id="segMode"></div>
+    <p class="note" id="modeNote"></p>
+
+    <h2>ONE SOURCE ALONE <kbd>6</kbd>–<kbd>8</kbd>, <kbd>0</kbd> back to the mode</h2>
+    <div class="seg" id="segSolo"></div>
+    <p class="note">Each source through its own HRTF and nothing else: the notches as deep as they can be. At its level
+      within the mix.</p>
+
+    <h2>PLAYBACK</h2>
+    <div class="row"><button id="bPlay">Play <kbd>space</kbd></button></div>
+    <div id="volCtl"></div>
+    <p class="note">All eight play at once and in step; a key fades over to another in 10 ms, so a switch changes only
+      the rendering, never the moment. Every render is at the same loudness (−30 dBFS RMS) under the −12 dBFS ceiling.</p>
+    <p class="note">Sources: <b>1</b> front, up 40° · <b>2</b> left 70°, down 10° · <b>3</b> behind 150°, up 30°.
+      Pink-noise bursts with gaps, so they sometimes play alone and sometimes overlap. KU100, order 3.</p>
+  </div>
+</div>
+<script src="../common.js"></script>
+<script>
+const MODES = [
+  ["1", "linear", "MagLS at order 3 — the decoder as it is. Even a source alone loses about 4 dB of its notches to the order."],
+  ["2", "param.", "Per tile, direction and diffuseness from the first order; the direct share through the HRTF of that direction, the rest through the linear decode."],
+  ["3", "+ protect", "As 2; where the found direction has a notch, the rest is lowered by the notch's share."],
+  ["4", "objects", "Every source through its own HRTF — what metadata would allow. The upper bound for 1–3."],
+  ["5", "+ protect", "As 4; each source's notch bands are cleared of the others in proportion to how much it leads the tile."],
+];
+const SOLOS = ["6", "7", "8"];
+const TABLE = `                                 source 1           source 2           source 3
+                                 alone | shares     alone | shares     alone | shares
+  1 linear                       +4.5/1.7 | +8.2/2.3   +4.1/0.9 | +4.6/1.7   +4.0/1.3 | +5.6/3.4
+  2 parametric                   +3.4/3.0 | +8.3/4.2   +0.6/3.2 | +5.4/5.3   -0.0/2.4 | +7.2/4.8
+  3 parametric, cue protection   +3.2/3.2 | +7.6/4.4   +0.2/3.6 | +5.3/6.0   -0.0/2.5 | +6.9/4.9
+  4 objects                      +0.0/0.2 | +7.4/2.0   -0.0/0.2 | +1.6/1.4   +0.0/0.4 | +4.7/3.3
+  5 objects, cue protection      +0.0/0.2 | +2.5/1.9   -0.0/0.2 | +0.3/1.5   +0.0/0.4 | +0.2/3.3
+
+  fill: how far a source's notch bands come up against the source alone (0 = as deep)
+  colour: how much the rest of its spectrum changes, dB RMS — what a mode costs elsewhere`;
+$("table").textContent = TABLE;
+
+const S = { ctx: null, out: null, master: null, bufs: {}, gains: {}, nodes: [], sel: "1", playing: false,
+            t0: 0, offset: 0, vol: -6, env: null };
+const NAMES = ["1", "2", "3", "4", "5", "solo-1", "solo-2", "solo-3"];
+const keyOf = k => SOLOS.includes(k) ? "solo-" + (SOLOS.indexOf(k) + 1) : k;
+
+ctl($("volCtl"), "volume", -30, 0, () => S.vol, v => { S.vol = v; if (S.master) S.master.gain.value = 10 ** (v / 20); },
+    v => v.toFixed(0) + " dB");
+
+function refresh() {
+  seg($("segMode"), MODES.map(m => m[0]), () => S.sel, choose, k => k + " " + MODES[+k - 1][1]);
+  seg($("segSolo"), SOLOS, () => S.sel, choose, k => "source " + (SOLOS.indexOf(k) + 1));
+  const m = MODES.find(m => m[0] === S.sel);
+  $("modeNote").textContent = m ? m[2] : "Source " + (SOLOS.indexOf(S.sel) + 1) + " alone.";
+  $("bPlay").classList.toggle("on", S.playing);
+}
+
+async function load(getBuffer) {
+  for (const n of NAMES) S.bufs[n] = await S.ctx.decodeAudioData(await getBuffer(n));
+  S.env = NAMES.slice(5).map(n => { const b = S.bufs[n], hop = 480, x = b.getChannelData(0), y = b.getChannelData(1), e = [];
+    for (let i = 0; i + hop <= x.length; i += hop) { let s = 0; for (let j = i; j < i + hop; j++) s += x[j] * x[j] + y[j] * y[j]; e.push(s / hop); }
+    return e; });
+  $("loadNote").textContent = "Loaded: " + NAMES.length + " renders, " + S.bufs["1"].duration.toFixed(1) + " s.";
+  $("files").style.display = "none";
+}
+
+async function start() {
+  if (S.ctx) return;
+  S.ctx = new AudioContext({ sampleRate: 48000 });
+  S.out = safeOutput(S.ctx);
+  S.master = S.ctx.createGain(); S.master.gain.value = 10 ** (S.vol / 20); S.master.connect(S.out);
+  for (const n of NAMES) { S.gains[n] = S.ctx.createGain(); S.gains[n].gain.value = n === keyOf(S.sel) ? 1 : 0; S.gains[n].connect(S.master); }
+  $("bStart").textContent = "Audio on"; $("bStart").classList.remove("go");
+  try { await load(async n => { const r = await fetch("out/" + n + ".wav"); if (!r.ok) throw 0; return r.arrayBuffer(); }); }
+  catch { $("loadNote").innerHTML = "Could not fetch <b>out/</b> — pick the eight WAVs (1–5, solo-1…3):"; }
+}
+
+$("files").onchange = async e => {
+  if (!S.ctx) await start();
+  const by = {}; for (const f of e.target.files) by[f.name.replace(".wav", "")] = f;
+  if (NAMES.some(n => !by[n])) { $("loadNote").textContent = "Missing: " + NAMES.filter(n => !by[n]).join(", "); return; }
+  await load(n => by[n].arrayBuffer());
+};
+
+const position = () => S.playing ? (S.ctx.currentTime - S.t0) % S.bufs["1"].duration : S.offset;
+function stop() { for (const n of S.nodes) n.stop(); S.nodes = []; }
+function play(from) {
+  stop();
+  const when = S.ctx.currentTime + 0.05;
+  for (const n of NAMES) { const s = S.ctx.createBufferSource(); s.buffer = S.bufs[n]; s.loop = true;
+    s.connect(S.gains[n]); s.start(when, from); S.nodes.push(s); }
+  S.t0 = when - from; S.playing = true; refresh();
+}
+function toggle() {
+  if (!S.bufs["1"]) return;
+  if (S.playing) { S.offset = position(); stop(); S.playing = false; refresh(); } else play(S.offset);
+}
+function choose(k) {
+  S.sel = k;
+  if (S.ctx) { const t = S.ctx.currentTime;
+    for (const n of NAMES) S.gains[n].gain.setTargetAtTime(n === keyOf(k) ? 1 : 0, t, 0.01 / 3); }
+  refresh();
+}
+
+$("bStart").onclick = start;
+$("bPlay").onclick = toggle;
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (MODES.some(m => m[0] === e.key) || SOLOS.includes(e.key)) choose(e.key);
+  else if (e.key === "0") choose(MODES.some(m => m[0] === S.last) ? S.last : "1");
+  else if (e.key === " ") { e.preventDefault(); toggle(); }
+  if (MODES.some(m => m[0] === S.sel)) S.last = S.sel;
+});
+
+const cv = $("cv"), COL = ["#1b1a17", "#d4873a", "#6f6b62"];
+cv.onclick = e => { if (!S.bufs["1"]) return; const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+  S.offset = Math.max(0, Math.min(0.999, x)) * S.bufs["1"].duration; if (S.playing) play(S.offset); };
+function draw() {
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  const c = cv.getContext("2d"); c.scale(dpr, dpr);
+  if (S.env) {
+    const rows = S.env.length, h = (r.height - 40) / rows, top = 26;
+    S.env.forEach((e, i) => {
+      const peak = Math.max(...e), y0 = top + i * h;
+      c.fillStyle = "#d5d1c8"; c.fillRect(0, y0 + h - 1, r.width, 1);
+      c.fillStyle = COL[i];
+      for (let k = 0; k < e.length; k++) { const v = Math.max(0, 1 + 10 * Math.log10(e[k] / peak + 1e-9) / 40);
+        c.fillRect(k / e.length * r.width, y0 + h * (1 - 0.8 * v) - 1, Math.max(1, r.width / e.length), h * 0.8 * v); }
+      c.fillText("source " + (i + 1), 6, y0 + 12);
+    });
+    const x = position() / S.bufs["1"].duration * r.width;
+    c.fillStyle = "#d4873a"; c.fillRect(x - 1, top - 6, 2, r.height - top);
+  }
+  requestAnimationFrame(draw);
+}
+refresh(); draw();
+</script>
+</body>
+</html>
