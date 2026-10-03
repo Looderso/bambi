@@ -235,3 +235,25 @@ function normalizeRms(buf, rmsDb = SIGNAL_RMS_DB, peakDb = SIGNAL_PEAK_DB) {
   for (let ch = 0; ch < buf.numberOfChannels; ch++) { const x = buf.getChannelData(ch); for (let i = 0; i < x.length; i++) x[i] *= g; }
   return buf;
 }
+
+// ---------- test signals ----------
+// Four seconds, looped by the caller, at the safe level below: noise; noise bursts, 200 ms every 600 ms; clicks, four a
+// second; a vibrato tone with 14 harmonics.
+function makeSignal(ctx, kind) {
+  const SR = ctx.sampleRate, len = SR * 4, b = ctx.createBuffer(1, len, SR), x = b.getChannelData(0);
+  let b0 = 0, b1 = 0, b2 = 0;
+  const pink = () => { const w = Math.random() * 2 - 1;
+    b0 = 0.99765 * b0 + w * 0.099; b1 = 0.963 * b1 + w * 0.2965; b2 = 0.57 * b2 + w * 1.0527;
+    return (b0 + b1 + b2 + w * 0.1848) * 0.2; };
+  for (let i = 0; i < len; i++) {
+    const t = i / SR;
+    if (kind === "noise") x[i] = pink();
+    else if (kind === "bursts") { const ph = t % 0.6, env = ph < 0.2 ? Math.min(1, ph / 0.005, (0.2 - ph) / 0.005) : 0;
+      x[i] = pink() * env * 1.6; }
+    else if (kind === "clicks") { const ph = t % 0.25; x[i] = ph < 0.002 ? (Math.random() * 2 - 1) * Math.exp(-ph / 0.0004) : 0; }
+    else { const f0 = 220 * (1 + 0.006 * Math.sin(2 * Math.PI * 5 * t)); let s = 0;
+      for (let h = 1; h <= 14; h++) s += Math.sin(2 * Math.PI * f0 * h * t) / h;
+      x[i] = s * 0.25 * (0.6 + 0.4 * Math.sin(2 * Math.PI * 0.5 * t)); }
+  }
+  return normalizeRms(b);
+}

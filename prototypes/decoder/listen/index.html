@@ -211,25 +211,6 @@ class Scene extends AudioWorkletProcessor {
 }
 registerProcessor("scene", Scene);`;
 
-function makeSignal(kind) {
-  const len = SR * 4, b = ctx.createBuffer(1, len, SR), x = b.getChannelData(0);
-  let b0 = 0, b1 = 0, b2 = 0;
-  const pink = () => { const w = Math.random() * 2 - 1;
-    b0 = 0.99765 * b0 + w * 0.099; b1 = 0.963 * b1 + w * 0.2965; b2 = 0.57 * b2 + w * 1.0527;
-    return (b0 + b1 + b2 + w * 0.1848) * 0.2; };
-  for (let i = 0; i < len; i++) {
-    const t = i / SR;
-    if (kind === "noise") x[i] = pink();
-    else if (kind === "bursts") { const ph = t % 0.6, env = ph < 0.2 ? Math.min(1, ph / 0.005, (0.2 - ph) / 0.005) : 0;
-      x[i] = pink() * env * 1.6; }
-    else if (kind === "clicks") { const ph = t % 0.25; x[i] = ph < 0.002 ? (Math.random() * 2 - 1) * Math.exp(-ph / 0.0004) : 0; }
-    else { const f0 = 220 * (1 + 0.006 * Math.sin(2 * Math.PI * 5 * t)); let s = 0;
-      for (let h = 1; h <= 14; h++) s += Math.sin(2 * Math.PI * f0 * h * t) / h;
-      x[i] = s * 0.25 * (0.6 + 0.4 * Math.sin(2 * Math.PI * 0.5 * t)); }
-  }
-  return normalizeRms(b);
-}
-
 function decodeBuffers(method, order) {
   const n = (order + 1) ** 2, raw = Uint8Array.from(atob(FILTERS[method + order]), c => c.charCodeAt(0));
   const f = new Float32Array(raw.buffer), bufs = [];
@@ -270,7 +251,7 @@ async function start() {
 }
 function startSource(i) {
   const s = S.sources[i], n = ctx.createBufferSource();
-  n.buffer = makeSignal(s.signal); n.loop = true; n.connect(sceneNode, 0, i); n.start();
+  n.buffer = makeSignal(ctx, s.signal); n.loop = true; n.connect(sceneNode, 0, i); n.start();
   srcNodes[i] = n;
 }
 function stopSource(i) { if (srcNodes[i]) { srcNodes[i].stop(); srcNodes[i].disconnect(); srcNodes[i] = null; } }
