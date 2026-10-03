@@ -17,16 +17,22 @@ gap over 6 dB.
 Measured per source, in the tiles it dominates (≥ 70 % of the energy), against what that source alone would give:
   notch fill   how far its notch bands come up, dB (0: as deep as alone)
   colour       how much the rest changes, dB RMS — the check that a mode does not trade notches for artefacts
-Writes WAVs of every mode and of each source alone for listen.html, normalised to −30 dBFS RMS, peaks under −12 dBFS.
+Writes WAVs of every mode and of each source alone for listen.html into <out directory>/<signals>, normalised to
+−30 dBFS RMS, peaks under −12 dBFS.
 
-  python render.py <KU100 sofa> <out directory>
+The signals:
+  noise    pink-noise bursts, 80–400 ms, with gaps of 50–600 ms
+  music    1 plucked notes, 2 a shaker, 3 a brass-like tone with vibrato — each in phrases with rests
+  three mono WAV paths, one per source, at 48 kHz: your own (cut or looped to the scene's length)
+
+  python render.py <KU100 sofa> <out directory> [noise | music | <a.wav> <b.wav> <c.wav>]
 """
 import os, sys
 from importlib.util import spec_from_file_location, module_from_spec
 import h5py
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
-from scipy.signal import stft, istft
+from scipy.signal import stft, istft, lfilter
 from scipy.spatial import SphericalVoronoi, cKDTree
 from scipy.io import wavfile
 
@@ -42,7 +48,7 @@ def xyz(az, el):
     return np.stack([np.cos(el) * np.cos(az), np.cos(el) * np.sin(az), np.sin(el)], -1)
 
 
-def signals(rng):
+def noise(rng):
     """Pink-ish noise bursts, 80–400 ms, with gaps of 50–600 ms, different for each source."""
     out = []
     n = FS * SECONDS
@@ -65,7 +71,58 @@ def signals(rng):
     return np.array(out)
 
 
-def main(sofa, out_dir):
+def phrases(rng, n, note, gap):
+    """Note onsets in phrases of 3–8 notes, note(rng) seconds apart, rests of gap seconds between phrases."""
+    on, t = [], int(rng.uniform(0, 0.4) * FS)
+    while t < n:
+        for _ in range(rng.integers(3, 9)):
+            if t >= n:
+                break
+            on.append(t); t += int(note(rng) * FS)
+        t += int(rng.uniform(*gap) * FS)
+    return on
+
+
+def music(rng):
+    """Plucked notes (Karplus–Strong, a bright attack), a shaker (noise ticks with a fast decay, high-passed) and a
+    brass-like tone (a saw with vibrato and a slow swell). Each at the same RMS."""
+    n = FS * SECONDS
+    scale = 2 ** (np.array([0, 2, 4, 7, 9, 12, 14, 16, 19]) / 12)
+    pluck = np.zeros(n)
+    for t in phrases(rng, n, lambda r: r.choice([0.15, 0.3, 0.3, 0.45]), (0.3, 1.2)):
+        f = 330 * rng.choice(scale); L = int(FS / f)
+        burst = np.zeros(int(1.2 * FS)); burst[:L] = rng.uniform(-1, 1, L)
+        y = lfilter([1], np.r_[1, np.zeros(L - 1), -0.497, -0.497], burst)
+        k = min(len(y), n - t); pluck[t:t + k] += y[:k]
+    shaker = np.zeros(n)
+    hp = lambda x: lfilter([1, -1], [1, -0.9], x)
+    for t in phrases(rng, n, lambda r: r.choice([0.125, 0.125, 0.25]), (0.4, 1.0)):
+        m = int(0.09 * FS); e = np.exp(-np.arange(m) / (0.018 * FS)) * np.minimum(1, np.arange(m) / 48)
+        k = min(m, n - t); shaker[t:t + k] += (hp(rng.standard_normal(m)) * e * rng.uniform(0.6, 1))[:k]
+    brass = np.zeros(n)
+    for t in phrases(rng, n, lambda r: r.choice([0.5, 0.75, 1.0]), (0.5, 1.5))[::2]:
+        m = int(rng.uniform(0.4, 0.9) * FS); tt = np.arange(m) / FS
+        f0 = 196 * rng.choice(scale[:6]) * (1 + 0.007 * np.sin(2 * np.pi * 5.5 * tt) * np.minimum(1, tt / 0.3))
+        ph = 2 * np.pi * np.cumsum(f0) / FS
+        saw = sum(np.sin(h * ph) / h for h in range(1, int(16000 / f0.max()) + 1))
+        env = np.minimum(1, tt / 0.06) * np.minimum(1, (tt[-1] - tt) / 0.08) * (0.7 + 0.3 * np.minimum(1, tt / 0.4))
+        k = min(m, n - t); brass[t:t + k] += (saw * env)[:k]
+    return np.array([x / np.std(x) for x in (pluck, shaker, brass)])
+
+
+def from_files(paths):
+    out = []
+    for p in paths:
+        fs, x = wavfile.read(p)
+        assert fs == FS, f"{p}: {fs} Hz, needs {FS}"
+        x = x.astype(float); x = x.mean(1) if x.ndim > 1 else x
+        x = np.resize(x, FS * SECONDS)                                    # cut, or looped to length
+        out.append(x / np.std(x))
+    return np.array(out)
+
+
+def main(sofa, out_dir, kind="noise", *files):
+    out_dir = os.path.join(out_dir, kind if kind in ("noise", "music") else "files")
     os.makedirs(out_dir, exist_ok=True)
     f = h5py.File(sofa)
     pos, hrir = f["SourcePosition"][:], f["Data.IR"][:]
@@ -95,7 +152,7 @@ def main(sofa, out_dir):
     b = b * np.exp(-2j * np.pi * fr * bulk / FS)[:, None, None]
 
     rng = np.random.default_rng(3)
-    src = signals(rng)
+    src = noise(rng) if kind == "noise" else music(rng) if kind == "music" else from_files((kind,) + files)
     sdirs = np.array([xyz(np.radians(a), np.radians(e)) for _, a, e in SOURCES])
     sidx = tree.query(sdirs)[1]
     gains = bf.sh_sn3d(ORDER, np.radians([a for _, a, _ in SOURCES]), np.radians([e for _, _, e in SOURCES]))   # S x 16
@@ -143,16 +200,16 @@ def main(sofa, out_dir):
              "4 objects": objects, "5 objects, cue protection": objects_p}
     solo_cll = 10 * np.log10(np.abs(Hs[:, 0]) ** 2 + np.abs(Hs[:, 1]) ** 2)   # S x bins: what each alone gives
     band = (fr >= 2000) & (fr <= 16000)
-    print(f"{len(SOURCES)} sources, {SECONDS} s, order {ORDER}; 2–16 kHz, a source's notch bands (share ≥ 0.5) "
+    print(f"{os.path.basename(out_dir)}: {len(SOURCES)} sources, {SECONDS} s, order {ORDER}; 2–16 kHz, a source's notch bands (share ≥ 0.5) "
           f"and the rest. Per source, in tiles it has alone (≥ 95 %) | shares (70–95 %): notch fill / colour, dB")
-    print(f"  direction found, median error: " + "  ".join(f"{np.degrees(np.median(np.arccos(np.clip(d.reshape(*W.shape, 3)[(dom[s] >= 0.95) & band[:, None]] @ sdirs[s], -1, 1)))):.0f}°" for s in range(len(SOURCES))))
+    print(f"  direction found, median error: " + "  ".join(f"{np.degrees(np.median(np.arccos(np.clip(d.reshape(*W.shape, 3)[(dom[s] >= 0.95) & band[:, None] & (P[s] > 1e-6 * P[s].max())] @ sdirs[s], -1, 1)))):.0f}°" for s in range(len(SOURCES))))
     for name, O in modes.items():
         cells = []
         for s in range(len(SOURCES)):
             r = 10 * np.log10(np.maximum(np.abs(O[0]) ** 2 + np.abs(O[1]) ** 2, 1e-12) / np.maximum(P[s], 1e-12))
             dev = r - solo_cll[s][:, None]
             for lo, hi in ((0.95, 1.01), (0.7, 0.95)):
-                sel = (dom[s] >= lo) & (dom[s] < hi) & band[:, None]
+                sel = (dom[s] >= lo) & (dom[s] < hi) & band[:, None] & (P[s] > 1e-6 * P[s].max())
                 nm = sel & (ms[s][:, None] >= 0.5)
                 rest = sel & (ms[s][:, None] < 0.1)
                 cells.append(f"{np.median(dev[nm]):+5.1f} / {np.sqrt(np.mean(dev[rest] ** 2)):4.1f}")
@@ -174,4 +231,4 @@ def main(sofa, out_dir):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(*sys.argv[1:])
