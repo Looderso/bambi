@@ -501,6 +501,43 @@ do not share, grouped around K typical surfaces.
 surfaces start from them (shifted to fit) instead of from its own largest tracks. Then a surface is the same notch on
 every head by construction, and a head is how it bends the template.
 
+### 7.5 The ladder: what a few numbers a head buy
+
+`ladder.js`: a template — three notch surfaces, the same for every head, each its centre, depth and width over the
+sphere at order 6, symmetric left to right — and per head a shift along frequency and a depth for each notch. The
+template is learned from half of the people, in turns: each head's numbers fitted to its measured CLLs with the
+template held; then each head's own dips (found and checked against its spectrum) given to the template notch they lie
+nearest, the shifts taken out, and the template fitted to all of them. A surface is then the same notch on every head
+by construction. Four turns settle it (1.55, 1.45, 1.42, 1.42 dB on the people it did not learn from); 22 minutes in
+ten processes.
+
+Every rung scored with §7.3's cost, median over the 274 heads of the people the template did not learn from (the 274
+it learned from are within 0.03 dB):
+
+| | numbers a head | cost left | of the way from the KU100's notches to the head's own surfaces |
+|---|---|---|---|
+| no notches: the smooth part alone | 0 | 1.80 dB | — |
+| the KU100's notches for everyone | 0 | 1.79 | 0 % |
+| the KU100's notches, one shift | 1 | 1.73 | 8 % |
+| the template as it is | 0 | 1.71 | 10 % |
+| **the template, one shift for all notches** | **1** | **1.53** | **32 %** |
+| the template, a shift a notch | 3 | 1.45 | 43 % |
+| the template, a shift and a depth a notch | 6 | 1.42 | 47 % |
+| the better of two templates, a shift and a depth a notch | 7 | 1.38 | 52 % |
+| the head's own six surfaces | 450 | 1.00 | 100 % |
+
+- **The KU100's notches are worth nothing to another head**: 1.79 dB against 1.80 with no notches at all.
+- **One number does most of what a few can**: one shift for all notches takes a third of the way; a shift a notch
+  43 %; the depths and a second template add little.
+- **The two lower notches move together**: fitted to the template, a head's shifts of the notches at 7.4 and 9.6 kHz
+  (in front) correlate at 0.75; the third, near 14 kHz and shallow (2 dB in the template, left out in 7 % of the
+  heads), goes its own way (0.29). §7.4's "the notches do not move together" was its matching's noise. The shifts
+  spread by 0.71, 0.85 and 1.05 ERB between heads.
+- **Half the way is not a shift**: from 1.42 to 1.00 dB is how a head's notches travel over the directions, which no
+  shift or depth reaches.
+- The numbers are fitted against the measured head; whether a listener finds them by ear is another question. And
+  the smooth part here is the head's own: the ladder is the notches' part alone.
+
 ## 8. Next
 
 **Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface
