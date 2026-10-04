@@ -27,9 +27,17 @@
       average, a smooth pattern, a few surfaces of notches, a pattern for the ILD and one for the ITD — and against
       the KU100. Does a sound stay where the measured head puts it?</p>
 
-    <h2>LISTEN <kbd>1</kbd>–<kbd>6</kbd> · <kbd>space</kbd> the one before</h2>
+    <h2>LISTEN <kbd>1</kbd>–<kbd>9</kbd> · <kbd>space</kbd> the one before</h2>
     <div class="row" id="versions"></div>
     <pre id="info"></pre>
+
+    <h2>THE EAR SLIDER <kbd>7</kbd></h2>
+    <p class="note">One template of three notches, the same for every head, learned from half of the people. The slider
+      shifts all three along frequency: up for a smaller ear, down for a larger one. Find the place where the sound sits
+      as it does measured — then see what the fit against this head's spectra says.</p>
+    <div id="earCtl"></div>
+    <div class="row"><button id="bReveal">show the fitted shift</button></div>
+    <pre id="reveal"></pre>
 
     <h2>PLACE <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></h2>
     <p class="note" id="place"></p>
@@ -53,12 +61,13 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?8"></script>
+<script src="lab.js?9"></script>
 <script>
 const VERSIONS = ["measured", "measured, through CLL, ILD and ITD", "CLL from its numbers · ILD and ITD measured", "ILD and ITD from their patterns · CLL measured",
-                  "all from the numbers", "the KU100"];
+                  "all from the numbers", "the KU100", "the template's notches, the ear slider", "the template's notches, this head's fitted six numbers", "no notches: the smooth part alone"];
+// The last three are version 3 with other notches: the head's own average and smooth pattern, ILD and ITD measured.
 const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
-const S = { index: null, presets: null, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
+const S = { index: null, presets: null, ladder: null, shift: 0, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
             ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, signal: "bursts", vol: -6 };
 
 // ---------- a head: measured here, its notches' numbers from the worker ----------
@@ -67,9 +76,13 @@ async function loadHead(entry) {
   const H = parseHead(await (await fetch("heads/" + entry.head)).arrayBuffer(), entry), A = analyse(H, entry.ear === "left" ? 1 : 2), n = H.n;
   const head = { entry, H, A, n, variant: entry.ear === "left" ? 1 : 2, fit: null, some: [] };
   for (let d = 0; d < n; d += Math.ceil(n / 1000)) head.some.push(d);
+  if (S.ladder) {                                                    // the template's notches on this head's directions, and what the ladder fitted for it
+    const ys = H.xyz.map(v => shN(S.ladder.order, ...v)), at = (coef, y) => coef.reduce((t, c, p) => t + c * y[p], 0);
+    head.template = S.ladder.template.map(t => ({ c: ys.map(y => at(t.centre, y)), a: ys.map(y => Math.min(0, at(t.depth, y))), w: ys.map(y => Math.max(0.1, Math.min(1.5, at(t.width, y)))) }));
+    head.fitted = (S.ladder.heads.find(h => h.set === entry.set && h.name === entry.name && h.ear === entry.ear) || {}).fit || null; }
   return head;
 }
-const worker = new Worker("worker.js?8");
+const worker = new Worker("worker.js?9");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -92,25 +105,31 @@ function patterns(head) {
     head.itdCoef = fitSphere(head.H, head.some, head.some.map(d => [head.A.itd[d]]), S.itdOrder, 1); }
   return head;
 }
-// The six pairs of responses for direction d (the ones that need the notches' numbers missing until they are there).
+// The template's dips in direction d, each notch shifted (ERB) and its depth scaled.
+const templateDips = (head, d, shift, gain) => head.template.map((t, k) => t.a[d] * gain[k] > -0.5 ? null
+  : [Math.max(E0 + LO * STEP, Math.min(E0 + HI * STEP, t.c[d] + shift[k])), Math.max(-60, t.a[d] * gain[k]), t.w[d]]).filter(Boolean);
+// The pairs of responses for direction d (the ones that need the notches' numbers missing until they are there).
 function responses(head, d) {
   const A = head.A, row = v => v.subarray(d * NF, (d + 1) * NF), cll = row(A.cll), ild = row(A.ild).map(x => Math.max(-40, Math.min(40, x))), itd = A.itd[d];
   patterns(head);
   const ildN = onSphere(head.H, head.ildCoef, S.ildOrder, d), itdN = onSphere(head.H, head.itdCoef, S.itdOrder, d, 1)[0];
-  let cllN = null;
-  if (head.fit) { const p = onSphere(head.H, head.fit.pattern, 4, d), m = bumps(head.fit.rebuilt[d].filter(Boolean)); cllN = p.map((v, k) => v + m[k] + A.avg[k]); }
+  let cllN = null, smooth = null, withDips = () => null;
+  if (head.fit) { const p = onSphere(head.H, head.fit.pattern, 4, d), m = bumps(head.fit.rebuilt[d].filter(Boolean)); cllN = p.map((v, k) => v + m[k] + A.avg[k]);
+    smooth = p.map((v, k) => v + A.avg[k]); withDips = dips => { const b = bumps(dips); return earsOf(smooth.map((v, k) => v + b[k]), ild, itd); }; }
+  const slider = head.template && withDips(templateDips(head, d, [S.shift, S.shift, S.shift], [1, 1, 1]));
+  const six = head.template && head.fitted && withDips(templateDips(head, d, head.fitted.shift, head.fitted.gain));
   const own = [ear(head.H, head.variant, d, 0), ear(head.H, head.variant, d, 1)], energy = pair => pair.reduce((t, h) => t + h.reduce((u, v) => u + v * v, 0), 0);
   const level = pair => { if (!pair) return null; const g = Math.sqrt(energy(own) / energy(pair)); return pair.map(h => h.map(v => v * g)); };   // as loud as the measured pair
   const k = S.ku && nearest(S.ku, head.H.xyz[d])[0];                   // the KU100's nearest direction
   return [own, ...[earsOf(cll, ild, itd), cllN && earsOf(cllN, ild, itd), earsOf(cll, ildN, itdN), cllN && earsOf(cllN, ildN, itdN),
-                   S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)]].map(level)];
+                   S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)], slider, six, smooth && earsOf(smooth, ild, itd)].map(level)];
 }
 
 // ---------- audio: the six versions on one signal, one heard ----------
 let played = "", swap = 0, now = null;
 function audio() {
   const head = S.head; if (!head) return;
-  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku].join(); if (key === played) return; played = key;
+  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku, S.shift].join(); if (key === played) return; played = key;
   now = responses(head, S.at);
   if (!S.ctx) return;
   const t = S.ctx.currentTime; S.fade.gain.cancelScheduledValues(t); S.fade.gain.setTargetAtTime(0, t, 0.003);
@@ -218,7 +237,7 @@ $("bOver").onclick = () => walk(walking && $("bOver").classList.contains("on") ?
 let loading = 0, settle = 0;
 const later = run => { clearTimeout(settle); settle = setTimeout(run, 250); };
 function choose() {
-  const entry = inSet()[S.number]; $("headNote").textContent = entry.name + " — loading"; walk(null);
+  const entry = inSet()[S.number]; $("headNote").textContent = entry.name + " — loading"; walk(null); $("reveal").textContent = "";
   clearTimeout(loading); loading = setTimeout(async () => { const head = await loadHead(entry);
     if (inSet()[S.number] !== entry) return;
     S.head = head; S.at = nearest(head.H, dirOf(30 * D2R, 0))[0]; played = "";
@@ -243,6 +262,12 @@ function panel() {
 }
 seg($("segSignal"), ["bursts", "noise", "clicks", "tone"], () => S.signal, v => { S.signal = v; if (S.ctx) signal(); });
 ctl($("volCtl"), "volume", -30, 0, () => S.vol, v => { S.vol = v; if (S.master) S.master.gain.value = 10 ** (v / 20); }, v => v.toFixed(0) + " dB");
+const percent = e => 100 * ((35.96 * 10 ** (e / 21.4) - 1) / 34.96 - 1);      // a shift in ERB as a change of frequency, at 8 kHz
+ctl($("earCtl"), "all notches shifted", -2, 2, () => S.shift, v => { S.shift = Math.round(v * 20) / 20; $("reveal").textContent = ""; later(update); },
+    v => `${v >= 0 ? "+" : ""}${(Math.round(v * 20) / 20).toFixed(2)} ERB · about ${percent(v) >= 0 ? "+" : ""}${percent(Math.round(v * 20) / 20).toFixed(0)} % in frequency`);
+$("bReveal").onclick = () => { const f = S.head && S.head.fitted;
+  $("reveal").textContent = !f ? "this head is not among the fitted ones" : `fitted, one shift for all notches   ${f.one[0] >= 0 ? "+" : ""}${f.one[0].toFixed(2)} ERB\nyours                              ${S.shift >= 0 ? "+" : ""}${S.shift.toFixed(2)} ERB\n`
+    + `cost with the fitted shift ${f.costs[1].toFixed(2)} dB · the template unshifted ${f.costs[0].toFixed(2)} · a shift and a depth a notch ${f.costs[3].toFixed(2)}\nfitted a notch: shifts ${f.shift.map(v => v.toFixed(2)).join(" ")} ERB, depths × ${f.gain.join(" ")}`; };
 $("bStart").onclick = start;
 addEventListener("keydown", e => {
   if (e.key >= "1" && e.key <= String(VERSIONS.length)) version(+e.key - 1);
@@ -252,6 +277,7 @@ addEventListener("keydown", e => {
 addEventListener("resize", update);
 (async () => {
   try { S.index = await (await fetch("run/index.json")).json(); } catch { $("headNote").innerHTML = "No <b>run/index.json</b> — the list of heads."; return; }
+  try { S.ladder = await (await fetch("ladder/ladder.json", { cache: "no-store" })).json(); } catch { S.ladder = null; $("reveal").textContent = "no ladder/ladder.json — ladder.js writes it"; }
   try { S.presets = await (await fetch("presets.json", { cache: "no-store" })).json();
     S.size = S.presets.sizes.findIndex(z => z.surfaces === 6 && z.order === 4); const z = S.presets.sizes[S.size]; if (z) S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; } catch { S.presets = null; }
   panel(); choose();

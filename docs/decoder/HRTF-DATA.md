@@ -538,6 +538,11 @@ it learned from are within 0.03 dB):
 - The numbers are fitted against the measured head; whether a listener finds them by ear is another question. And
   the smooth part here is the head's own: the ladder is the notches' part alone.
 
+**The ear slider, heard**: `sheets/listen.html` plays the template's notches on a head's own smooth part, one slider
+shifting all three along frequency while the sound runs, beside the head measured, the KU100, the smooth part alone
+and the head's fitted six numbers; a button shows the shift the ladder fitted, for comparing with the one found by
+ear ([LISTENING.md](../LISTENING.md)).
+
 ## 8. Next
 
 **Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface
