@@ -538,10 +538,16 @@ it learned from are within 0.03 dB):
 - The numbers are fitted against the measured head; whether a listener finds them by ear is another question. And
   the smooth part here is the head's own: the ladder is the notches' part alone.
 
-**The ear slider, heard**: `sheets/listen.html` plays the template's notches on a head's own smooth part, one slider
-shifting all three along frequency while the sound runs, beside the head measured, the KU100, the smooth part alone
-and the head's fitted six numbers; a button shows the shift the ladder fitted, for comparing with the one found by
-ear ([LISTENING.md](../LISTENING.md)).
+**Nobody's head and the ear slider, heard.** In the product no head is chosen: every part is the population's, and
+the sliders make the head. `run-sheets.js` now stores every head's other parts too — the CLL's average, the smooth
+pattern (order 4), the ITD's pattern (order 8) and the ILD's (order 10, not blurred) — and `generic.js` averages them,
+each database's mean first, then the mean of those: nobody's head, in `sheets-run/generic.json`. `sheets/listen.html`
+plays, against a listener's measured head: the listener from its own numbers; the KU100; nobody's head without notches
+and with the template's notches under one ear slider, moved while the sound runs; and, on the listener's own smooth
+part, the template with the slider, with the fitted six numbers, no notches, and its own notches. A button shows the
+shift the ladder fitted ([LISTENING.md](../LISTENING.md)). At one place of one head (30° left, per ear, 1–16 kHz, from
+the measured responses): the listener's own numbers 2.7–3.5 dB, nobody's head with the slider at rest 4.8–5.0, the
+KU100 5.7–6.7, nobody's head without notches 6.1.
 
 ## 8. Next
 

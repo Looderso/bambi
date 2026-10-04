@@ -381,5 +381,6 @@ All in the browser, under `prototypes/decoder/`:
     head to a few surfaces of notches — the CLL prepared, split, the dips linked into tracks, gathered into surfaces
     and fitted to the measured CLL again — beside the ITD and the ILD as low-order patterns. No sound; *for looking
     at.*
-11. **A head from its numbers, heard** ([HRTF-DATA §7.3](HRTF-DATA.md)) — *built*, `sheets/listen.html`: the measured
-    head against itself rebuilt from its numbers and against the KU100, at any measured direction. *Waiting on ears.*
+11. **Nobody's head and the ear slider, heard** ([HRTF-DATA §7.5](HRTF-DATA.md)) — *built*, `sheets/listen.html`: a
+    listener's measured head against the KU100 and against the population's average head with the template's notches
+    under one slider, at any measured direction. *Waiting on ears.*

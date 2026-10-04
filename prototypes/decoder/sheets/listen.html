@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>bambi · Decoder · A head from its numbers</title>
+<title>bambi · Decoder · Nobody's head and the ear slider</title>
 <link rel="stylesheet" href="../common.css">
 <style>
   .cols{display:grid;gap:12px;min-width:0;min-height:0;grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -21,20 +21,21 @@
     </div>
   </div>
   <div id="panel">
-    <h1>Decoder · A head from its numbers</h1>
+    <h1>Decoder · Nobody's head and the ear slider</h1>
     <div class="row"><button id="bStart" class="go">Start audio</button></div>
-    <p class="note">A measured head, symmetric from one ear, against the same head made of nothing but its numbers — an
-      average, a smooth pattern, a few surfaces of notches, a pattern for the ILD and one for the ITD — and against
-      the KU100. Does a sound stay where the measured head puts it?</p>
+    <p class="note">The head selected below is the listener: its measurement is the truth. Against it: the KU100, and
+      nobody's head — the population's average of every part, with the ear slider for its notches. Nothing in nobody's
+      head comes from the listener. Does a sound sit where the listener's own head puts it?</p>
 
     <h2>LISTEN <kbd>1</kbd>–<kbd>9</kbd> · <kbd>space</kbd> the one before</h2>
     <div class="row" id="versions"></div>
     <pre id="info"></pre>
 
-    <h2>THE EAR SLIDER <kbd>7</kbd></h2>
+    <h2>THE EAR SLIDER <kbd>5</kbd> <kbd>6</kbd></h2>
     <p class="note">One template of three notches, the same for every head, learned from half of the people. The slider
       shifts all three along frequency: up for a smaller ear, down for a larger one. Find the place where the sound sits
-      as it does measured — then see what the fit against this head's spectra says.</p>
+      as it does measured — then see what the fit against the listener's spectra says (it was fitted on the
+      listener's own smooth part, version 6).</p>
     <div id="earCtl"></div>
     <div class="row"><button id="bReveal">show the fitted shift</button></div>
     <pre id="reveal"></pre>
@@ -43,7 +44,7 @@
     <p class="note" id="place"></p>
     <div class="row"><button id="bRing">walk the horizon</button><button id="bOver">walk over the top</button></div>
 
-    <h2>HEAD</h2>
+    <h2>THE LISTENER</h2>
     <div class="seg" id="segSet"></div>
     <div id="headCtl"></div>
     <div class="seg" id="segEar"></div>
@@ -61,14 +62,17 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?9"></script>
+<script src="lab.js?10"></script>
 <script>
-const VERSIONS = ["measured", "measured, through CLL, ILD and ITD", "CLL from its numbers · ILD and ITD measured", "ILD and ITD from their patterns · CLL measured",
-                  "all from the numbers", "the KU100", "the template's notches, the ear slider", "the template's notches, this head's fitted six numbers", "no notches: the smooth part alone"];
-// The last three are version 3 with other notches: the head's own average and smooth pattern, ILD and ITD measured.
+// The listener is the head selected: its measurement is what the others are heard against. Nobody's head is the
+// population's average of every part, with no notches or with the template's and the ear slider — nothing in it comes
+// from the listener. The last four isolate the notches: the listener's own smooth part, ILD and ITD, other notches.
+const VERSIONS = ["the listener, measured", "the listener, all from its own numbers", "the KU100", "nobody's head, no notches", "nobody's head + the ear slider",
+                  "listener's smooth part + the template, the ear slider", "listener's smooth part + the template, its fitted six numbers",
+                  "listener's smooth part, no notches", "listener's smooth part + its own notches"];
 const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
 const S = { index: null, presets: null, ladder: null, shift: 0, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
-            ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, signal: "bursts", vol: -6 };
+            ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, generic: null, signal: "bursts", vol: -6 };
 
 // ---------- a head: measured here, its notches' numbers from the worker ----------
 const inSet = () => S.index.heads.filter(h => h.set === S.set && h.ear === S.ear);
@@ -82,7 +86,7 @@ async function loadHead(entry) {
     head.fitted = (S.ladder.heads.find(h => h.set === entry.set && h.name === entry.name && h.ear === entry.ear) || {}).fit || null; }
   return head;
 }
-const worker = new Worker("worker.js?9");
+const worker = new Worker("worker.js?10");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -121,15 +125,20 @@ function responses(head, d) {
   const own = [ear(head.H, head.variant, d, 0), ear(head.H, head.variant, d, 1)], energy = pair => pair.reduce((t, h) => t + h.reduce((u, v) => u + v * v, 0), 0);
   const level = pair => { if (!pair) return null; const g = Math.sqrt(energy(own) / energy(pair)); return pair.map(h => h.map(v => v * g)); };   // as loud as the measured pair
   const k = S.ku && nearest(S.ku, head.H.xyz[d])[0];                   // the KU100's nearest direction
-  return [own, ...[earsOf(cll, ild, itd), cllN && earsOf(cllN, ild, itd), earsOf(cll, ildN, itdN), cllN && earsOf(cllN, ildN, itdN),
-                   S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)], slider, six, smooth && earsOf(smooth, ild, itd)].map(level)];
+  let nobody = null, nobodyEar = null;                                 // nobody's head: the population's parts, the template's notches
+  if (S.generic) { const G = S.generic, p = onSphere(head.H, G.pattern, 4, d), base = p.map((v, k) => v + G.average[k]);
+    const ildG = onSphere(head.H, G.ild, G.ildOrder, d), itdG = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0];
+    nobody = earsOf(base, ildG, itdG);
+    if (head.template) { const b = bumps(templateDips(head, d, [S.shift, S.shift, S.shift], [1, 1, 1])); nobodyEar = earsOf(base.map((v, k) => v + b[k]), ildG, itdG); } }
+  return [own, ...[cllN && earsOf(cllN, ildN, itdN), S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)], nobody, nobodyEar,
+                   slider, six, smooth && earsOf(smooth, ild, itd), cllN && earsOf(cllN, ild, itd)].map(level)];
 }
 
 // ---------- audio: the six versions on one signal, one heard ----------
 let played = "", swap = 0, now = null;
 function audio() {
   const head = S.head; if (!head) return;
-  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku, S.shift].join(); if (key === played) return; played = key;
+  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku, S.shift, !!S.generic].join(); if (key === played) return; played = key;
   now = responses(head, S.at);
   if (!S.ctx) return;
   const t = S.ctx.currentTime; S.fade.gain.cancelScheduledValues(t); S.fade.gain.setTargetAtTime(0, t, 0.003);
@@ -278,6 +287,7 @@ addEventListener("resize", update);
 (async () => {
   try { S.index = await (await fetch("run/index.json")).json(); } catch { $("headNote").innerHTML = "No <b>run/index.json</b> — the list of heads."; return; }
   try { S.ladder = await (await fetch("ladder/ladder.json", { cache: "no-store" })).json(); } catch { S.ladder = null; $("reveal").textContent = "no ladder/ladder.json — ladder.js writes it"; }
+  try { S.generic = await (await fetch("dataset/generic.json", { cache: "no-store" })).json(); } catch { S.generic = null; }
   try { S.presets = await (await fetch("presets.json", { cache: "no-store" })).json();
     S.size = S.presets.sizes.findIndex(z => z.surfaces === 6 && z.order === 4); const z = S.presets.sizes[S.size]; if (z) S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; } catch { S.presets = null; }
   panel(); choose();
