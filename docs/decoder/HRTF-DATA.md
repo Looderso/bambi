@@ -5,6 +5,10 @@ This page is the data side: which databases, how their grids are unified, and wh
 model itself comes after, and is not PCA — PCA is not shift-invariant, and pinna notches move in frequency from
 head to head; PCA may still serve to remove database-specific patterns while keeping the binaural cues.
 
+**What the model is for ([0165](../DECISIONS.md)):** a quick gain over the KU100 from one or two sliders, not the
+reconstruction of measured heads. Heads are taken as symmetric — one ear over the sphere, mirrored — so every measured
+head gives two. Sections 2–6 predate this and worked on both ears of the heads as measured.
+
 The scripts are in `prototypes/decoder/hrtf-data/`; their plots (plotly) go to `out/` there, served by the prototype
 server.
 
@@ -211,16 +215,261 @@ the ITD in µs. Distance from each head, median:
   remains, alike at every elevation. Part of it may be where a subject sat rather than their head — a few millimetres
   off centre bends the ITD with azimuth — which this data cannot tell apart.
 
-## 7. Next
+## 7. Notches as objects — a first look
 
+The model of §5 averages notches that sit at different frequencies, and blurs them. The other way round: a notch is an
+object — centre, depth, width — set on a smooth part. What is simple (head and torso, the smooth part) is split from
+what is not (the pinna's cues), and the pinna's cues are a few features.
 
+**Where the notches are.** Every notch below −3 dB at 4–16 kHz in the 3-ERB notch layer of the CLL, all 274 heads,
+median plane (the points of `extract.py`'s notch plot):
 
-1. **The unified data set** — *built* (`build-dataset.py`, kept outside the repository: it holds SONICOM data). 274
-   heads: CLL and ILD at order 20 per bin, ITD at order 10, each equalised and normalised; the KU100 beside them in
-   the same representation, unnormalised; the averages the normalisation used, so it can be undone. Every database's
-   average sits on the common one; each one's spread between heads is unchanged. The ITD varies between heads by
-   24–37 µs (mean over directions); the databases' averages had differed from the common one by 11–20 µs.
+| region | notches per head and direction | most of them at |
+|---|---|---|
+| front and front-below | 1.9–2.2 | 5–10 kHz |
+| front-up | 1.25 | 8–9 kHz |
+| overhead | 0.46 | 11–14 kHz |
+| behind | 1.0–1.5 | 8–11 kHz |
+| behind-below | 1.75 | 7–8 kHz, and above 11 kHz |
+
+One trajectory shows through the whole population: 6–9 kHz in front, rising to 11–14 kHz overhead, falling again
+behind. Overhead there is mostly no notch at all.
+
+**The notch layer rebuilt from a few features** (`notches/build-notches.py`): per ear, on an ERB axis, Gaussian dips and
+peaks fitted through the same 3-ERB split, at 3–18 kHz. Over the median-plane directions of the KU100 (35) and of one
+human head (23, measured every 10–15°), both ears, 4–16 kHz:
+
+| | notch layer kept — KU100 | human | deepest notch's depth — KU100 | human | from the real head, dB per ERB — KU100 | human |
+|---|---|---|---|---|---|---|
+| the smooth part alone | 0 % | 0 % | 0 % | 0 % | 1.78 | 1.71 |
+| 2 notches, free in every direction | 83 % | 56 % | 81 % | 81 % | 0.68 | 1.16 |
+| 2 notches and a peak | 89 % | 71 % | 83 % | 82 % | 0.52 | 0.88 |
+| 3 notches and 2 peaks | 95 % | 86 % | 90 % | 91 % | 0.32 | 0.59 |
+| 2 notches and a peak, each on one curve over the polar angle | 73 % | 54 % | 65 % | 50 % | 0.79 | 1.09 |
+
+- **A few free features keep the notches deep**: 81–91 % of the deepest notch's depth. (§5.1's model plays 71 %,
+  measured on the CLL in front only — not the same measure.)
+- **A human head holds more than the dummy**: two notches keep 83 % of the KU100's notch layer and 56 % of the human
+  head's; with a third notch and two peaks, 95 and 86 %.
+- **On curves the depth goes**: with centre and depth a Fourier series of order 5 over the polar angle and one width
+  (23 numbers a feature and ear), a narrow notch's centre is missed by enough to lose a third to a half of its depth.
+  Order 3 was worse (53 % and 37 % depth). The human head's 15° grid is coarse for a curve.
+- **Notches do not belong on spherical harmonics as spectra** (§5.1: order 8 widened them by half); their centre, depth
+  and width per direction vary slowly and might. Untested off the median plane.
+- **A fractional delay needs room ahead of the response**: delayed by a part of a sample from its first tap, a
+  minimum-phase response lost up to 15 dB in a notch. Every response is led by 32 samples; the real version is then
+  within 0.03 dB of the measured magnitudes.
+
+**Whether it carries elevation is for ears** — `prototypes/decoder/notches/`, an A/B page: any measured direction of
+the median plane, the real head against its smooth part alone and the four rebuilds, switched while the signal runs,
+with the spectra and the notch layer of what plays ([LISTENING.md](../LISTENING.md)). If two or three free features
+do not carry it, the idea ends here; if the curves do not, the features need a better description over direction
+before they need fewer numbers.
+
+### 7.1 The split itself
+
+**A blur is the wrong split.** The smooth part of §5 and of the table above is the spectrum blurred with a 3-ERB
+Gaussian. A notch drags the blur down: the smooth part keeps a dent where the notch is, and the layer gets a bump on
+either side. One 15 dB notch on a flat spectrum:
+
+| the notch's width (at half depth) | bump beside it | dent in the smooth part | depth left in the layer |
+|---|---|---|---|
+| 0.5 ERB | +2.1 dB | −2.5 dB | −12.5 dB |
+| 1.0 ERB | +2.9 dB | −4.7 dB | −10.3 dB |
+| 1.5 ERB | +2.9 dB | −6.7 dB | −8.3 dB |
+
+So the peaks the fits above needed were mostly the split's own bumps. **What is wanted: a layer that is 0 dB except
+in the notches, and a smooth part in which no notch can be seen.** A split that rides over the dips — blurred, the
+spectrum lifted to the blur wherever it lies below, and again — gives the same notch no bump, no dent and its whole
+depth; on the KU100 and one human head (median plane, both ears, 4–16 kHz) the layer above 0 falls from 1.6–1.8 dB
+RMS to 0.11, and two plain dips, no peaks, keep 86 % and 79 % of it (63 % and 41 % with the blur). Run long, it
+bridges wide valleys too, and the layer is no longer only notches: how wide a valley still counts as a notch is the
+split's one open choice.
+
+**The split is settled by looking**, in `prototypes/decoder/split/`: any head of the databases (`build-heads.py`
+writes one file a head), as measured or made symmetric from its left or its right ear ([0165](../DECISIONS.md)); ITD,
+ILD and CLL over the median plane or a horizontal ring at any elevation; the CLL beside its smooth part and its notch
+layer, for four splits with their knobs:
+
+- **the blur** — the reference for what goes wrong;
+- **the sheet** that rides over the dips (blur width, passes);
+- **a rolling maximum, then minimum**, whose knob is the widest notch filled;
+- **the smooth part and a few dips fitted together** — the dips are taken out before the blur, so they leave no dent,
+  and the layer is exactly the dips; what is neither is shown as left over. One 15 dB notch on a slowly varying
+  spectrum comes back 14.8 dB deep, the smooth part within 0.25 dB of the true one.
+
+Notches are allowed only above a chosen frequency, and the smooth part can be held to a spherical-harmonic order over
+the sphere. **One setting for everything: flat above a chosen frequency** — each ear's spectrum fades over two ERB to
+the level it has just below, since the top of the range varies widely between directions and heads and colours the
+sound more than it places it. The page plays the place as measured, rebuilt from CLL, ILD and ITD, as smooth part
+plus notch layer, as the smooth part alone, and as the notch layer alone on a flat CLL; each is within 0.1 dB of the
+spectrum it is meant to have.
+
+### 7.2 Three parts, over all heads
+
+Settings chosen in the page: the smooth part and four dips fitted together, blur 3 ERB, dips above 4 kHz, the smooth
+part as spherical harmonics of order 4 — on five HUTUBS heads the fourth dip takes what is left over from 1.2–1.5 to
+1.1–1.3 dB and is used (four dips deeper than 3 dB in 43 % of the directions), and the order has no knee: 1.4–1.7 dB
+from the free smooth part at order 4, about 0.3 dB less with each order.
+
+`run-split.js` runs the page's own code (`split.js`) over every head, left ear mirrored and right ear mirrored: 552
+symmetric heads (HUTUBS 192, 3D3A 76, SONICOM 280, the KU100 and one other), about a second each; the three parts of
+[0166](../DECISIONS.md) go to `~/Documents/HRTFs/split-run/`. `analyse-run.py` takes the databases' offsets out and
+measures:
+
+| | |
+|---|---|
+| left over, neither smooth nor dip (4–16 kHz) | 1.01 dB RMS (0.77–1.26, 5th–95th percentile of the heads) |
+| the order-4 pattern from the free smooth part (0.3–16 kHz) | 1.11 dB RMS (0.81–1.61) |
+| dips deeper than 3 dB, a direction | four 47 %, three 28 %, two 15 %, one 7 %, none 3 % |
+| such a dip | 7.1 dB deep, sigma 0.36 ERB (median) |
+| the nearest such dip in the neighbouring direction, about 4° away | 0.11 ERB apart (median); 86 % within 0.5 ERB |
+
+**The databases' offsets are larger than the heads' differences, and they go.**
+
+| part | the databases' means apart | a head from its own database's mean | a linear classifier names the database: as it is → means out |
+|---|---|---|---|
+| the average | 2.05–2.75 dB | 1.48–1.68 dB | 96 % → 34 % |
+| the pattern | 1.44–1.59 dB | 1.01–1.31 dB | 100 % → 31 % |
+| the dips | — | — | 84 % → 30 % |
+
+Balanced accuracy, chance 33 %; both ears of a head held out together, the means taken from the training heads only.
+
+**No single axis holds the heads' variation.** Principal components, the offsets out:
+
+| | 1 | 2 | 3 | 5 | 10 |
+|---|---|---|---|---|---|
+| the average (a head 1.56 dB from the mean) | 33 % | 59 % | 69 % | 82 % | 94 % |
+| the pattern (a head 1.18 dB from the mean, over the sphere) | 25 % | 43 % | 48 % | 57 % | 71 % |
+
+A share of variance is not a share of what is heard, and a stretch along frequency — what a larger head or ear does —
+is not one straight axis to a principal-component analysis. What the first components are, and whether a stretch
+holds more, is next.
+
+**The dips form paths over direction**: nine in ten have a neighbour within one ERB in the next direction.
+
+### 7.3 The dips as sheets, and ITD and ILD as patterns
+
+Fitted alone, a direction's four dips have no names and nothing ties them to the next direction's: a dip drops out
+for one direction and is back in the next. `prototypes/decoder/sheets/` (its own code, `lab.js`; it reads the data set
+of §7.2) names the dips from the front outward — a dip takes the name of the nearest dip in the directions already
+done — and fits them again with the neighbours in view. On three heads (HUTUBS, HUTUBS, SONICOM), over the sphere:
+
+| | left of the notch layer, 4–16 kHz | gaps | step to the namesake next door |
+|---|---|---|---|
+| each direction alone, named | 1.22 / 1.12 / 0.80 dB | 35 / 44 / 26 % | 0.21 / 0.27 / 0.13 ERB |
+| the neighbours' spectra count too (reach 6°) | 1.49 / 1.40 / 1.09 | 29 / 34 / 21 % | 0.15 / 0.14 / 0.09 |
+| tied to the neighbours' dips (reach 8°, pull 0.3) | 1.40 / 1.37 / 1.00 | 14 / 20 / 6 % | 0.13 / 0.14 / 0.10 |
+| — pull 1 | 1.68 / 1.57 / 1.30 | 13 / 15 / 5 % | 0.14 / 0.13 / 0.09 |
+
+A gap: a dip deeper than 3 dB whose namesake in the nearest direction is shallower than 1.5 dB or more than 0.5 ERB
+away. **Tying the dips' parameters to the neighbours' closes more gaps for less than averaging the neighbours'
+spectra**, which is what a Gaussian over directions in the fit amounts to: a notch moves in frequency from one
+direction to the next, and averaged spectra blur it.
+
+**The tie invents notches, and more the harder it pulls.** It holds a dip's depth near its neighbours' too, so a
+neighbour's notch is copied into a direction whose spectrum has none. Dips deeper than 3 dB where the spectrum itself,
+around the dip's centre, is less than half as deep, ten heads: alone 0.2 %, tied with pull 0.3 0.5 %, pull 1 4.3 %,
+pull 3 17.1 %.
+
+**Tracks: sheets that begin and end** — the page's fourth way, after the partial tracking that work on pinna notches
+borrows from sinusoidal modelling (peaks linked from frame to frame, tracks born and ended, short ones dropped):
+
+1. a dip counts only where it is 3 dB deep and its own spectrum supports it — a direction has as many dips as count;
+2. dips of neighbouring directions are linked where each is the other's nearest and their centres are within 0.6 ERB;
+   links join dips into sheets, the closest first, never two dips of one direction in a sheet; sheets of fewer than
+   8 directions go;
+3. a hole inside a sheet gets a dip at the centre and width its neighbours suggest, its depth fitted to that
+   direction's own spectrum, and it stays only if it is 1.5 dB deep and supported;
+4. all dips are fitted once more, centre and width held near the sheet's neighbours, the depth by nothing but the
+   spectrum.
+
+On three heads (HUTUBS, SONICOM, SONICOM): nothing unsupported (0.0 %), 0.97–1.40 dB left (tied: 1.00–1.40), a step
+of 0.06–0.10 ERB to the namesake next door, 2.5–2.9 dips deeper than 3 dB a direction — in 28 to 62 sheets, the
+largest over a third to a half of the directions. Many of those are pieces of one notch that no link joined; joining
+them is the next step. (Gaps by the measure above: 12–19 %, a sheet's edge counting as one.)
+
+**From tracks to a few surfaces.** Tracks alone leave a notch in pieces — 43 sheets a head on four heads, 48 % of the
+dips in the six largest. Two things gather them, and the page now runs the whole chain from the measured head itself
+(`lab.js`'s `chain`, in a worker; 1.5–3 s a head, then under a second a setting):
+
+1. **Prepare what the fit sees.** Blurred 1 ERB along frequency: 32 sheets, 54 % in the six largest, fewer and wider
+   dips (2.2 a direction, from 2.7). Held to order 8 over the sphere: 34 sheets, 59 %, the largest over 51 % of the
+   directions (from 35 %), the dips 1 dB shallower (6.8 from 7.9 dB) — less than a notch's move across directions
+   suggests. Order 12 does little.
+2. **Surfaces.** The largest sheets grow: a surface's centre over the sphere is a spherical-harmonic fit (order 4) of
+   its dips' centres, and a dip next to it, within 0.5 ERB of where it passes, joins it. Six surfaces take 61–75 % of
+   the dips unprepared, 70–90 % after order 8.
+3. **Back to the input.** The dips, found on the prepared CLL, are fitted to the measured CLL of their own direction —
+   the centre held, the depth from the spectrum alone; where a surface passes a direction without a dip, one is tried
+   there; what the measured spectrum does not support goes.
+
+With blur 0.75 ERB, order 8 and six surfaces, three heads: 1.2–1.6 dB left of the measured notch layer, nothing
+unsupported, 1.7–2.3 dips deeper than 3 dB a direction. The settings are for looking at; none is chosen yet.
+
+**The settings are found by search, against one cost.** A surface is in the end three patterns over the sphere —
+its dips' centre, depth and width as spherical harmonics of one order, so 3 × surfaces × (order + 1)² numbers a head
+(`asNumbers`; with centre and width from the patterns, a direction's depths are the ones that fit its measured CLL
+best, and the depth's pattern is fitted to those). **The cost: what the dips rebuilt from those numbers, and the smooth
+part, leave of the measured CLL, blurred to one ERB — dB RMS over the sphere and 4–16 kHz.** It holds both aims: the
+likeness to the input, and few long sheets — a broken or jumpy surface cannot be told by a low-order pattern and
+rebuilds badly. `search.js` (sixty-four random settings, then twice each knob a step either way from the best; twelve
+heads, four a database; 16 minutes in eight processes) writes `presets.json`, which the page offers:
+
+| surfaces × order | numbers a head | cost, settings by eye | found | on twelve other heads |
+|---|---|---|---|---|
+| 3 × 4 | 225 | 1.26 dB | 1.09 | 1.24 |
+| 4 × 4 | 300 | 1.18 | 1.06 | 1.14 |
+| 6 × 4 | 450 | 1.11 | 0.99 | 1.07 |
+| 8 × 4 | 600 | 1.06 | 0.95 | 1.02 |
+| 3 × 6 | 441 | 1.32 | 1.00 | 1.10 |
+| 4 × 6 | 588 | 1.26 | 0.99 | 1.07 |
+| 6 × 6 | 882 | 1.20 | 0.94 | 1.00 |
+| 8 × 6 | 1176 | 1.23 | 0.95 | 0.95 |
+
+The smooth part alone leaves 1.73 dB.
+
+- **The sizes are close**: from 225 numbers to 1176 the cost falls by 0.14 dB; the dips take the smooth part's 1.73 dB
+  to about 1.0 whatever the size. Six surfaces at order 4 is where more numbers stop paying.
+- **No knob matters much**: a step of a knob moves the cost by 0.05 dB at most (the blur), the floor, the smallest
+  sheet, the pull and the bridge by under 0.01.
+- **The search ran into the edge of its ranges**: the neighbours' reach (18°) and the distance to join a surface
+  (1–1.2 ERB) sit at the largest value offered in most sizes. Wider ranges are the next run.
+
+**What a head still needs to be played is not in the data set yet**: the ITD is stored per direction, the ILD not at
+all. As patterns on the sphere, 23 heads, left ear mirrored:
+
+| order | 1 | 2 | 3 | 4 | 6 | 8 |
+|---|---|---|---|---|---|---|
+| ITD off its pattern (422 µs RMS over the sphere) | 47 µs | 44 | 27 | 21 | 13 | 11 |
+| ILD, blurred 3 ERB, off its pattern (1–16 kHz) | 3.5 dB | 3.1 | 2.5 | 2.3 | 1.8 | 1.5 |
+| ILD as measured off that pattern (13.2 dB RMS, fine structure 2.8 dB) | 4.8 dB | 4.5 | 4.0 | 3.8 | 3.5 | 3.3 |
+
+An ILD without fine structure puts every dip of the CLL into both ears alike. The page shows both patterns beside
+the measured ITD and ILD, their orders on sliders. **The ITD is taken at order 8** (11 µs). **The ILD loses its detail
+to the blur, not to the order**: fitted on three quarters of the directions and compared with the measured ILD on the
+rest (17 heads, 1–16 kHz), SONICOM's goes from 3.96 dB (order 4) to 3.31 (order 12) blurred 3 ERB, and from 3.59 to
+2.44 not blurred; HUTUBS's stops near 3.8 dB at order 8, its 10° grid holding no more.
+
+**Heard, not only plotted**: `sheets/listen.html` plays a head at any measured direction as measured, through CLL,
+ILD and ITD, with the CLL from its numbers, with ILD and ITD from their patterns, all from the numbers, and as the
+KU100. At one direction of one head (30° left, level; per ear, 1–16 kHz): through CLL, ILD and ITD 0.1–0.2 dB from
+the measured responses; all from the numbers 2.4–3.2 dB; the KU100 5.9–6.9 dB. Whether that carries is for ears
+([LISTENING.md](../LISTENING.md)).
+
+## 8. Next
+
+1. **The unified data set** — *built, and lost*: `build-dataset.py` wrote it to a temporary folder, with the databases,
+   and the folder was cleaned. The databases are downloaded again (2026-10-04, from sofacoustics.org: HUTUBS 96,
+   3D3A 38, SONICOM 140 heads, and the KU100) into `~/Documents/HRTFs/`, which stays; the set itself is not rebuilt
+   yet (it stays outside the repository: it holds SONICOM data). 274 heads: CLL and ILD at order 20 per bin, ITD at order 10, each equalised and
+   normalised; the KU100 beside them in the same representation, unnormalised; the averages the normalisation used, so
+   it can be undone. Every database's average sits on the common one; each one's spread between heads is unchanged.
+   The ITD varies between heads by 24–37 µs (mean over directions); the databases' averages had differed from the
+   common one by 11–20 µs.
 2. **The model** — what parameterises a head along the horizontal (ILD, ITD) and the vertical (CLL) axis, with shifts
-   in frequency handled; not PCA. A model that has to ignore the database could take the non-linear remainder out
-   in its own training, where a fixed normalisation cannot.
+   in frequency handled; not PCA. If §7's test holds: the notches tracked per ear over all heads, and how few numbers
+   tell one head's from another's — centres being numbers, heads can be compared without the blur of §5. A model that
+   has to ignore the database could take the non-linear remainder out in its own training, where a fixed
+   normalisation cannot.
 3. **Licences** before any shipped model: SONICOM's is unclear (§1).

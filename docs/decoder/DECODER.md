@@ -142,6 +142,11 @@ also bind any model built from them (§5.3).
 
 ## 5. Personalisation — perceptual, not anthropometric
 
+**The aim ([0165](../DECISIONS.md)): a quick gain over the KU100, to make 3D audio more accessible** — in the best
+case one slider for head and torso and one for the ears. Not a replacement for a measurement in a loudspeaker array
+or a 3D scan, and not the reconstruction of a measured head. Heads are symmetric, as the KU100 is: one ear over the
+sphere, the other its mirror.
+
 What a 2024 master's thesis on perceptual HRTF individualisation (KUG Graz) established, and what follows from it:
 
 - Choosing by ear, in two phases — rough (up only), then fine (front, front-up, up, back-up, back) — took a
@@ -366,3 +371,15 @@ All in the browser, under `prototypes/decoder/`:
 6. **Placing loudspeakers by looking** (§3.3): how far head pointing scatters, and how far yaw drifts over a
    calibration.
 7. **Layout import** (§3): AmbDec and the BS.2051 layouts beside the IEM JSON already read.
+8. **A few notches in place of the notch layer** ([HRTF-DATA §7](HRTF-DATA.md)) — *built*, `notches/`: a head's smooth
+   part with two or three synthesised notches and a peak, A/B against the head itself at any measured direction of the
+   median plane, with plots of what plays. *Waiting on ears.*
+9. **The split of the CLL into a smooth part and a notch layer** ([HRTF-DATA §7.1](HRTF-DATA.md)) — *built*, `split/`:
+   any measured head, as measured or symmetric from one ear; ITD, ILD and CLL over a slice; four splits with their
+   knobs; the top of the range faded to flat. *For looking at, and being decided by looking.*
+10. **The dips as sheets over the sphere** ([HRTF-DATA §7.3](HRTF-DATA.md)) — *built*, `sheets/`: from a measured
+    head to a few surfaces of notches — the CLL prepared, split, the dips linked into tracks, gathered into surfaces
+    and fitted to the measured CLL again — beside the ITD and the ILD as low-order patterns. No sound; *for looking
+    at.*
+11. **A head from its numbers, heard** ([HRTF-DATA §7.3](HRTF-DATA.md)) — *built*, `sheets/listen.html`: the measured
+    head against itself rebuilt from its numbers and against the KU100, at any measured direction. *Waiting on ears.*
