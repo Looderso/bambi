@@ -403,7 +403,7 @@ function chain(H, A, P, keep) {
   const targets = dirs.map(d => targetOf(keep.xs[d], again[d].filter(Boolean)));
   const smooth = dirs.map(d => keep.xs[d].map((v, k) => v - targets[d][k])), some = dirs.filter(d => d % Math.ceil(n / 1000) === 0);
   const count = arr => arr.reduce((t, p) => t + p.filter(Boolean).length, 0);
-  return { n, final, places: (final[0] || []).length, rebuilt: again, sheets: sheets.filter(Boolean).length, numbers: sheets.filter(Boolean).length * 3 * (P.surfaceOrder + 1) ** 2, prep: f.prep,
+  return { n, final, places: (final[0] || []).length, rebuilt: again, surfaces: sheets, sheets: sheets.filter(Boolean).length, numbers: sheets.filter(Boolean).length * 3 * (P.surfaceOrder + 1) ** 2, prep: f.prep,
            pattern: fitSphere(H, some, some.map(d => smooth[d]), 4), tracks: (tracks[0] || []).length,
            found: count(f.dips.map(p => p.filter(q => q[1] <= -P.counts))), tracked: count(tracks), gathered: count(places), kept: count(final),
            cost: costOf(keep.xs, again), costFree: costOf(keep.xs, final), costNone: costOf(keep.xs, dirs.map(() => [])), measure: measureOf(keep.near, targets, again) };

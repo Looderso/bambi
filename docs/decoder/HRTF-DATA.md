@@ -463,7 +463,49 @@ KU100. At one direction of one head (30° left, level; per ear, 1–16 kHz): thr
 the measured responses; all from the numbers 2.4–3.2 dB; the KU100 5.9–6.9 dB. Whether that carries is for ears
 ([LISTENING.md](../LISTENING.md)).
 
+### 7.4 Do the heads share their notches?
+
+`run-sheets.js` runs the chain over all 552 symmetric heads with the search's settings (about four minutes in eight
+processes; `~/Documents/HRTFs/sheets-run/`, and `sheets-run-3/` for three surfaces): **the smooth part alone leaves
+1.78 dB, rebuilt from six surfaces 1.00 dB** (0.81–1.24, 5th–95th percentile of the heads) — the chain holds on
+every head, not only the twelve it was tuned on.
+
+`template.py` lays the heads' surfaces over each other: each folded onto the left half of the sphere (the heads are
+symmetric), two surfaces apart by how far their centres differ where both have a notch plus 2 ERB for the share they
+do not share, grouped around K typical surfaces.
+
+| | six surfaces a head | three surfaces a head |
+|---|---|---|
+| groups, by frequency (K = 3) | 5.9–7.8, 8.4–10.6, 12.0–16.1 kHz | 6.5–10.0, 9.8–13.0, 13.0–16.3 kHz |
+| heads that have each | 94, 99, 100 % | 97, 76, 55 % |
+| separation of the groups (1 apart, 0 not) | 0.47 | 0.46 |
+| heads with two surfaces in one group | 100 % | 68 % |
+| a surface from its group's typical one: offset, then what is left | 0.6–1.0 ERB, 0.42–0.46 ERB | 0.56–0.65, 0.39–0.52 ERB |
+| overlap with the typical surface | 39–50 % | 42–49 % |
+| a head's offset, spread between heads | 0.77–1.19 ERB | 0.75–0.80 ERB |
+| a person's left ear against the right (correlation of the offsets) | +0.48, +0.33, +0.32 | +0.59, +0.34, +0.48 |
+| the groups' offsets against each other, over the heads | −0.05 … +0.27, mean +0.12 | −0.10 … +0.31, mean +0.12 |
+
+- **The heads share notch bands, the lowest above all**: a notch at 6–10 kHz is in nearly every head, and how high it
+  sits is a property of the person — the two ears agree (+0.59) and the offset falls with the measured ear (HUTUBS,
+  186 ears: pinna height −0.33, cavum concha depth −0.26, cavum concha height −0.25).
+- **Surfaces found head by head do not correspond cleanly**: the groups are only half apart, a surface shares half
+  its notch with its group's typical one, and most heads put two surfaces into one group and none into another.
+  Grouping afterwards does not name them.
+- **The notches do not move together**: a head whose lowest notch sits high does not have its other notches high
+  (mean correlation +0.12; one axis holds 44 % where independence would give 33 %). One slider that shifts every
+  notch is not what the heads do; a slider for the lowest notch is.
+- The matching is crude, and part of the weak agreement is its noise, not the heads'.
+
+**What follows**: the template comes first, not last — the typical surfaces are fixed for all heads, and each head's
+surfaces start from them (shifted to fit) instead of from its own largest tracks. Then a surface is the same notch on
+every head by construction, and a head is how it bends the template.
+
 ## 8. Next
+
+**Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface
+at 1–1.2 ERB are the largest values it was offered. It is run again with wider ranges before the settings are final.
+
 
 1. **The unified data set** — *built, and lost*: `build-dataset.py` wrote it to a temporary folder, with the databases,
    and the folder was cleaned. The databases are downloaded again (2026-10-04, from sofacoustics.org: HUTUBS 96,
