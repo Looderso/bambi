@@ -449,7 +449,8 @@ An ILD without fine structure puts every dip of the CLL into both ears alike. Th
 the measured ITD and ILD, their orders on sliders. **The ITD is taken at order 8** (11 µs). **The ILD loses its detail
 to the blur, not to the order**: fitted on three quarters of the directions and compared with the measured ILD on the
 rest (17 heads, 1–16 kHz), SONICOM's goes from 3.96 dB (order 4) to 3.31 (order 12) blurred 3 ERB, and from 3.59 to
-2.44 not blurred; HUTUBS's stops near 3.8 dB at order 8, its 10° grid holding no more.
+2.44 not blurred; HUTUBS's stops near 3.8 dB at order 8, its 10° grid holding no more. **The ILD is taken not blurred, at order 10** — chosen by
+looking and listening; both pages start there.
 
 **Heard, not only plotted**: `sheets/listen.html` plays a head at any measured direction as measured, through CLL,
 ILD and ITD, with the CLL from its numbers, with ILD and ITD from their patterns, all from the numbers, and as the

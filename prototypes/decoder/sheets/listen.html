@@ -59,7 +59,7 @@ const VERSIONS = ["measured", "measured, through CLL, ILD and ITD", "CLL from it
                   "all from the numbers", "the KU100"];
 const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
 const S = { index: null, presets: null, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
-            ildBlur: 1, ildOrder: 8, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, signal: "bursts", vol: -6 };
+            ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, signal: "bursts", vol: -6 };
 
 // ---------- a head: measured here, its notches' numbers from the worker ----------
 const inSet = () => S.index.heads.filter(h => h.set === S.set && h.ear === S.ear);
