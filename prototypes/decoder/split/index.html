@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bambi · Decoder · Split</title>
+<link rel="stylesheet" href="../common.css">
+<style>
+  .cols{display:grid;gap:12px;min-width:0;min-height:0;grid-template-columns:repeat(3,minmax(0,1fr))}
+  pre{font-size:10px;margin:6px 0 0;color:var(--ink);white-space:pre-wrap}
+  #versions button{flex:1 1 100%;text-align:left;padding-left:8px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div class="cols">
+      <div class="viewbox"><canvas id="cvItd"></canvas><span class="vlabel" id="lItd"></span></div>
+      <div class="viewbox"><canvas id="cvIld"></canvas><span class="vlabel">ILD · left louder orange, right louder dark · ±30 dB</span></div>
+      <div class="viewbox"><canvas id="cvSpec"></canvas><span class="vlabel" id="lSpec"></span></div>
+    </div>
+    <div class="cols">
+      <div class="viewbox"><canvas id="cvCll"></canvas><span class="vlabel" id="lCll"></span></div>
+      <div class="viewbox"><canvas id="cvBase"></canvas><span class="vlabel">CLL · smooth part · ±20 dB</span></div>
+      <div class="viewbox"><canvas id="cvLayer"></canvas><span class="vlabel">CLL · notch layer · below 0 dark, above 0 orange · ±20 dB</span></div>
+    </div>
+  </div>
+  <div id="panel">
+    <h1>Decoder · Split</h1>
+    <div class="seg" id="segVariant"></div>
+    <pre id="symmetry"></pre>
+    <div id="fadeCtl"></div>
+    <p class="note">Above this, each ear's spectrum fades over two ERB to the level it has just below — flat, so the
+      top of the range sounds the same everywhere. It applies to every plot and to everything played.</p>
+
+    <h2>HEAD <kbd>←</kbd> <kbd>→</kbd></h2>
+    <div class="seg" id="segSet"></div>
+    <div id="headCtl"></div>
+    <p class="note" id="headNote"></p>
+
+    <h2>SLICE · place <kbd>↑</kbd> <kbd>↓</kbd> · ring's elevation <kbd>W</kbd> <kbd>S</kbd></h2>
+    <div class="seg" id="segSlice"></div>
+    <div id="elevCtl"></div>
+    <p class="note" id="place"></p>
+
+    <h2>SPLIT OF THE CLL</h2>
+    <div class="seg" id="segMethod"></div>
+    <p class="note" id="methodNote"></p>
+    <div id="knobs"></div>
+    <div class="sub note">the CLL's average over all directions</div>
+    <div class="seg" id="segAverage"></div>
+    <pre id="numbers"></pre>
+
+    <h2>LISTEN <kbd>1</kbd>–<kbd>5</kbd> · <kbd>space</kbd> the one before</h2>
+    <div class="row"><button id="bStart" class="go">Start audio</button></div>
+    <div class="row" id="versions"></div>
+    <div class="seg" id="segSignal"></div>
+    <div id="volCtl"></div>
+  </div>
+</div>
+<script src="../common.js"></script>
+<script src="split.js"></script>
+<script>
+// A head: its measured responses (directions x ears x taps). Shown as measured, or made symmetric from one ear — that
+// ear where it is, the other ear its mirror image: the same ear's response from the direction mirrored left to right.
+const VARIANTS = ["as measured", "left ear, mirrored", "right ear, mirrored"];
+const METHODS = { "blur": "The smooth part is the CLL blurred along frequency. A notch drags it down: a dent in the smooth part, bumps beside the notch.",
+  "sheet": "Blurred, the CLL lifted up to the blur wherever it lies below, and again: the smooth part lies on top like a sheet, the layer hangs below it. More passes bridge wider valleys.",
+  "max–min": "The largest value in a window, then the smallest of those: every dip narrower than the window is filled. Then blurred.",
+  "smooth + dips": "A few dips and the smooth part fitted together: the dips are taken out before the blur, so they leave no dent, and the layer is exactly the dips. What is neither is left over." };
+const VERSIONS = ["measured", "rebuilt from CLL, ILD and ITD", "smooth part + notch layer", "smooth part alone",
+                  "notch layer alone, on a flat CLL (ILD and ITD stay)"];
+const S = { index: null, set: "HUTUBS", number: 0, H: null, variant: 0, slice: "median plane", elev: 0, at: 36,
+            method: "smooth + dips", width: 3, passes: 8, notch: 2, dips: 4, from: 4, order: 4, average: "removed", flat: 20,
+            ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 2, signal: "bursts", vol: -6 };
+const loadHead = async entry => parseHead(await (await fetch("heads/" + entry.file)).arrayBuffer(), entry);
+
+// ---------- the slice: rows of directions, each the nearest measured one ----------
+function sliceRows(H) {
+  const rows = [];
+  if (S.slice === "median plane") for (let p = -90; p <= 270; p += 2.5) rows.push({ a: p, v: [Math.cos(p * D2R), 0, Math.sin(p * D2R)] });
+  else for (let az = -180; az <= 180; az += 2.5) rows.push({ a: az, v: dirOf(az * D2R, S.elev * D2R) });
+  for (const r of rows) [r.d, r.off] = nearest(H, r.v);
+  return rows;
+}
+const measured = r => r.off <= 12;                                   // further off, the head has no direction there
+const MARKS = { "median plane": [[0, "front"], [90, "over"], [180, "behind"]], "horizon": [[-90, "right"], [0, "front"], [90, "left"]] };
+
+let split = { key: "", parts: new Map(), sphere: null };
+function parts(H, A, d) {
+  const key = [H.entry.file, S.variant, S.flat, S.method, S.width, S.passes, S.notch, S.dips, S.from, S.order, S.average].join();
+  if (split.key !== key) split = { key, parts: new Map(), sphere: null };
+  if (split.parts.has(d)) return split.parts.get(d);
+  let [x, base, dips] = smoothOf(A, d), free = base;
+  if (S.order > 0) {
+    if (!split.sphere) { const stride = Math.ceil(H.n / 450), dirs = []; for (let i = 0; i < H.n; i += stride) dirs.push(i);
+      split.sphere = fitSphere(H, dirs, dirs.map(i => smoothOf(A, i)[1]), S.order); }
+    const y = shN(S.order, ...H.xyz[d]), K = y.length; base = new Float32Array(NF);
+    for (let p = 0; p < K; p++) for (let k = 0; k < NF; k++) base[k] += y[p] * split.sphere[p * NF + k];
+  }
+  const layer = dips || new Float32Array(NF), sum = new Float32Array(NF);        // the joint fit's layer is its dips
+  for (let k = 0; k < NF; k++) { if (!dips) layer[k] = x[k] - base[k]; sum[k] = base[k] + layer[k]; }
+  const p = { x, base, layer, sum, free }; split.parts.set(d, p); return p;
+}
+
+// ---------- drawing ----------
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const INK = css("--ink"), ORANGE = css("--orange"), PANEL = css("--panel"), GREY = css("--greyD"), LINE = css("--greyL"),
+      SILVER = css("--silver"), SAND = css("--sand"), FONT = "10px Helvetica Neue, Helvetica, Arial";
+const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)), GROUND = rgb(PANEL), DARK = rgb(INK), WARM = rgb(ORANGE), NONE = rgb(SAND);
+function fit(cv) {
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  const c = cv.getContext("2d"); c.scale(dpr, dpr); c.font = FONT;
+  return [c, r.width, r.height];
+}
+const geom = (w, h) => ({ x0: 40, x1: w - 8, y0: 22, y1: h - 18 });
+const TICKS = [500, 1000, 2000, 4000, 8000, 16000];
+const xOf = (g, f) => g.x0 + (erbOf(f) - E0) / (E1 - E0) * (g.x1 - g.x0);
+const yOf = (g, i, n) => g.y1 - (i + 0.5) / n * (g.y1 - g.y0);
+function axes(c, g, rows, freq) {
+  c.fillStyle = GREY; c.textAlign = "right";
+  for (const [a, t] of MARKS[S.slice]) { const i = rows.findIndex(r => r.a >= a); c.fillText(t, g.x0 - 4, yOf(g, i, rows.length) + 3); }
+  c.textAlign = "center";
+  if (freq) for (const f of TICKS) c.fillText(f < 1000 ? f : f / 1000 + " k", xOf(g, f), g.y1 + 12);
+  const band = (g.y1 - g.y0) / rows.length;
+  c.strokeStyle = ORANGE; c.lineWidth = 1.5; c.strokeRect(g.x0, yOf(g, S.at, rows.length) - band / 2 - 1, g.x1 - g.x0, band + 2);
+}
+// A field over the slice, frequency right and the slice's angle up: one row of NF values a slice row, or null.
+const scratch = document.createElement("canvas");
+function heat(cv, rows, field, range) {
+  const [c, w, h] = fit(cv), g = geom(w, h), n = rows.length;
+  scratch.width = NF; scratch.height = n;
+  const sc = scratch.getContext("2d"), img = sc.createImageData(NF, n);
+  rows.forEach((r, i) => { const v = measured(r) ? field(r) : null, o = (n - 1 - i) * NF * 4;
+    for (let k = 0; k < NF; k++) { const t = v ? Math.min(1, Math.abs(v[k]) / range) : 1, to = !v ? NONE : v[k] < 0 ? DARK : WARM;
+      for (let j = 0; j < 3; j++) img.data[o + k * 4 + j] = GROUND[j] + (to[j] - GROUND[j]) * t; img.data[o + k * 4 + 3] = 255; } });
+  sc.putImageData(img, 0, 0);
+  c.imageSmoothingEnabled = false; c.drawImage(scratch, g.x0, g.y0, g.x1 - g.x0, g.y1 - g.y0);
+  axes(c, g, rows, true);
+}
+function drawItd(rows, A, O) {
+  const [c, w, h] = fit($("cvItd")), g = geom(w, h), n = rows.length, X = t => g.x0 + (t + 900) / 1800 * (g.x1 - g.x0);
+  c.strokeStyle = LINE; c.fillStyle = GREY; c.textAlign = "center";
+  for (const t of [-800, -400, 0, 400, 800]) { c.beginPath(); c.moveTo(X(t), g.y0); c.lineTo(X(t), g.y1); c.stroke(); c.fillText(t, X(t), g.y1 + 12); }
+  const curve = (itd, colour, width) => { c.strokeStyle = colour; c.lineWidth = width; c.beginPath(); let pen = false;
+    rows.forEach((r, i) => { if (!measured(r)) { pen = false; return; } const x = X(itd[r.d]), y = yOf(g, i, n); pen ? c.lineTo(x, y) : c.moveTo(x, y); pen = true; }); c.stroke(); };
+  if (S.variant) curve(O.itd, SILVER, 1);
+  curve(A.itd, INK, 1.5); axes(c, g, rows, false);
+}
+function drawSpec(rows, H, A, O) {
+  const [c, w, h] = fit($("cvSpec")), g = geom(w, h), lo = -40, hi = 20, Y = d => g.y0 + (hi - Math.max(lo, Math.min(hi, d))) / (hi - lo) * (g.y1 - g.y0);
+  c.strokeStyle = LINE; c.fillStyle = GREY; c.lineWidth = 1;
+  for (let d = lo; d <= hi; d += 10) { c.beginPath(); c.moveTo(g.x0, Y(d)); c.lineTo(g.x1, Y(d)); c.stroke(); c.textAlign = "right"; c.fillText(d, g.x0 - 5, Y(d) + 3); }
+  for (const f of TICKS) { c.beginPath(); c.moveTo(xOf(g, f), g.y0); c.lineTo(xOf(g, f), g.y1); c.stroke(); c.textAlign = "center"; c.fillText(f < 1000 ? f : f / 1000 + " k", xOf(g, f), g.y1 + 12); }
+  const r = rows[S.at]; if (!measured(r)) return;
+  const curve = (v, colour, width) => { c.strokeStyle = colour; c.lineWidth = width; c.beginPath();
+    for (let k = 0; k < NF; k++) { const x = g.x0 + k / (NF - 1) * (g.x1 - g.x0); k ? c.lineTo(x, Y(v[k])) : c.moveTo(x, Y(v[k])); } c.stroke(); };
+  const p = parts(H, A, r.d), shift = S.average === "removed" ? O.avg : null;
+  if (S.variant) curve(Float32Array.from({ length: NF }, (_, k) => O.cll[r.d * NF + k] - (shift ? shift[k] : 0)), SILVER, 1);
+  curve(p.layer, GREY, 1); curve(p.x, INK, 1.5); curve(p.base, ORANGE, 1.5);
+  if (S.method === "smooth + dips") { c.setLineDash([3, 3]); curve(p.sum, ORANGE, 1); c.setLineDash([]); }
+}
+function numbers(rows, H, A) {
+  let above = 0, below = 0, left = 0, off = 0, over = 0, n = 0;
+  const seen = new Set();
+  for (const r of rows) { if (!measured(r) || seen.has(r.d)) continue; seen.add(r.d);
+    const p = parts(H, A, r.d), rough = blur(p.base, 3);
+    for (const k of NOTCHES) { above += Math.max(p.layer[k], 0) ** 2; below += Math.min(p.layer[k], 0) ** 2; left += (p.base[k] - rough[k]) ** 2; off += (p.base[k] - p.free[k]) ** 2; over += (p.x[k] - p.sum[k]) ** 2; n++; } }
+  const f = v => Math.sqrt(v / n).toFixed(2).padStart(5) + " dB";
+  $("numbers").textContent = `over this slice, ${seen.size} directions, 4–16 kHz, RMS\nlayer above 0 (bumps)             ${f(above)}\nlayer below 0 (notches)           ${f(below)}\nfine structure in the smooth part ${f(left)}`
+    + (S.method === "smooth + dips" ? `\nleft over, neither of the two     ${f(over)}` : "")
+    + (S.order ? `\nsmooth part off its order-${S.order} fit    ${f(off)}` : "");
+}
+function draw() {
+  const H = S.H; if (!H) return;
+  const A = analyse(H, S.variant), O = analyse(H, 0), rows = S.rows = sliceRows(H);
+  S.at = Math.max(0, Math.min(rows.length - 1, S.at));
+  drawItd(rows, A, O);
+  heat($("cvIld"), rows, r => A.ild.subarray(r.d * NF, (r.d + 1) * NF), 30);
+  heat($("cvCll"), rows, r => parts(H, A, r.d).x, 20);
+  heat($("cvBase"), rows, r => parts(H, A, r.d).base, 20);
+  heat($("cvLayer"), rows, r => parts(H, A, r.d).layer, 20);
+  drawSpec(rows, H, A, O); numbers(rows, H, A);
+  const r = rows[S.at], [az, el] = angOf(H.xyz[r.d]).map(v => v / D2R), was = S.variant ? " · as measured grey" : "";
+  $("lItd").textContent = `ITD · µs, left ear later to the right${was}`;
+  $("lCll").textContent = `CLL${S.average === "removed" ? " less its average over the directions" : ""} · ±20 dB`;
+  $("lSpec").textContent = `CLL at the place · black, smooth part orange, notch layer grey${S.method === "smooth + dips" ? ", their sum dashed" : ""}${was}`;
+  $("place").innerHTML = measured(r) ? `<b>${S.slice === "horizon" ? "azimuth" : "polar"} ${r.a.toFixed(0)}°</b> · the nearest measured direction: azimuth ${az.toFixed(0)}°, elevation ${el.toFixed(0)}°, ${r.off.toFixed(1)}° off`
+    : `<b>${r.a.toFixed(0)}°</b> · not measured on this head (the nearest direction is ${r.off.toFixed(0)}° off)`;
+  const sym = S.variant ? distance(H, S.variant) : null;
+  $("symmetry").textContent = sym ? `from the head as measured, all directions:\nCLL ${sym[0].toFixed(2)} dB · ILD ${sym[1].toFixed(2)} dB (1–16 kHz, RMS) · ITD ${sym[2].toFixed(0)} µs`
+    : `the two ears as measured; a mirrored direction is at most ${H.mirrorOff.toFixed(1)}° from a measured one`;
+  audio();
+}
+let pending = false;
+const update = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; draw(); }); } };
+for (const id of ["cvItd", "cvIld", "cvCll", "cvBase", "cvLayer"]) $(id).onclick = e => {
+  const b = $(id).getBoundingClientRect(), g = geom(b.width, b.height);
+  S.at = Math.floor((g.y1 - (e.clientY - b.top)) / (g.y1 - g.y0) * S.rows.length); update();
+};
+
+// ---------- listening: the place's pair of responses in three versions, on one signal ----------
+function minimumPhase(db) {                                            // db: 513 points of a 1024-point spectrum
+  const n = 1024, re = new Float64Array(n), im = new Float64Array(n);
+  for (let k = 0; k <= n / 2; k++) { re[k] = db[k] * Math.LN10 / 20; if (k > 0 && k < n / 2) re[n - k] = re[k]; }
+  fft(re, im, true); im.fill(0);
+  for (let k = 1; k < n / 2; k++) re[k] *= 2; for (let k = n / 2 + 1; k < n; k++) re[k] = 0;
+  fft(re, im);
+  for (let k = 0; k < n; k++) { const m = Math.exp(re[k]), p = im[k]; re[k] = m * Math.cos(p); im[k] = m * Math.sin(p); }
+  return [re, im];
+}
+const LEAD = 32, OUT = 384;                                            // a response is led by LEAD samples: a part of a sample's delay rings ahead
+function delayed(re, im, delay) {
+  const n = re.length, r = new Float64Array(n), i = new Float64Array(n);
+  for (let k = 0; k <= n / 2; k++) { const a = -2 * Math.PI * k * (LEAD + delay) / n, c = Math.cos(a), s = Math.sin(a);
+    r[k] = re[k] * c - im[k] * s; i[k] = re[k] * s + im[k] * c; if (k > 0 && k < n / 2) { r[n - k] = r[k]; i[n - k] = -i[k]; } }
+  fft(r, i, true);
+  const out = Float32Array.from(r.subarray(0, OUT)); for (let k = 0; k < 32; k++) out[OUT - 32 + k] *= Math.cos(k / 32 * Math.PI / 2) ** 2;
+  return out;
+}
+// The two ears for a CLL and an ILD (dB on the axis) and an ITD (µs): minimum phase, the later ear delayed until the pair has the ITD.
+function pair(cll, ild, itd) {
+  const n = 1024, ears = [0, 1].map(e => { const db = new Float64Array(n / 2 + 1);
+    for (let k = 0; k <= n / 2; k++) { const p = Math.max(0, Math.min(NF - 1.001, (erbOf(k * FS / n) - E0) / STEP)), i = Math.floor(p), t = p - i;
+      const c = cll[i] + (cll[i + 1] - cll[i]) * t, r = 10 ** ((ild[i] + (ild[i + 1] - ild[i]) * t) / 10);
+      db[k] = c + 10 * Math.log10((e ? 1 : r) / (1 + r)); }
+    return minimumPhase(db); });
+  const plain = ears.map(([re, im]) => spectrumOf(delayed(re, im, 0), ITD_N));
+  const more = (itd * 1e-6 - itdOf(plain[0][0], plain[0][1], plain[1][0], plain[1][1])) * FS;
+  return [delayed(...ears[0], Math.max(more, 0)), delayed(...ears[1], Math.max(-more, 0))];
+}
+// A measured response with the fade to flat: the response through a minimum-phase filter of the fade's gain.
+function flattened(h) {
+  if (S.flat >= 20) return h;
+  const n = 1024, [re, im] = spectrumOf(h, ITD_N), was = new Float32Array(NF); onAxis(re, im, ITD_N, was, 0);
+  const now = flatten(Float32Array.from(was)), db = new Float64Array(n / 2 + 1);
+  for (let k = 0; k <= n / 2; k++) { const p = Math.max(0, Math.min(NF - 1.001, (erbOf(k * FS / n) - E0) / STEP)), i = Math.floor(p), t = p - i;
+    db[k] = now[i] - was[i] + (now[i + 1] - was[i + 1] - now[i] + was[i]) * t; }
+  const [gr, gi] = minimumPhase(db), [hr, hi] = spectrumOf(h, n);
+  for (let k = 0; k < n; k++) { const a = hr[k] * gr[k] - hi[k] * gi[k]; hi[k] = hr[k] * gi[k] + hi[k] * gr[k]; hr[k] = a; }
+  fft(hr, hi, true);
+  const out = Float32Array.from(hr.subarray(0, OUT)); for (let k = 0; k < 32; k++) out[OUT - 32 + k] *= Math.cos(k / 32 * Math.PI / 2) ** 2;
+  return out;
+}
+function responses() {
+  const H = S.H, r = S.rows[S.at]; if (!measured(r)) return null;
+  const A = analyse(H, S.variant), p = parts(H, A, r.d), ild = A.ild.subarray(r.d * NF, (r.d + 1) * NF);
+  const whole = v => S.average === "removed" ? v.map((x, k) => x + A.avg[k]) : v;
+  let level = 0; for (const k of WIDE) level += A.avg[k] / WIDE.length;            // the flat CLL: as loud as the average direction
+  const both = v => pair(v, ild, A.itd[r.d]);
+  return [[0, 1].map(e => flattened(ear(H, S.variant, r.d, e))), both(whole(p.x)), both(whole(p.sum)), both(whole(p.base)), both(p.layer.map(v => v + level))];
+}
+let playing = "", swap = 0;
+function audio() {
+  if (!S.ctx || !S.H) return;
+  const key = split.key + "," + S.rows[S.at].d; if (key === playing) return; playing = key;
+  const t = S.ctx.currentTime; S.fade.gain.cancelScheduledValues(t); S.fade.gain.setTargetAtTime(0, t, 0.003);
+  clearTimeout(swap); swap = setTimeout(() => { const set = responses();
+    if (set) S.bank.forEach(({ c }, v) => { const b = S.ctx.createBuffer(2, set[v][0].length, FS); b.copyToChannel(set[v][0], 0); b.copyToChannel(set[v][1], 1); c.buffer = b; });
+    S.fade.gain.setTargetAtTime(set ? 1 : 0, S.ctx.currentTime, 0.003); }, 15);
+}
+function start() {
+  if (S.ctx) return;
+  S.ctx = new AudioContext({ sampleRate: FS });
+  S.master = S.ctx.createGain(); S.master.gain.value = 10 ** (S.vol / 20); S.master.connect(safeOutput(S.ctx));
+  S.fade = S.ctx.createGain(); S.fade.gain.value = 0; S.fade.connect(S.master);
+  S.bank = VERSIONS.map((_, v) => { const c = S.ctx.createConvolver(), g = S.ctx.createGain();
+    c.normalize = false; g.gain.value = v === S.ver ? 1 : 0; c.connect(g); g.connect(S.fade); return { c, g }; });
+  signal(); audio();
+  $("bStart").textContent = "Audio on"; $("bStart").classList.remove("go");
+}
+function signal() {
+  if (S.src) S.src.stop();
+  S.src = S.ctx.createBufferSource(); S.src.buffer = makeSignal(S.ctx, S.signal); S.src.loop = true;
+  for (const { c } of S.bank) S.src.connect(c);
+  S.src.start();
+}
+function version(v) {
+  if (v === S.ver) return;
+  S.before = S.ver; S.ver = v;
+  if (S.ctx) S.bank.forEach(({ g }, k) => g.gain.setTargetAtTime(k === v ? 1 : 0, S.ctx.currentTime, 0.004));
+  panel();
+}
+
+// ---------- the panel ----------
+const inSet = () => S.index.heads.filter(h => h.set === S.set);
+let loading = 0;
+function choose() {
+  const entry = inSet()[S.number]; $("headNote").textContent = entry.name + " — loading";
+  clearTimeout(loading); loading = setTimeout(async () => { const H = await loadHead(entry);
+    if (inSet()[S.number] !== entry) return;
+    S.H = H; $("headNote").innerHTML = `<b>${entry.name}</b> · ${H.n} measured directions`; update(); }, 120);
+}
+function slice(v) { S.slice = v; S.at = v === "horizon" ? 72 : 36; panel(); update(); }
+const sliceSeg = () => seg($("segSlice"), ["median plane", "horizon"], () => S.slice, slice, v => v === "horizon" ? "horizontal ring" : v);
+function panel() {
+  seg($("segVariant"), [0, 1, 2], () => S.variant, v => { S.variant = v; update(); }, v => VARIANTS[v]);
+  seg($("segSet"), [...new Set(S.index.heads.map(h => h.set))], () => S.set, v => { S.set = v; S.number = 0; panel(); choose(); });
+  $("headCtl").innerHTML = "";
+  if (inSet().length > 1) ctl($("headCtl"), "head", 1, inSet().length, () => S.number + 1, v => { const i = Math.round(v) - 1; if (i !== S.number) { S.number = i; choose(); } }, v => Math.round(v) + " of " + inSet().length);
+  sliceSeg();
+  $("elevCtl").innerHTML = "";                                         // moving the ring's elevation shows the ring
+  ctl($("elevCtl"), "the ring's elevation", -60, 80, () => S.elev, v => { S.elev = Math.round(v / 5) * 5;
+        if (S.slice !== "horizon") { S.slice = "horizon"; S.at = 72; sliceSeg(); } update(); },
+      v => (v > 0 ? "+" : "") + Math.round(v / 5) * 5 + "°");
+  seg($("segMethod"), Object.keys(METHODS), () => S.method, v => { S.method = v; panel(); update(); });
+  $("methodNote").textContent = METHODS[S.method];
+  $("knobs").innerHTML = "";
+  const knob = (label, key, min, max, step, unit) => ctl($("knobs"), label, min, max, () => S[key], v => { S[key] = Math.round(v / step) * step; update(); },
+    v => (Math.round(v / step) * step).toFixed(step < 1 ? 1 : 0) + unit);
+  knob(S.method === "max–min" ? "blur afterwards, width" : "blur width", "width", 0.5, 6, 0.1, " ERB");
+  if (S.method === "sheet") knob("passes", "passes", 1, 100, 1, "");
+  if (S.method === "max–min") knob("widest notch filled", "notch", 0.5, 8, 0.1, " ERB");
+  if (S.method === "smooth + dips") knob("dips", "dips", 1, 4, 1, "");
+  knob("notches only above", "from", 0.5, 8, 0.1, " kHz");
+  ctl($("knobs"), "smooth part over the sphere: spherical-harmonic order", 0, 10, () => S.order, v => { S.order = Math.round(v); update(); }, v => Math.round(v) ? "order " + Math.round(v) : "free in every direction");
+  seg($("segAverage"), ["removed", "kept"], () => S.average, v => { S.average = v; update(); });
+  $("versions").innerHTML = "";
+  VERSIONS.forEach((name, v) => { const b = document.createElement("button"); b.textContent = `${v + 1}  ${name}`;
+    if (v === S.ver) b.classList.add("on"); b.onclick = () => version(v); $("versions").appendChild(b); });
+}
+seg($("segSignal"), ["bursts", "noise", "clicks", "tone"], () => S.signal, v => { S.signal = v; if (S.ctx) signal(); });
+ctl($("volCtl"), "volume", -30, 0, () => S.vol, v => { S.vol = v; if (S.master) S.master.gain.value = 10 ** (v / 20); }, v => v.toFixed(0) + " dB");
+ctl($("fadeCtl"), "flat above", 6, 20, () => S.flat, v => { S.flat = Math.round(v * 2) / 2; update(); }, v => v >= 20 ? "off" : (Math.round(v * 2) / 2).toFixed(1) + " kHz");
+$("bStart").onclick = start;
+addEventListener("keydown", e => {
+  if (e.key >= "1" && e.key <= String(VERSIONS.length)) version(+e.key - 1);
+  else if (e.key === " ") { e.preventDefault(); version(S.before); }
+  else if (e.key === "w" || e.key === "s") { S.elev = Math.max(-60, Math.min(80, S.elev + (e.key === "w" ? 5 : -5))); slice("horizon"); }
+  else if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); S.at += e.key === "ArrowUp" ? 1 : -1; update(); }
+  else if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault();
+    const i = Math.max(0, Math.min(inSet().length - 1, S.number + (e.key === "ArrowRight" ? 1 : -1))); if (i !== S.number) { S.number = i; panel(); choose(); } }
+});
+addEventListener("resize", update);
+(async () => {
+  try { S.index = await (await fetch("heads/index.json")).json(); } catch { $("headNote").innerHTML = "No <b>heads/</b> — run build-heads.py."; return; }
+  FS = S.index.fs; TAPS = S.index.taps; panel(); choose();
+})();
+</script>
+</body>
+</html>
