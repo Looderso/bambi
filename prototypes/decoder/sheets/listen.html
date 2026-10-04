@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bambi · Decoder · A head from its numbers</title>
+<link rel="stylesheet" href="../common.css">
+<style>
+  .cols{display:grid;gap:12px;min-width:0;min-height:0;grid-template-columns:repeat(2,minmax(0,1fr))}
+  pre{font-size:10px;margin:6px 0 0;color:var(--ink);white-space:pre-wrap}
+  #versions button{flex:1 1 100%;text-align:left;padding-left:8px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div class="viewbox"><canvas id="cvMap"></canvas><span class="vlabel">the place · every dot a measured direction · click one · left on the left, front in the middle</span></div>
+    <div class="cols">
+      <div class="viewbox"><canvas id="cvL"></canvas><span class="vlabel" id="lL">left ear · dB · measured black, what plays orange</span></div>
+      <div class="viewbox"><canvas id="cvR"></canvas><span class="vlabel">right ear</span></div>
+    </div>
+  </div>
+  <div id="panel">
+    <h1>Decoder · A head from its numbers</h1>
+    <div class="row"><button id="bStart" class="go">Start audio</button></div>
+    <p class="note">A measured head, symmetric from one ear, against the same head made of nothing but its numbers — an
+      average, a smooth pattern, a few surfaces of notches, a pattern for the ILD and one for the ITD — and against
+      the KU100. Does a sound stay where the measured head puts it?</p>
+
+    <h2>LISTEN <kbd>1</kbd>–<kbd>6</kbd> · <kbd>space</kbd> the one before</h2>
+    <div class="row" id="versions"></div>
+    <pre id="info"></pre>
+
+    <h2>PLACE <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></h2>
+    <p class="note" id="place"></p>
+    <div class="row"><button id="bRing">walk the horizon</button><button id="bOver">walk over the top</button></div>
+
+    <h2>HEAD</h2>
+    <div class="seg" id="segSet"></div>
+    <div id="headCtl"></div>
+    <div class="seg" id="segEar"></div>
+    <p class="note" id="headNote"></p>
+
+    <h2>THE NUMBERS</h2>
+    <div class="sub note">the CLL's notches: surfaces × order, as the search found them</div>
+    <div class="row" id="sizes"></div>
+    <div id="knobs"></div>
+    <pre id="numbers"></pre>
+
+    <h2>SIGNAL</h2>
+    <div class="seg" id="segSignal"></div>
+    <div id="volCtl"></div>
+  </div>
+</div>
+<script src="../common.js"></script>
+<script src="lab.js?7"></script>
+<script>
+const VERSIONS = ["measured", "measured, through CLL, ILD and ITD", "CLL from its numbers · ILD and ITD measured", "ILD and ITD from their patterns · CLL measured",
+                  "all from the numbers", "the KU100"];
+const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
+const S = { index: null, presets: null, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
+            ildBlur: 1, ildOrder: 8, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, signal: "bursts", vol: -6 };
+
+// ---------- a head: measured here, its notches' numbers from the worker ----------
+const inSet = () => S.index.heads.filter(h => h.set === S.set && h.ear === S.ear);
+async function loadHead(entry) {
+  const H = parseHead(await (await fetch("heads/" + entry.head)).arrayBuffer(), entry), A = analyse(H, entry.ear === "left" ? 1 : 2), n = H.n;
+  const head = { entry, H, A, n, variant: entry.ear === "left" ? 1 : 2, fit: null, some: [] };
+  for (let d = 0; d < n; d += Math.ceil(n / 1000)) head.some.push(d);
+  return head;
+}
+const worker = new Worker("worker.js?7");
+let asked = 0;
+function fitHead() {
+  const head = S.head; if (!head) return;
+  $("numbers").textContent = "fitting the notches…"; head.fit = null;
+  worker.postMessage({ id: ++asked, file: head.entry.head, ear: head.entry.ear, P: S.P });
+}
+worker.onmessage = e => {
+  const r = e.data, head = S.head; if (r.id !== asked || !head || r.n !== head.n) return;
+  head.fit = { ...r, rebuilt: Array.from({ length: r.n }, (_, d) => Array.from({ length: r.sheets }, (_, k) => { const o = (d * r.sheets + k) * 3;
+    return isNaN(r.rebuilt[o]) ? null : [r.rebuilt[o], r.rebuilt[o + 1], r.rebuilt[o + 2]]; })) };
+  $("numbers").textContent = `the CLL's notches: ${r.sheets} surfaces, ${r.numbers} numbers\nthis head: the smooth part alone leaves ${r.costNone.toFixed(2)} dB, with the surfaces ${r.cost.toFixed(2)} dB`;
+  played = ""; update();
+};
+// The ITD's and the ILD's patterns over the sphere; the ILD blurred along frequency first.
+function patterns(head) {
+  const key = [S.ildBlur, S.ildOrder, S.itdOrder].join();
+  if (head.patternKey !== key) { head.patternKey = key;
+    const ild = d => { const v = head.A.ild.subarray(d * NF, (d + 1) * NF).map(x => Math.max(-40, Math.min(40, x))); return S.ildBlur > 0 ? blur(v, S.ildBlur) : v; };
+    head.ildCoef = fitSphere(head.H, head.some, head.some.map(ild), S.ildOrder);
+    head.itdCoef = fitSphere(head.H, head.some, head.some.map(d => [head.A.itd[d]]), S.itdOrder, 1); }
+  return head;
+}
+// The six pairs of responses for direction d (the ones that need the notches' numbers missing until they are there).
+function responses(head, d) {
+  const A = head.A, row = v => v.subarray(d * NF, (d + 1) * NF), cll = row(A.cll), ild = row(A.ild).map(x => Math.max(-40, Math.min(40, x))), itd = A.itd[d];
+  patterns(head);
+  const ildN = onSphere(head.H, head.ildCoef, S.ildOrder, d), itdN = onSphere(head.H, head.itdCoef, S.itdOrder, d, 1)[0];
+  let cllN = null;
+  if (head.fit) { const p = onSphere(head.H, head.fit.pattern, 4, d), m = bumps(head.fit.rebuilt[d].filter(Boolean)); cllN = p.map((v, k) => v + m[k] + A.avg[k]); }
+  const own = [ear(head.H, head.variant, d, 0), ear(head.H, head.variant, d, 1)], energy = pair => pair.reduce((t, h) => t + h.reduce((u, v) => u + v * v, 0), 0);
+  const level = pair => { if (!pair) return null; const g = Math.sqrt(energy(own) / energy(pair)); return pair.map(h => h.map(v => v * g)); };   // as loud as the measured pair
+  const k = S.ku && nearest(S.ku, head.H.xyz[d])[0];                   // the KU100's nearest direction
+  return [own, ...[earsOf(cll, ild, itd), cllN && earsOf(cllN, ild, itd), earsOf(cll, ildN, itdN), cllN && earsOf(cllN, ildN, itdN),
+                   S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)]].map(level)];
+}
+
+// ---------- audio: the six versions on one signal, one heard ----------
+let played = "", swap = 0, now = null;
+function audio() {
+  const head = S.head; if (!head) return;
+  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku].join(); if (key === played) return; played = key;
+  now = responses(head, S.at);
+  if (!S.ctx) return;
+  const t = S.ctx.currentTime; S.fade.gain.cancelScheduledValues(t); S.fade.gain.setTargetAtTime(0, t, 0.003);
+  clearTimeout(swap); swap = setTimeout(() => {
+    S.bank.forEach(({ c }, v) => { const pair = now[v] || [new Float32Array(8), new Float32Array(8)], b = S.ctx.createBuffer(2, pair[0].length, FS);
+      b.copyToChannel(pair[0], 0); b.copyToChannel(pair[1], 1); c.buffer = b; });
+    S.fade.gain.setTargetAtTime(1, S.ctx.currentTime, 0.003); }, 15);
+}
+function start() {
+  if (S.ctx) return;
+  S.ctx = new AudioContext({ sampleRate: FS });
+  S.master = S.ctx.createGain(); S.master.gain.value = 10 ** (S.vol / 20); S.master.connect(safeOutput(S.ctx));
+  S.fade = S.ctx.createGain(); S.fade.gain.value = 0; S.fade.connect(S.master);
+  S.bank = VERSIONS.map((_, v) => { const c = S.ctx.createConvolver(), g = S.ctx.createGain();
+    c.normalize = false; g.gain.value = v === S.ver ? 1 : 0; c.connect(g); g.connect(S.fade); return { c, g }; });
+  signal(); played = ""; audio();
+  $("bStart").textContent = "Audio on"; $("bStart").classList.remove("go");
+}
+function signal() {
+  if (S.src) S.src.stop();
+  S.src = S.ctx.createBufferSource(); S.src.buffer = makeSignal(S.ctx, S.signal); S.src.loop = true;
+  for (const { c } of S.bank) S.src.connect(c);
+  S.src.start();
+}
+function version(v) {
+  if (v === S.ver) return;
+  S.before = S.ver; S.ver = v;
+  if (S.ctx) S.bank.forEach(({ g }, k) => g.gain.setTargetAtTime(k === v ? 1 : 0, S.ctx.currentTime, 0.004));
+  panel(); update();
+}
+
+// ---------- drawing ----------
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const INK = css("--ink"), ORANGE = css("--orange"), GREY = css("--greyD"), LINE = css("--greyL"), SILVER = css("--silver"), FONT = "10px Helvetica Neue, Helvetica, Arial";
+function fit(cv) {
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  const c = cv.getContext("2d"); c.scale(dpr, dpr); c.font = FONT;
+  return [c, r.width, r.height];
+}
+const mapGeo = (w, h) => ({ x0: 34, x1: w - 10, y0: 24, y1: h - 18 });
+const mapXY = (g, az, el) => [g.x0 + (180 - az) / 360 * (g.x1 - g.x0), g.y0 + (90 - el) / 180 * (g.y1 - g.y0)];
+function drawMap() {
+  const [c, w, h] = fit($("cvMap")), g = mapGeo(w, h), head = S.head;
+  c.strokeStyle = LINE; c.fillStyle = GREY; c.lineWidth = 1;
+  for (const [az, t] of [[180, "behind"], [90, "left"], [0, "front"], [-90, "right"], [-180, "behind"]]) { const [x] = mapXY(g, az, 0);
+    c.beginPath(); c.moveTo(x, g.y0); c.lineTo(x, g.y1); c.stroke(); c.textAlign = "center"; c.fillText(t, x, g.y1 + 12); }
+  for (const [el, t] of [[90, "above"], [45, ""], [0, "level"], [-45, ""], [-90, "below"]]) { const [, y] = mapXY(g, 0, el);
+    c.beginPath(); c.moveTo(g.x0, y); c.lineTo(g.x1, y); c.stroke(); c.textAlign = "right"; c.fillText(t, g.x0 - 4, y + 3); }
+  if (!head) return;
+  head.H.xyz.forEach((v, d) => { const [az, el] = angOf(v).map(a => a / D2R), [x, y] = mapXY(g, az, el);
+    if (d === S.at) { c.fillStyle = ORANGE; c.beginPath(); c.arc(x, y, 6, 0, 2 * Math.PI); c.fill(); } else { c.fillStyle = SILVER; c.fillRect(x - 1, y - 1, 2.5, 2.5); } });
+}
+$("cvMap").onclick = e => {
+  const head = S.head; if (!head) return;
+  const b = $("cvMap").getBoundingClientRect(), g = mapGeo(b.width, b.height);
+  const az = 180 - (e.clientX - b.left - g.x0) / (g.x1 - g.x0) * 360, el = 90 - (e.clientY - b.top - g.y0) / (g.y1 - g.y0) * 180;
+  walk(null); S.at = nearest(head.H, dirOf(az * D2R, Math.max(-90, Math.min(90, el)) * D2R))[0]; update();
+};
+const TICKS = [500, 1000, 2000, 4000, 8000, 16000];
+function drawEar(cv, e) {
+  const [c, w, h] = fit(cv), g = { x0: 30, x1: w - 8, y0: 22, y1: h - 16 }, lo = -60, hi = 10;
+  const X = f => g.x0 + (erbOf(f) - E0) / (E1 - E0) * (g.x1 - g.x0), Y = d => g.y0 + (hi - Math.max(lo, Math.min(hi, d))) / (hi - lo) * (g.y1 - g.y0);
+  c.strokeStyle = LINE; c.fillStyle = GREY; c.lineWidth = 1;
+  for (let d = lo; d <= hi; d += 10) { c.beginPath(); c.moveTo(g.x0, Y(d)); c.lineTo(g.x1, Y(d)); c.stroke(); c.textAlign = "right"; c.fillText(d, g.x0 - 5, Y(d) + 3); }
+  for (const f of TICKS) { c.beginPath(); c.moveTo(X(f), g.y0); c.lineTo(X(f), g.y1); c.stroke(); c.textAlign = "center"; c.fillText(f < 1000 ? f : f / 1000 + " k", X(f), g.y1 + 12); }
+  if (!now) return;
+  const curve = (pair, colour, width) => { if (!pair) return; const [re, im] = spectrumOf(pair[e], 512), v = new Float32Array(NF); onAxis(re, im, 512, v, 0);
+    c.strokeStyle = colour; c.lineWidth = width; c.beginPath();
+    for (let k = 0; k < NF; k++) { const x = g.x0 + k / (NF - 1) * (g.x1 - g.x0); k ? c.lineTo(x, Y(v[k])) : c.moveTo(x, Y(v[k])); } c.stroke(); };
+  curve(now[0], INK, 1.5); if (S.ver) curve(now[S.ver], ORANGE, 1.5);
+}
+function draw() {
+  const head = S.head; if (!head) return;
+  S.at = Math.max(0, Math.min(head.n - 1, S.at));
+  audio(); drawMap(); drawEar($("cvL"), 0); drawEar($("cvR"), 1);
+  const [az, el] = angOf(head.H.xyz[S.at]).map(v => v / D2R);
+  $("place").innerHTML = `<b>azimuth ${az.toFixed(0)}°, elevation ${el.toFixed(0)}°</b> · ${az > 1 ? "to the left" : az < -1 ? "to the right" : "in the middle"}`;
+  const itd = pair => { if (!pair) return "    –"; const [a, b] = spectrumOf(pair[0], ITD_N), [p, q] = spectrumOf(pair[1], ITD_N); return (itdOf(a, b, p, q) * 1e6).toFixed(0).padStart(5); };
+  $("info").textContent = now ? `ITD, µs: measured ${itd(now[0])} · what plays ${itd(now[S.ver])}` + (now[S.ver] ? "" : "\nnot there yet — the notches are being fitted") : "";
+}
+let pending = false;
+const update = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; draw(); }); } };
+
+// ---------- the place: steps and walks ----------
+function step(az, el) {
+  const head = S.head; if (!head) return;
+  const [a, e] = angOf(head.H.xyz[S.at]).map(v => v / D2R);
+  for (let k = 1; k <= 6; k++) { const to = nearest(head.H, dirOf((a + az * 5 * k) * D2R, Math.max(-90, Math.min(90, e + el * 5 * k)) * D2R))[0]; if (to !== S.at) { S.at = to; break; } }
+  update();
+}
+let walking = 0;
+function walk(path) {
+  clearInterval(walking); walking = 0; $("bRing").classList.remove("on"); $("bOver").classList.remove("on");
+  if (!path || !S.head) return;
+  $(path === "ring" ? "bRing" : "bOver").classList.add("on");
+  let a = 0;
+  walking = setInterval(() => { a = (a + 10) % 360; const head = S.head;
+    S.at = nearest(head.H, path === "ring" ? dirOf(a * D2R, 0) : [Math.cos(a * D2R), 0, Math.sin(a * D2R)])[0]; update(); }, 450);
+}
+$("bRing").onclick = () => walk(walking && $("bRing").classList.contains("on") ? null : "ring");
+$("bOver").onclick = () => walk(walking && $("bOver").classList.contains("on") ? null : "over");
+
+// ---------- the panel ----------
+let loading = 0, settle = 0;
+const later = run => { clearTimeout(settle); settle = setTimeout(run, 250); };
+function choose() {
+  const entry = inSet()[S.number]; $("headNote").textContent = entry.name + " — loading"; walk(null);
+  clearTimeout(loading); loading = setTimeout(async () => { const head = await loadHead(entry);
+    if (inSet()[S.number] !== entry) return;
+    S.head = head; S.at = nearest(head.H, dirOf(30 * D2R, 0))[0]; played = "";
+    $("headNote").innerHTML = `<b>${entry.name}</b> · ${entry.ear} ear, mirrored · ${head.n} measured directions`; update(); fitHead(); }, 120);
+}
+function panel() {
+  $("versions").innerHTML = "";
+  VERSIONS.forEach((name, v) => { const b = document.createElement("button"); b.textContent = `${v + 1}  ${name}`;
+    if (v === S.ver) b.classList.add("on"); b.onclick = () => version(v); $("versions").appendChild(b); });
+  seg($("segSet"), [...new Set(S.index.heads.map(h => h.set))].filter(s => s !== "KU100"), () => S.set, v => { S.set = v; S.number = 0; panel(); choose(); });
+  $("headCtl").innerHTML = "";
+  if (inSet().length > 1) ctl($("headCtl"), "head", 1, inSet().length, () => S.number + 1, v => { const i = Math.round(v) - 1; if (i !== S.number) { S.number = i; choose(); } }, v => Math.round(v) + " of " + inSet().length);
+  seg($("segEar"), ["left", "right"], () => S.ear, v => { S.ear = v; choose(); }, v => v + " ear, mirrored");
+  $("sizes").innerHTML = "";
+  (S.presets ? S.presets.sizes : []).forEach((z, i) => { const b = document.createElement("button"); b.style.flex = "1 1 22%"; b.textContent = `${z.surfaces} × ${z.order}`;
+    if (i === S.size) b.classList.add("on"); b.onclick = () => { S.size = i; S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; panel(); fitHead(); }; $("sizes").appendChild(b); });
+  $("knobs").innerHTML = "";
+  const knob = (label, key, min, max, step, show) => ctl($("knobs"), label, min, max, () => S[key], v => { S[key] = Math.round(v / step) * step; later(update); }, v => show(Math.round(v / step) * step));
+  knob("the ILD, blurred along frequency", "ildBlur", 0, 3, 0.25, v => v ? v.toFixed(2) + " ERB" : "not blurred");
+  knob("the ILD's pattern: order over the sphere", "ildOrder", 2, 12, 1, v => "order " + v);
+  knob("the ITD's pattern: order over the sphere", "itdOrder", 2, 12, 1, v => "order " + v);
+}
+seg($("segSignal"), ["bursts", "noise", "clicks", "tone"], () => S.signal, v => { S.signal = v; if (S.ctx) signal(); });
+ctl($("volCtl"), "volume", -30, 0, () => S.vol, v => { S.vol = v; if (S.master) S.master.gain.value = 10 ** (v / 20); }, v => v.toFixed(0) + " dB");
+$("bStart").onclick = start;
+addEventListener("keydown", e => {
+  if (e.key >= "1" && e.key <= String(VERSIONS.length)) version(+e.key - 1);
+  else if (e.key === " ") { e.preventDefault(); version(S.before); }
+  else if (e.key.startsWith("Arrow")) { e.preventDefault(); walk(null); step({ ArrowLeft: 1, ArrowRight: -1 }[e.key] || 0, { ArrowUp: 1, ArrowDown: -1 }[e.key] || 0); }
+});
+addEventListener("resize", update);
+(async () => {
+  try { S.index = await (await fetch("run/index.json")).json(); } catch { $("headNote").innerHTML = "No <b>run/index.json</b> — the list of heads."; return; }
+  try { S.presets = await (await fetch("presets.json", { cache: "no-store" })).json();
+    S.size = S.presets.sizes.findIndex(z => z.surfaces === 6 && z.order === 4); const z = S.presets.sizes[S.size]; if (z) S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; } catch { S.presets = null; }
+  panel(); choose();
+  const ku = S.index.heads.find(h => h.set === "KU100");
+  if (ku) { S.ku = parseHead(await (await fetch("heads/" + ku.head)).arrayBuffer(), ku); played = ""; update(); }
+})();
+</script>
+</body>
+</html>
