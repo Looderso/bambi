@@ -341,15 +341,15 @@ function backToInput(H, near, xs, set, coefs, order, floor) {
 // Each surface as three patterns over the sphere — its dips' centre, depth and width as spherical harmonics of the
 // order: 3 x (order + 1)² numbers a surface. Centre and width are fitted to the surface's dips; with those, each
 // direction's depths are the ones that fit its measured CLL best (never above 0, and 0 further than 15° from the
-// surface's dips), and the depth's pattern is fitted to them. A surface of too few dips for the order is left out.
+// surface's dips), and the depth's pattern is fitted to them. A surface of too few dips for the order is null.
 function asNumbers(H, near, xs, final, order) {
   const n = H.n, all = Array.from({ length: n }, (_, d) => d), K = (order + 1) ** 2, bandLo = E0 + LO * STEP, bandHi = E0 + HI * STEP;
   const sheets = ((final[0] || []).map((_, s) => { const mem = all.filter(d => final[d][s]); if (mem.length < 1.5 * K) return null;
     const reach = new Uint8Array(n); for (const d of mem) { reach[d] = 1; for (const [j, angle] of near[d]) if (angle <= 15) reach[j] = 1; }
-    return { centre: fitSphere(H, mem, mem.map(d => [final[d][s][0]]), order, 1), width: fitSphere(H, mem, mem.map(d => [final[d][s][2]]), order, 1), reach, depths: new Float32Array(n) }; })).filter(Boolean);
+    return { centre: fitSphere(H, mem, mem.map(d => [final[d][s][0]]), order, 1), width: fitSphere(H, mem, mem.map(d => [final[d][s][2]]), order, 1), reach, depths: new Float32Array(n) }; }));
   const at = (coef, y) => { let v = 0; for (let p = 0; p < K; p++) v += y[p] * coef[p]; return v; };
   for (const d of all) { const y = shN(order, ...H.xyz[d]), r = targetOf(xs[d], final[d].filter(Boolean));
-    let live = sheets.filter(sh => sh.reach[d]);
+    let live = sheets.filter(sh => sh && sh.reach[d]);
     const shape = new Map(live.map(sh => { const c = Math.max(bandLo, Math.min(bandHi, at(sh.centre, y))), w = Math.max(0.1, Math.min(1.5, at(sh.width, y)));
       return [sh, Float32Array.from({ length: HI - LO + 1 }, (_, k) => Math.exp(-0.5 * ((E0 + (LO + k) * STEP - c) / w) ** 2))]; }));
     while (live.length) { const m = live.length, M = new Float64Array(m * m), b = new Float64Array(m);    // least squares, depths above 0 dropped
@@ -358,14 +358,14 @@ function asNumbers(H, near, xs, final, order) {
       const a = solve(M, b, m), worst = a.reduce((w, v, i) => v > a[w] ? i : w, 0);
       if (a[worst] > 0) { live = live.filter((_, i) => i !== worst); continue; }
       live.forEach((sh, i) => { sh.depths[d] = a[i]; }); break; } }
-  for (const sh of sheets) { sh.depth = fitSphere(H, all, all.map(d => [sh.depths[d]]), order, 1); delete sh.depths; delete sh.reach; }
+  for (const sh of sheets) if (sh) { sh.depth = fitSphere(H, all, all.map(d => [sh.depths[d]]), order, 1); delete sh.depths; delete sh.reach; }
   return sheets;
 }
-// Per direction the dips those numbers give (null where a surface is shallower than half a dB).
+// Per direction the dips those numbers give, a place a surface (null where it is shallower than half a dB, or left out).
 function rebuilt(H, sheets, order) {
   const K = (order + 1) ** 2, bandLo = E0 + LO * STEP, bandHi = E0 + HI * STEP, at = (coef, y) => { let v = 0; for (let p = 0; p < K; p++) v += y[p] * coef[p]; return v; };
   return H.xyz.map(u => { const y = shN(order, ...u);
-    return sheets.map(sh => { const a = at(sh.depth, y); return a > -0.5 ? null : [Math.max(bandLo, Math.min(bandHi, at(sh.centre, y))), Math.max(-60, a), Math.max(0.1, Math.min(1.5, at(sh.width, y)))]; }); });
+    return sheets.map(sh => { if (!sh) return null; const a = at(sh.depth, y); return a > -0.5 ? null : [Math.max(bandLo, Math.min(bandHi, at(sh.centre, y))), Math.max(-60, a), Math.max(0.1, Math.min(1.5, at(sh.width, y)))]; }); });
 }
 // The cost of a set of dips: what they and the smooth part leave of the measured CLLs, blurred to one ERB — finer than
 // that is not heard — dB RMS over the directions and 4–16 kHz.
@@ -403,7 +403,7 @@ function chain(H, A, P, keep) {
   const targets = dirs.map(d => targetOf(keep.xs[d], again[d].filter(Boolean)));
   const smooth = dirs.map(d => keep.xs[d].map((v, k) => v - targets[d][k])), some = dirs.filter(d => d % Math.ceil(n / 1000) === 0);
   const count = arr => arr.reduce((t, p) => t + p.filter(Boolean).length, 0);
-  return { n, final, places: (final[0] || []).length, rebuilt: again, sheets: sheets.length, numbers: sheets.length * 3 * (P.surfaceOrder + 1) ** 2, prep: f.prep,
+  return { n, final, places: (final[0] || []).length, rebuilt: again, sheets: sheets.filter(Boolean).length, numbers: sheets.filter(Boolean).length * 3 * (P.surfaceOrder + 1) ** 2, prep: f.prep,
            pattern: fitSphere(H, some, some.map(d => smooth[d]), 4), tracks: (tracks[0] || []).length,
            found: count(f.dips.map(p => p.filter(q => q[1] <= -P.counts))), tracked: count(tracks), gathered: count(places), kept: count(final),
            cost: costOf(keep.xs, again), costFree: costOf(keep.xs, final), costNone: costOf(keep.xs, dirs.map(() => [])), measure: measureOf(keep.near, targets, again) };

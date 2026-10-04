@@ -452,6 +452,11 @@ rest (17 heads, 1–16 kHz), SONICOM's goes from 3.96 dB (order 4) to 3.31 (orde
 2.44 not blurred; HUTUBS's stops near 3.8 dB at order 8, its 10° grid holding no more. **The ILD is taken not blurred, at order 10** — chosen by
 looking and listening; both pages start there.
 
+**A surface is seen as a map**: the sheets page's bottom row draws each surface over the whole sphere, every measured
+direction a patch whose colour is the notch's frequency there and whose strength its depth — as found per direction,
+or rebuilt from the numbers. On the first HUTUBS head, six surfaces at order 4: two cover most of the sphere (5.8–9.2 kHz
+over 74 %, 12.8–17.8 kHz over 71 %), four a third each, between 9.4 and 15.2 kHz.
+
 **Heard, not only plotted**: `sheets/listen.html` plays a head at any measured direction as measured, through CLL,
 ILD and ITD, with the CLL from its numbers, with ILD and ITD from their patterns, all from the numbers, and as the
 KU100. At one direction of one head (30° left, level; per ear, 1–16 kHz): through CLL, ILD and ITD 0.1–0.2 dB from

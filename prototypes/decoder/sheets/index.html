@@ -6,10 +6,10 @@
 <title>bambi · Decoder · Sheets</title>
 <link rel="stylesheet" href="../common.css">
 <style>
-  #stage{grid-template-rows:repeat(3,minmax(0,1fr))}
+  #stage{grid-template-rows:repeat(4,minmax(0,1fr))}
   .cols{display:grid;gap:12px;min-width:0;min-height:0;grid-template-columns:repeat(3,minmax(0,1fr))}
   pre{font-size:10px;margin:6px 0 0;color:var(--ink);white-space:pre-wrap}
-  @media (max-width:900px){ #stage{grid-template-rows:repeat(3,300px)} }
+  @media (max-width:900px){ #stage{grid-template-rows:repeat(4,300px)} }
 </style>
 </head>
 <body>
@@ -30,6 +30,7 @@
       <div class="viewbox"><canvas id="cvSheets"></canvas><span class="vlabel" id="lSheets">the surfaces rebuilt from their numbers</span></div>
       <div class="viewbox"><canvas id="cvSpec"></canvas><span class="vlabel">CLL at the place · black, prepared silver, smooth pattern orange, pattern and rebuilt dips dashed, the dips grey</span></div>
     </div>
+    <div class="cols" id="maps"></div>
   </div>
   <div id="panel">
     <h1>Decoder · Sheets</h1>
@@ -71,6 +72,11 @@
       join it, the rest go. Every dip is fitted to the measured CLL — its depth comes from there alone — and each
       surface becomes three patterns of that order over the sphere: centre, depth, width.</p>
     <div id="surfaces"></div>
+    <div class="sub note">the maps in the bottom row: each surface over the whole sphere</div>
+    <div class="seg" id="segMaps"></div>
+    <p class="note">A map: left on the left, front in the middle, above at the top. The colour is the notch's frequency
+      there — orange at 4 kHz to black at 16 kHz — and the paler, the shallower: full at 12 dB, blank where the surface
+      has no notch. The orange line is the slice shown above, the ring the place.</p>
 
     <h2>ITD AND ILD AS PATTERNS</h2>
     <div id="orders"></div>
@@ -78,9 +84,9 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?7"></script>
+<script src="lab.js?8"></script>
 <script>
-const S = { index: null, presets: null, set: "HUTUBS", number: 0, ear: "left", head: null, slice: "median plane", elev: 0, at: 36, itdOrder: 8, ildOrder: 10, ildBlur: 0,
+const S = { index: null, presets: null, set: "HUTUBS", number: 0, ear: "left", head: null, maps: "rebuilt from the numbers", slice: "median plane", elev: 0, at: 36, itdOrder: 8, ildOrder: 10, ildBlur: 0,
             P: { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 } };
 
 // ---------- a head: its measured CLL, ILD and ITD here, its fit in the worker ----------
@@ -92,7 +98,7 @@ async function loadHead(entry) {
   const stride = Math.ceil(n / 1000); head.some = []; for (let d = 0; d < n; d += stride) head.some.push(d);
   return head;
 }
-const worker = new Worker("worker.js?7");
+const worker = new Worker("worker.js?8");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -103,7 +109,7 @@ worker.onmessage = e => {
   const r = e.data, head = S.head; if (r.id !== asked || !head || r.n !== head.n) return;
   const unpack = (flat, places) => Array.from({ length: r.n }, (_, d) => Array.from({ length: places }, (_, k) => {
     const o = (d * places + k) * 3; return isNaN(flat[o]) ? null : [flat[o], flat[o + 1], flat[o + 2]]; }));
-  head.fit = { ...r, final: unpack(r.final, r.places), rebuilt: unpack(r.rebuilt, r.sheets), cache: new Map() };
+  head.fit = { ...r, final: unpack(r.final, r.places), rebuilt: unpack(r.rebuilt, r.places), cache: new Map() };
   update();
 };
 function itdFit(head) {
@@ -202,6 +208,32 @@ function drawSpec(rows, head, parts) {
     c.setLineDash([3, 3]); curve(p.sum, ORANGE, 1); c.setLineDash([]); }
   else curve(head.xs[r.d], INK, 1.5);
 }
+// A surface over the sphere: every measured direction a patch — its colour the notch's centre, from orange at 4 kHz to
+// ink at 16 kHz, paler the shallower — with the slice and the place marked.
+const E4 = erbOf(4000), E16 = erbOf(16000);
+function drawMap(cv, head, set, k, rows) {
+  const [c, w, h] = fit(cv), g = { x0: 6, x1: w - 6, y0: 20, y1: h - 6 }, size = Math.sqrt(41253 / head.n);
+  const X = az => g.x0 + (180 - az) / 360 * (g.x1 - g.x0), Y = el => g.y0 + (90 - el) / 180 * (g.y1 - g.y0);
+  c.strokeStyle = LINE; c.lineWidth = 1; c.strokeRect(g.x0, g.y0, g.x1 - g.x0, g.y1 - g.y0);
+  head.H.xyz.forEach((v, d) => { const p = set[d][k]; if (!p) return; const [az, el] = angOf(v).map(a => a / D2R);
+    const t = Math.max(0, Math.min(1, (p[0] - E4) / (E16 - E4))), depth = Math.min(1, -p[1] / 12), wide = Math.min(360, size / Math.max(0.05, Math.cos(el * D2R)));
+    c.fillStyle = `rgb(${GROUND.map((b, j) => Math.round(b + (WARM[j] + (DARK[j] - WARM[j]) * t - b) * depth)).join()})`;
+    c.fillRect(X(az + wide / 2), Y(el + size / 2), (g.x1 - g.x0) * wide / 360 + 0.5, (g.y1 - g.y0) * size / 180 + 0.5); });
+  c.strokeStyle = LINE; for (const az of [-90, 0, 90]) { c.beginPath(); c.moveTo(X(az), g.y0); c.lineTo(X(az), g.y1); c.stroke(); }
+  c.beginPath(); c.moveTo(g.x0, Y(0)); c.lineTo(g.x1, Y(0)); c.stroke();
+  c.strokeStyle = ORANGE; c.lineWidth = 1; c.beginPath();
+  if (S.slice === "horizon") { c.moveTo(g.x0, Y(S.elev)); c.lineTo(g.x1, Y(S.elev)); } else for (const az of [0, 179.5, -179.5]) { c.moveTo(X(az), g.y0); c.lineTo(X(az), g.y1); }
+  c.stroke();
+  const [az, el] = angOf(head.H.xyz[rows[S.at].d]).map(a => a / D2R); c.lineWidth = 1.5; c.beginPath(); c.arc(X(az), Y(el), 4, 0, 2 * Math.PI); c.stroke();
+}
+function drawMaps(head, f, rows) {
+  const box = $("maps"), set = f && (S.maps === "rebuilt from the numbers" ? f.rebuilt : f.final), count = f ? f.places : 0;
+  if (box.children.length !== count) { box.innerHTML = ""; box.style.gridTemplateColumns = `repeat(${Math.max(1, count)}, minmax(0, 1fr))`;
+    for (let k = 0; k < count; k++) { const v = document.createElement("div"); v.className = "viewbox"; v.innerHTML = `<canvas></canvas><span class="vlabel"></span>`; box.appendChild(v); } }
+  for (let k = 0; k < count; k++) { const deep = set.map(p => p[k]).filter(p => p && p[1] <= -3), cs = deep.map(p => fOf(p[0]) / 1000).sort((a, b) => a - b);
+    box.children[k].querySelector(".vlabel").textContent = deep.length ? `${k + 1} · ${cs[Math.floor(cs.length * 0.05)].toFixed(1)}–${cs[Math.floor(cs.length * 0.95)].toFixed(1)} kHz · ${Math.round(100 * deep.length / head.n)} % of the sphere` : `${k + 1} · nothing deeper than 3 dB`;
+    drawMap(box.children[k].querySelector("canvas"), head, set, k, rows); }
+}
 function draw() {
   const head = S.head; if (!head) return;
   const rows = S.rows = sliceRows(head.H), f = head.fit;
@@ -218,7 +250,7 @@ function draw() {
   heat($("cvSum"), rows, f && (r => parts(r).sum), 20);
   heat($("cvFree"), rows, f && (r => parts(r).free), 20, f && (r => f.final[r.d]), true);
   heat($("cvSheets"), rows, f && (r => parts(r).dips), 20, f && (r => f.rebuilt[r.d]), true);
-  drawSpec(rows, head, parts);
+  drawSpec(rows, head, parts); drawMaps(head, f, rows);
   $("lIld").textContent = `ILD, its pattern: ${S.ildBlur ? "blurred " + S.ildBlur.toFixed(2) + " ERB" : "not blurred"}, order ${S.ildOrder} · ±30 dB`;
   const r = rows[S.at], [az, el] = angOf(head.H.xyz[r.d]).map(v => v / D2R);
   $("place").innerHTML = measured(r) ? `<b>${S.slice === "horizon" ? "azimuth" : "polar"} ${r.a.toFixed(0)}°</b> · the nearest measured direction: azimuth ${az.toFixed(0)}°, elevation ${el.toFixed(0)}°, ${r.off.toFixed(1)}° off`
@@ -263,6 +295,7 @@ function panel() {
   ctl($("elevCtl"), "the ring's elevation", -60, 80, () => S.elev, v => { S.elev = Math.round(v / 5) * 5;
         if (S.slice !== "horizon") { S.slice = "horizon"; S.at = 72; sliceSeg(); } update(); },
       v => (v > 0 ? "+" : "") + Math.round(v / 5) * 5 + "°");
+  seg($("segMaps"), ["found a direction", "rebuilt from the numbers"], () => S.maps, v => { S.maps = v; update(); });
   for (const id of ["prepare", "tracks", "surfaces", "orders", "presets"]) $(id).innerHTML = "";
   for (const z of S.presets ? S.presets.sizes : []) { const b = document.createElement("button"); b.style.flex = "1 1 45%";
     b.textContent = `${z.surfaces} × order ${z.order} · ${z.cost.toFixed(2)} (${z.checked.toFixed(2)})`;

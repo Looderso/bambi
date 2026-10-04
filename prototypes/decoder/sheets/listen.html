@@ -53,7 +53,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?7"></script>
+<script src="lab.js?8"></script>
 <script>
 const VERSIONS = ["measured", "measured, through CLL, ILD and ITD", "CLL from its numbers · ILD and ITD measured", "ILD and ITD from their patterns · CLL measured",
                   "all from the numbers", "the KU100"];
@@ -69,7 +69,7 @@ async function loadHead(entry) {
   for (let d = 0; d < n; d += Math.ceil(n / 1000)) head.some.push(d);
   return head;
 }
-const worker = new Worker("worker.js?7");
+const worker = new Worker("worker.js?8");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -78,7 +78,7 @@ function fitHead() {
 }
 worker.onmessage = e => {
   const r = e.data, head = S.head; if (r.id !== asked || !head || r.n !== head.n) return;
-  head.fit = { ...r, rebuilt: Array.from({ length: r.n }, (_, d) => Array.from({ length: r.sheets }, (_, k) => { const o = (d * r.sheets + k) * 3;
+  head.fit = { ...r, rebuilt: Array.from({ length: r.n }, (_, d) => Array.from({ length: r.places }, (_, k) => { const o = (d * r.places + k) * 3;
     return isNaN(r.rebuilt[o]) ? null : [r.rebuilt[o], r.rebuilt[o + 1], r.rebuilt[o + 2]]; })) };
   $("numbers").textContent = `the CLL's notches: ${r.sheets} surfaces, ${r.numbers} numbers\nthis head: the smooth part alone leaves ${r.costNone.toFixed(2)} dB, with the surfaces ${r.cost.toFixed(2)} dB`;
   played = ""; update();
