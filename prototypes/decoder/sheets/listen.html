@@ -69,7 +69,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?15"></script>
+<script src="lab.js?16"></script>
 <script>
 // The listener is the head selected: its measurement is what the others are heard against. Nobody's head is the
 // population's average of every part, with no notches or with the template's and the ear slider — nothing in it comes
@@ -78,7 +78,7 @@ const VERSIONS = ["the listener, measured", "the listener, all from its own numb
                   "listener's smooth part + the template, the ear slider", "listener's smooth part + the template, its fitted six numbers",
                   "listener's smooth part, no notches", "listener's smooth part + its own notches"];
 const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
-const S = { index: null, presets: null, ladder: null, shift: 0, depth: 1.5, sharp: 2.5, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
+const S = { index: null, presets: null, ladder: null, shift: 0, depth: 1.5, sharp: 2.5, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, preset: -1, P: BY_EYE,
             ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, generic: null, signal: "bursts", vol: -6 };
 
 // ---------- a head: measured here, its notches' numbers from the worker ----------
@@ -93,7 +93,7 @@ async function loadHead(entry) {
     head.fitted = (S.ladder.heads.find(h => h.set === entry.set && h.name === entry.name && h.ear === entry.ear) || {}).fit || null; }
   return head;
 }
-const worker = new Worker("worker.js?15");
+const worker = new Worker("worker.js?16");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -271,7 +271,7 @@ function panel() {
   seg($("segEar"), ["left", "right"], () => S.ear, v => { S.ear = v; choose(); }, v => v + " ear, mirrored");
   $("sizes").innerHTML = "";
   (S.presets ? S.presets.sizes : []).forEach((z, i) => { const b = document.createElement("button"); b.style.flex = "1 1 22%"; b.textContent = `${z.surfaces} × ${z.order}`;
-    if (i === S.size) b.classList.add("on"); b.onclick = () => { S.size = i; S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; panel(); fitHead(); }; $("sizes").appendChild(b); });
+    if (i === S.preset) b.classList.add("on"); b.onclick = () => { S.preset = i; S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; panel(); fitHead(); }; $("sizes").appendChild(b); });
   $("knobs").innerHTML = "";
   const knob = (label, key, min, max, step, show) => ctl($("knobs"), label, min, max, () => S[key], v => { S[key] = Math.round(v / step) * step; later(update); }, v => show(Math.round(v / step) * step));
   knob("the ILD, blurred along frequency", "ildBlur", 0, 3, 0.25, v => v ? v.toFixed(2) + " ERB" : "not blurred");
@@ -305,7 +305,7 @@ addEventListener("resize", update);
   try { S.ladder = await (await fetch("ladder/ladder.json", { cache: "no-store" })).json(); } catch { S.ladder = null; $("reveal").textContent = "no ladder/ladder.json — ladder.js writes it"; }
   try { S.generic = await (await fetch("dataset/generic.json", { cache: "no-store" })).json(); } catch { S.generic = null; }
   try { S.presets = await (await fetch("presets.json", { cache: "no-store" })).json();
-    S.size = S.presets.sizes.findIndex(z => z.surfaces === 6 && z.order === 4); const z = S.presets.sizes[S.size]; if (z) S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; } catch { S.presets = null; }
+    S.preset = S.presets.sizes.findIndex(z => z.surfaces === 6 && z.order === 4); const z = S.presets.sizes[S.preset]; if (z) S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; } catch { S.presets = null; }
   panel(); choose();
   const ku = S.index.heads.find(h => h.set === "KU100");
   if (ku) { S.ku = parseHead(await (await fetch("heads/" + ku.head)).arrayBuffer(), ku); played = ""; update(); }
