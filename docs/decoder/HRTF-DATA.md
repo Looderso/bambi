@@ -580,6 +580,35 @@ area) on sliders; twice as sharp gives 8.9 dB at that place, depth 1.5 and sharp
 **Debt**: the cost without the blur, the widths held near the measured ones, and the search and the ladder run again —
 and a judge of a notch's shape that is not point for point.
 
+*Heard 2026-10-05: depth × 1.5 at sharpness × 2.5 is better and plainer than the data's × 0.75 — the template's notches
+want to be deeper than a head's own to be heard as notches. The page starts there.*
+
+### 7.6 The head: what one number buys for everything but the notches
+
+`head-ladder.py`, on the parts `run-sheets.js` stores for every head (each database's mean out, the mean of the
+databases in; learned on half of the people, scored on the 274 heads of the others — how far each part is from the
+head's own, RMS over the sphere, median):
+
+| | numbers | ITD | ILD (1–16 kHz) | smooth pattern | average |
+|---|---|---|---|---|---|
+| the KU100 for everyone | 0 | 49.7 µs | 4.50 dB | 2.63 dB | 3.53 dB |
+| nobody's head — the mean of the heads | 0 | 34.3 | 3.34 | 1.26 | 1.66 |
+| **+ the ITD scaled** | 1 | **20.6** | 3.34 | 1.26 | 1.66 |
+| + the ILD scaled | 1 | 34.3 | 3.27 | 1.26 | 1.66 |
+| + the pattern scaled | 1 | 34.3 | 3.34 | 1.21 | 1.66 |
+| + a stretch along frequency (average, pattern, ILD) | 1 | 34.3 | 3.32 | 1.26 | 1.57 |
+| + size: the ITD scaled, the spectra stretched the other way | 1 | 22.5 | 3.42 | 1.30 | 1.73 |
+| + the heads' first component, all parts together | 1 | 34.9 | 3.35 | 1.24 | 1.35 |
+| + components 1–3 | 3 | 35.4 | 3.27 | 1.24 | 0.87 |
+
+- **The step is from the KU100 to nobody's head**: every part comes a quarter to a half closer with no number at all.
+- **The head slider is the ITD's scale**: 34 µs to 21. Nothing else one number does moves the ILD or the smooth
+  pattern by more than 0.07 dB — not a scale, not a stretch along frequency, not a head's size tying the two.
+- **The components are timbre**: they take the average from 1.66 to 0.87 dB and leave the rest — and the timbre is
+  the part [DECODER §5](DECODER.md) holds on the KU100's.
+
+The listening page has the ITD's scale as the head slider on nobody's head, beside the ear slider.
+
 ## 8. Next
 
 **Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface

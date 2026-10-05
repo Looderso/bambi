@@ -31,6 +31,11 @@
     <div class="row" id="versions"></div>
     <pre id="info"></pre>
 
+    <h2>THE HEAD SLIDER <kbd>4</kbd> <kbd>5</kbd></h2>
+    <p class="note">Nobody's head has the population's ITD. The slider scales it: a wider or a narrower head. Of everything
+      but the notches it is the one number that brings nobody's head closer to a listener — it leaves 21 µs of 34.</p>
+    <div id="headSlider"></div>
+
     <h2>THE EAR SLIDER <kbd>5</kbd> <kbd>6</kbd></h2>
     <p class="note">One template of three notches, the same for every head, learned from half of the people. The slider
       shifts all three along frequency: up for a smaller ear, down for a larger one. Find the place where the sound sits
@@ -38,7 +43,7 @@
       listener's own smooth part, version 6). Depth and sharpness act on versions 5 and 6 too: the template's notches
       are about half as deep and twice as wide as measured ones.</p>
     <div id="earCtl"></div>
-    <div class="row"><button id="bReveal">show the fitted shift</button></div>
+    <div class="row"><button id="bReveal">show the fitted settings</button></div>
     <pre id="reveal"></pre>
 
     <h2>PLACE <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></h2>
@@ -63,7 +68,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?12"></script>
+<script src="lab.js?14"></script>
 <script>
 // The listener is the head selected: its measurement is what the others are heard against. Nobody's head is the
 // population's average of every part, with no notches or with the template's and the ear slider — nothing in it comes
@@ -72,7 +77,7 @@ const VERSIONS = ["the listener, measured", "the listener, all from its own numb
                   "listener's smooth part + the template, the ear slider", "listener's smooth part + the template, its fitted six numbers",
                   "listener's smooth part, no notches", "listener's smooth part + its own notches"];
 const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
-const S = { index: null, presets: null, ladder: null, shift: 0, depth: 0.75, sharp: 2.5, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
+const S = { index: null, presets: null, ladder: null, shift: 0, depth: 1.5, sharp: 2.5, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
             ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, generic: null, signal: "bursts", vol: -6 };
 
 // ---------- a head: measured here, its notches' numbers from the worker ----------
@@ -87,7 +92,7 @@ async function loadHead(entry) {
     head.fitted = (S.ladder.heads.find(h => h.set === entry.set && h.name === entry.name && h.ear === entry.ear) || {}).fit || null; }
   return head;
 }
-const worker = new Worker("worker.js?12");
+const worker = new Worker("worker.js?14");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -129,7 +134,7 @@ function responses(head, d) {
   const k = S.ku && nearest(S.ku, head.H.xyz[d])[0];                   // the KU100's nearest direction
   let nobody = null, nobodyEar = null;                                 // nobody's head: the population's parts, the template's notches
   if (S.generic) { const G = S.generic, p = onSphere(head.H, G.pattern, 4, d), base = p.map((v, k) => v + G.average[k]);
-    const ildG = onSphere(head.H, G.ild, G.ildOrder, d), itdG = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0];
+    const ildG = onSphere(head.H, G.ild, G.ildOrder, d), itdG = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0] * S.size;
     nobody = earsOf(base, ildG, itdG);
     if (head.template) { const b = bumps(templateDips(head, d, [S.shift, S.shift, S.shift], [S.depth, S.depth, S.depth], S.sharp)); nobodyEar = earsOf(base.map((v, k) => v + b[k]), ildG, itdG); } }
   return [own, ...[cllN && earsOf(cllN, ildN, itdN), S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)], nobody, nobodyEar,
@@ -140,7 +145,7 @@ function responses(head, d) {
 let played = "", swap = 0, now = null;
 function audio() {
   const head = S.head; if (!head) return;
-  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku, S.shift, S.depth, S.sharp, !!S.generic].join(); if (key === played) return; played = key;
+  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku, S.shift, S.depth, S.sharp, S.size, !!S.generic].join(); if (key === played) return; played = key;
   now = responses(head, S.at);
   if (!S.ctx) return;
   const t = S.ctx.currentTime; S.fade.gain.cancelScheduledValues(t); S.fade.gain.setTargetAtTime(0, t, 0.003);
@@ -279,9 +284,13 @@ ctl($("earCtl"), "all notches shifted", -2, 2, () => S.shift, v => { S.shift = M
 ctl($("earCtl"), "the notches' depth", 0, 4, () => S.depth, v => { S.depth = Math.round(v * 10) / 10; later(update); }, v => "× " + (Math.round(v * 10) / 10).toFixed(1));
 ctl($("earCtl"), "the notches' sharpness: narrower and deeper, the same area", 1, 5, () => S.sharp, v => { S.sharp = Math.round(v * 10) / 10; later(update); },
     v => { const f = Math.round(v * 10) / 10; return f === 1 ? "as the template has them" : `× ${f.toFixed(1)}: ${Math.round(100 / f)} % as wide, ${f.toFixed(1)} times as deep`; });
+ctl($("headSlider"), "the ITD scaled", 0.75, 1.3, () => S.size, v => { S.size = Math.round(v * 100) / 100; $("reveal").textContent = ""; later(update); }, v => "× " + (Math.round(v * 100) / 100).toFixed(2));
+// The scale of nobody's ITD that is nearest the listener's, over the directions.
+const fittedSize = head => { let gm = 0, gg = 0; for (const d of head.some) { const g = onSphere(head.H, S.generic.itd, S.generic.itdOrder, d, 1)[0]; gm += g * head.A.itd[d]; gg += g * g; } return gm / gg; };
 $("bReveal").onclick = () => { const f = S.head && S.head.fitted;
-  $("reveal").textContent = !f ? "this head is not among the fitted ones" : `fitted, one shift for all notches   ${f.one[0] >= 0 ? "+" : ""}${f.one[0].toFixed(2)} ERB\nyours                              ${S.shift >= 0 ? "+" : ""}${S.shift.toFixed(2)} ERB\n`
-    + `cost with the fitted shift ${f.costs[1].toFixed(2)} dB · the template unshifted ${f.costs[0].toFixed(2)} · a shift and a depth a notch ${f.costs[3].toFixed(2)}\nfitted a notch: shifts ${f.shift.map(v => v.toFixed(2)).join(" ")} ERB, depths × ${f.gain.join(" ")}`; };
+  const size = S.head && S.generic ? `the head: fitted ITD × ${fittedSize(S.head).toFixed(2)} · yours × ${S.size.toFixed(2)}\n` : "";
+  $("reveal").textContent = size + (!f ? "the ear: this head is not among the fitted ones" : `the ear: fitted, one shift for all notches   ${f.one[0] >= 0 ? "+" : ""}${f.one[0].toFixed(2)} ERB\nyours                              ${S.shift >= 0 ? "+" : ""}${S.shift.toFixed(2)} ERB\n`
+    + `cost with the fitted shift ${f.costs[1].toFixed(2)} dB · the template unshifted ${f.costs[0].toFixed(2)} · a shift and a depth a notch ${f.costs[3].toFixed(2)}\nfitted a notch: shifts ${f.shift.map(v => v.toFixed(2)).join(" ")} ERB, depths × ${f.gain.join(" ")}`); };
 $("bStart").onclick = start;
 addEventListener("keydown", e => {
   if (e.key >= "1" && e.key <= String(VERSIONS.length)) version(+e.key - 1);
