@@ -1,6 +1,6 @@
 // The chain of lab.js off the page's thread: a head's file and the settings in, what the page draws out. A head's
 // analysis and the slow part of its fit are kept for its next runs; of several requests waiting, only the last runs.
-importScripts("../common.js", "lab.js?14");                         // the number: a changed file is not read from the browser's cache
+importScripts("../common.js", "lab.js?15");                         // the number: a changed file is not read from the browser's cache
 const heads = new Map();
 let waiting = null, busy = false;
 const pack = (set, places) => { const out = new Float32Array(set.length * places * 3).fill(NaN);

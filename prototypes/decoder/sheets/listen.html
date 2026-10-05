@@ -32,8 +32,9 @@
     <pre id="info"></pre>
 
     <h2>THE HEAD SLIDER <kbd>4</kbd> <kbd>5</kbd></h2>
-    <p class="note">Nobody's head has the population's ITD. The slider scales it: a wider or a narrower head. Of everything
-      but the notches it is the one number that brings nobody's head closer to a listener — it leaves 21 µs of 34.</p>
+    <p class="note">A wider or a narrower head: the slider scales nobody's ITD, and the ILD below 1.5 kHz goes with it the way
+      it does over the heads — above, the ILD does not follow a head's size and stays the population's. The smooth CLL
+      stays too. It leaves 21 µs of the ITD's 34, and 0.88 dB of the low ILD's 1.01.</p>
     <div id="headSlider"></div>
 
     <h2>THE EAR SLIDER <kbd>5</kbd> <kbd>6</kbd></h2>
@@ -68,7 +69,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?14"></script>
+<script src="lab.js?15"></script>
 <script>
 // The listener is the head selected: its measurement is what the others are heard against. Nobody's head is the
 // population's average of every part, with no notches or with the template's and the ear slider — nothing in it comes
@@ -92,7 +93,7 @@ async function loadHead(entry) {
     head.fitted = (S.ladder.heads.find(h => h.set === entry.set && h.name === entry.name && h.ear === entry.ear) || {}).fit || null; }
   return head;
 }
-const worker = new Worker("worker.js?14");
+const worker = new Worker("worker.js?15");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -134,7 +135,8 @@ function responses(head, d) {
   const k = S.ku && nearest(S.ku, head.H.xyz[d])[0];                   // the KU100's nearest direction
   let nobody = null, nobodyEar = null;                                 // nobody's head: the population's parts, the template's notches
   if (S.generic) { const G = S.generic, p = onSphere(head.H, G.pattern, 4, d), base = p.map((v, k) => v + G.average[k]);
-    const ildG = onSphere(head.H, G.ild, G.ildOrder, d), itdG = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0] * S.size;
+    const withSize = onSphere(head.H, G.ildWithSize, G.ildOrder, d);     // the head slider: the ITD scaled, the ILD below 1.5 kHz going with it
+    const ildG = onSphere(head.H, G.ild, G.ildOrder, d).map((v, k) => v + (S.size - 1) * withSize[k]), itdG = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0] * S.size;
     nobody = earsOf(base, ildG, itdG);
     if (head.template) { const b = bumps(templateDips(head, d, [S.shift, S.shift, S.shift], [S.depth, S.depth, S.depth], S.sharp)); nobodyEar = earsOf(base.map((v, k) => v + b[k]), ildG, itdG); } }
   return [own, ...[cllN && earsOf(cllN, ildN, itdN), S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)], nobody, nobodyEar,
@@ -284,7 +286,7 @@ ctl($("earCtl"), "all notches shifted", -2, 2, () => S.shift, v => { S.shift = M
 ctl($("earCtl"), "the notches' depth", 0, 4, () => S.depth, v => { S.depth = Math.round(v * 10) / 10; later(update); }, v => "× " + (Math.round(v * 10) / 10).toFixed(1));
 ctl($("earCtl"), "the notches' sharpness: narrower and deeper, the same area", 1, 5, () => S.sharp, v => { S.sharp = Math.round(v * 10) / 10; later(update); },
     v => { const f = Math.round(v * 10) / 10; return f === 1 ? "as the template has them" : `× ${f.toFixed(1)}: ${Math.round(100 / f)} % as wide, ${f.toFixed(1)} times as deep`; });
-ctl($("headSlider"), "the ITD scaled", 0.75, 1.3, () => S.size, v => { S.size = Math.round(v * 100) / 100; $("reveal").textContent = ""; later(update); }, v => "× " + (Math.round(v * 100) / 100).toFixed(2));
+ctl($("headSlider"), "the head: ITD scaled, the low ILD with it", 0.75, 1.3, () => S.size, v => { S.size = Math.round(v * 100) / 100; $("reveal").textContent = ""; later(update); }, v => "× " + (Math.round(v * 100) / 100).toFixed(2));
 // The scale of nobody's ITD that is nearest the listener's, over the directions.
 const fittedSize = head => { let gm = 0, gg = 0; for (const d of head.some) { const g = onSphere(head.H, S.generic.itd, S.generic.itdOrder, d, 1)[0]; gm += g * head.A.itd[d]; gg += g * g; } return gm / gg; };
 $("bReveal").onclick = () => { const f = S.head && S.head.fitted;

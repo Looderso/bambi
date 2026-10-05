@@ -607,7 +607,24 @@ head's own, RMS over the sphere, median):
 - **The components are timbre**: they take the average from 1.66 to 0.87 dB and leave the rest — and the timbre is
   the part [DECODER §5](DECODER.md) holds on the KU100's.
 
-The listening page has the ITD's scale as the head slider on nobody's head, beside the ear slider.
+**The head slider is the ITD's scale with the low ILD going with it.** The table scores the ILD with all its detail,
+which no smooth change can reach, and tries only a stretch nobody measured. Asked better — a head's ITD scale as its
+size, and how the ILD's rough shape (order 4, blurred 3 ERB) changes with it, learned from half of the people:
+
+| the ILD's rough shape, from the head's own | nobody's head | + what goes with the head's ITD scale |
+|---|---|---|
+| 0.3–1.5 kHz | 1.01 dB | 0.88 dB |
+| 1.5–4 kHz | 1.14 | 1.13 |
+| 4–16 kHz | 2.14 | 2.13 |
+
+Below 1.5 kHz the ILD follows the head's size, above it does not — as the duplex picture has it. So the slider scales
+the ITD and moves the ILD along that learned line below 1.5 kHz, the change gone by 3 kHz, the ILD above the
+population's (`generic.js`: `ildWithSize`; at 90° to the side, a scale of 0.85, 1, 1.15 gives 620, 732, 839 µs and a
+low ILD of 5.8, 6.1, 6.3 dB). A head's ITD scale spreads by 0.087 (0.85–1.14, 5th–95th percentile).
+
+**The smooth CLL stays the population's.** It varies (1.2 dB from head to head, most of it above 4 kHz), but with
+neither slider: moved with the ITD scale 1.22 → 1.21 dB; with the ear shift, above 4 kHz, 1.74 → 1.72 dB (the two
+agree there, r = 0.60, and it buys nothing). Its own sliders would be timbre's.
 
 ## 8. Next
 
