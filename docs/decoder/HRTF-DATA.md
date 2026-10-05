@@ -549,6 +549,18 @@ shift the ladder fitted ([LISTENING.md](../LISTENING.md)). At one place of one h
 the measured responses): the listener's own numbers 2.7–3.5 dB, nobody's head with the slider at rest 4.8–5.0, the
 KU100 5.7–6.7, nobody's head without notches 6.1.
 
+**The notches came out shallow, and it is heard.** Fitted per direction a notch is 7.1 dB deep (median; 20–25 dB in
+front) and 0.36 ERB wide (sigma); a head's surfaces rebuilt from their numbers are 4.8 dB and 0.54 ERB; the template's
+three notches 6.7, 4.5 and 2.4 dB (median over the sphere) and 0.5–0.6 ERB. At one place of one head the measured CLL's
+deepest notch is 14.8 dB and the template's 3 dB. Three things did it: the cost compares after a blur of one ERB,
+where a narrow deep notch and a wide shallow one of the same area are alike, so every fit could go wide and shallow;
+a surface's depth, centre and width as low-order patterns even the depth out; and the template averages heads. *Heard
+2026-10-05: the notch is gone, and the whole curve is further from the measured one for it — a blur of one ERB is not
+what the ear forgives.* The listening page has the template's depth and its sharpness (narrower and deeper, the same
+area) on sliders; twice as sharp gives 8.9 dB at that place, depth 1.5 and sharpness 2.5 gives 17.7.
+
+**Debt**: the cost without the blur, the widths held near the measured ones, and the search and the ladder run again.
+
 ## 8. Next
 
 **Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface
