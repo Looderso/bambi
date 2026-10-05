@@ -51,6 +51,12 @@
     <p class="note" id="place"></p>
     <div class="row"><button id="bRing">walk the horizon</button><button id="bOver">walk over the top</button></div>
 
+    <h2>TIMBRE</h2>
+    <p class="note">A head's timbre is its CLL's mean over the sphere. The KU100's is flat within 3 dB — noise from all
+      around sounds like noise; a measured head's has the ear's own bump at 4 kHz and falls towards 16 kHz. With the
+      KU100's for all, every version takes it in place of its own, and what differs is where a sound sits.</p>
+    <div class="seg" id="segTimbre"></div>
+
     <h2>THE LISTENER</h2>
     <div class="seg" id="segSet"></div>
     <div id="headCtl"></div>
@@ -69,7 +75,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?16"></script>
+<script src="lab.js?17"></script>
 <script>
 // The listener is the head selected: its measurement is what the others are heard against. Nobody's head is the
 // population's average of every part, with no notches or with the template's and the ear slider — nothing in it comes
@@ -78,7 +84,7 @@ const VERSIONS = ["the listener, measured", "the listener, all from its own numb
                   "listener's smooth part + the template, the ear slider", "listener's smooth part + the template, its fitted six numbers",
                   "listener's smooth part, no notches", "listener's smooth part + its own notches"];
 const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
-const S = { index: null, presets: null, ladder: null, shift: 0, depth: 1.5, sharp: 2.5, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, preset: -1, P: BY_EYE,
+const S = { index: null, presets: null, ladder: null, shift: 0, depth: 1.5, sharp: 2.5, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, preset: -1, timbre: "the KU100's for all", P: BY_EYE,
             ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, generic: null, signal: "bursts", vol: -6 };
 
 // ---------- a head: measured here, its notches' numbers from the worker ----------
@@ -93,7 +99,7 @@ async function loadHead(entry) {
     head.fitted = (S.ladder.heads.find(h => h.set === entry.set && h.name === entry.name && h.ear === entry.ear) || {}).fit || null; }
   return head;
 }
-const worker = new Worker("worker.js?16");
+const worker = new Worker("worker.js?17");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -120,21 +126,38 @@ function patterns(head) {
 // much narrower and that much deeper — the same area, as a blur along frequency would leave it.
 const templateDips = (head, d, shift, gain, sharp = 1) => head.template.map((t, k) => t.a[d] * gain[k] > -0.5 ? null
   : [Math.max(E0 + LO * STEP, Math.min(E0 + HI * STEP, t.c[d] + shift[k])), Math.max(-60, t.a[d] * gain[k] * sharp), Math.max(0.08, t.w[d] / sharp)]).filter(Boolean);
+// A measured response with another timbre: through a minimum-phase filter of the change (dB on the axis).
+function toned(h, change) {
+  const n = 1024, db = new Float64Array(n / 2 + 1);
+  for (let k = 0; k <= n / 2; k++) { const p = Math.max(0, Math.min(NF - 1.001, (erbOf(k * FS / n) - E0) / STEP)), i = Math.floor(p); db[k] = change[i] + (change[i + 1] - change[i]) * (p - i); }
+  const [gr, gi] = minimumPhase(db), [hr, hi] = spectrumOf(h, n);
+  for (let k = 0; k < n; k++) { const a = hr[k] * gr[k] - hi[k] * gi[k]; hi[k] = hr[k] * gi[k] + hi[k] * gr[k]; hr[k] = a; }
+  fft(hr, hi, true);
+  const out = Float32Array.from(hr.subarray(0, OUT)); for (let k = 0; k < 32; k++) out[OUT - 32 + k] *= Math.cos(k / 32 * Math.PI / 2) ** 2;
+  return out;
+}
+// What takes a timbre (a curve on the axis) to the KU100's, both at their own level over 0.3–16 kHz; nothing, if each keeps its own.
+function toKU100(timbre) {
+  const zero = new Float32Array(NF); if (S.timbre !== "the KU100's for all" || !S.generic || !S.generic.timbreKU100) return zero;
+  const band = inBand(300, 16000), level = band.reduce((t, k) => t + timbre[k], 0) / band.length;
+  return zero.map((_, k) => S.generic.timbreKU100[k] - (timbre[k] - level));
+}
 // The pairs of responses for direction d (the ones that need the notches' numbers missing until they are there).
 function responses(head, d) {
-  const A = head.A, row = v => v.subarray(d * NF, (d + 1) * NF), cll = row(A.cll), ild = row(A.ild).map(x => Math.max(-40, Math.min(40, x))), itd = A.itd[d];
+  const A = head.A, row = v => v.subarray(d * NF, (d + 1) * NF), ild = row(A.ild).map(x => Math.max(-40, Math.min(40, x))), itd = A.itd[d];
+  const mine = toKU100(A.avg.map((v, k) => v + (head.fit ? head.fit.pattern[k] : 0)));          // the listener's timbre: its average and its pattern's order 0
   patterns(head);
   const ildN = onSphere(head.H, head.ildCoef, S.ildOrder, d), itdN = onSphere(head.H, head.itdCoef, S.itdOrder, d, 1)[0];
   let cllN = null, smooth = null, withDips = () => null;
-  if (head.fit) { const p = onSphere(head.H, head.fit.pattern, 4, d), m = bumps(head.fit.rebuilt[d].filter(Boolean)); cllN = p.map((v, k) => v + m[k] + A.avg[k]);
-    smooth = p.map((v, k) => v + A.avg[k]); withDips = dips => { const b = bumps(dips); return earsOf(smooth.map((v, k) => v + b[k]), ild, itd); }; }
+  if (head.fit) { const p = onSphere(head.H, head.fit.pattern, 4, d), m = bumps(head.fit.rebuilt[d].filter(Boolean)); cllN = p.map((v, k) => v + m[k] + A.avg[k] + mine[k]);
+    smooth = p.map((v, k) => v + A.avg[k] + mine[k]); withDips = dips => { const b = bumps(dips); return earsOf(smooth.map((v, k) => v + b[k]), ild, itd); }; }
   const slider = head.template && withDips(templateDips(head, d, [S.shift, S.shift, S.shift], [S.depth, S.depth, S.depth], S.sharp));
   const six = head.template && head.fitted && withDips(templateDips(head, d, head.fitted.shift, head.fitted.gain));
-  const own = [ear(head.H, head.variant, d, 0), ear(head.H, head.variant, d, 1)], energy = pair => pair.reduce((t, h) => t + h.reduce((u, v) => u + v * v, 0), 0);
+  const raw = [ear(head.H, head.variant, d, 0), ear(head.H, head.variant, d, 1)], own = mine.some(v => v) ? raw.map(h => toned(h, mine)) : raw, energy = pair => pair.reduce((t, h) => t + h.reduce((u, v) => u + v * v, 0), 0);
   const level = pair => { if (!pair) return null; const g = Math.sqrt(energy(own) / energy(pair)); return pair.map(h => h.map(v => v * g)); };   // as loud as the measured pair
   const k = S.ku && nearest(S.ku, head.H.xyz[d])[0];                   // the KU100's nearest direction
   let nobody = null, nobodyEar = null;                                 // nobody's head: the population's parts, the template's notches
-  if (S.generic) { const G = S.generic, p = onSphere(head.H, G.pattern, 4, d), base = p.map((v, k) => v + G.average[k]);
+  if (S.generic) { const G = S.generic, p = onSphere(head.H, G.pattern, 4, d), theirs = toKU100(G.average.map((v, k) => v + G.pattern[k])), base = p.map((v, k) => v + G.average[k] + theirs[k]);
     const withSize = onSphere(head.H, G.ildWithSize, G.ildOrder, d);     // the head slider: the ITD scaled, the ILD below 1.5 kHz going with it
     const ildG = onSphere(head.H, G.ild, G.ildOrder, d).map((v, k) => v + (S.size - 1) * withSize[k]), itdG = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0] * S.size;
     nobody = earsOf(base, ildG, itdG);
@@ -147,7 +170,7 @@ function responses(head, d) {
 let played = "", swap = 0, now = null;
 function audio() {
   const head = S.head; if (!head) return;
-  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku, S.shift, S.depth, S.sharp, S.size, !!S.generic].join(); if (key === played) return; played = key;
+  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku, S.shift, S.depth, S.sharp, S.size, S.timbre, !!S.generic].join(); if (key === played) return; played = key;
   now = responses(head, S.at);
   if (!S.ctx) return;
   const t = S.ctx.currentTime; S.fade.gain.cancelScheduledValues(t); S.fade.gain.setTargetAtTime(0, t, 0.003);
@@ -278,6 +301,7 @@ function panel() {
   knob("the ILD's pattern: order over the sphere", "ildOrder", 2, 12, 1, v => "order " + v);
   knob("the ITD's pattern: order over the sphere", "itdOrder", 2, 12, 1, v => "order " + v);
 }
+seg($("segTimbre"), ["the KU100's for all", "each its own"], () => S.timbre, v => { S.timbre = v; update(); });
 seg($("segSignal"), ["bursts", "noise", "clicks", "tone"], () => S.signal, v => { S.signal = v; if (S.ctx) signal(); });
 ctl($("volCtl"), "volume", -30, 0, () => S.vol, v => { S.vol = v; if (S.master) S.master.gain.value = 10 ** (v / 20); }, v => v.toFixed(0) + " dB");
 const percent = e => 100 * ((35.96 * 10 ** (e / 21.4) - 1) / 34.96 - 1);      // a shift in ERB as a change of frequency, at 8 kHz

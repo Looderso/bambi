@@ -145,7 +145,8 @@ also bind any model built from them (§5.3).
 **The aim ([0165](../DECISIONS.md)): a quick gain over the KU100, to make 3D audio more accessible** — in the best
 case one slider for head and torso and one for the ears. Not a replacement for a measurement in a loudspeaker array
 or a 3D scan, and not the reconstruction of a measured head. Heads are symmetric, as the KU100 is: one ear over the
-sphere, the other its mirror.
+sphere, the other its mirror. The timbre — a head's mean over all directions — is the KU100's
+([0167](../DECISIONS.md)).
 
 What a 2024 master's thesis on perceptual HRTF individualisation (KUG Graz) established, and what follows from it:
 

@@ -626,6 +626,13 @@ low ILD of 5.8, 6.1, 6.3 dB). A head's ITD scale spreads by 0.087 (0.85–1.14, 
 neither slider: moved with the ITD scale 1.22 → 1.21 dB; with the ear shift, above 4 kHz, 1.74 → 1.72 dB (the two
 agree there, r = 0.60, and it buys nothing). Its own sliders would be timbre's.
 
+**The timbre is the KU100's** ([0167](../DECISIONS.md)): `generic.js` stores the KU100's timbre beside nobody's head,
+and the listening page gives it to every version — the measured listener too, through a minimum-phase filter of the
+change — or leaves each its own. Relative to 1 kHz, averaged over the directions, at 4 and 16 kHz: a listener measured
++9.2 and −4.7 dB, nobody's head +6.1 and −6.6, the KU100 −1.0 and −2.3; with the KU100's for all, every version within
+−0.6…−0.8 and −0.5…−1.8 dB. *Heard 2026-10-05, before the swap: nobody's head with both sliders is "very" good; the
+KU100 sounds like white noise all around, the heads coloured.*
+
 ## 8. Next
 
 **Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface
