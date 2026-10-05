@@ -63,7 +63,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?11"></script>
+<script src="lab.js?12"></script>
 <script>
 // The listener is the head selected: its measurement is what the others are heard against. Nobody's head is the
 // population's average of every part, with no notches or with the template's and the ear slider — nothing in it comes
@@ -72,7 +72,7 @@ const VERSIONS = ["the listener, measured", "the listener, all from its own numb
                   "listener's smooth part + the template, the ear slider", "listener's smooth part + the template, its fitted six numbers",
                   "listener's smooth part, no notches", "listener's smooth part + its own notches"];
 const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
-const S = { index: null, presets: null, ladder: null, shift: 0, depth: 1, sharp: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
+const S = { index: null, presets: null, ladder: null, shift: 0, depth: 0.75, sharp: 2.5, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, size: -1, P: BY_EYE,
             ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, generic: null, signal: "bursts", vol: -6 };
 
 // ---------- a head: measured here, its notches' numbers from the worker ----------
@@ -87,7 +87,7 @@ async function loadHead(entry) {
     head.fitted = (S.ladder.heads.find(h => h.set === entry.set && h.name === entry.name && h.ear === entry.ear) || {}).fit || null; }
   return head;
 }
-const worker = new Worker("worker.js?11");
+const worker = new Worker("worker.js?12");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;

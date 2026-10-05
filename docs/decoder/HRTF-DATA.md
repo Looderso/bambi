@@ -559,7 +559,26 @@ a surface's depth, centre and width as low-order patterns even the depth out; an
 what the ear forgives.* The listening page has the template's depth and its sharpness (narrower and deeper, the same
 area) on sliders; twice as sharp gives 8.9 dB at that place, depth 1.5 and sharpness 2.5 gives 17.7.
 
-**Debt**: the cost without the blur, the widths held near the measured ones, and the search and the ladder run again.
+**How deep and how sharp, from the data** (`calibrate.js`, 35 heads, each with the one shift the ladder fitted):
+
+| asked how | depth × | sharpness × |
+|---|---|---|
+| closest point for point, the cost as it is (blurred) | 1 | 1 |
+| closest point for point, without the blur | 0.75 | 1 |
+| as the curves' own notches: the same reading of measured and template | 0.75 | 2.5 |
+
+- **"Closest" cannot find it.** Point for point, a notch a little off costs more the deeper and narrower it is: at
+  sharpness 2.5 the unblurred cost rises from 2.4 to 3.1–3.6 dB. Least squares hedges — which is how the notches came
+  out shallow in the first place, and why the cost must not be the judge of a notch's shape.
+- **Read the same way from both** — the deepest notch of a direction's CLL below its own 3-ERB blur, and its width at
+  half depth: measured 8.4 dB deep (median), 0.60 ERB wide, deeper than 6 dB in 69 % of the directions; the template
+  as it is 3.6 dB, 1.10 ERB, 5 %; **at depth × 0.75 and sharpness × 2.5: 9.6 dB, 0.60 ERB, 70 %.** The listening page
+  starts there.
+- The template claims a notch in places where the head has a dip in 47 % of the cases only: half of what it plays is
+  a notch this head does not have there.
+
+**Debt**: the cost without the blur, the widths held near the measured ones, and the search and the ladder run again —
+and a judge of a notch's shape that is not point for point.
 
 ## 8. Next
 
