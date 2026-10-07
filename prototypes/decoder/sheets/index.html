@@ -84,7 +84,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?21"></script>
+<script src="lab.js?22"></script>
 <script>
 const S = { index: null, presets: null, set: "HUTUBS", number: 0, ear: "left", head: null, maps: "rebuilt from the numbers", slice: "median plane", elev: 0, at: 36, itdOrder: 8, ildOrder: 10, ildBlur: 0,
             P: { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 } };
@@ -98,7 +98,7 @@ async function loadHead(entry) {
   const stride = Math.ceil(n / 1000); head.some = []; for (let d = 0; d < n; d += stride) head.some.push(d);
   return head;
 }
-const worker = new Worker("worker.js?21");
+const worker = new Worker("worker.js?22");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;

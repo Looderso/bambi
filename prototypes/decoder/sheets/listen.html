@@ -62,7 +62,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?21"></script>
+<script src="lab.js?22"></script>
 <script>
 // The listener is the head selected; its measurement is what the others are heard against. Nobody's head is the
 // population's average of every part but the notches, with the KU100's timbre, the template's notches under the ear
@@ -71,7 +71,7 @@
 const VERSIONS = ["the listener, measured", "the listener, all from its own numbers", "the KU100", "nobody's head, no notches", "nobody's head + the two sliders"];
 const MODELS = { all: { template: "template.json", generic: "generic.json", name: "all three databases" }, two: { template: "template-hutubs-3d3a.json", generic: "generic-hutubs-3d3a.json", name: "HUTUBS and 3D3A" } };
 const OWN = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
-const S = { index: null, presets: null, model: "all", shift: 0, depth: 2.5, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0,
+const S = { index: null, presets: null, model: "two", shift: 0, depth: 2.5, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0,
             ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, signal: "bursts", vol: -6 };
 const ILD_ORDER = 10, ITD_ORDER = 8;                                   // the listener's own patterns, as decided: the ILD not blurred
 
@@ -98,7 +98,7 @@ async function loadHead(entry) {
   head.itdCoef = fitSphere(H, head.some, head.some.map(d => [A.itd[d]]), ITD_ORDER, 1);
   return head;
 }
-const worker = new Worker("worker.js?21");
+const worker = new Worker("worker.js?22");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
