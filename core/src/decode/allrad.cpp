@@ -41,12 +41,79 @@ Vec3 directionOf(const Loudspeaker& s) {
     return {std::cos(el) * std::cos(az), std::cos(el) * std::sin(az), std::sin(el)};
 }
 
-/// One hull face, ready to pan: gains for p are (p . n0, p . n1, p . n2) / det.
+/// One hull face, ready to pan: gains for p are (p . n0, p . n1, p . n2) / det. A corner at or past `points.size()`
+/// is the centre of a coplanar group of faces: its gain is shared equally by that polygon's corners.
 struct Face {
     std::array<int, 3> corner;
     Vec3 n0, n1, n2;
     double det;
 };
+
+Face faceOf(const std::array<int, 3>& corner, const std::vector<Vec3>& at) {
+    const Vec3 a = at[sz(corner[0])], b = at[sz(corner[1])], c = at[sz(corner[2])];
+    return {corner, cross(b, c), cross(c, a), cross(a, b), dot(a, cross(b, c))};
+}
+
+/*  Four or more hull points on one plane -- a square of height loudspeakers -- leave the hull free to split them
+ *  along either diagonal, and the panning would favour one. Each such group is split instead into a fan around its
+ *  centre, a virtual point whose gain its corners share equally, so the panning is as even as the group.
+ *  `faces` come in as the hull's triangles over `points`; they go out with the fans, and `points` grows by the
+ *  centres (flagged imaginary) while `polygons` lists each centre's corners. */
+void fanCoplanar(std::vector<std::array<int, 3>>& faces, std::vector<Vec3>& points, std::vector<bool>& imaginary,
+                 std::vector<std::vector<int>>& polygons) {
+    const int n = static_cast<int>(faces.size());
+    std::vector<Vec3> normal(sz(n));
+    std::vector<double> offset(sz(n));
+    for (int f = 0; f < n; ++f) {
+        const Vec3 a = points[sz(faces[sz(f)][0])], b = points[sz(faces[sz(f)][1])], c = points[sz(faces[sz(f)][2])];
+        Vec3 nrm = cross(b - a, c - a);
+        nrm = nrm * (1.0 / std::sqrt(dot(nrm, nrm)));
+        normal[sz(f)] = nrm;
+        offset[sz(f)] = dot(nrm, a);
+    }
+    std::vector<int> group(sz(n), -1);
+    std::vector<std::vector<int>> members;
+    for (int f = 0; f < n; ++f) {
+        if (group[sz(f)] >= 0) continue;
+        group[sz(f)] = static_cast<int>(members.size());
+        members.push_back({f});
+        for (int g = f + 1; g < n; ++g)
+            if (group[sz(g)] < 0 && std::abs(dot(normal[sz(f)], normal[sz(g)]) - 1.0) < 1e-9 &&
+                std::abs(offset[sz(f)] - offset[sz(g)]) < 1e-9) {
+                group[sz(g)] = group[sz(f)];
+                members.back().push_back(g);
+            }
+    }
+    std::vector<std::array<int, 3>> out;
+    for (const std::vector<int>& m : members) {
+        if (m.size() == 1) {
+            out.push_back(faces[sz(m[0])]);
+            continue;
+        }
+        std::vector<int> corners;
+        for (int f : m)
+            for (int v : faces[sz(f)])
+                if (std::find(corners.begin(), corners.end(), v) == corners.end()) corners.push_back(v);
+        Vec3 centre{0, 0, 0};
+        for (int v : corners) centre = centre + points[sz(v)];
+        centre = centre * (1.0 / std::sqrt(dot(centre, centre)));
+        // The corners in order around the centre, in the plane.
+        Vec3 u = points[sz(corners[0])] - centre * dot(points[sz(corners[0])], centre);
+        u = u * (1.0 / std::sqrt(dot(u, u)));
+        const Vec3 w = cross(centre, u);
+        std::stable_sort(corners.begin(), corners.end(), [&](int a, int b) {
+            return std::atan2(dot(points[sz(a)], w), dot(points[sz(a)], u)) <
+                   std::atan2(dot(points[sz(b)], w), dot(points[sz(b)], u));
+        });
+        const int id = static_cast<int>(points.size());
+        points.push_back(centre);
+        imaginary.push_back(true);
+        polygons.push_back(corners);
+        for (std::size_t k = 0; k < corners.size(); ++k)
+            out.push_back({id, corners[k], corners[(k + 1) % corners.size()]});
+    }
+    faces.swap(out);
+}
 
 bool fail(std::string* error, const char* what) {
     if (error) *error = what;
@@ -195,7 +262,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         }
         Vec3 centroid{0, 0, 0};
         for (const Vec3& p : out.points) centroid = centroid + p * (1.0 / n);
-        std::vector<Face> faces;
+        std::vector<std::array<int, 3>> triangles;
         for (int f = 0; f < faceCount; ++f) {
             std::array<int, 3> corner{faceIndices[3 * f], faceIndices[3 * f + 1], faceIndices[3 * f + 2]};
             const Vec3 a = out.points[sz(corner[0])];
@@ -211,14 +278,21 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
                 std::free(faceIndices);
                 return fail(error, "the layout does not surround the listener");
             }
-            faces.push_back({corner, cross(b, c), cross(c, a), cross(a, b), dot(a, cross(b, c))});
-            out.triangles.push_back(corner);
+            triangles.push_back(corner);
         }
         std::free(faceIndices);
+        std::vector<std::vector<int>> polygons;
+        fanCoplanar(triangles, out.points, out.imaginary, polygons);
+        out.triangles = triangles;
+        std::vector<Face> faces;
+        for (const std::array<int, 3>& t : triangles) faces.push_back(faceOf(t, out.points));
+        const int total = static_cast<int>(out.points.size());
 
-        // Every grid direction panned to the triangle that holds it, with unit-energy gains.
+        // Every grid direction panned to the triangle that holds it, a centre's gain shared by its polygon's
+        // corners, the gains at unit energy.
         fibonacciSphere(kDesignGrid, grid);
-        std::vector<double> d(sz(n) * sz(C), 0.0);
+        std::vector<double> d(sz(total) * sz(C), 0.0), gains(sz(total));
+        std::vector<int> touched;
         for (const Vec3& t : grid) {
             const Face* home = nullptr;
             double g[3] = {0, 0, 0};
@@ -232,19 +306,35 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
                 }
             }
             if (home == nullptr) return fail(error, "a direction fell outside every triangle");
-            const double norm = std::sqrt(g[0] * g[0] + g[1] * g[1] + g[2] * g[2]);
-            shSN3D(t, order, y);
+            touched.clear();
+            auto give = [&](int point, double gain) {
+                if (gains[sz(point)] == 0.0) touched.push_back(point);
+                gains[sz(point)] += gain;
+            };
             for (int i = 0; i < 3; ++i) {
-                double* row = d.data() + sz(home->corner[sz(i)]) * sz(C);
-                const double gain = g[i] / norm;
+                const int corner = home->corner[sz(i)];
+                if (corner < n)
+                    give(corner, g[i]);
+                else
+                    for (int v : polygons[sz(corner - n)])
+                        give(v, g[i] / static_cast<double>(polygons[sz(corner - n)].size()));
+            }
+            double energy = 0;
+            for (int p : touched) energy += gains[sz(p)] * gains[sz(p)];
+            const double norm = std::sqrt(energy);
+            shSN3D(t, order, y);
+            for (int p : touched) {
+                double* row = d.data() + sz(p) * sz(C);
+                const double gain = gains[sz(p)] / norm;
                 for (int c = 0; c < C; ++c) row[c] += gain * y[sz(c)];
+                gains[sz(p)] = 0.0;
             }
         }
-        for (int s = 0; s < n; ++s)
+        for (int s = 0; s < total; ++s)
             for (int c = 0; c < C; ++c) d[sz(s) * sz(C) + sz(c)] *= col[sz(c)] / kDesignGrid;
         std::vector<Vec3> level;
         fibonacciSphere(kLevelGrid, level);
-        normaliseEnergy(d, n, out.imaginary, order, level);
+        normaliseEnergy(d, total, out.imaginary, order, level);
         out.matrix.swap(d);
     }
 

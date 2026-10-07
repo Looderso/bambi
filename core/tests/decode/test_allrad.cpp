@@ -9,6 +9,7 @@
 
 #include "bambi/decode/allrad.hpp"
 #include "bambi/decode/layoutfile.hpp"
+#include "bambi/decode/layouts.hpp"
 #include "bambi/math/sh.hpp"
 #include "bambi/patch/json.hpp"
 #include "doctest.h"
@@ -243,7 +244,8 @@ TEST_CASE("the same layout designs the same decoder, however it is listed") {
     const SpeakerDesign a = design(ordered, 3, Weighting::Basic), again = design(ordered, 3, Weighting::Basic);
     CHECK(a.matrix == again.matrix);
     CHECK(a.triangles == again.triangles);
-    CHECK(a.points.size() == 12);  // eleven loudspeakers and the point below
+    CHECK(a.points.size() == 14);  // eleven loudspeakers, the point below, the centres of the height square and
+                                   // of the back wall (M and U at +-135, a coplanar four)
     Layout shuffled = ordered;
     std::shuffle(shuffled.speakers.begin(), shuffled.speakers.end(), std::mt19937(5));
     REQUIRE(shuffled.speakers.front().channel != ordered.speakers.front().channel);
@@ -317,4 +319,28 @@ TEST_CASE("distance: the farthest loudspeaker plays at one with no delay, the ot
     CHECK(d.channel[5] == 6);  // channel 7 at 1.39 m
     CHECK(d.gain[5] == doctest::Approx(1.39 / 1.65).epsilon(1e-6));
     CHECK(d.delaySeconds[5] == doctest::Approx((1.65 - 1.39) / 343.0).epsilon(1e-6));
+}
+
+TEST_CASE("a coplanar group of loudspeakers pans evenly: 7.1.4 is left-right symmetric") {
+    //  Catches: the hull's arbitrary diagonal through the height square, which favours one pair of loudspeakers.
+    const SpeakerDesign d = design(*bs2051Layout("4+7+0"), 3, Weighting::Basic);  // channels in the ITU order
+    REQUIRE(d.points.size() == 14);
+    CHECK(d.imaginary[12]);
+    CHECK(d.imaginary[13]);
+    CHECK(d.points[12].z == doctest::Approx(1.0));  // the height square's centre, straight up
+    CHECK(d.points[13].x < -0.9);                   // the back wall's centre, behind, a little up
+    std::vector<Vec3> grid;
+    fibonacciSphere(500, grid);
+    const int C = numChannels(3);
+    double worst = 0;
+    for (const Vec3& t : grid) {
+        const std::vector<double> g = gainsAt(d, t), m = gainsAt(d, {t.x, -t.y, t.z});
+        // Mirrored source, mirrored loudspeakers: channels (1,2), (5,6), (7,8), (9,10), (11,12) swap; 3 stays.
+        const int pair[12] = {1, 0, 2, 3, 5, 4, 7, 6, 9, 8, 11, 10};
+        for (int o = 0; o < 12; ++o)
+            worst = std::max(worst, std::abs(g[static_cast<std::size_t>(o)] - m[static_cast<std::size_t>(pair[o])]));
+    }
+    CHECK(worst <
+          0.01);  // the design grid itself is not mirror-symmetric, which leaves about 1e-3; a diagonal, 0.1 and more
+    (void)C;
 }

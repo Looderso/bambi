@@ -27,14 +27,21 @@ One ambisonic input (order 1–3, AmbiX), three things it can produce:
 | **Speakers** | a stereo pair, a 5.1/7.1.4 room, a dome | AllRAD decode of a loaded layout (§3) |
 | **Lens** | inspecting one slice of the scene on a stereo pair | the field turned by the head, then a stereo layout's decode (§6) |
 
-**One output at a time**, chosen in the plugin ([0175](../DECISIONS.md)). Its bus is 2 channels for headphones
-and the Lens, N for a layout. Which outputs go where is the operating system's or the host's routing, not the
-plugin's.
+**Every output is a set of channels on the bus the host gives** ([0178](../DECISIONS.md)). The bus is as wide
+as the host makes it — a REAPER track's channel count, say 18 — and is never renegotiated: hosts fix a plugin's
+channel count when it is inserted. Headphones play on a pair, 1–2 by default and movable; a layout on its own
+channel numbers, from its file. **The Lens plays on the loudspeakers** — they are all there is to play it on — on the
+layout's own channels, with the tracker turning what they play; so the Lens and the speakers play one at a time.
+Switching an output changes which channels the plugin writes.
 
-**Debt: headphones and a layout at once**, on 2 + N outputs, for listening on both without touching the plugin.
-It needs an interface that routes freely (RME's TotalMix) or a virtual aggregate device, and a host that takes
-2 + N channels. Deferred, but the page is designed as if both ran: the output selector, the sphere drawing what
-the active output plays, the Lens beside headphones — so adding it later redesigns nothing.
+- **Two at once whenever their channels do not collide.** Headphones on 13–14 and a 7.1.4 layout on 1–12 both
+  play; headphones on 1–2 beside an array from 1 do not, and lighting one stops the other, saying so. Getting 13–14
+  to a headphone amplifier is the interface's routing (RME's TotalMix) or a virtual device's, not the plugin's.
+- **An output that needs more channels than the bus has does not play**, and says how many it needs. A host that
+  gives two channels runs headphones, a stereo pair and the Lens.
+- **Debt: a compact spherical array that points outwards** — sonible's IKO: beams reflected off the room's walls,
+  fed, as far as known, with ambisonics its own processing turns into beams. Not a layout AllRAD can decode; an
+  output of its own, if it comes.
 
 ## 3. Speakers — a layout, not a preset list
 
@@ -74,10 +81,13 @@ layout designs the same decoder however it is listed), 5200 directions on a Fibo
 over the hull, the decoder is that panning sampled against the harmonics with (2n+1) and the order weights, and the
 level is set on a second grid of 4000. A point within 10° of the horizon counts as on it: a layout with every point
 there is a ring and is designed on 360 virtual loudspeakers around it; otherwise a missing lower or upper half gets
-its pole. A layout whose hull does not hold the listener is refused with the reason. The IEM reader is the first
-format; the others are still to come. Checked against the IEM plug-in's own matrix for the array (0.02 %), against
-the prototype's order 1–3 decoders tap for tap, and against §3.2's table. Designing a 64-loudspeaker layout takes
-2 ms wall at order 1 and 6 ms at order 7 in Release; it runs on a worker.
+its pole. Four or more loudspeakers on one plane — 7.1.4's height square — are panned around their centre, whose
+gain they share, instead of along whichever diagonal the hull picked ([0179](../DECISIONS.md)). A layout whose hull
+does not hold the listener is refused with the reason. Layouts come from the IEM reader and from the built-in
+ITU-R BS.2051 table (`layouts.hpp`: the ten systems by name, channels in the recommendation's order, the LFE a
+gap); AmbDec and typed-in layouts are still to come. Checked against the IEM plug-in's own matrix for the array
+(0.02 %), against the prototype's order 1–3 decoders tap for tap, against §3.2's table, and for symmetry on 7.1.4.
+Designing a 64-loudspeaker layout takes 2 ms wall at order 1 and 6 ms at order 7 in Release; it runs on a worker.
 
 **The matrix, the delays and the swap** (`speakers.hpp`, [0177](../DECISIONS.md)): `SpeakerRenderer` applies the
 matrix per frame with the distance gains folded in, delays each output by whole samples, and takes a new design
@@ -100,6 +110,14 @@ this decoder worth choosing.*
 The loudspeakers are heard as points: each is encoded at order 7 and decoded by MagLS at order 7, well above the
 array's own order, so what is heard is the array's panning and not a second blur on top of it. The head turns
 against the room, as it would standing in it.
+
+**Ported** (`core/include/bambi/decode/virtualarray.hpp`): the array's decoder and the encoding of its loudspeakers
+collapse into one matrix from the bus to an order-7 field, which a `SpeakerRenderer` plays and swaps as it would a
+layout, and a `BinauralConvolver` at order 7 takes it from there. Every loudspeaker sits at one distance: the room's
+distance gains and delays undo distances a virtual room does not have. Measured per 128-sample block at 48 kHz, one
+core: 1.7 % at bus order 1, 1.9 % at order 3, for 7.1.4. The head's turn against the room goes on the order-7
+field, before the convolver, with the rotation the suite already has; that stage is the tracking's (§7) and is not
+written yet.
 
 ### 3.2 Measured on the array on hand
 
@@ -339,6 +357,9 @@ and a dense scene makes it hard to tell a spatial problem in the mix from one in
 slice of the sphere on the physical stereo pair: a second, physically grounded view of the same field,
 independent of any HRTF.
 
+**It plays on the loudspeakers, never on a pair of its own** ([0178](../DECISIONS.md)): it is a way of playing the
+speakers, so it shares their channels and replaces them while it plays.
+
 **The loudspeakers stay where they are; the head chooses the slice.** The field is turned by the head's
 orientation before a stereo layout's decode, so whatever the head points at lands in front, between the two
 loudspeakers. On headphones the same turn keeps the scene still; here it moves the scene past loudspeakers that
@@ -450,11 +471,20 @@ library when the second plugin needs it, not before.
 
 **Not the effects' layout.** The same shell, theme, controls and sphere view; a different centre:
 
-- **The sphere shows the incoming scene's energy**, with the output drawn over it — the layout's speakers as
-  dots, or a head at the tracked orientation, or the Lens's window.
-- **An output selector** where the effects keep their pages: Headphones · Speakers · Lens, and the layout
-  loader under Speakers.
-- **Personalisation is its own page**, entered on purpose, left when done.
+- **One scene in the room's frame** shows the session's sources, the layout's loudspeakers, a head turned by the
+  tracker and the Lens's window. What plays decides what is full ink — the head while headphones or the Lens play,
+  the loudspeakers while a layout plays or headphones listen through it — not what is drawn. A *head frame* toggle
+  turns the view with the gaze.
+- **The outputs are tabs in the header** ([0178](../DECISIONS.md)), where the effects keep their instances:
+  headphones · speakers · lens. **The name opens an output's page; a square in the tab plays it**, so opening the
+  speakers' page while listening on headphones changes nothing heard. A second decoder in a session gets a small
+  instance switch, only then.
+- **The right panel shows the open output's page only**, each with its channel map: the bus's channels, what plays
+  on each. **The hull the layout pans across is drawn on the scene while the speakers' page is open.**
+- **The head strip sits where the effects have their matrix**: what turns the head (none · OSC · AirPods · phone),
+  whether data arrives and how evenly, yaw, pitch and roll with the tracker's value as the live mark, recentre. Its
+  setup opens as a temporary tab, as **personalisation** does from the headphones' page.
+- The sketch is `prototypes/ui/decoder/`.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the
   encoders' sources ([0176](../DECISIONS.md), [VISUALISATION §5](../suite/VISUALISATION.md)). Its link record
@@ -463,9 +493,8 @@ library when the second plugin needs it, not before.
 ## 9. Open questions
 
 - **Name.** "Decoder" is a working title. Does it keep the name *Lens*, or take another?
-- **Buses**: one output at a time needs 2 or N channels; the deferred both-at-once needs 2 + N, which **REAPER**
-  carries (128 channels a track) and Nuendo, Cubase and Studio One (16) do not for an array of 16. What each host
-  negotiates for an N-channel output is settled with the conformance suite.
+- **Buses**: which width each host gives a plugin with an ambisonic input — REAPER up to 128 a track; Nuendo,
+  Cubase and Studio One 16 — settled with the conformance suite. The channel map needs no renegotiation either way.
 - **Orders**: 1–3 like the rest of the suite, or higher for arrays that can use it?
 - **Does stage one (§5.1) already give most of the thesis's gain?** Settled by listening, against the KU100 and
   against a deliberately poor set, as the thesis did.

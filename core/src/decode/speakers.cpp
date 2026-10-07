@@ -18,7 +18,8 @@ bool SpeakerRenderer::prepare(int maxOrder, int maxOutputs, double sampleRate, d
     fading_ = false;
     settle_ = 0;
     ringLive_.clear();
-    if (maxOrder < 0 || maxOrder > kMaxOrder || maxOutputs < 1 || !(sampleRate > 0) || !(maxDelaySeconds >= 0)) return false;
+    if (maxOrder < 0 || maxOrder > kMaxOrder || maxOutputs < 1 || !(sampleRate > 0) || !(maxDelaySeconds >= 0))
+        return false;
     maxOutputs_ = maxOutputs;
     maxChannels_ = numChannels(maxOrder);
     sampleRate_ = sampleRate;
@@ -47,7 +48,9 @@ bool SpeakerRenderer::prepare(int maxOrder, int maxOutputs, double sampleRate, d
 }
 
 bool SpeakerRenderer::publish(const SpeakerDesign& design) noexcept {
-    if (ringLive_.empty() || design.outputs > maxOutputs_ || design.outputs < 1 || numChannels(design.order) > maxChannels_) return false;
+    if (ringLive_.empty() || design.outputs > maxOutputs_ || design.outputs < 1 ||
+        numChannels(design.order) > maxChannels_)
+        return false;
     const int C = numChannels(design.order);
     for (double d : design.delaySeconds)
         if (!(d >= 0) || std::lround(d * sampleRate_) > maxDelay_) return false;
@@ -112,7 +115,9 @@ void SpeakerRenderer::process(const float* in, int inChannels, float* out, int o
         }
         mix(*live_, x, inChannels, yLive_.data());
         const bool fading = fading_;
-        const float t = !fading ? 1.0f : fadePos_ < 0 ? 0.0f : static_cast<float>(fadePos_ + 1) / static_cast<float>(fade_);
+        const float t = !fading        ? 1.0f
+                        : fadePos_ < 0 ? 0.0f
+                                       : static_cast<float>(fadePos_ + 1) / static_cast<float>(fade_);
         if (fading) mix(leaving_, x, inChannels, yLeave_.data());
         for (int k = 0; k < maxOutputs_; ++k) {
             const float v = yLive_[sz(k)], w = fading ? yLeave_[sz(k)] : v;

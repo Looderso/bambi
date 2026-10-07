@@ -28,7 +28,8 @@ std::string readAll(const std::string& path) {
 Layout array16() {
     Layout l;
     std::string error;
-    REQUIRE_MESSAGE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error), error);
+    REQUIRE_MESSAGE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error),
+                    error);
     for (Loudspeaker& s : l.speakers)
         if (s.channel == 18) s.imaginary = true;
     return l;
@@ -139,8 +140,8 @@ TEST_CASE("a new design fades in over ten milliseconds and then plays alone") {
     REQUIRE(fade == 480);
     swapped.process(in.data(), C, got.data(), 17, before);
     REQUIRE(swapped.publish(b));
-    swapped.process(in.data() + static_cast<std::size_t>(before * C), C, got.data() + static_cast<std::size_t>(before * 17), 17,
-                    frames - before);
+    swapped.process(in.data() + static_cast<std::size_t>(before * C), C,
+                    got.data() + static_cast<std::size_t>(before * 17), 17, frames - before);
     // The ramp waits for the new design's longest delay (channel 13 at 1.30 m: 49 samples), then the output is the
     // two designs' mixed with the ramp, after it b alone.
     const int wait = 49;
@@ -149,11 +150,13 @@ TEST_CASE("a new design fades in over ten milliseconds and then plays alone") {
         for (int o = 0; o < 17; ++o) {
             const std::size_t i = static_cast<std::size_t>(f * 17 + o);
             float want;
-            if (f < before + wait) want = ya[i];
+            if (f < before + wait)
+                want = ya[i];
             else if (f < before + wait + fade) {
                 const float t = static_cast<float>(f - before - wait + 1) / static_cast<float>(fade);
                 want = ya[i] * (1.0f - t) + yb[i] * t;
-            } else want = yb[i];
+            } else
+                want = yb[i];
             worst = std::max(worst, static_cast<double>(std::abs(got[i] - want)));
         }
     CHECK(worst < 1e-5);
@@ -176,12 +179,15 @@ TEST_CASE("a change of delays fades without a step") {
     REQUIRE(r.publish(b));
     r.process(in.data() + 4000, 4, out.data() + 17000, 17, frames - 1000);
     const int o = 2;  // channel 3
-    const float lo = std::min(out[static_cast<std::size_t>(999 * 17 + o)], out[static_cast<std::size_t>(2999 * 17 + o)]);
-    const float hi = std::max(out[static_cast<std::size_t>(999 * 17 + o)], out[static_cast<std::size_t>(2999 * 17 + o)]);
+    const float lo =
+        std::min(out[static_cast<std::size_t>(999 * 17 + o)], out[static_cast<std::size_t>(2999 * 17 + o)]);
+    const float hi =
+        std::max(out[static_cast<std::size_t>(999 * 17 + o)], out[static_cast<std::size_t>(2999 * 17 + o)]);
     REQUIRE(hi - lo > 0.01f);  // the gain did change: 1.65 m against 1.0 m
     float biggestStep = 0;
     for (int f = 1000; f < frames; ++f) {
-        const float v = out[static_cast<std::size_t>(f * 17 + o)], prev = out[static_cast<std::size_t>((f - 1) * 17 + o)];
+        const float v = out[static_cast<std::size_t>(f * 17 + o)],
+                    prev = out[static_cast<std::size_t>((f - 1) * 17 + o)];
         CHECK(v >= lo - 1e-6f);
         CHECK(v <= hi + 1e-6f);
         biggestStep = std::max(biggestStep, std::abs(v - prev));
@@ -208,7 +214,8 @@ TEST_CASE("a design that follows a fade closely waits until the lines have settl
     std::vector<float> got(static_cast<std::size_t>(frames * O));
     auto play = [&](int from, int to) {
         for (int f = from; f < to; ++f)  // a frame at a time, so a design is taken up as soon as the renderer allows
-            swapped.process(in.data() + static_cast<std::size_t>(f * C), C, got.data() + static_cast<std::size_t>(f * O), O, 1);
+            swapped.process(in.data() + static_cast<std::size_t>(f * C), C,
+                            got.data() + static_cast<std::size_t>(f * O), O, 1);
     };
     const int fade = swapped.fadeFrames(), waitB = 49, waitC = 91, settleB = 49;
     REQUIRE(swapped.publish(a));
@@ -225,11 +232,13 @@ TEST_CASE("a design that follows a fade closely waits until the lines have settl
         for (int o = 0; o < O; ++o) {
             const std::size_t i = static_cast<std::size_t>(f * O + o);
             float want;
-            if (f < rampC) want = yb[i];
+            if (f < rampC)
+                want = yb[i];
             else if (f < rampC + fade) {
                 const float t = static_cast<float>(f - rampC + 1) / static_cast<float>(fade);
                 want = yb[i] * (1.0f - t) + yc[i] * t;
-            } else want = yc[i];
+            } else
+                want = yc[i];
             worst = std::max(worst, static_cast<double>(std::abs(got[i] - want)));
         }
     CHECK(worst < 1e-5);
