@@ -701,6 +701,24 @@ ERB), the head 0.75…1.3 (a head's fitted scale spreads by 0.087).
 What is not in the model: a head's own smooth pattern, ILD detail and the shape of its notch paths over direction —
 the half of the way from the KU100 to the head's own notches that no slider reaches (§7.5).
 
+**No grid.** Every part is a pattern over the sphere — spherical harmonics of order 4, 6, 8 or 10 — and the dips are
+curves with a centre, a depth and a width; a direction is evaluated, not looked up, and the measured grids are gone
+from the model. What is limited is not the resolution but the detail: an order resolves about 180°/order over the
+sphere, and the template's presence gate (0.4) is a hard edge a notch appears at when a source moves — a fade along
+the presence would be smoother. Along frequency the patterns are sampled at 0.1 ERB; the dips are continuous.
+
+**Without SONICOM** (`WITHOUT=SONICOM` for `generic.js` and `honest.js`; `model/generic-hutubs-3d3a.json`,
+`model/template-hutubs-3d3a.json`), for the licence question of §1: nobody's head moves by 0.42 dB RMS in the smooth
+pattern, 0.58 dB in the ILD and 7.8 µs in the ITD — a third of how far one head is from another. The template's
+centres move by 0.11–0.15 ERB and its depths by 0.4–0.8 dB; only the third notch's presence changes (45 % against 23 %
+in front). Scored on the 280 SONICOM heads it never saw, the template finds 42 % of their dips and is right in 53 % —
+as the all-databases template does on its own held-out heads (44 %, 60 %). **The model does not hang on SONICOM.**
+
+**The databases sit at different notch frequencies**: fitted to one template, HUTUBS's heads shift by +0.25 ERB
+(median), SONICOM's by +0.27 and 3D3A's by −0.71 (−0.53 without SONICOM in the template). A database's offset in the
+notches' place, as [0166](../DECISIONS.md) found in the other parts — the ear slider absorbs it head by head, but the
+population's "zero" is a mixture of databases. Not taken out yet.
+
 ## 8. Next
 
 **Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface

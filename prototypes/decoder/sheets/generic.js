@@ -7,9 +7,10 @@
 // <run folder>/generic.json — with the KU100's timbre beside it: its CLL's mean over the sphere (the average over the
 // directions plus the smooth pattern's order 0), at the same level, for a head to take in place of its own.
 //
-//   node generic.js <run folder>
+//   node generic.js <run folder>            WITHOUT=SONICOM leaves that database out
 const fs = require("fs"), path = require("path");
-const folder = process.argv[2], SETS = ["HUTUBS", "3D3A", "SONICOM"];
+const skip = (process.env.WITHOUT || "").split(",").filter(Boolean), tag = skip.length ? "-without-" + skip.join("-").toLowerCase() : "";   // WITHOUT=SONICOM: that database left out
+const folder = process.argv[2], SETS = ["HUTUBS", "3D3A", "SONICOM"].filter(s => !skip.includes(s));
 const lab = new Function(["../common.js", "lab.js"].map(f => fs.readFileSync(path.join(__dirname, f), "utf8")).join("\n") + "\nreturn { inBand, FREQ, erbOf };")();
 const all = [];                                                            // every head's parts, for the second pass
 const sums = {}, counts = {};
@@ -39,8 +40,8 @@ for (const [set, v] of all) { const w = 1 / counts[set]; let dot = 0;
   for (let k = 0; k < sizes.ild; k++) slope[k] += w * ds * (v[ildAt + k] - sums[set][ildAt + k] / counts[set]); }
 const fade = Array.from(lab.FREQ, f => { const t = Math.max(0, Math.min(1, (lab.erbOf(3000) - lab.erbOf(f)) / (lab.erbOf(3000) - lab.erbOf(1500)))); return t * t * (3 - 2 * t); });
 for (let k = 0; k < sizes.ild; k++) slope[k] = slope[k] / spread * fade[k % sizes.nf];
-fs.writeFileSync(path.join(folder, "generic.json"), JSON.stringify({ heads: counts, itdOrder: sizes.itdOrder, ildOrder: sizes.ildOrder,
+fs.writeFileSync(path.join(folder, `generic${tag}.json`), JSON.stringify({ heads: counts, itdOrder: sizes.itdOrder, ildOrder: sizes.ildOrder,
   average: cut(0, sizes.average), pattern: cut(sizes.average, sizes.pattern), itd: cut(sizes.average + sizes.pattern, sizes.itd), ild: cut(sizes.average + sizes.pattern + sizes.itd, sizes.ild),
   timbreKU100: dummy, ildWithSize: Array.from(slope, v => +v.toFixed(4)), sizeSpread: +Math.sqrt(spread / SETS.length).toFixed(4) }));
 console.log(`a head's ITD scale spreads by ${Math.sqrt(spread / SETS.length).toFixed(3)}; the ILD's change with it kept below 1.5 kHz, gone by 3 kHz`);
-console.log(`nobody's head from ${SETS.map(s => s + " " + counts[s]).join(", ")} heads; wrote ${path.join(folder, "generic.json")}, ${(fs.statSync(path.join(folder, "generic.json")).size / 1e6).toFixed(1)} MB`);
+console.log(`nobody's head from ${SETS.map(s => s + " " + counts[s]).join(", ")} heads; wrote ${path.join(folder, `generic${tag}.json`)}, ${(fs.statSync(path.join(folder, `generic${tag}.json`)).size / 1e6).toFixed(1)} MB`);

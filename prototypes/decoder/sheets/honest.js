@@ -15,6 +15,7 @@
 // head's shift and depth factor.
 //
 //   node honest.js <out folder> <ladder folder, for the first centres> [processes, default 8] [shape: bell or peak, default peak]
+//   WITHOUT=SONICOM node honest.js …     learns from no head of that database (every other person of the rest); scores all
 //
 // The shape: a dip as a bell (Gaussian) or as a peaking filter's notch (lab.js), for the dips found and for the template.
 const fs = require("fs"), path = require("path"), { fork } = require("child_process");
@@ -78,7 +79,8 @@ if (process.argv[2] === "child") {
 } else (async () => {
   const [out, ladderFolder, procs = "8"] = process.argv.slice(2), count = +procs, started = Date.now(), minutes = () => ((Date.now() - started) / 60000).toFixed(1);
   const index = JSON.parse(fs.readFileSync(here("run/index.json"), "utf8")).heads.filter(h => ["HUTUBS", "3D3A", "SONICOM"].includes(h.set));
-  const people = [...new Set(index.map(h => h.set + " " + h.name))], learnt = new Set(people.filter((_, i) => i % 2 === 0)), isLearnt = h => learnt.has(h.set + " " + h.name);
+  const skip = (process.env.WITHOUT || "").split(",").filter(Boolean), tag = skip.length ? "-without-" + skip.join("-").toLowerCase() : "";
+  const people = [...new Set(index.filter(h => !skip.includes(h.set)).map(h => h.set + " " + h.name))], learnt = new Set(people.filter((_, i) => i % 2 === 0)), isLearnt = h => learnt.has(h.set + " " + h.name);
   const children = Array.from({ length: count }, () => fork(__filename, ["child", SHAPE]));
   for (const c of children) c.on("exit", code => { if (code) { console.error("a worker stopped with an error; stopping"); children.forEach(o => o.kill()); process.exit(1); } });
   const mine = i => index.map((h, k) => k).filter(k => k % count === i);
@@ -103,7 +105,9 @@ if (process.argv[2] === "child") {
   }
   children.forEach(c => c.kill());
   const others = result.filter((r, k) => !isLearnt(index[k])), med = key => median(others.map(r => r.score[key]));
-  console.log(`\nOn the ${others.length} heads of the people not learned from:`);
+  console.log(`\nOn the ${others.length} heads of the people not learned from` + (skip.length ? ` (learned without ${skip.join(", ")})` : "") + ":");
+  for (const set of ["HUTUBS", "3D3A", "SONICOM"]) { const own = result.filter((r, k) => !isLearnt(index[k]) && index[k].set === set), m = key => median(own.map(r => r.score[key]));
+    console.log(`  ${set.padEnd(8)} ${own.length} heads: deepest notch ${m("depth").toFixed(1)} dB (measured ${m("measuredDepth").toFixed(1)}), deeper than 6 dB ${Math.round(100 * m("deep6"))} % (${Math.round(100 * m("measuredDeep6"))} %), found ${Math.round(100 * m("found"))} %, right ${Math.round(100 * m("right"))} %, shift spread ${Math.sqrt(own.reduce((t, r) => t + r.shift ** 2, 0) / own.length).toFixed(2)} ERB`); }
   console.log(`  a direction's deepest notch: measured ${med("measuredDepth").toFixed(1)} dB deep, ${med("measuredWidth").toFixed(2)} ERB wide at half depth, deeper than 6 dB in ${Math.round(100 * med("measuredDeep6"))} % of the directions`);
   console.log(`  the template's, each head with its shift:  ${med("depth").toFixed(1)} dB, ${med("width").toFixed(2)} ERB, ${Math.round(100 * med("deep6"))} %`);
   console.log(`  of the heads' dips deeper than 3 dB, found by a template notch within 0.5 ERB: ${Math.round(100 * med("found"))} %; of the template's notches, with such a dip: ${Math.round(100 * med("right"))} % (it plays ${med("claimedPerDirection").toFixed(2)} notches a direction)`);
@@ -111,6 +115,6 @@ if (process.argv[2] === "child") {
   const front = lab.shN(ORDER, 1, 0, 0);
   console.log("  the template in front: " + template.map(t => `${((10 ** (at(t.centre, front) / 21.4) - 1) / 0.00437 / 1000).toFixed(1)} kHz, ${at(t.depth, front).toFixed(1)} dB, ${at(t.width, front).toFixed(2)} ERB, present in ${Math.round(100 * at(t.presence, front))} %`).join(" · "));
   fs.mkdirSync(out, { recursive: true });
-  fs.writeFileSync(path.join(out, `honest${SHAPE === "peak" ? "" : "-" + SHAPE}.json`), JSON.stringify({ order: ORDER, present: PRESENT, shape: SHAPE, template, heads: index.map((h, k) => ({ set: h.set, name: h.name, ear: h.ear, learned: isLearnt(h), shift: result[k].shift, gain: result[k].gain })) }));
-  console.log(`\nwrote ${path.join(out, `honest${SHAPE === "peak" ? "" : "-" + SHAPE}.json`)}, ${minutes()} min`);
+  fs.writeFileSync(path.join(out, `honest${SHAPE === "peak" ? "" : "-" + SHAPE}${tag}.json`), JSON.stringify({ order: ORDER, present: PRESENT, shape: SHAPE, learnedFrom: [...new Set(index.filter(isLearnt).map(h => h.set))], template, heads: index.map((h, k) => ({ set: h.set, name: h.name, ear: h.ear, learned: isLearnt(h), shift: result[k].shift, gain: result[k].gain })) }));
+  console.log(`\nwrote ${path.join(out, `honest${SHAPE === "peak" ? "" : "-" + SHAPE}${tag}.json`)}, ${minutes()} min`);
 })();
