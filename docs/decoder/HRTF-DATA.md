@@ -680,6 +680,27 @@ heads. The widths are now the measured ones; the depth is still the population's
 sphere — a head's own deepest places stay deeper (16 dB where the template plays 6, at one place of one head). The
 listening page holds all three templates on a switch; the peak-shaped one is its start, at depth and sharpness × 1.
 
+### 7.8 The model, as it stands ([0168](../DECISIONS.md))
+
+A head is synthesised from the population's parts and two numbers. All of it is in `sheets/model/`, read by
+`sheets/listen.html`, which is the reference for the port.
+
+| part | source | numbers | the slider |
+|---|---|---|---|
+| timbre — the CLL's mean over the sphere | the KU100's (`generic.json`: `timbreKU100`) | NF | — |
+| smooth pattern of the CLL, orders 0–4 | the population's mean (`generic.json`: `pattern`, `average`; the average is replaced by the timbre) | 25 × NF | — |
+| notches: three surfaces, centre, depth, width, presence at order 6, symmetric | `template.json` (shape `peak`, learned honestly, §7.7) | 3 × 4 × 49 | **ear**: one shift of all centres, ERB; depth × 2.5 |
+| ILD, order 10, not blurred | the population's mean (`ild`), and its change a unit of ITD scale below 1.5 kHz (`ildWithSize`) | 121 × NF, twice | **head**: `ild + (size − 1) · ildWithSize` |
+| ITD, order 8 | the population's mean (`itd`), µs | 81 | **head**: `itd · size` |
+
+To play a direction: evaluate the patterns there; CLL = timbre + pattern (orders 1–4) + the template's dips (centre
+shifted, depth × 2.5, where presence ≥ 0.4, as 1/(1+u²) in dB); the two ears from CLL and ILD; minimum phase; the
+pair delayed to the ITD. The sliders' ranges in the page: the ear −2…2 ERB (a head's fitted shift spreads by 0.58
+ERB), the head 0.75…1.3 (a head's fitted scale spreads by 0.087).
+
+What is not in the model: a head's own smooth pattern, ILD detail and the shape of its notch paths over direction —
+the half of the way from the KU100 to the head's own notches that no slider reaches (§7.5).
+
 ## 8. Next
 
 **Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface

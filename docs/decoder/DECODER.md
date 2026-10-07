@@ -237,11 +237,13 @@ something a listener chooses between is not settled; it is discussed before anyt
 
 ### 5.3 Stage two — a model from many listeners
 
-The thesis's own future work: **PCA over a unified multi-database set**, and a few sliders each moving one
-principal component, in place of the thesis's single sorted-index slider. It ships as a mean and a few
-components, not a database. **The thesis's pipeline is not available**, so this is new work: the dataset
-unification, the normalisation and the model are rebuilt, and the licence of each source database decides what
-may go in.
+**Built as a prototype, decided ([0168](../DECISIONS.md)):** a head is made from the population's parts and two
+sliders — nobody's head (the mean of 548 symmetric heads in every part but the notches, with the KU100's timbre), an
+ear slider that shifts a learned template of three notch surfaces along frequency, and a head slider that scales the
+ITD with the low ILD going along. [HRTF-DATA §7.8](HRTF-DATA.md) is the recipe, `prototypes/decoder/sheets/model/`
+the files, `sheets/listen.html` the reference. Not PCA, and not the thesis's pipeline: the dataset unification, the
+split of a head into parts and the template were built here, and the licence of each source database decides what
+may ship ([HRTF-DATA §1](HRTF-DATA.md)).
 
 ### 5.4 Portability
 

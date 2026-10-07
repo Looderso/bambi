@@ -78,7 +78,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?19"></script>
+<script src="lab.js?20"></script>
 <script>
 // The listener is the head selected: its measurement is what the others are heard against. Nobody's head is the
 // population's average of every part, with no notches or with the template's and the ear slider — nothing in it comes
@@ -87,7 +87,7 @@ const VERSIONS = ["the listener, measured", "the listener, all from its own numb
                   "listener's smooth part + the template, the ear slider", "listener's smooth part + the template, its fitted six numbers",
                   "listener's smooth part, no notches", "listener's smooth part + its own notches"];
 const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
-const S = { index: null, presets: null, kind: "honest", shift: 0, depth: 1, sharp: 1, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, preset: -1, timbre: "the KU100's for all", P: BY_EYE,
+const S = { index: null, presets: null, kind: "honest", shift: 0, depth: 2.5, sharp: 1, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, preset: -1, timbre: "the KU100's for all", P: BY_EYE,
             ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, generic: null, signal: "bursts", vol: -6 };
 
 // ---------- a head: measured here, its notches' numbers from the worker ----------
@@ -106,7 +106,7 @@ async function loadHead(entry) {
     head.fits[kind] = mine ? (mine.fit ? { shift: mine.fit.one[0], gain: 1, each: mine.fit } : { shift: mine.shift, gain: mine.gain }) : null; }
   return head;
 }
-const worker = new Worker("worker.js?19");
+const worker = new Worker("worker.js?20");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -327,12 +327,12 @@ $("bReveal").onclick = () => { const f = S.head && S.head.fits[S.kind], sign = v
   const size = S.head && S.generic ? `the head: fitted ITD × ${fittedSize(S.head).toFixed(2)} · yours × ${S.size.toFixed(2)}\n` : "";
   $("reveal").textContent = size + (!f ? "the ear: this head is not among the fitted ones" : `the ear: fitted, one shift for all notches   ${sign(f.shift)} ERB · yours ${sign(S.shift)} ERB\n`
     + `fitted depth × ${f.gain.toFixed(2)} · yours × ${S.depth.toFixed(2)}` + (f.each ? `\nfitted a notch: shifts ${f.each.shift.map(v => v.toFixed(2)).join(" ")} ERB, depths × ${f.each.gain.join(" ")}` : "")); };
-const KINDS = { honest: "learned honestly, the dips shaped as a peaking filter's notch: as deep and as narrow as the heads have the notches, present where they have them — depth and sharpness × 1 are the plain template",
+const KINDS = { honest: "learned honestly, the dips shaped as a peaking filter's notch: as narrow as the heads have the notches, present where they have them — the model, at depth × 2.5 (chosen by ear; × 1 is the plain template)",
                 bell: "learned honestly, the dips as bells (Gaussians) — wider and shallower than the notches they stand for",
                 ladder: "as the ladder fitted it: least squares, which left the notches shallow and wide — depth × 1.5 and sharpness × 2.5 made them heard" };
 const TEMPLATES = {};
 function kindSeg() {
-  seg($("segKind"), Object.keys(KINDS).filter(k => TEMPLATES[k]), () => S.kind, v => { S.kind = v; [S.depth, S.sharp] = v === "ladder" ? [1.5, 2.5] : [1, 1]; $("reveal").textContent = ""; kindSeg(); panel(); update(); },
+  seg($("segKind"), Object.keys(KINDS).filter(k => TEMPLATES[k]), () => S.kind, v => { S.kind = v; [S.depth, S.sharp] = v === "ladder" ? [1.5, 2.5] : v === "honest" ? [2.5, 1] : [1, 1]; $("reveal").textContent = ""; kindSeg(); panel(); update(); },
       v => ({ honest: "honest, peak-shaped", bell: "honest, bell-shaped", ladder: "as the ladder fitted it" })[v]);
   $("kindNote").textContent = KINDS[S.kind] || "";
 }
@@ -345,11 +345,11 @@ addEventListener("keydown", e => {
 addEventListener("resize", update);
 (async () => {
   try { S.index = await (await fetch("run/index.json")).json(); } catch { $("headNote").innerHTML = "No <b>run/index.json</b> — the list of heads."; return; }
-  for (const [kind, file] of [["honest", "honest.json"], ["bell", "honest-bell.json"], ["ladder", "ladder.json"]]) try { TEMPLATES[kind] = await (await fetch("ladder/" + file, { cache: "no-store" })).json(); } catch { TEMPLATES[kind] = null; }
-  if (!TEMPLATES.honest) { S.kind = "ladder"; [S.depth, S.sharp] = [1.5, 2.5]; }
-  if (!TEMPLATES.honest && !TEMPLATES.ladder) $("reveal").textContent = "no template — honest.js or ladder.js writes one";
+  for (const [kind, file] of [["honest", "template.json"], ["bell", "template-bell.json"], ["ladder", "template-ladder.json"]]) try { TEMPLATES[kind] = await (await fetch("model/" + file, { cache: "no-store" })).json(); } catch { TEMPLATES[kind] = null; }
+  if (!TEMPLATES.honest) { S.kind = "ladder"; [S.depth, S.sharp] = [1.5, 2.5]; }      // the model: the peak-shaped template at depth × 2.5, chosen by ear
+  if (!TEMPLATES.honest && !TEMPLATES.ladder) $("reveal").textContent = "no template in model/ — honest.js or ladder.js writes one";
   kindSeg();
-  try { S.generic = await (await fetch("dataset/generic.json", { cache: "no-store" })).json(); } catch { S.generic = null; }
+  try { S.generic = await (await fetch("model/generic.json", { cache: "no-store" })).json(); } catch { S.generic = null; }
   try { S.presets = await (await fetch("presets.json", { cache: "no-store" })).json();
     S.preset = S.presets.sizes.findIndex(z => z.surfaces === 6 && z.order === 4); const z = S.presets.sizes[S.preset]; if (z) S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; } catch { S.presets = null; }
   panel(); choose();
