@@ -46,6 +46,7 @@ private:
     std::array<juce::Rectangle<float>, 3> layoutButtons_{};
     std::vector<juce::Rectangle<float>> ituCells_;
     bool ituOpen_{false};
+    juce::String calibrationNote_;  ///< what the last calibration step said
     std::unique_ptr<juce::FileChooser> chooser_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DecoderPanel)

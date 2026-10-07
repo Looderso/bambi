@@ -220,8 +220,10 @@ void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
     {
         const std::lock_guard<std::mutex> lock(trackerMutex_);
         trackerRead_.flip = d.flip;
-        //  AirPods report Apple's headphone frame; a tracker over OSC reports the head's axes already.
-        trackerRead_.mounting = airpods ? bambi::Mounting::AirPods : bambi::Mounting::AsSent;
+        //  AirPods report their own frame, as the calibration found it or as Apple documents it; a tracker over OSC
+        //  reports the head's axes already.
+        trackerRead_.mounting = airpods ? bambi::Mounting::Axes : bambi::Mounting::AsSent;
+        for (std::size_t i = 0; i < 9; ++i) trackerRead_.axes[i] = d.airpodsAxes[i];
         if (!airpods) helperStatus_.clear();
     }
     //  Both sources arrive as OSC on the port: a tracker from anywhere, the helper from this computer.
@@ -242,6 +244,40 @@ void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
     } else {
         helper_.terminate();
     }
+}
+
+bool BambiDecoderProcessor::captureLevel() {
+    const std::lock_guard<std::mutex> lock(trackerMutex_);
+    if (!rawSeen_) return false;
+    levelPose_ = rawNow_;
+    levelCaptured_ = true;
+    return true;
+}
+
+bool BambiDecoderProcessor::captureNod() {
+    bambi::Mat3 nodded;
+    {
+        const std::lock_guard<std::mutex> lock(trackerMutex_);
+        if (!rawSeen_ || !levelCaptured_) return false;
+        nodded = rawNow_;
+    }
+    bambi::Mat3 axes;
+    if (!bambi::axesFromLookAndNod(levelPose_, nodded, axes)) return false;
+    levelCaptured_ = false;
+    editDecoder("calibrate airpods", [axes](bambi::DecoderState& s) {
+        for (std::size_t i = 0; i < 9; ++i) s.airpodsAxes[i] = axes[i];
+        s.airpodsCalibrated = true;
+    });
+    recentre();
+    return true;
+}
+
+void BambiDecoderProcessor::forgetCalibration() {
+    levelCaptured_ = false;
+    editDecoder("forget calibration", [](bambi::DecoderState& s) {
+        s.airpodsAxes = bambi::DecoderState{}.airpodsAxes;
+        s.airpodsCalibrated = false;
+    });
 }
 
 juce::String BambiDecoderProcessor::helperStatus() const {
@@ -276,6 +312,17 @@ void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) 
     bambi::Mat3 head;
     if (!bambi::headFromValues(read, std::span<const float>(values.data(), count), head)) return;
     tracker_.write(head);
+    {
+        //  the device's own orientation too, for the calibration: the same values read as sent
+        bambi::OrientationRead raw = read;
+        raw.mounting = bambi::Mounting::AsSent;
+        bambi::Mat3 device;
+        if (bambi::headFromValues(raw, std::span<const float>(values.data(), count), device)) {
+            const std::lock_guard<std::mutex> lock(trackerMutex_);
+            rawNow_ = device;
+            rawSeen_ = true;
+        }
+    }
     diag_.trackerMessages.fetch_add(1, std::memory_order_relaxed);
     diag_.trackerLastMs.store(juce::Time::currentTimeMillis(), std::memory_order_relaxed);
 }

@@ -11,9 +11,10 @@
 struct HelperLink::Impl {
     std::mutex lock;
     NSRunningApplication* app = nil;
+    bool pending = false;  ///< a launch asked for, its completion not yet in
 };
 
-HelperLink::HelperLink() : impl_(std::make_unique<Impl>()) {}
+HelperLink::HelperLink() : impl_(std::make_shared<Impl>()) {}
 HelperLink::~HelperLink() { terminate(); }
 bool HelperLink::available() { return true; }
 
@@ -28,6 +29,11 @@ std::string HelperLink::bundledHelperPath() {
 
 void HelperLink::launch(const std::string& appPath, int port) {
     if (appPath.empty() || running()) return;
+    {
+        std::lock_guard<std::mutex> g(impl_->lock);
+        if (impl_->pending) return;
+        impl_->pending = true;
+    }
     NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:appPath.c_str()]];
     NSWorkspaceOpenConfiguration* config = [NSWorkspaceOpenConfiguration configuration];
     config.activates = NO;
@@ -36,13 +42,13 @@ void HelperLink::launch(const std::string& appPath, int port) {
     config.arguments = @[
         @"--host-pid", [NSString stringWithFormat:@"%d", getpid()], @"--port", [NSString stringWithFormat:@"%d", port]
     ];
-    Impl* impl = impl_.get();
+    std::shared_ptr<Impl> impl = impl_;
     [[NSWorkspace sharedWorkspace] openApplicationAtURL:url
                                           configuration:config
                                       completionHandler:^(NSRunningApplication* app, NSError* e) {
-                                        if (e != nil) return;
                                         std::lock_guard<std::mutex> g(impl->lock);
-                                        impl->app = app;
+                                        impl->pending = false;
+                                        if (e == nil) impl->app = app;
                                       }];
 }
 
@@ -56,7 +62,8 @@ void HelperLink::terminate() {
 
 bool HelperLink::running() const {
     std::lock_guard<std::mutex> g(impl_->lock);
-    return impl_->app != nil && !impl_->app.terminated;
+    if (impl_->app != nil && impl_->app.terminated) impl_->app = nil;  // it quit on its own: with the host, or asked
+    return impl_->app != nil;
 }
 #else
 struct HelperLink::Impl {};

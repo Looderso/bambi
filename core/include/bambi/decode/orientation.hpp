@@ -32,7 +32,8 @@ enum class Mounting {
     AsSent,        ///< the device reports the head's axes already: a head tracker, the AirPods
     PhoneTopEdge,  ///< a phone on the headphones' band, screen up, top edge forward
     PhoneBack,     ///< a phone held upright in front, its screen facing the listener
-    AirPods,       ///< Apple's headphone frame: x to the right of the head, y up, z toward the back
+    AirPods,       ///< Apple's headphone frame as documented: x to the right of the head, y up, z toward the back
+    Axes,          ///< as OrientationRead::axes says: the frame a calibration found
 };
 
 /// One way of reading what a sender sends, as learn mode or a preset settles it.
@@ -40,7 +41,16 @@ struct OrientationRead {
     OrientationForm form{OrientationForm::QuaternionWxyz};
     Mounting mounting{Mounting::AsSent};
     std::array<bool, 3> flip{false, false, false};  ///< a quaternion's x, y, z, or the yaw, pitch and roll, negated
+    Mat3 axes{kIdentity3};  ///< for Mounting::Axes: rows are the head's front, left and up in the device's coordinates
 };
+
+/*  The look-and-nod calibration, for a device whose frame on the head is not known -- earbuds sit as they sit:
+ *  `level` is the device's orientation while the head looks straight ahead and level, `nodded` while it looks
+ *  down from there. The level pose gives the head's up in the device's frame, the nod its left axis, and the
+ *  front follows. False when the nod is too small to tell (under about 5 degrees) or was not a nod. */
+bool axesFromLookAndNod(const Mat3& level, const Mat3& nodded, Mat3& axes);
+/// The axes a mounting stands for, rows the head's front, left and up in the device's coordinates.
+Mat3 axesOfMounting(Mounting mounting, const Mat3& custom = kIdentity3);
 
 /// The head's orientation from its angles, degrees.
 Mat3 headFromYpr(double yawDeg, double pitchDeg, double rollDeg);

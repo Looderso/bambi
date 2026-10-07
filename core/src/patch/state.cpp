@@ -276,6 +276,11 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         Json flips = Json::array();
         for (bool f : d.flip) flips.push(Json{f});
         jd.set("flip", flips);
+        if (d.airpodsCalibrated) {
+            Json axes = Json::array();
+            for (double v : d.airpodsAxes) axes.push(Json{v});
+            jd.set("airpods_axes", axes);
+        }
         root.set("decoder", jd);
     }
     if (s.echoPattern != PluginState{}.echoPattern)
@@ -528,6 +533,10 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
         d.oscNetwork = boolOf("osc_network", d.oscNetwork);
         if (const Json* fl = dec->find("flip"); fl != nullptr && fl->isArray())
             for (std::size_t i = 0; i < 3 && i < fl->items().size(); ++i) d.flip[i] = fl->items()[i].boolOr(false);
+        if (const Json* ax = dec->find("airpods_axes"); ax != nullptr && ax->isArray() && ax->items().size() == 9) {
+            for (std::size_t i = 0; i < 9; ++i) d.airpodsAxes[i] = ax->items()[i].numberOr(0);
+            d.airpodsCalibrated = true;
+        }
     }
     if (const Json* room = j.find("room"); room != nullptr && room->isObject()) {
         if (const Json* v = room->find("preset"))

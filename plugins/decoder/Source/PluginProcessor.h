@@ -102,6 +102,13 @@ public:
     juce::String helperStatus() const;
     /// Whether this build and this bundle can read AirPods: macOS, and the helper nested in the bundle.
     bool helperAvailable() const { return HelperLink::available() && !HelperLink::bundledHelperPath().empty(); }
+    /*  The look-and-nod calibration of how the AirPods sit: captureLevel() while the head looks straight ahead and
+        level, captureNod() while it looks down from there. The second computes the axes, stores them as state and
+        recentres. Message thread. False when nothing has arrived from the device yet, or the nod was no nod. */
+    bool captureLevel();
+    bool captureNod();
+    bool levelCaptured() const { return levelCaptured_; }
+    void forgetCalibration();  ///< back to Apple's documented frame
     juce::StringArray layoutLog() const;
 
     /// The sliders the binaural filters were last built with, for a check.
@@ -160,6 +167,10 @@ private:
     mutable std::mutex trackerMutex_;
     bambi::OrientationRead trackerRead_;
     bambi::LatestValue<bambi::Mat3> tracker_;
+    bambi::Mat3 rawNow_{bambi::kIdentity3};  ///< the device's own orientation, last received; under trackerMutex_
+    bool rawSeen_{false};
+    bambi::Mat3 levelPose_{bambi::kIdentity3};  ///< the calibration's first capture; message thread
+    bool levelCaptured_{false};
     bambi::Mat3 trackerNow_{bambi::kIdentity3};  ///< audio thread
     bool trackerSeen_{false};
     double yaw0_{0.0};

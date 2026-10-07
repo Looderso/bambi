@@ -21,5 +21,5 @@ public:
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::shared_ptr<Impl> impl_;  ///< shared with the launch completion, which may outlive this
 };

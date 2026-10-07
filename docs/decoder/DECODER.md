@@ -414,9 +414,11 @@ reads the headphones' motion with CoreMotion and sends the quaternion to the rec
   launches it with the receiver's port and ends it when the source changes; it sends `/quaternion` as SPARTA does,
   so the receiver needs no new form, and `/bambi/helper/status` with the permission's state, which the strip shows
   while it starts. **Its frame is Apple's headphone frame** — x to the right of the head, y up, z toward the back —
-  the same as an upright phone facing the listener (`Mounting::AirPods`); the signs are checked by looking and
-  nodding, and learn mode's flips correct a wrong one. Headitude's look-and-nod calibration for how the AirPods
-  sit is not built.
+  the same as an upright phone facing the listener (`Mounting::AirPods`) — assumed until **the look-and-nod
+  calibration** replaces it: on the tracking tab, *look* while facing ahead and level keeps the sensor's pose,
+  *nod* while looking down gives the turn; the level pose yields the head's up in the sensor's frame, the nod its
+  left axis, the front follows (`axesFromLookAndNod`), and the axes are state, kept with the session. On the first
+  real AirPods the assumed frame sat tilted and nodded the wrong way, which is what the calibration is for.
 
 **Any phone, with no app: a page.** The helper also serves a page to the local Wi-Fi, reached by a QR code in the
 decoder, that sends the phone's orientation to the receiver ([0172](../DECISIONS.md)):

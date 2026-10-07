@@ -25,6 +25,11 @@ std::array<float, 4> bridgeQuaternion(double yaw, double pitch, double roll) {
             static_cast<float>(cy * sp * cr + sy * cp * sr), static_cast<float>(sy * cp * cr - cy * sp * sr)};
 }
 
+OrientationRead withForm(OrientationRead r, OrientationForm form) {
+    r.form = form;
+    return r;
+}
+
 Mat3 read(OrientationForm form, std::vector<float> v, Mounting m = Mounting::AsSent, std::array<bool, 3> flip = {}) {
     OrientationRead r;
     r.form = form;
@@ -180,4 +185,37 @@ TEST_CASE("AirPods report the headphone frame: level on the head is a level head
     CHECK(std::abs(r) < 1e-9);
     yprOf(read(OrientationForm::QuaternionWxyz, aboutX(110), Mounting::AirPods), y, p, r);
     CHECK(p == doctest::Approx(20.0).epsilon(1e-6));  // the face tipped up by 20 degrees
+}
+
+TEST_CASE("look and nod find how a device sits on the head, whichever way it sits") {
+    //  Catches: the nod's axis taken with the wrong sign (pitch inverted), or the up axis read from the nodded pose.
+    for (const Mat3 sits : {axesOfMounting(Mounting::AirPods), rotationAbout({0.3, 0.9, 0.2}, 1.1),
+                            multiply(rotationAbout({0, 0, 1}, 2.0), rotationAbout({1, 0, 0}, -0.7))}) {
+        //  the device's orientation for a head at H is H * sits (the head is D * sits^T); the head faces an
+        //  arbitrary way, level
+        const Mat3 level = multiply(headFromYpr(37, 0, 0), sits);
+        const Mat3 nodded = multiply(headFromYpr(37, -25, 0), sits);  // looking down 25 degrees
+        Mat3 axes;
+        REQUIRE(axesFromLookAndNod(level, nodded, axes));
+        for (std::size_t i = 0; i < 9; ++i) CHECK(std::abs(axes[i] - sits[i]) < 1e-9);
+        //  then a head that looks up 20 and turns left 30 reads back as that
+        OrientationRead r;
+        r.mounting = Mounting::Axes;
+        r.axes = axes;
+        const Mat3 later = multiply(headFromYpr(67, 20, 0), sits);
+        double yy, pp, rr;
+        yprOf(later, yy, pp, rr);  // the device's angles, as the suite's, about the world's axes
+        Mat3 head;
+        REQUIRE(headFromValues(
+            withForm(r, OrientationForm::YprDegrees),
+            std::vector<float>{static_cast<float>(yy), static_cast<float>(pp), static_cast<float>(rr)}, head));
+        double y, p, roll;
+        yprOf(head, y, p, roll);
+        CHECK(y == doctest::Approx(67.0).epsilon(1e-6));
+        CHECK(p == doctest::Approx(20.0).epsilon(1e-6));
+        CHECK(std::abs(roll) < 1e-6);
+    }
+    Mat3 axes;
+    CHECK_FALSE(axesFromLookAndNod(kIdentity3, kIdentity3, axes));                                 // no nod
+    CHECK_FALSE(axesFromLookAndNod(kIdentity3, rotationAbout({0, 0, 1}, 30.0 * kDeg2Rad), axes));  // a turn, not a nod
 }
