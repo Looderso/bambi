@@ -5,6 +5,7 @@
 #include <new>
 
 #include "../doctest.h"
+#include "bambi/decode/binaural.hpp"
 #include "bambi/decode/headmodel.hpp"
 #include "bambi/dsp/features.hpp"
 #include "bambi/echo/control.hpp"
@@ -193,6 +194,21 @@ TEST_CASE("the head synthesiser allocates nothing once prepared") {
               head.synthesise(-1.0, 0.8);
           }) == 0);
     CHECK(head.itd(1) == doctest::Approx(0.8 * 400.0));
+
+    //  Catches: a per-build buffer in the filter design, or an FFT prepared on the fly.
+    std::vector<Vec3> grid;
+    std::vector<double> weights;
+    quadratureGrid(3, 5, grid, weights);
+    FilterDesign design;
+    design.order = 1;
+    design.fftSize = 64;
+    design.taps = 32;
+    design.delay = 8;
+    design.fade = 4;
+    BinauralFilterBuilder builder;
+    builder.prepare(m, design, grid, weights);
+    builder.build(0.0, 1.0);
+    CHECK(allocationsDuring([&] { builder.build(0.5, 1.1); }) == 0);
 }
 
 }  // namespace bambi

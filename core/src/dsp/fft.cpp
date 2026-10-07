@@ -39,17 +39,18 @@ void RealFft::release() {
     n_ = 0;
 }
 
-void RealFft::prepare(std::size_t size) {
+bool RealFft::prepare(std::size_t size) {
     release();
     n_ = size;
     setup_ = pffft_new_setup(static_cast<int>(n_), PFFFT_REAL);
     if (!setup_) {
         n_ = 0;
-        return;
+        return false;
     }
     in_ = static_cast<float*>(pffft_aligned_malloc(n_ * sizeof(float)));
     out_ = static_cast<float*>(pffft_aligned_malloc(n_ * sizeof(float)));
     work_ = static_cast<float*>(pffft_aligned_malloc(n_ * sizeof(float)));
+    return true;
 }
 
 void RealFft::magnitude(std::span<const double> in, std::span<double> mag) {
@@ -83,6 +84,39 @@ void RealFft::power(std::span<const double> in, std::span<double> pw) {
         const double re = out_[2 * k], im = out_[2 * k + 1];
         pw[k] = re * re + im * im;
     }
+}
+
+void RealFft::forward(std::span<const double> in, std::span<double> re, std::span<double> im) {
+    if (!setup_ || in.size() < n_ || re.size() < bins() || im.size() < bins()) return;
+
+    for (std::size_t i = 0; i < n_; ++i) in_[i] = static_cast<float>(in[i]);
+    pffft_transform_ordered(setup_, in_, out_, work_, PFFFT_FORWARD);
+
+    const std::size_t half = n_ / 2;
+    re[0] = out_[0];  // pffft packs the two real bins into the first complex slot
+    im[0] = 0.0;
+    re[half] = out_[1];
+    im[half] = 0.0;
+    for (std::size_t k = 1; k < half; ++k) {
+        re[k] = out_[2 * k];
+        im[k] = out_[2 * k + 1];
+    }
+}
+
+void RealFft::inverse(std::span<const double> re, std::span<const double> im, std::span<double> out) {
+    if (!setup_ || re.size() < bins() || im.size() < bins() || out.size() < n_) return;
+
+    const std::size_t half = n_ / 2;
+    in_[0] = static_cast<float>(re[0]);
+    in_[1] = static_cast<float>(re[half]);
+    for (std::size_t k = 1; k < half; ++k) {
+        in_[2 * k] = static_cast<float>(re[k]);
+        in_[2 * k + 1] = static_cast<float>(im[k]);
+    }
+    pffft_transform_ordered(setup_, in_, out_, work_, PFFFT_BACKWARD);
+
+    const double scale = 1.0 / static_cast<double>(n_);  // pffft's backward transform is unscaled
+    for (std::size_t i = 0; i < n_; ++i) out[i] = out_[i] * scale;
 }
 
 void hannWindow(std::span<double> w) {

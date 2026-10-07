@@ -22,8 +22,9 @@ public:
     RealFft(RealFft&&) noexcept;
     RealFft& operator=(RealFft&&) noexcept;
 
-    /// `size` must be a multiple of 32 and factor into 2s, 3s and 5s. Allocates.
-    void prepare(std::size_t size);
+    /// `size` must be a multiple of 32 and factor into 2s, 3s and 5s. Allocates. False when pffft refuses the size;
+    /// every transform then returns without writing.
+    bool prepare(std::size_t size);
 
     /// Magnitude spectrum of `in` (size samples) into `mag` (size/2 + 1 bins).
     /// No allocation, no locks.
@@ -34,6 +35,14 @@ public:
      *  followed by a multiply per bin is 2048 wasted operations per frame at size 2048.
      *  Callers that genuinely need magnitude in a sub-range can sqrt just that range. */
     void power(std::span<const double> in, std::span<double> pw);
+
+    /// Complex spectrum of `in` (size samples): re and im, size/2 + 1 bins each; the DC and Nyquist bins are real.
+    /// No allocation, no locks.
+    void forward(std::span<const double> in, std::span<double> re, std::span<double> im);
+
+    /// The real signal (size samples) whose spectrum is re and im (size/2 + 1 bins each), scaled so that
+    /// inverse(forward(x)) == x; the imaginary parts of DC and Nyquist are ignored. No allocation, no locks.
+    void inverse(std::span<const double> re, std::span<const double> im, std::span<double> out);
 
     std::size_t size() const { return n_; }
     std::size_t bins() const { return n_ / 2 + 1; }

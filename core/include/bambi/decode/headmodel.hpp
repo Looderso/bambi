@@ -91,12 +91,13 @@ private:
 
     int numDirections_{0}, numPoints_{0}, numNotches_{0};
     double bandLo_{0}, bandHi_{0};
-    std::vector<double> erb_;                            // points
-    std::vector<double> smooth_, ildBase_, ildSlope_;    // directions x points
-    std::vector<double> itdBase_;                        // directions
-    std::vector<double> centre_, depth_, width_;         // directions x notches; depth with factor and fade applied
-    std::vector<double> shifted_;                        // notches: the centres of one direction after the shift
-    std::vector<double> left_, right_, itd_;             // the result
+    std::vector<double> erb_;                          // points
+    std::vector<double> smooth_, ildBase_, ildSlope_;  // directions x points
+    std::vector<double> itdBase_;                      // directions
+    std::vector<double> centre_, depth_,
+        width_;                    // directions x notches; depth with factor and fade applied, width as 1 / ERB
+    std::vector<double> shifted_;  // notches: the centres of one direction after the shift
+    std::vector<double> left_, right_, itd_;  // the result
 };
 
 }  // namespace bambi

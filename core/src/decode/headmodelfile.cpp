@@ -80,7 +80,8 @@ bool parseHeadModel(std::string_view json, HeadModel& out, std::string* error) {
     out.learnedFrom.clear();
     if (const Json* from = root.find("learnedFrom")) {
         if (from->isString()) out.learnedFrom = std::string(from->stringOr(""));
-        for (const Json& name : from->items()) out.learnedFrom += (out.learnedFrom.empty() ? "" : ", ") + std::string(name.stringOr(""));
+        for (const Json& name : from->items())
+            out.learnedFrom += (out.learnedFrom.empty() ? "" : ", ") + std::string(name.stringOr(""));
     }
     if (const Json* a = r.object(root, "axis")) {
         out.axis.erb0 = r.number(*a, "erb0");
@@ -107,7 +108,8 @@ bool parseHeadModel(std::string_view json, HeadModel& out, std::string* error) {
         r.pair(*n, "band", N.bandLo, N.bandHi);
         r.pair(*n, "widthRange", N.widthMin, N.widthMax);
         const Json* list = n->find("list");
-        if (list == nullptr || !list->isArray()) r.fail("notches: missing list");
+        if (list == nullptr || !list->isArray())
+            r.fail("notches: missing list");
         else {
             N.list.clear();
             for (const Json& item : list->items()) {

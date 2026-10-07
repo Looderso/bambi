@@ -129,6 +129,25 @@ must be removed before the design**: magnitude LS carries each bin's phase from 
 delay above the cutoff — with the KU100's 108 samples left in, the highs came out ahead of the lows, wrapped round
 the filter's end, and a front source leaned 3.7 dB to the right.
 
+**Ported** (`core/include/bambi/decode/binaural.hpp`): `BinauralFilterBuilder` designs the filters from the
+synthesised head ([§5.3](#53-stage-two--a-model-from-many-listeners)) on a Gauss-Legendre × azimuth grid of 240
+directions, which integrates products of spherical harmonics exactly to order 9 — complex least squares with a
+pure interaural delay as the phase up to the cutoff order · c / (2π · 8.75 cm), magnitudes with the carried phase
+above it, the covariance constraint, 64 samples of bulk delay, 256 taps with a 32-tap fade
+([0171](../DECISIONS.md)). It is checked tap for tap against the same design in numpy
+(`prototypes/decoder/sheets/check-filters.py`). Measured against the synthesised head, nobody's head at size 1
+(Release, one core; the fit's grid, weighted):
+
+| order | 1–4 kHz | 8–16 kHz | diffuse field, worst | a slider move rebuilds in |
+|---|---|---|---|---|
+| 1 | 3.4 dB | 9.4 | 0.0 | 1.9 ms |
+| 3 | 1.8 | 6.6 | 0.0 | 3.2 |
+| 5 | 2.5 | 5.0 | 0.0 | 5.1 |
+| 7 | 2.1 | 3.5 | 0.0 | 7.8 |
+
+The model's notches are deeper than the KU100's, which is where the 8–16 kHz error above the KU100's comes from.
+What is not written yet: the convolution on the audio thread and the swap of a finished set into it.
+
 ### 4.1 Which HRTF
 
 **Default: the KU100.** It sounds good out of the box, and the thesis behind §5 found it the clear winner on
@@ -247,8 +266,7 @@ may ship: the shipped model is learned from HUTUBS and 3D3A ([0169](../DECISIONS
 
 **Ported**: the model is one file, `core/data/decode/head.json`, and `core/include/bambi/decode/` synthesises both
 ears and the ITD from it for any direction set and frequency grid — prepared once, then rebuilt per slider move on a
-worker without allocating, checked against the page's own numbers. The filter builder (MagLS, §4) on top of it is
-the next piece.
+worker without allocating, checked against the page's own numbers — and designs the decode filters from it (§4).
 
 ### 5.4 Portability
 
@@ -294,6 +312,20 @@ There is one standard and two formats that became standards by use; everything e
 
 Headitude (AirPods), the bridge apps of hardware trackers and most existing setups send one of the first three.
 Phone apps — Sensors2OSC on Android (`/rotationvector`, w last), ZIG SIM, GyrOSC — go through learn.
+
+**AirPods need no bridge app on a Mac.** The decoder carries a helper app in its bundle, `Contents/Helpers/`, that
+reads the headphones' motion with CoreMotion and sends the quaternion to the receiver on localhost
+([0170](../DECISIONS.md)):
+
+- **Not in the plugin's process.** macOS asks the *host* for a motion usage text and terminates a host without one,
+  which is every DAW. The helper carries its own.
+- **Launched through Launch Services**, never as a child process, which would be charged to the host and crash it
+  the same way. The permission dialog names the helper, once a machine.
+- **Started from the decoder, ended with it**: on a button, quitting when the decoder goes or the host exits.
+  Nothing in the Dock, nothing to install apart from the plugin.
+- **The look-and-nod calibration of Headitude** (MIT) tells the decoder how the AirPods sit; recentring stays as
+  below, yaw only.
+- **macOS only.** Elsewhere AirPods are a phone's job, through the formats above.
 
 - **Pitch has two signs in use.** ADM-OSC's is up-positive, as the suite's. IEM's and SPARTA's yaw-pitch-roll are
   Tait-Bryan angles about z, y, x on the same axes, so pitch turns about +y (left) and looking *up* is negative —
@@ -371,13 +403,17 @@ All in the browser, under `prototypes/decoder/`:
 3. **An OSC → WebSocket bridge**, since a browser cannot receive UDP — *built*, `osc-bridge.py` with the tracker
    section of `listen/`. Every format of §7.1 reads back the orientation it was sent, to 0.01°, including the
    split addresses some apps use and both ways of holding a phone; a synthetic head (`--demo`) drives it end to end.
-   *Waiting on real devices*: AirPods through Headitude, an Android phone through Sensors2OSC.
+   *Waiting on real devices*: an Android phone through Sensors2OSC.
 4. **Personalisation against a real loudspeaker** (§5.0, §5.1) — *built*, `match/`: head size and ear size on the
    KU100, the loudspeaker located by looking at it, real and virtual bursts alternated, one audio context per output
    device. The renderer and the audio path check against the Python chain exactly. *Waiting on ears.*
 5. **The Lens** (§6), on the stereo pair.
 6. **Placing loudspeakers by looking** (§3.3): how far head pointing scatters, and how far yaw drifts over a
    calibration.
+7. **AirPods read by a bundled helper** (§7.1) — *built*, `airpods-helper/`, a throwaway VST3 with the helper
+   nested in its bundle. In REAPER the helper asked for permission, the orientation arrived smooth over
+   localhost UDP, and the helper quit with the host. The plugin's own CoreMotion request, the spike before it,
+   crashed REAPER.
 7. **Layout import** (§3): AmbDec and the BS.2051 layouts beside the IEM JSON already read.
 8. **A few notches in place of the notch layer** ([HRTF-DATA §7](HRTF-DATA.md)) — *built*, `notches/`: a head's smooth
    part with two or three synthesised notches and a peak, A/B against the head itself at any measured direction of the

@@ -99,3 +99,21 @@ TEST_CASE("hann window is periodic and sums as expected") {
     for (double v : w) sum += v;
     CHECK(sum == doctest::Approx(32.0).epsilon(1e-9));  // periodic Hann sums to N/2
 }
+
+TEST_CASE("the inverse undoes the forward transform, and a linear phase is a delay") {
+    //  Catches: the Nyquist bin read from the wrong slot, a missing 1/N, a conjugated spectrum.
+    RealFft fft;
+    fft.prepare(64);
+    std::vector<double> x(64), re(33), im(33), back(64);
+    for (std::size_t i = 0; i < 64; ++i) x[i] = std::sin(0.37 * static_cast<double>(i)) + (i == 5 ? 1.0 : 0.0);
+    fft.forward(x, re, im);
+    fft.inverse(re, im, back);
+    for (std::size_t i = 0; i < 64; ++i) CHECK(back[i] == doctest::Approx(x[i]).epsilon(1e-5));
+
+    for (std::size_t k = 0; k < 33; ++k) {  // e^{-j 2 pi k 7 / 64}: an impulse seven samples late
+        re[k] = std::cos(2.0 * kPi * static_cast<double>(k) * 7.0 / 64.0);
+        im[k] = -std::sin(2.0 * kPi * static_cast<double>(k) * 7.0 / 64.0);
+    }
+    fft.inverse(re, im, back);
+    for (std::size_t i = 0; i < 64; ++i) CHECK(std::abs(back[i] - (i == 7 ? 1.0 : 0.0)) < 1e-5);
+}

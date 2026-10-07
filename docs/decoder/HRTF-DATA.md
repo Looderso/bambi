@@ -746,7 +746,10 @@ read from the file. The same file is `core/data/decode/head.json`, and `core/inc
 never opens a file) and `Head`, which `prepare`s once for a fixed set of directions and frequencies — the SH basis
 per direction, the three tables and each direction's notches evaluated, the tables resampled onto any axis (the
 decoder's FFT bins) — and then `synthesise`s both ears and the ITD for the two sliders from those tables alone:
-no allocation, no SH, no minimum phase; the decoder's filter builder takes over from the magnitudes and the ITD.
+no allocation, no SH, no minimum phase; `BinauralFilterBuilder` in the same folder designs the decode filters from
+the magnitudes and the ITD, the ITD as a pure interaural delay ([**Ported**: the model is one file, `core/data/decode/head.json`, and `core/include/bambi/decode/` synthesises both
+ears and the ITD from it for any direction set and frequency grid — prepared once, then rebuilt per slider move on a
+worker without allocating, checked against the page's own numbers — and designs the decode filters from it (§4).](../DECISIONS.md), [DECODER §4](DECODER.md)).
 Measured in Release on one core: `prepare` 9.4 ms, `synthesise` 1.28 ms for 240 directions × 513 bins — a slider
 move is rebuilt on a worker, far from the audio thread. `export-fixtures.js` writes what the page's math gives for 7
 directions × 3 slider settings (`core/tests/decode/fixtures.json`); the core reproduces every ear to 2 mdB and
@@ -768,7 +771,8 @@ at 1–1.2 ERB are the largest values it was offered. It is run again with wider
    The ITD varies between heads by 24–37 µs (mean over directions); the databases' averages had differed from the
    common one by 11–20 µs.
 2. **The model** — *decided and ported* (§7.8, [0168](../DECISIONS.md), [0169](../DECISIONS.md)): nobody's head,
-   a head slider and an ear slider, in `core/include/bambi/decode/`. What is next is the decoder's filter builder
-   on top of it: MagLS from the synthesised ears at a fixed direction set, on a worker, the filters swapped in whole.
+   a head slider and an ear slider, in `core/include/bambi/decode/`, with the decoder's filter builder on top of it
+   ([DECODER §4](DECODER.md)). What is next is the plugin: the convolution on the audio thread and the swap of a
+   finished filter set into it.
 3. **Licences** — the shipped model is learned from HUTUBS and 3D3A alone ([0169](../DECISIONS.md)); SONICOM's
    unclear licence (§1) no longer touches it. SONICOM stays a held-out check.

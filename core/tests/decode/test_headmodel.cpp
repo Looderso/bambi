@@ -29,7 +29,8 @@ const HeadModel& shipped() {
     static const HeadModel model = [] {
         HeadModel m;
         std::string error;
-        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error), error);
+        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error),
+                        error);
         return m;
     }();
     return model;
@@ -71,7 +72,8 @@ TEST_CASE("both ears and the time difference equal the page's math in every fixt
     REQUIRE(cases->size() == 21);
 
     std::vector<Vec3> dirs;
-    for (const Json& c : cases->items()) dirs.push_back(direction(c.find("azimuth")->numberOr(0), c.find("elevation")->numberOr(0)));
+    for (const Json& c : cases->items())
+        dirs.push_back(direction(c.find("azimuth")->numberOr(0), c.find("elevation")->numberOr(0)));
     Head head;
     head.prepare(shipped(), dirs);
     REQUIRE(head.points() == 339);
@@ -82,11 +84,14 @@ TEST_CASE("both ears and the time difference equal the page's math in every fixt
         const std::vector<double> left = numbers(*c.find("left")), right = numbers(*c.find("right"));
         double worst = 0;
         for (int k = 0; k < head.points(); ++k) {
-            worst = std::max(worst, std::abs(head.left(d)[static_cast<std::size_t>(k)] - left[static_cast<std::size_t>(k)]));
-            worst = std::max(worst, std::abs(head.right(d)[static_cast<std::size_t>(k)] - right[static_cast<std::size_t>(k)]));
+            worst = std::max(worst,
+                             std::abs(head.left(d)[static_cast<std::size_t>(k)] - left[static_cast<std::size_t>(k)]));
+            worst = std::max(worst,
+                             std::abs(head.right(d)[static_cast<std::size_t>(k)] - right[static_cast<std::size_t>(k)]));
         }
         CHECK_MESSAGE(worst < 2e-3, "case " << d << ": " << worst << " dB off");  // the fixtures carry four decimals
-        CHECK_MESSAGE(std::abs(head.itd(d) - c.find("itd")->numberOr(0)) < 2e-3, "case " << d << ": itd " << head.itd(d));
+        CHECK_MESSAGE(std::abs(head.itd(d) - c.find("itd")->numberOr(0)) < 2e-3,
+                      "case " << d << ": itd " << head.itd(d));
         ++d;
     }
 }
@@ -126,8 +131,10 @@ TEST_CASE("a mirrored direction swaps the ears and negates the time difference")
     for (int d : {0, 2}) {
         CHECK(head.itd(d) == doctest::Approx(-head.itd(d + 1)).epsilon(1e-9));
         for (int k = 0; k < head.points(); k += 5) {
-            CHECK(head.left(d)[static_cast<std::size_t>(k)] == doctest::Approx(head.right(d + 1)[static_cast<std::size_t>(k)]).epsilon(1e-9));
-            CHECK(head.right(d)[static_cast<std::size_t>(k)] == doctest::Approx(head.left(d + 1)[static_cast<std::size_t>(k)]).epsilon(1e-9));
+            CHECK(head.left(d)[static_cast<std::size_t>(k)] ==
+                  doctest::Approx(head.right(d + 1)[static_cast<std::size_t>(k)]).epsilon(1e-9));
+            CHECK(head.right(d)[static_cast<std::size_t>(k)] ==
+                  doctest::Approx(head.left(d + 1)[static_cast<std::size_t>(k)]).epsilon(1e-9));
         }
     }
     CHECK(head.itd(0) < -100.0);  // the source on the left: the left ear hears it first

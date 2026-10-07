@@ -17,8 +17,9 @@ bool sized(const std::vector<double>& v, int order, int points, const char* what
         return false;
     }
     if (v.size() != sz(numChannels(order)) * sz(points)) {
-        if (why) *why = std::string(what) + ": " + std::to_string(v.size()) + " values, expected " +
-                        std::to_string(numChannels(order) * points);
+        if (why)
+            *why = std::string(what) + ": " + std::to_string(v.size()) + " values, expected " +
+                   std::to_string(numChannels(order) * points);
         return false;
     }
     return true;
@@ -76,7 +77,8 @@ bool HeadModel::consistent(std::string* why) const {
     if (notches.order < 0 || notches.order > kMaxOrder) return fail("notches: order out of range");
     if (!(notches.fadeIn < notches.fadeOut)) return fail("notches: fade must rise");
     if (!(notches.bandLo < notches.bandHi)) return fail("notches: band must be a range");
-    if (!(notches.widthMin > 0) || !(notches.widthMin <= notches.widthMax)) return fail("notches: widths must be a positive range");
+    if (!(notches.widthMin > 0) || !(notches.widthMin <= notches.widthMax))
+        return fail("notches: widths must be a positive range");
     if (!(notches.depthFactor >= 0)) return fail("notches: depth factor must not be negative");
     for (const Notch& n : notches.list)
         for (const std::vector<double>* m : {&n.centre, &n.depth, &n.width, &n.presence})
@@ -114,10 +116,11 @@ void Head::prepare(const HeadModel& model, std::span<const Vec3> directions, std
     ildSlope_.resize(cells);
     left_.resize(cells);
     right_.resize(cells);
-    evaluate(basis, stride, numChannels(model.smooth.order), resampled(model.smooth, model.axis, erb_), numPoints_, smooth_);
+    evaluate(basis, stride, numChannels(model.smooth.order), resampled(model.smooth, model.axis, erb_), numPoints_,
+             smooth_);
     evaluate(basis, stride, numChannels(model.ild.order), resampled(model.ild, model.axis, erb_), numPoints_, ildBase_);
-    evaluate(basis, stride, numChannels(model.ildWithSize.order), resampled(model.ildWithSize, model.axis, erb_), numPoints_,
-             ildSlope_);
+    evaluate(basis, stride, numChannels(model.ildWithSize.order), resampled(model.ildWithSize, model.axis, erb_),
+             numPoints_, ildSlope_);
 
     itdBase_.resize(sz(numDirections_));
     itd_.resize(sz(numDirections_));
@@ -138,7 +141,7 @@ void Head::prepare(const HeadModel& model, std::span<const Vec3> directions, std
             const double fade = t * t * (3 - 2 * t);
             centre_[i] = dot(y, notch.centre);
             depth_[i] = std::max(-60.0, std::min(0.0, dot(y, notch.depth)) * N.depthFactor * fade);
-            width_[i] = std::clamp(dot(y, notch.width), N.widthMin, N.widthMax);
+            width_[i] = 1.0 / std::clamp(dot(y, notch.width), N.widthMin, N.widthMax);
         }
     }
 }
@@ -163,13 +166,13 @@ void Head::synthesise(double earShiftErb, double headSize) {
             for (int n = 0; n < numNotches_; ++n) {
                 const double a = depth_[at + sz(n)];
                 if (a == 0.0) continue;
-                const double u = (erb_[sz(k)] - shifted_[sz(n)]) / width_[at + sz(n)];
+                const double u = (erb_[sz(k)] - shifted_[sz(n)]) * width_[at + sz(n)];
                 cll += a / (1.0 + u * u);
             }
             // The two ears share the summed level cll and differ by ild: left = cll + 10 log10(r / (1 + r)),
             // right = cll - 10 log10(1 + r) with r = 10^(ild / 10).
             const double ild = base[k] + grow * slope[k];
-            const double both = 10.0 * std::log10(1.0 + std::pow(10.0, ild / 10.0));
+            const double both = 4.342944819032518 * std::log1p(std::exp(ild * 0.23025850929940458));  // 10 log10(1 + r)
             left[k] = cll + ild - both;
             right[k] = cll - both;
         }
