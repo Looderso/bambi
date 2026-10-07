@@ -11,43 +11,10 @@
 #include "bambi/decode/virtualarray.hpp"
 #include "bambi/math/sh.hpp"
 #include "doctest.h"
+#include "fixtures.hpp"
 
 using namespace bambi;
-
-namespace {
-std::string readAll(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
-    REQUIRE_MESSAGE(in.good(), "cannot read " << path);
-    std::stringstream s;
-    s << in.rdbuf();
-    return s.str();
-}
-
-const HeadModel& shipped() {
-    static const HeadModel model = [] {
-        HeadModel m;
-        std::string error;
-        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error), error);
-        return m;
-    }();
-    return model;
-}
-
-SpeakerDesign design(const Layout& l, int order) {
-    SpeakerDesign d;
-    std::string error;
-    REQUIRE_MESSAGE(designAllrad(l, order, Weighting::Basic, d, &error), error);
-    return d;
-}
-
-std::vector<float> noise(int channels, int frames, unsigned seed) {
-    std::mt19937 rng(seed);
-    std::uniform_real_distribution<float> u(-1.0f, 1.0f);
-    std::vector<float> x(static_cast<std::size_t>(channels * frames));
-    for (float& v : x) v = u(rng);
-    return x;
-}
-}  // namespace
+using namespace bambi::test;
 
 TEST_CASE("the field design encodes each loudspeaker's row at its direction, at one distance") {
     //  Catches: a loudspeaker encoded at another's direction, the distance gain or delay carried along, an
@@ -64,7 +31,9 @@ TEST_CASE("the field design encodes each loudspeaker's row at its direction, at 
     std::vector<double> y(static_cast<std::size_t>(C)), gain(static_cast<std::size_t>(array.outputs), 0.0);
     shSN3D({1, 0, 0}, 3, y);
     for (int o = 0; o < array.outputs; ++o)
-        for (int c = 0; c < C; ++c) gain[static_cast<std::size_t>(o)] += array.matrix[static_cast<std::size_t>(o * C + c)] * y[static_cast<std::size_t>(c)];
+        for (int c = 0; c < C; ++c)
+            gain[static_cast<std::size_t>(o)] +=
+                array.matrix[static_cast<std::size_t>(o * C + c)] * y[static_cast<std::size_t>(c)];
     double omni = 0, sum = 0;
     for (int c = 0; c < C; ++c) omni += field.matrix[static_cast<std::size_t>(c)] * y[static_cast<std::size_t>(c)];
     for (double g : gain) sum += g;
@@ -73,7 +42,8 @@ TEST_CASE("the field design encodes each loudspeaker's row at its direction, at 
     for (int o = 0; o < array.outputs; ++o) CHECK(gain[2] >= gain[static_cast<std::size_t>(o)]);
     // The field's x-dipole (ACN 3) is the sum weighted by each loudspeaker's x: all front-heavy here.
     double dipole = 0;
-    for (int c = 0; c < C; ++c) dipole += field.matrix[static_cast<std::size_t>(3 * C + c)] * y[static_cast<std::size_t>(c)];
+    for (int c = 0; c < C; ++c)
+        dipole += field.matrix[static_cast<std::size_t>(3 * C + c)] * y[static_cast<std::size_t>(c)];
     CHECK(dipole > 0.5 * sum);
 }
 
@@ -105,16 +75,19 @@ TEST_CASE("the virtual array is the field renderer and the order-7 binaural path
 
     const int frames = 777;
     const std::vector<float> in = noise(16, frames, 8);
-    std::vector<float> got(static_cast<std::size_t>(frames) * 2), want(got.size()), field(static_cast<std::size_t>(frames) * 64);
+    std::vector<float> got(static_cast<std::size_t>(frames) * 2), want(got.size()),
+        field(static_cast<std::size_t>(frames) * 64);
     for (int done = 0, cut = 0; done < frames; ++cut) {  // odd cuts through the virtual array
         const int n = std::min(cut % 2 ? 100 : 37, frames - done);
-        va.process(in.data() + static_cast<std::size_t>(done) * 16, 16, got.data() + static_cast<std::size_t>(done) * 2, n);
+        va.process(in.data() + static_cast<std::size_t>(done) * 16, 16, got.data() + static_cast<std::size_t>(done) * 2,
+                   n);
         done += n;
     }
     renderer.process(in.data(), 16, field.data(), 64, frames);
     convolver.process(field.data(), want.data(), frames);
     double worst = 0;
-    for (std::size_t i = 0; i < got.size(); ++i) worst = std::max(worst, static_cast<double>(std::abs(got[i] - want[i])));
+    for (std::size_t i = 0; i < got.size(); ++i)
+        worst = std::max(worst, static_cast<double>(std::abs(got[i] - want[i])));
     CHECK(worst < 1e-6);  // the same two stages; only the chunking differs
 }
 
@@ -133,7 +106,8 @@ TEST_CASE("a source in front of a symmetric array reaches both ears alike") {
     std::uniform_real_distribution<float> u(-1.0f, 1.0f);
     for (int f = 0; f < frames; ++f) {
         const float s = u(rng);
-        for (int c = 0; c < 16; ++c) in[static_cast<std::size_t>(f * 16 + c)] = s * static_cast<float>(y[static_cast<std::size_t>(c)]);
+        for (int c = 0; c < 16; ++c)
+            in[static_cast<std::size_t>(f * 16 + c)] = s * static_cast<float>(y[static_cast<std::size_t>(c)]);
     }
     va.process(in.data(), 16, out.data(), frames);
     double same = 0, total = 0;

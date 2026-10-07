@@ -25,7 +25,8 @@ SpeakerDesign fieldDesign(const SpeakerDesign& array, int fieldOrder) {
         const int output = array.channel[real++];
         shSN3D(array.points[p], fieldOrder, y);
         for (int f = 0; f < F; ++f)
-            for (int c = 0; c < C; ++c) field.matrix[sz(f) * sz(C) + sz(c)] += y[sz(f)] * array.matrix[sz(output) * sz(C) + sz(c)];
+            for (int c = 0; c < C; ++c)
+                field.matrix[sz(f) * sz(C) + sz(c)] += y[sz(f)] * array.matrix[sz(output) * sz(C) + sz(c)];
     }
     field.points = array.points;
     field.imaginary = array.imaginary;
@@ -49,7 +50,9 @@ bool VirtualArray::prepare(const HeadModel& model, int busOrder, double sampleRa
     return true;
 }
 
-bool VirtualArray::publishLayout(const SpeakerDesign& array) { return renderer_.publish(fieldDesign(array, fieldOrder_)); }
+bool VirtualArray::publishLayout(const SpeakerDesign& array) {
+    return renderer_.publish(fieldDesign(array, fieldOrder_));
+}
 
 void VirtualArray::buildHead(double earShiftErb, double headSize) noexcept {
     builder_.build(earShiftErb, headSize);

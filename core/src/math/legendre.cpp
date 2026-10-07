@@ -104,4 +104,20 @@ void gaussLegendre(int n, std::vector<double>& nodes, std::vector<double>& weigh
     }
 }
 
+void quadratureGrid(int rings, int azimuths, std::vector<Vec3>& directions, std::vector<double>& weights) {
+    std::vector<double> z, wz;
+    gaussLegendre(rings, z, wz);  // nodes in [-1, 1], weights summing to 2
+    directions.clear();
+    weights.clear();
+    for (int i = 0; i < rings; ++i) {
+        const double r =
+            std::sqrt(std::max(0.0, 1.0 - z[static_cast<std::size_t>(i)] * z[static_cast<std::size_t>(i)]));
+        for (int j = 0; j < azimuths; ++j) {
+            const double phi = 2.0 * kPi * j / azimuths;
+            directions.push_back({r * std::cos(phi), r * std::sin(phi), z[static_cast<std::size_t>(i)]});
+            weights.push_back(wz[static_cast<std::size_t>(i)] / 2.0 / azimuths);
+        }
+    }
+}
+
 }  // namespace bambi

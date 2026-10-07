@@ -9,38 +9,16 @@
 #include "bambi/decode/headmodelfile.hpp"
 #include "bambi/patch/json.hpp"
 #include "doctest.h"
+#include "fixtures.hpp"
 
 using namespace bambi;
+using namespace bambi::test;
 
 /*  The head model is learned in the browser (prototypes/decoder/sheets) and shipped as core/data/decode/head.json.
  *  The fixtures beside this test were written by the same page's math (export-fixtures.js) for a few directions and
  *  slider settings: both ears in dB at every axis point and the time difference. The synthesiser must reproduce them.
  */
 namespace {
-std::string readAll(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
-    REQUIRE_MESSAGE(in.good(), "cannot read " << path);
-    std::stringstream s;
-    s << in.rdbuf();
-    return s.str();
-}
-
-const HeadModel& shipped() {
-    static const HeadModel model = [] {
-        HeadModel m;
-        std::string error;
-        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error),
-                        error);
-        return m;
-    }();
-    return model;
-}
-
-Vec3 direction(double azimuthDeg, double elevationDeg) {
-    const double az = azimuthDeg * M_PI / 180.0, el = elevationDeg * M_PI / 180.0;
-    return {std::cos(el) * std::cos(az), std::cos(el) * std::sin(az), std::sin(el)};
-}
-
 std::vector<double> numbers(const Json& a) {
     std::vector<double> v;
     for (const Json& x : a.items()) v.push_back(x.numberOr(0));

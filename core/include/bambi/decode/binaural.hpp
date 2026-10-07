@@ -7,6 +7,7 @@
 
 #include "bambi/decode/headmodel.hpp"
 #include "bambi/dsp/fft.hpp"
+#include "bambi/math/legendre.hpp"
 #include "bambi/math/vec3.hpp"
 
 /*  The decoder's binaural filters: one FIR per ambisonic channel and ear, designed from a Head.
@@ -25,11 +26,6 @@
  *  first block so that what is heard, and bounced, is a function of the parameters alone.
  */
 namespace bambi {
-
-/// A product grid for integrating over the sphere: `rings` Gauss-Legendre nodes in z times `azimuths` equispaced
-/// azimuths, weights summing to 1. Products of spherical harmonics integrate exactly up to order rings - 1 and
-/// (azimuths - 1) / 2, whichever is smaller. Allocates.
-void quadratureGrid(int rings, int azimuths, std::vector<Vec3>& directions, std::vector<double>& weights);
 
 struct FilterDesign {
     int order{1};

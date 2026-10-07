@@ -3,11 +3,18 @@
 #include <span>
 #include <vector>
 
+#include "bambi/math/vec3.hpp"
+
 namespace bambi {
 
 /// Gauss-Legendre quadrature on [-1, 1]: n nodes, exact for polynomials of degree <= 2n - 1.
 /// With equispaced azimuths it integrates products of spherical harmonics exactly.
 void gaussLegendre(int n, std::vector<double>& nodes, std::vector<double>& weights);
+
+/// A product grid for integrating over the sphere: `rings` Gauss-Legendre nodes in z times `azimuths` equispaced
+/// azimuths, weights summing to 1. Products of spherical harmonics integrate exactly up to order rings - 1 and
+/// (azimuths - 1) / 2, whichever is smaller. Allocates.
+void quadratureGrid(int rings, int azimuths, std::vector<Vec3>& directions, std::vector<double>& weights);
 
 /// Legendre polynomial P_n(x), by the standard three-term recurrence.
 double legendreP(int n, double x);

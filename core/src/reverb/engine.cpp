@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "bambi/dsp/guard.hpp"
 #include "bambi/math/sh.hpp"
 
 namespace bambi {
@@ -307,7 +308,7 @@ void ReverbEngine::process(const float* in, float* out, int frames) noexcept {
         const float* src = in + static_cast<std::size_t>(done) * C;
         for (int i = 0; i < n * C; ++i) {
             const float v = src[i];
-            clean_[static_cast<std::size_t>(i)] = (v == v && std::abs(v) < 1.0e6f) ? v : 0.0f;
+            clean_[static_cast<std::size_t>(i)] = cleanSample(v);
         }
         early_.process(clean_.data(), field_.data(), scattered_.data(), n);
         //  The reflections go back over the whole bus, so their half of the return is the projection.

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "bambi/dsp/guard.hpp"
 #include "bambi/math/sh.hpp"
 
 namespace bambi {
@@ -123,7 +124,7 @@ void BinauralConvolver::process(const float* in, float* out, int frames) noexcep
         const float* x = in + sz(f) * sz(channels_);
         for (int c = 0; c < channels_; ++c) {
             const float v = x[c];
-            input_.data()[sz(c) * sz(fft_) + sz(partition_ + pos_)] = (v == v && std::abs(v) < 1.0e6f) ? v : 0.0f;
+            input_.data()[sz(c) * sz(fft_) + sz(partition_ + pos_)] = cleanSample(v);
         }
         out[sz(f) * 2] = playing_[sz(pos_)];
         out[sz(f) * 2 + 1] = playing_[sz(partition_ + pos_)];

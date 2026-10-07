@@ -11,29 +11,12 @@
 #include "bambi/decode/decoder.hpp"
 #include "bambi/decode/headmodelfile.hpp"
 #include "doctest.h"
+#include "fixtures.hpp"
 
 using namespace bambi;
+using namespace bambi::test;
 
 namespace {
-std::string readAll(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
-    REQUIRE_MESSAGE(in.good(), "cannot read " << path);
-    std::stringstream s;
-    s << in.rdbuf();
-    return s.str();
-}
-
-const HeadModel& shipped() {
-    static const HeadModel model = [] {
-        HeadModel m;
-        std::string error;
-        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error),
-                        error);
-        return m;
-    }();
-    return model;
-}
-
 /// Filters for `order` at the sliders, from the shipped head on a small grid.
 struct Built {
     BinauralFilterBuilder builder;
@@ -47,14 +30,6 @@ struct Built {
         builder.build(shift, size);
     }
 };
-
-std::vector<float> noise(int channels, int frames, unsigned seed) {
-    std::mt19937 rng(seed);
-    std::uniform_real_distribution<float> u(-1.0f, 1.0f);
-    std::vector<float> x(static_cast<std::size_t>(channels * frames));
-    for (float& v : x) v = u(rng);
-    return x;
-}
 
 /// The direct convolution: out[f][e] = sum over channels and taps, in double.
 std::vector<double> direct(const BinauralFilterBuilder& b, const std::vector<float>& in, int frames) {

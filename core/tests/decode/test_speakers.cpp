@@ -12,44 +12,12 @@
 #include "bambi/decode/speakers.hpp"
 #include "bambi/math/sh.hpp"
 #include "doctest.h"
+#include "fixtures.hpp"
 
 using namespace bambi;
+using namespace bambi::test;
 
 namespace {
-std::string readAll(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
-    REQUIRE_MESSAGE(in.good(), "cannot read " << path);
-    std::stringstream s;
-    s << in.rdbuf();
-    return s.str();
-}
-
-/// The array as the room has it: channel 18 imaginary.
-Layout array16() {
-    Layout l;
-    std::string error;
-    REQUIRE_MESSAGE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error),
-                    error);
-    for (Loudspeaker& s : l.speakers)
-        if (s.channel == 18) s.imaginary = true;
-    return l;
-}
-
-SpeakerDesign design(const Layout& l, int order, Weighting w) {
-    SpeakerDesign d;
-    std::string error;
-    REQUIRE_MESSAGE(designAllrad(l, order, w, d, &error), error);
-    return d;
-}
-
-std::vector<float> noise(int channels, int frames, unsigned seed) {
-    std::mt19937 rng(seed);
-    std::uniform_real_distribution<float> u(-1.0f, 1.0f);
-    std::vector<float> x(static_cast<std::size_t>(channels * frames));
-    for (float& v : x) v = u(rng);
-    return x;
-}
-
 /// What the design says: row times frame, the gain in, delayed by its whole samples, in double.
 std::vector<double> direct(const SpeakerDesign& d, const std::vector<float>& in, int frames, double fs) {
     const int C = numChannels(d.order);

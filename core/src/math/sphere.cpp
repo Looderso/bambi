@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bambi/math/sphere.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace bambi {
@@ -44,6 +45,15 @@ Vec3 slerp(Vec3 a, Vec3 b, double t) {
     if (w < 1e-9) return a;
     const double sw = std::sin(w);
     return unit(a * (std::sin((1.0 - t) * w) / sw) + b * (std::sin(t * w) / sw));
+}
+
+void fibonacciSphere(int count, std::vector<Vec3>& out) {
+    out.resize(static_cast<std::size_t>(std::max(count, 0)));
+    const double turn = kPi * (3.0 - std::sqrt(5.0));
+    for (int i = 0; i < count; ++i) {
+        const double k = i + 0.5, z = 1.0 - 2.0 * k / count, r = std::sqrt(std::max(0.0, 1.0 - z * z)), a = turn * k;
+        out[static_cast<std::size_t>(i)] = {r * std::cos(a), r * std::sin(a), z};
+    }
 }
 
 }  // namespace bambi

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "bambi/decode/layout.hpp"
+#include "bambi/math/sphere.hpp"
 #include "bambi/math/vec3.hpp"
 
 /*  AllRAD: the loudspeaker decoder for a layout, designed from its positions alone. A dense grid of
@@ -44,8 +45,5 @@ struct SpeakerDesign {
 /// (the origin outside the hull), repeats a channel, or holds no real loudspeaker.
 bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerDesign& out,
                   std::string* error = nullptr);
-
-/// `count` directions spread evenly over the sphere (a Fibonacci spiral), the grid the design and its checks use.
-void fibonacciSphere(int count, std::vector<Vec3>& out);
 
 }  // namespace bambi

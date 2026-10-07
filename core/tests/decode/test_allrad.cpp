@@ -13,38 +13,16 @@
 #include "bambi/math/sh.hpp"
 #include "bambi/patch/json.hpp"
 #include "doctest.h"
+#include "fixtures.hpp"
 
 using namespace bambi;
+using namespace bambi::test;
 
 /*  The array on hand (array16.json, an IEM AllRADecoder file: 17 loudspeakers on channels 1-3 and 5-18, the file's
  *  own order-5 N3D matrix) and what the prototype prototypes/decoder/listen/build-array.py designed for it
  *  (array16-reference.json: orders 1-3, max-rE, SN3D, energy 1, channel 18 imaginary). The file marks channel 18,
  *  straight below, as a real loudspeaker; the room has none there, so the design treats it as imaginary. */
 namespace {
-std::string readAll(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
-    REQUIRE_MESSAGE(in.good(), "cannot read " << path);
-    std::stringstream s;
-    s << in.rdbuf();
-    return s.str();
-}
-
-const Json& arrayFile() {
-    static const Json f = Json::parse(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"));
-    return f;
-}
-
-/// The array as the room has it: channel 18 imaginary.
-Layout array16() {
-    Layout l;
-    std::string error;
-    REQUIRE_MESSAGE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error),
-                    error);
-    for (Loudspeaker& s : l.speakers)
-        if (s.channel == 18) s.imaginary = true;
-    return l;
-}
-
 Loudspeaker at(double az, double el, int channel, double r = 1.0, bool imaginary = false) {
     Loudspeaker s;
     s.azimuthDeg = az;
@@ -61,13 +39,6 @@ Layout itu470() {
     l.speakers = {at(0, 0, 1),    at(30, 0, 2),  at(-30, 0, 3),   at(90, 0, 5),    at(-90, 0, 6),   at(135, 0, 7),
                   at(-135, 0, 8), at(45, 30, 9), at(-45, 30, 10), at(135, 30, 11), at(-135, 30, 12)};
     return l;
-}
-
-SpeakerDesign design(const Layout& l, int order, Weighting w) {
-    SpeakerDesign d;
-    std::string error;
-    REQUIRE_MESSAGE(designAllrad(l, order, w, d, &error), error);
-    return d;
 }
 
 /// The loudspeaker gains a plane wave from t gets.

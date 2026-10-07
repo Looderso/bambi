@@ -13,7 +13,7 @@ TEST_CASE("the BS.2051 layouts are there by name, channels as the recommendation
     CHECK(bs2051Layout("5.1") == nullptr);
     const Layout* five = bs2051Layout("0+5+0");
     REQUIRE(five != nullptr);
-    REQUIRE(five->speakers.size() == 5);  // six channels, the fourth the LFE
+    REQUIRE(five->speakers.size() == 5);           // six channels, the fourth the LFE
     CHECK(five->speakers[0].azimuthDeg == 30.0);   // L
     CHECK(five->speakers[1].azimuthDeg == -30.0);  // R
     CHECK(five->speakers[2].azimuthDeg == 0.0);    // C

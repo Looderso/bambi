@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "bambi/dsp/guard.hpp"
 #include "bambi/echo/timing.hpp"
 #include "bambi/math/sh.hpp"
 
@@ -12,7 +13,6 @@ namespace {
 
 constexpr float kRingLimit = 1.0e4f;   // +80 dBFS: a loop that grows is held here, and counted
 constexpr float kRingTiny = 1.0e-15f;  // below this the ring holds exact silence
-constexpr float kInputLimit = 1.0e6f;
 
 //  What may go round a loop: finite, bounded, and not denormal. Written as selects because
 //  std::max and std::clamp pass a NaN through.
@@ -141,7 +141,7 @@ void EchoEngine::process(const float* in, float* out, int frames) noexcept {
         const float* src = in + static_cast<std::size_t>(done) * static_cast<std::size_t>(C);
         for (int i = 0; i < n * C; ++i) {
             const float v = src[i];
-            clean_[static_cast<std::size_t>(i)] = (v == v && std::abs(v) < kInputLimit) ? v : 0.0f;
+            clean_[static_cast<std::size_t>(i)] = cleanSample(v);
         }
         send_.apply(clean_.data(), sent_.data(), n);
         if (!sendAmount_.holds(1.0))

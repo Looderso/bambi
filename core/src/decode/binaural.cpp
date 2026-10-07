@@ -75,21 +75,6 @@ void invertSpd(std::vector<double>& g, int n) {
 }
 }  // namespace
 
-void quadratureGrid(int rings, int azimuths, std::vector<Vec3>& directions, std::vector<double>& weights) {
-    std::vector<double> z, wz;
-    gaussLegendre(rings, z, wz);  // nodes in [-1, 1], weights summing to 2
-    directions.clear();
-    weights.clear();
-    for (int i = 0; i < rings; ++i) {
-        const double r = std::sqrt(std::max(0.0, 1.0 - z[sz(i)] * z[sz(i)]));
-        for (int j = 0; j < azimuths; ++j) {
-            const double phi = 2.0 * kPi * j / azimuths;
-            directions.push_back({r * std::cos(phi), r * std::sin(phi), z[sz(i)]});
-            weights.push_back(wz[sz(i)] / 2.0 / azimuths);
-        }
-    }
-}
-
 bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& design,
                                     std::span<const Vec3> directions, std::span<const double> weights) {
     design_ = design;

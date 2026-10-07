@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "bambi/dsp/guard.hpp"
+#include "bambi/dsp/ramp.hpp"
 #include "bambi/math/sh.hpp"
 
 namespace bambi {
@@ -115,16 +117,14 @@ void SpeakerRenderer::process(const float* in, int inChannels, float* out, int o
         }
         mix(*live_, x, inChannels, yLive_.data());
         const bool fading = fading_;
-        const float t = !fading        ? 1.0f
-                        : fadePos_ < 0 ? 0.0f
-                                       : static_cast<float>(fadePos_ + 1) / static_cast<float>(fade_);
+        const float t = !fading ? 1.0f : fadePos_ < 0 ? 0.0f : static_cast<float>(rampWeight(fadePos_ + 1, fade_));
         if (fading) mix(leaving_, x, inChannels, yLeave_.data());
         for (int k = 0; k < maxOutputs_; ++k) {
             const float v = yLive_[sz(k)], w = fading ? yLeave_[sz(k)] : v;
             float* live = ringLive_.data() + sz(k) * sz(ringLength_);
             float* leave = ringLeave_.data() + sz(k) * sz(ringLength_);
-            live[write_] = (v == v && std::abs(v) < 1.0e6f) ? v : 0.0f;
-            leave[write_] = (w == w && std::abs(w) < 1.0e6f) ? w : 0.0f;
+            live[write_] = cleanSample(v);
+            leave[write_] = cleanSample(w);
             float heard = live[(write_ - live_->delay[sz(k)]) & mask];
             if (fading) heard = leave[(write_ - leaving_.delay[sz(k)]) & mask] * (1.0f - t) + heard * t;
             if (k < outChannels) o[k] = heard;

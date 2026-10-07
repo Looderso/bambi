@@ -10,31 +10,14 @@
 #include "bambi/math/sh.hpp"
 #include "bambi/patch/json.hpp"
 #include "doctest.h"
+#include "fixtures.hpp"
 
 using namespace bambi;
+using namespace bambi::test;
 
 /*  The reference is prototypes/decoder/sheets/check-filters.py: the same design in numpy, with numpy's own
  *  eigenvalues, SVD and pseudo-inverse where the core has closed forms. Its filters are in filters-fixture.json. */
 namespace {
-std::string readAll(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
-    REQUIRE_MESSAGE(in.good(), "cannot read " << path);
-    std::stringstream s;
-    s << in.rdbuf();
-    return s.str();
-}
-
-const HeadModel& shipped() {
-    static const HeadModel model = [] {
-        HeadModel m;
-        std::string error;
-        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error),
-                        error);
-        return m;
-    }();
-    return model;
-}
-
 const Json& fixture() {
     static const Json f = Json::parse(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/filters-fixture.json"));
     return f;

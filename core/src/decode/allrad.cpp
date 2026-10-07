@@ -36,11 +36,6 @@ constexpr double kGainSlack = 1e-9;  // a panning gain this far below zero still
 
 std::size_t sz(int n) { return static_cast<std::size_t>(n); }
 
-Vec3 directionOf(const Loudspeaker& s) {
-    const double az = s.azimuthDeg * kDeg2Rad, el = s.elevationDeg * kDeg2Rad;
-    return {std::cos(el) * std::cos(az), std::cos(el) * std::sin(az), std::sin(el)};
-}
-
 /// One hull face, ready to pan: gains for p are (p . n0, p . n1, p . n2) / det. A corner at or past `points.size()`
 /// is the centre of a coplanar group of faces: its gain is shared equally by that polygon's corners.
 struct Face {
@@ -148,15 +143,6 @@ void normaliseEnergy(std::vector<double>& d, int speakers, const std::vector<boo
 }
 }  // namespace
 
-void fibonacciSphere(int count, std::vector<Vec3>& out) {
-    out.resize(sz(count));
-    const double turn = kPi * (3.0 - std::sqrt(5.0));
-    for (int i = 0; i < count; ++i) {
-        const double k = i + 0.5, z = 1.0 - 2.0 * k / count, r = std::sqrt(std::max(0.0, 1.0 - z * z)), a = turn * k;
-        out[sz(i)] = {r * std::cos(a), r * std::sin(a), z};
-    }
-}
-
 bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerDesign& out, std::string* error) {
     out = SpeakerDesign{};
     if (order < 1 || order > kMaxOrder) return fail(error, "order out of range");
@@ -177,7 +163,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
     if (realCount == 0) return fail(error, "no real loudspeaker");
 
     for (const Loudspeaker& s : speakers) {
-        out.points.push_back(directionOf(s));
+        out.points.push_back(fromAzEl(s.azimuthDeg * kDeg2Rad, s.elevationDeg * kDeg2Rad));
         out.imaginary.push_back(s.imaginary);
     }
     const double ringZ = std::sin(kRingDeg * kDeg2Rad);

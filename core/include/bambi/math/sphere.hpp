@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include <vector>
+
 #include "bambi/math/vec3.hpp"
 
 namespace bambi {
@@ -23,5 +25,9 @@ Vec3 rotateAToB(Vec3 v, Vec3 a, Vec3 b);
 
 /// Spherical linear interpolation between unit vectors.
 Vec3 slerp(Vec3 a, Vec3 b, double t);
+
+/// `count` directions spread evenly over the sphere, a Fibonacci lattice: z steps evenly, the azimuth turns by the
+/// golden angle. Neither crowds the poles nor thins the equator, so "in every direction" means something.
+void fibonacciSphere(int count, std::vector<Vec3>& out);
 
 }  // namespace bambi
