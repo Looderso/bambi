@@ -714,10 +714,27 @@ centres move by 0.11–0.15 ERB and its depths by 0.4–0.8 dB; only the third n
 in front). Scored on the 280 SONICOM heads it never saw, the template finds 42 % of their dips and is right in 53 % —
 as the all-databases template does on its own held-out heads (44 %, 60 %). **The model does not hang on SONICOM.**
 
-**The databases sit at different notch frequencies**: fitted to one template, HUTUBS's heads shift by +0.25 ERB
-(median), SONICOM's by +0.27 and 3D3A's by −0.71 (−0.53 without SONICOM in the template). A database's offset in the
-notches' place, as [0166](../DECISIONS.md) found in the other parts — the ear slider absorbs it head by head, but the
-population's "zero" is a mixture of databases. Not taken out yet.
+**The databases sit at different notch frequencies, and that offset is out too.** Fitted to one template, a
+database's heads sit at a median shift of their own: against the mean of the three databases, HUTUBS +0.25 ERB, 3D3A
+−0.75, SONICOM +0.50 — the same kind of offset [0166](../DECISIONS.md) took out of the other parts. Not in depth or
+width: a database's heads are 0.94–1.07 times as deep as the template and 0.99–1.01 times as wide. `honest.js` now
+takes the medians per database each turn (shift, depth factor, width factor, against the mean of the databases'),
+recentres the template so that its zero is the mean of the databases, normalises depths and widths by the factors,
+and stores a head's shift with its database's offset out (`offsets` in the template's file). The template's shape
+hardly moves — each head was aligned on its own already — but its zero is no longer the biggest database's, and the
+spread of the heads' shifts is the people's (± 0.54–0.81 ERB a database). Learned from HUTUBS and 3D3A alone the
+offsets are ± 0.49, and the template's notches sit 0.3–0.4 kHz lower in front (7.0, 9.2 and 13.7 kHz).
+
+**A notch fades in with its presence** (0.25 → 0.55, a smoothstep; `fade` in the template's file) instead of
+appearing at a threshold of 0.4: nothing switches when a source moves. The template then plays 2.2 notches a
+direction (1.7 before), finds 50 % of the heads' dips (44 %) and is right under 53 % of its notches (60 %) — shallow
+notches where a third of the heads have one.
+
+**The listening page, lean**: five versions — the listener measured, the listener from its own numbers, the KU100,
+nobody's head without notches, nobody's head with the two sliders — the two sliders and the notches' depth, a switch
+between the model learned from all three databases and from HUTUBS and 3D3A, the fitted settings on a button. The
+timbre is the KU100's throughout; the sharpness, the ILD's blur and order, the ITD's order, the surfaces' preset and
+the older templates are gone from it, decided ([0167](../DECISIONS.md), [0168](../DECISIONS.md)).
 
 ## 8. Next
 

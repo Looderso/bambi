@@ -6,7 +6,11 @@
 // symmetric. Four turns: each head's one shift is the median of how far its dips sit from the template notches they
 // lie nearest (within 0.75 ERB; a shallow dip counts for less), the shift first found by a scan; then, the shifts taken out, each notch's centre and
 // width are fitted to the dips given to it, its depth to those dips alone — where a head has the notch, how deep it is
-// — and its presence to every direction, 1 where a head has it and 0 where not. Learned from half of the people.
+// — and its presence to every direction, 1 where a head has it and 0 where not. Learned from half of the people. A
+// database's own offset is taken out first: the median over its heads of the shift, of the depth against the template
+// and of the width against it, each against the mean of the databases' — the template's zero is the mean of the
+// databases, and its depths and widths are theirs, not the biggest database's. A notch fades in with its presence,
+// from 0.25 to 0.55, instead of appearing at a threshold.
 //
 // Scored on the others, against the measured CLLs: the deepest notch a direction (below the 3-ERB blur) and its width
 // at half depth, measured and from the template with the heads' shifts; of the heads' dips deeper than 3 dB, the share
@@ -23,7 +27,8 @@ const here = f => path.join(__dirname, f);
 const lab = new Function(["../common.js", "lab.js"].map(f => fs.readFileSync(here(f), "utf8")).join("\n")
   + "\nreturn { parseHead, analyse, fitted, tracksOf, backToInput, targetOf, bumps, blur, costOf, shN, solve, setShape, NOTCHES, E0, STEP, LO, HI, NF };")();
 const SHAPE = process.argv[2] === "child" ? process.argv[3] : (process.argv[5] || "peak"); lab.setShape(SHAPE);
-const NOTCHES = 3, ORDER = 6, COEF = (ORDER + 1) ** 2, PRESENT = 0.4;
+const NOTCHES = 3, ORDER = 6, COEF = (ORDER + 1) ** 2, FADE = [0.25, 0.55], SETS = ["HUTUBS", "3D3A", "SONICOM"];
+const fadeOf = p => { const t = Math.max(0, Math.min(1, (p - FADE[0]) / (FADE[1] - FADE[0]))); return t * t * (3 - 2 * t); };
 const at = (coef, y) => { let v = 0; for (let p = 0; p < coef.length; p++) v += y[p] * coef[p]; return v; }, mirror = ([x, y, z]) => [x, -y, z];
 const median = v => { const s = [...v].sort((a, b) => a - b); return s.length ? s[s.length >> 1] : NaN; };
 
@@ -45,7 +50,7 @@ if (process.argv[2] === "child") {
     const offs = []; given(h, maps, best).forEach((got, d) => got.forEach((p, k) => { if (!p) return; const n = Math.round(Math.min(3, -p[1] / 3)); for (let i = 0; i < n; i++) offs.push(p[0] - maps[k].c[d]); }));
     return offs.length ? median(offs) : best; }
   // The template's dips on a head, with its shift and depth factor, where the template has the notch.
-  const dipsOf = (maps, shift, gain, sharp, d) => maps.map(m => m.p[d] < PRESENT || m.a[d] * gain > -0.5 ? null : [Math.max(lo, Math.min(hi, m.c[d] + shift)), Math.max(-60, m.a[d] * gain * sharp), Math.max(0.08, m.w[d] / sharp)]).filter(Boolean);
+  const dipsOf = (maps, shift, gain, sharp, d) => maps.map(m => { const a = m.a[d] * gain * fadeOf(m.p[d]); return a > -0.5 ? null : [Math.max(lo, Math.min(hi, m.c[d] + shift)), Math.max(-60, a * sharp), Math.max(0.08, m.w[d] / sharp)]; }).filter(Boolean);
   const notchOf = x => { const b = lab.blur(x, 3); let at = lab.NOTCHES[0], deep = 0; for (const k of lab.NOTCHES) if (x[k] - b[k] < deep) { deep = x[k] - b[k]; at = k; }
     let l = at, r = at; while (l > 0 && x[l] - b[l] < deep / 2) l--; while (r < x.length - 1 && x[r] - b[r] < deep / 2) r++; return [deep, (r - l) * lab.STEP]; };
   process.on("message", msg => {
@@ -55,14 +60,18 @@ if (process.argv[2] === "child") {
         heads.push({ e, H, xs: keep.xs, dips: final.map(p => p.filter(q => q && q[1] <= -1.5)), measured: keep.xs.map(notchOf) }); }
       return process.send({ loaded: heads.length }); }
     const T = msg.template;
-    return process.send(heads.map(h => { const maps = onHead(h, T), shift = fitShift(h, maps), got = given(h, maps, shift);
-      const ratios = []; got.forEach((g, d) => g.forEach((p, k) => { if (p && maps[k].a[d] < -1) ratios.push(p[1] / maps[k].a[d]); }));
-      const gain = ratios.length ? median(ratios) : 1, out = { shift, gain };
-      if (msg.sums) {                                                     // what this head gives the template: least-squares sums, the mirror image with it
+    return process.send(heads.map(h => {
+      if (!h.cache || h.cache.turn !== msg.turn) {                       // fitted once a turn; the sums come in a second message
+        const maps = onHead(h, T), shift = fitShift(h, maps), got = given(h, maps, shift), ratios = [], widths = [];
+        got.forEach((g, d) => g.forEach((p, k) => { if (p && maps[k].a[d] < -1) { ratios.push(p[1] / maps[k].a[d]); widths.push(p[2] / maps[k].w[d]); } }));
+        h.cache = { turn: msg.turn, maps, shift, got, gain: ratios.length ? median(ratios) : 1, width: widths.length ? median(widths) : 1 }; }
+      const { maps, shift, got, gain, width } = h.cache, out = { shift, gain, width };
+      if (msg.sums) {                                                     // what this head gives the template: least-squares sums, the mirror image with it; its database's offsets out
+        const c = (msg.correct || {})[h.e.set] || { depth: 1, width: 1 };
         const s = T.map(() => ({ Mc: new Float64Array(COEF * COEF), bc: new Float64Array(COEF), bw: new Float64Array(COEF), Ma: new Float64Array(COEF * COEF), ba: new Float64Array(COEF), Mp: new Float64Array(COEF * COEF), bp: new Float64Array(COEF) }));
         h.H.xyz.forEach((v, d) => { for (const u of [v, mirror(v)]) { const y = lab.shN(ORDER, ...u);
           T.forEach((_, k) => { const q = s[k], p = got[d][k], weight = p ? Math.min(1, -p[1] / 6) : 0;
-            for (let a = 0; a < COEF; a++) { q.bp[a] += y[a] * (p ? 1 : 0); if (p) { q.bc[a] += weight * y[a] * (p[0] - shift); q.bw[a] += weight * y[a] * p[2]; q.ba[a] += y[a] * p[1]; }
+            for (let a = 0; a < COEF; a++) { q.bp[a] += y[a] * (p ? 1 : 0); if (p) { q.bc[a] += weight * y[a] * (p[0] - shift); q.bw[a] += weight * y[a] * p[2] / c.width; q.ba[a] += y[a] * p[1] / c.depth; }
               for (let b = 0; b <= a; b++) { q.Mp[a * COEF + b] += y[a] * y[b]; if (p) { q.Mc[a * COEF + b] += weight * y[a] * y[b]; q.Ma[a * COEF + b] += y[a] * y[b]; } } } }); } });
         out.sums = s.map(q => Object.fromEntries(Object.entries(q).map(([k, v]) => [k, Array.from(v)]))); }
       if (msg.score) { const dirs = h.xs.map((_, d) => d), deep = [], blurred = [], plain = [], read = []; let own = 0, found = 0, claimed = 0, right = 0, sharpOk = 0;
@@ -94,20 +103,27 @@ if (process.argv[2] === "child") {
   // The first template: the ladder's centres, a width of 0.3 ERB, a depth of 8 dB, present everywhere.
   const first = JSON.parse(fs.readFileSync(path.join(ladderFolder, "ladder.json"), "utf8")).template.slice(0, NOTCHES)
     .map(t => ({ centre: t.centre, width: [0.3, ...Array(COEF - 1).fill(0)], depth: [-8, ...Array(COEF - 1).fill(0)], presence: null }));
-  let template = first, result;
+  let template = first, result, offsets = {};
+  // A database's offsets: the medians over its learnt heads of shift, depth factor and width factor, against the mean of the databases'.
+  const offsetsOf = res => { const sets = SETS.filter(s => !skip.includes(s)), med = {};
+    for (const set of sets) { const own = res.filter((r, k) => isLearnt(index[k]) && index[k].set === set); med[set] = { shift: median(own.map(r => r.shift)), depth: median(own.map(r => r.gain)), width: median(own.map(r => r.width)) }; }
+    const mean = key => sets.reduce((t, s) => t + med[s][key], 0) / sets.length;
+    return Object.fromEntries(sets.map(s => [s, { shift: med[s].shift - mean("shift"), depth: med[s].depth / mean("depth"), width: med[s].width / mean("width"), zero: mean("shift") }])); };
   for (let turn = 0; turn < 5; turn++) {
-    const last = turn === 4; result = spread(await ask(() => ({ template, sums: !last, score: last })));
+    const last = turn === 4; result = spread(await ask(() => ({ template, turn, score: last })));
+    offsets = offsetsOf(result);
     if (last) break;
-    const total = template.map(() => null);
-    result.forEach((r, k) => { if (!isLearnt(index[k])) return; r.sums.forEach((q, j) => { if (!total[j]) { total[j] = q; return; } for (const key of Object.keys(q)) for (let a = 0; a < q[key].length; a++) total[j][key][a] += q[key][a]; }); });
+    const sums = spread(await ask(() => ({ template, turn, sums: true, correct: offsets }))), total = template.map(() => null);
+    sums.forEach((r, k) => { if (!isLearnt(index[k])) return; r.sums.forEach((q, j) => { if (!total[j]) { total[j] = q; return; } for (const key of Object.keys(q)) for (let a = 0; a < q[key].length; a++) total[j][key][a] += q[key][a]; }); });
     template = total.map(q => ({ centre: solved(q.Mc, q.bc), width: solved(q.Mc, q.bw), depth: solved(q.Ma, q.ba), presence: solved(q.Mp, q.bp) }));
-    console.log(`turn ${turn + 1}: the heads' shifts spread by ${Math.sqrt(result.filter((_, k) => isLearnt(index[k])).reduce((t, r) => t + r.shift ** 2, 0) / result.length).toFixed(2)} ERB, ${minutes()} min`);
+    template.forEach(t => { t.centre[0] += Object.values(offsets)[0].zero; });   // the template's zero: the mean of the databases' medians
+    console.log(`turn ${turn + 1}: the databases' shift offsets ` + Object.entries(offsets).map(([s, o]) => `${s} ${o.shift >= 0 ? "+" : ""}${o.shift.toFixed(2)}`).join(", ") + ` ERB; depth factors ` + Object.entries(offsets).map(([s, o]) => `${s} ${o.depth.toFixed(2)}`).join(", ") + `; width ` + Object.entries(offsets).map(([s, o]) => `${s} ${o.width.toFixed(2)}`).join(", ") + `, ${minutes()} min`);
   }
   children.forEach(c => c.kill());
   const others = result.filter((r, k) => !isLearnt(index[k])), med = key => median(others.map(r => r.score[key]));
   console.log(`\nOn the ${others.length} heads of the people not learned from` + (skip.length ? ` (learned without ${skip.join(", ")})` : "") + ":");
   for (const set of ["HUTUBS", "3D3A", "SONICOM"]) { const own = result.filter((r, k) => !isLearnt(index[k]) && index[k].set === set), m = key => median(own.map(r => r.score[key]));
-    console.log(`  ${set.padEnd(8)} ${own.length} heads: deepest notch ${m("depth").toFixed(1)} dB (measured ${m("measuredDepth").toFixed(1)}), deeper than 6 dB ${Math.round(100 * m("deep6"))} % (${Math.round(100 * m("measuredDeep6"))} %), found ${Math.round(100 * m("found"))} %, right ${Math.round(100 * m("right"))} %, shift spread ${Math.sqrt(own.reduce((t, r) => t + r.shift ** 2, 0) / own.length).toFixed(2)} ERB`); }
+    console.log(`  ${set.padEnd(8)} ${own.length} heads: deepest notch ${m("depth").toFixed(1)} dB (measured ${m("measuredDepth").toFixed(1)}), deeper than 6 dB ${Math.round(100 * m("deep6"))} % (${Math.round(100 * m("measuredDeep6"))} %), found ${Math.round(100 * m("found"))} %, right ${Math.round(100 * m("right"))} %, shifts ${median(own.map(r => r.shift)) >= 0 ? "+" : ""}${median(own.map(r => r.shift)).toFixed(2)} ± ${Math.sqrt(own.reduce((t, r) => t + (r.shift - median(own.map(q => q.shift))) ** 2, 0) / own.length).toFixed(2)} ERB`); }
   console.log(`  a direction's deepest notch: measured ${med("measuredDepth").toFixed(1)} dB deep, ${med("measuredWidth").toFixed(2)} ERB wide at half depth, deeper than 6 dB in ${Math.round(100 * med("measuredDeep6"))} % of the directions`);
   console.log(`  the template's, each head with its shift:  ${med("depth").toFixed(1)} dB, ${med("width").toFixed(2)} ERB, ${Math.round(100 * med("deep6"))} %`);
   console.log(`  of the heads' dips deeper than 3 dB, found by a template notch within 0.5 ERB: ${Math.round(100 * med("found"))} %; of the template's notches, with such a dip: ${Math.round(100 * med("right"))} % (it plays ${med("claimedPerDirection").toFixed(2)} notches a direction)`);
@@ -115,6 +131,6 @@ if (process.argv[2] === "child") {
   const front = lab.shN(ORDER, 1, 0, 0);
   console.log("  the template in front: " + template.map(t => `${((10 ** (at(t.centre, front) / 21.4) - 1) / 0.00437 / 1000).toFixed(1)} kHz, ${at(t.depth, front).toFixed(1)} dB, ${at(t.width, front).toFixed(2)} ERB, present in ${Math.round(100 * at(t.presence, front))} %`).join(" · "));
   fs.mkdirSync(out, { recursive: true });
-  fs.writeFileSync(path.join(out, `honest${SHAPE === "peak" ? "" : "-" + SHAPE}${tag}.json`), JSON.stringify({ order: ORDER, present: PRESENT, shape: SHAPE, learnedFrom: [...new Set(index.filter(isLearnt).map(h => h.set))], template, heads: index.map((h, k) => ({ set: h.set, name: h.name, ear: h.ear, learned: isLearnt(h), shift: result[k].shift, gain: result[k].gain })) }));
+  fs.writeFileSync(path.join(out, `honest${SHAPE === "peak" ? "" : "-" + SHAPE}${tag}.json`), JSON.stringify({ order: ORDER, fade: FADE, shape: SHAPE, offsets, learnedFrom: [...new Set(index.filter(isLearnt).map(h => h.set))], template, heads: index.map((h, k) => ({ set: h.set, name: h.name, ear: h.ear, learned: isLearnt(h), shift: result[k].shift - ((offsets[h.set] || {}).shift || 0), gain: result[k].gain / ((offsets[h.set] || {}).depth || 1) })) }));
   console.log(`\nwrote ${path.join(out, `honest${SHAPE === "peak" ? "" : "-" + SHAPE}${tag}.json`)}, ${minutes()} min`);
 })();

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>bambi · Decoder · Nobody's head and the ear slider</title>
+<title>bambi · Decoder · Nobody's head and two sliders</title>
 <link rel="stylesheet" href="../common.css">
 <style>
   .cols{display:grid;gap:12px;min-width:0;min-height:0;grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -14,39 +14,34 @@
 <body>
 <div id="app">
   <div id="stage">
-    <div class="viewbox"><canvas id="cvMap"></canvas><span class="vlabel">the place · every dot a measured direction · click one · left on the left, front in the middle</span></div>
+    <div class="viewbox"><canvas id="cvMap"></canvas><span class="vlabel">the place · every dot a measured direction of the listener · click one · left on the left, front in the middle</span></div>
     <div class="cols">
-      <div class="viewbox"><canvas id="cvL"></canvas><span class="vlabel" id="lL">left ear · dB · measured black, what plays orange</span></div>
+      <div class="viewbox"><canvas id="cvL"></canvas><span class="vlabel">left ear · dB · the listener measured black, what plays orange</span></div>
       <div class="viewbox"><canvas id="cvR"></canvas><span class="vlabel">right ear</span></div>
     </div>
   </div>
   <div id="panel">
-    <h1>Decoder · Nobody's head and the ear slider</h1>
+    <h1>Decoder · Nobody's head and two sliders</h1>
     <div class="row"><button id="bStart" class="go">Start audio</button></div>
-    <p class="note">The head selected below is the listener: its measurement is the truth. Against it: the KU100, and
-      nobody's head — the population's average of every part, with the ear slider for its notches. Nothing in nobody's
-      head comes from the listener. Does a sound sit where the listener's own head puts it?</p>
+    <p class="note">The head selected is the listener: its measurement is the truth. Against it, the KU100 and nobody's
+      head — the population's parts, the KU100's timbre, and two sliders. Nothing in nobody's head comes from the
+      listener. Does a sound sit where the listener's own head puts it?</p>
 
-    <h2>LISTEN <kbd>1</kbd>–<kbd>9</kbd> · <kbd>space</kbd> the one before</h2>
+    <h2>LISTEN <kbd>1</kbd>–<kbd>5</kbd> · <kbd>space</kbd> the one before</h2>
     <div class="row" id="versions"></div>
     <pre id="info"></pre>
 
-    <h2>THE HEAD SLIDER <kbd>4</kbd> <kbd>5</kbd></h2>
-    <p class="note">A wider or a narrower head: the slider scales nobody's ITD, and the ILD below 1.5 kHz goes with it the way
-      it does over the heads — above, the ILD does not follow a head's size and stays the population's. The smooth CLL
-      stays too. It leaves 21 µs of the ITD's 34, and 0.88 dB of the low ILD's 1.01.</p>
-    <div id="headSlider"></div>
+    <h2>THE MODEL</h2>
+    <div class="sub note">learned from</div>
+    <div class="seg" id="segModel"></div>
+    <p class="note">All three databases, or HUTUBS and 3D3A alone — the licence of the SONICOM data is unclear. Both are
+      nobody's head and the template; switch while a sound plays.</p>
 
-    <h2>THE EAR SLIDER <kbd>5</kbd> <kbd>6</kbd></h2>
-    <div class="sub note">the template</div>
-    <div class="seg" id="segKind"></div>
-    <p class="note" id="kindNote"></p>
-    <p class="note">One template of three notches, the same for every head, learned from half of the people. The slider
-      shifts all three along frequency: up for a smaller ear, down for a larger one. Find the place where the sound sits
-      as it does measured — then see what the fit against the listener's spectra says (it was fitted on the
-      listener's own smooth part, version 6). Depth and sharpness act on versions 5 and 6 too: the template's notches
-      are about half as deep and twice as wide as measured ones.</p>
-    <div id="earCtl"></div>
+    <h2>THE SLIDERS <kbd>4</kbd> <kbd>5</kbd></h2>
+    <p class="note">The head: a wider or a narrower head — the ITD scaled, the ILD below 1.5 kHz going with it. The ear:
+      the template's three notches shifted along frequency, up for a smaller ear. Find where the sound sits as it does
+      measured — then see what the fit against the listener's own spectra says.</p>
+    <div id="sliders"></div>
     <div class="row"><button id="bReveal">show the fitted settings</button></div>
     <pre id="reveal"></pre>
 
@@ -54,22 +49,11 @@
     <p class="note" id="place"></p>
     <div class="row"><button id="bRing">walk the horizon</button><button id="bOver">walk over the top</button></div>
 
-    <h2>TIMBRE</h2>
-    <p class="note">A head's timbre is its CLL's mean over the sphere. The KU100's is flat within 3 dB — noise from all
-      around sounds like noise; a measured head's has the ear's own bump at 4 kHz and falls towards 16 kHz. With the
-      KU100's for all, every version takes it in place of its own, and what differs is where a sound sits.</p>
-    <div class="seg" id="segTimbre"></div>
-
     <h2>THE LISTENER</h2>
     <div class="seg" id="segSet"></div>
     <div id="headCtl"></div>
     <div class="seg" id="segEar"></div>
     <p class="note" id="headNote"></p>
-
-    <h2>THE NUMBERS</h2>
-    <div class="sub note">the CLL's notches: surfaces × order, as the search found them</div>
-    <div class="row" id="sizes"></div>
-    <div id="knobs"></div>
     <pre id="numbers"></pre>
 
     <h2>SIGNAL</h2>
@@ -78,61 +62,65 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?20"></script>
+<script src="lab.js?21"></script>
 <script>
-// The listener is the head selected: its measurement is what the others are heard against. Nobody's head is the
-// population's average of every part, with no notches or with the template's and the ear slider — nothing in it comes
-// from the listener. The last four isolate the notches: the listener's own smooth part, ILD and ITD, other notches.
-const VERSIONS = ["the listener, measured", "the listener, all from its own numbers", "the KU100", "nobody's head, no notches", "nobody's head + the ear slider",
-                  "listener's smooth part + the template, the ear slider", "listener's smooth part + the template, its fitted six numbers",
-                  "listener's smooth part, no notches", "listener's smooth part + its own notches"];
-const BY_EYE = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
-const S = { index: null, presets: null, kind: "honest", shift: 0, depth: 2.5, sharp: 1, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0, preset: -1, timbre: "the KU100's for all", P: BY_EYE,
-            ildBlur: 0, ildOrder: 10, itdOrder: 8, ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, generic: null, signal: "bursts", vol: -6 };
+// The listener is the head selected; its measurement is what the others are heard against. Nobody's head is the
+// population's average of every part but the notches, with the KU100's timbre, the template's notches under the ear
+// slider and the ITD (with the low ILD) under the head slider. The listener's own version uses the head's own numbers:
+// its parts as the sheets chain finds them (six surfaces, order 4, the search's settings).
+const VERSIONS = ["the listener, measured", "the listener, all from its own numbers", "the KU100", "nobody's head, no notches", "nobody's head + the two sliders"];
+const MODELS = { all: { template: "template.json", generic: "generic.json", name: "all three databases" }, two: { template: "template-hutubs-3d3a.json", generic: "generic-hutubs-3d3a.json", name: "HUTUBS and 3D3A" } };
+const OWN = { blur: 0.75, sphere: 8, counts: 3, link: 0.6, reach: 12, least: 4, pull: 0.3, bridge: 1.5, surfaces: 6, surfaceOrder: 4, join: 0.5, floor: 1.5 };
+const S = { index: null, presets: null, model: "all", shift: 0, depth: 2.5, size: 1, set: "HUTUBS", number: 0, ear: "left", head: null, ku: null, at: 0,
+            ctx: null, master: null, fade: null, bank: [], src: null, ver: 0, before: 4, signal: "bursts", vol: -6 };
+const ILD_ORDER = 10, ITD_ORDER = 8;                                   // the listener's own patterns, as decided: the ILD not blurred
 
-// ---------- a head: measured here, its notches' numbers from the worker ----------
+// ---------- the models' files ----------
+async function loadModels() {
+  for (const m of Object.values(MODELS)) for (const key of ["template", "generic"]) {
+    try { m[key + "Data"] = await (await fetch("model/" + m[key], { cache: "no-store" })).json(); } catch { m[key + "Data"] = null; } }
+  if (!MODELS.all.templateData || !MODELS.all.genericData) $("reveal").textContent = "no model in model/ — honest.js and generic.js write it";
+}
+const model = () => MODELS[S.model];
+
+// ---------- a head: measured here, its own notches' numbers from the worker ----------
 const inSet = () => S.index.heads.filter(h => h.set === S.set && h.ear === S.ear);
 async function loadHead(entry) {
   const H = parseHead(await (await fetch("heads/" + entry.head)).arrayBuffer(), entry), A = analyse(H, entry.ear === "left" ? 1 : 2), n = H.n;
-  const head = { entry, H, A, n, variant: entry.ear === "left" ? 1 : 2, fit: null, some: [] };
+  const head = { entry, H, A, n, variant: entry.ear === "left" ? 1 : 2, fit: null, some: [], templates: {}, fits: {} };
   for (let d = 0; d < n; d += Math.ceil(n / 1000)) head.some.push(d);
-  // Each template's notches on this head's directions (centre, depth, width, and where it is present), and what was fitted for this head.
-  head.templates = {}; head.fits = {};
-  for (const [kind, T] of Object.entries(TEMPLATES)) { if (!T) continue;
+  // Each model's template on this head's directions: centre, depth, width and presence a notch; and what it fitted for this head.
+  for (const [key, m] of Object.entries(MODELS)) { const T = m.templateData; if (!T) continue;
     const ys = H.xyz.map(v => shN(T.order, ...v)), at = (coef, y) => coef.reduce((t, c, p) => t + c * y[p], 0);
-    head.templates[kind] = T.template.map(t => ({ c: ys.map(y => at(t.centre, y)), a: ys.map(y => Math.min(0, at(t.depth, y))), w: ys.map(y => Math.max(0.1, Math.min(1.5, at(t.width, y)))),
-                                                   p: ys.map(y => t.presence ? at(t.presence, y) : 1) }));
-    const mine = T.heads.find(h => h.set === entry.set && h.name === entry.name && h.ear === entry.ear);
-    head.fits[kind] = mine ? (mine.fit ? { shift: mine.fit.one[0], gain: 1, each: mine.fit } : { shift: mine.shift, gain: mine.gain }) : null; }
+    head.templates[key] = T.template.map(t => ({ c: ys.map(y => at(t.centre, y)), a: ys.map(y => Math.min(0, at(t.depth, y))), w: ys.map(y => Math.max(0.1, Math.min(1.5, at(t.width, y)))), p: ys.map(y => at(t.presence, y)) }));
+    head.fits[key] = T.heads.find(h => h.set === entry.set && h.name === entry.name && h.ear === entry.ear) || null; }
+  head.ildCoef = fitSphere(H, head.some, head.some.map(d => A.ild.subarray(d * NF, (d + 1) * NF).map(v => Math.max(-40, Math.min(40, v)))), ILD_ORDER);
+  head.itdCoef = fitSphere(H, head.some, head.some.map(d => [A.itd[d]]), ITD_ORDER, 1);
   return head;
 }
-const worker = new Worker("worker.js?20");
+const worker = new Worker("worker.js?21");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
-  $("numbers").textContent = "fitting the notches…"; head.fit = null;
-  worker.postMessage({ id: ++asked, file: head.entry.head, ear: head.entry.ear, P: S.P });
+  $("numbers").textContent = "fitting the listener's own notches…"; head.fit = null;
+  worker.postMessage({ id: ++asked, file: head.entry.head, ear: head.entry.ear, P: OWN });
 }
 worker.onmessage = e => {
   const r = e.data, head = S.head; if (r.id !== asked || !head || r.n !== head.n) return;
   head.fit = { ...r, rebuilt: Array.from({ length: r.n }, (_, d) => Array.from({ length: r.places }, (_, k) => { const o = (d * r.places + k) * 3;
     return isNaN(r.rebuilt[o]) ? null : [r.rebuilt[o], r.rebuilt[o + 1], r.rebuilt[o + 2]]; })) };
-  $("numbers").textContent = `the CLL's notches: ${r.sheets} surfaces, ${r.numbers} numbers\nthis head: the smooth part alone leaves ${r.costNone.toFixed(2)} dB, with the surfaces ${r.cost.toFixed(2)} dB`;
+  $("numbers").textContent = `the listener's own notches: ${r.sheets} surfaces, ${r.numbers} numbers; the smooth part alone leaves ${r.costNone.toFixed(2)} dB of its CLL, with the surfaces ${r.cost.toFixed(2)} dB`;
   played = ""; update();
 };
-// The ITD's and the ILD's patterns over the sphere; the ILD blurred along frequency first.
-function patterns(head) {
-  const key = [S.ildBlur, S.ildOrder, S.itdOrder].join();
-  if (head.patternKey !== key) { head.patternKey = key;
-    const ild = d => { const v = head.A.ild.subarray(d * NF, (d + 1) * NF).map(x => Math.max(-40, Math.min(40, x))); return S.ildBlur > 0 ? blur(v, S.ildBlur) : v; };
-    head.ildCoef = fitSphere(head.H, head.some, head.some.map(ild), S.ildOrder);
-    head.itdCoef = fitSphere(head.H, head.some, head.some.map(d => [head.A.itd[d]]), S.itdOrder, 1); }
-  return head;
+
+// ---------- what plays ----------
+// The template's dips in direction d: each notch shifted (ERB), its depth scaled, fading in with its presence.
+function templateDips(head, d, shift, gain) {
+  const T = model().templateData, maps = head.templates[S.model]; if (!T || !maps) return [];
+  const [f0, f1] = T.fade || [T.present - 0.001, T.present];        // a template without a fade: its threshold
+  const fade = p => { const t = Math.max(0, Math.min(1, (p - f0) / (f1 - f0))); return t * t * (3 - 2 * t); };
+  return maps.map(t => { const a = t.a[d] * gain * fade(t.p[d]); return a > -0.5 ? null : [Math.max(E0 + LO * STEP, Math.min(E0 + HI * STEP, t.c[d] + shift)), Math.max(-60, a), t.w[d]]; }).filter(Boolean);
 }
-// The template's dips in direction d, each notch shifted (ERB) and its depth scaled; sharper by a factor, a dip is that
-// much narrower and that much deeper — the same area, as a blur along frequency would leave it.
-const templateDips = (head, d, shift, gain, sharp = 1) => (head.templates[S.kind] || []).map((t, k) => t.p[d] < (TEMPLATES[S.kind].present || 0) || t.a[d] * gain[k] > -0.5 ? null
-  : [Math.max(E0 + LO * STEP, Math.min(E0 + HI * STEP, t.c[d] + shift[k])), Math.max(-60, t.a[d] * gain[k] * sharp), Math.max(0.08, t.w[d] / sharp)]).filter(Boolean);
 // A measured response with another timbre: through a minimum-phase filter of the change (dB on the axis).
 function toned(h, change) {
   const n = 1024, db = new Float64Array(n / 2 + 1);
@@ -143,44 +131,33 @@ function toned(h, change) {
   const out = Float32Array.from(hr.subarray(0, OUT)); for (let k = 0; k < 32; k++) out[OUT - 32 + k] *= Math.cos(k / 32 * Math.PI / 2) ** 2;
   return out;
 }
-// What takes a timbre (a curve on the axis) to the KU100's, both at their own level over 0.3–16 kHz; nothing, if each keeps its own.
+// What takes a timbre (a curve on the axis) to the KU100's, both at their own level over 0.3–16 kHz.
 function toKU100(timbre) {
-  const zero = new Float32Array(NF); if (S.timbre !== "the KU100's for all" || !S.generic || !S.generic.timbreKU100) return zero;
-  const band = inBand(300, 16000), level = band.reduce((t, k) => t + timbre[k], 0) / band.length;
-  return zero.map((_, k) => S.generic.timbreKU100[k] - (timbre[k] - level));
+  const G = model().genericData, band = inBand(300, 16000), level = band.reduce((t, k) => t + timbre[k], 0) / band.length;
+  return timbre.map((v, k) => G.timbreKU100[k] - (v - level));
 }
-// The pairs of responses for direction d (the ones that need the notches' numbers missing until they are there).
+// The five pairs of responses for direction d; the listener's own-numbers version is missing until the worker has fitted it.
 function responses(head, d) {
-  const A = head.A, row = v => v.subarray(d * NF, (d + 1) * NF), ild = row(A.ild).map(x => Math.max(-40, Math.min(40, x))), itd = A.itd[d];
+  const A = head.A, G = model().genericData, row = v => v.subarray(d * NF, (d + 1) * NF), ild = row(A.ild).map(x => Math.max(-40, Math.min(40, x))), itd = A.itd[d];
   const mine = toKU100(A.avg.map((v, k) => v + (head.fit ? head.fit.pattern[k] : 0)));          // the listener's timbre: its average and its pattern's order 0
-  patterns(head);
-  const ildN = onSphere(head.H, head.ildCoef, S.ildOrder, d), itdN = onSphere(head.H, head.itdCoef, S.itdOrder, d, 1)[0];
-  let cllN = null, smooth = null, withDips = () => null;
-  if (head.fit) { const p = onSphere(head.H, head.fit.pattern, 4, d), m = bumps(head.fit.rebuilt[d].filter(Boolean)); cllN = p.map((v, k) => v + m[k] + A.avg[k] + mine[k]);
-    smooth = p.map((v, k) => v + A.avg[k] + mine[k]); withDips = dips => { const b = bumps(dips); return earsOf(smooth.map((v, k) => v + b[k]), ild, itd); }; }
-  const have = !!head.templates[S.kind], mine6 = have && S.kind === "ladder" && head.fits.ladder && head.fits.ladder.each;
-  if (have) setShape(TEMPLATES[S.kind].shape || "bell");            // the template's dips in the shape it was learned with; the head's own are bells
-  const slider = have && withDips(templateDips(head, d, [S.shift, S.shift, S.shift], [S.depth, S.depth, S.depth], S.sharp));
-  const six = mine6 ? withDips(templateDips(head, d, mine6.shift, mine6.gain)) : null;
-  setShape("bell");
-  const raw = [ear(head.H, head.variant, d, 0), ear(head.H, head.variant, d, 1)], own = mine.some(v => v) ? raw.map(h => toned(h, mine)) : raw, energy = pair => pair.reduce((t, h) => t + h.reduce((u, v) => u + v * v, 0), 0);
+  const raw = [ear(head.H, head.variant, d, 0), ear(head.H, head.variant, d, 1)], own = raw.map(h => toned(h, mine));
+  let ownNumbers = null;
+  if (head.fit) { const p = onSphere(head.H, head.fit.pattern, 4, d), m = bumps(head.fit.rebuilt[d].filter(Boolean));
+    ownNumbers = earsOf(p.map((v, k) => v + m[k] + A.avg[k] + mine[k]), onSphere(head.H, head.ildCoef, ILD_ORDER, d), onSphere(head.H, head.itdCoef, ITD_ORDER, d, 1)[0]); }
+  // Nobody's head: the population's pattern with the KU100's timbre; the ITD scaled and the low ILD with it; the template's notches.
+  const p = onSphere(head.H, G.pattern, 4, d), theirs = toKU100(G.average.map((v, k) => v + G.pattern[k])), base = p.map((v, k) => v + G.average[k] + theirs[k]);
+  const withSize = onSphere(head.H, G.ildWithSize, G.ildOrder, d), ildG = onSphere(head.H, G.ild, G.ildOrder, d).map((v, k) => v + (S.size - 1) * withSize[k]), itdG = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0] * S.size;
+  setShape(model().templateData.shape || "bell"); const notches = bumps(templateDips(head, d, S.shift, S.depth)); setShape("bell");
+  const k = S.ku && nearest(S.ku, head.H.xyz[d])[0], energy = pair => pair.reduce((t, h) => t + h.reduce((u, v) => u + v * v, 0), 0);
   const level = pair => { if (!pair) return null; const g = Math.sqrt(energy(own) / energy(pair)); return pair.map(h => h.map(v => v * g)); };   // as loud as the measured pair
-  const k = S.ku && nearest(S.ku, head.H.xyz[d])[0];                   // the KU100's nearest direction
-  let nobody = null, nobodyEar = null;                                 // nobody's head: the population's parts, the template's notches
-  if (S.generic) { const G = S.generic, p = onSphere(head.H, G.pattern, 4, d), theirs = toKU100(G.average.map((v, k) => v + G.pattern[k])), base = p.map((v, k) => v + G.average[k] + theirs[k]);
-    const withSize = onSphere(head.H, G.ildWithSize, G.ildOrder, d);     // the head slider: the ITD scaled, the ILD below 1.5 kHz going with it
-    const ildG = onSphere(head.H, G.ild, G.ildOrder, d).map((v, k) => v + (S.size - 1) * withSize[k]), itdG = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0] * S.size;
-    nobody = earsOf(base, ildG, itdG);
-    if (have) { setShape(TEMPLATES[S.kind].shape || "bell"); const b = bumps(templateDips(head, d, [S.shift, S.shift, S.shift], [S.depth, S.depth, S.depth], S.sharp)); setShape("bell"); nobodyEar = earsOf(base.map((v, k) => v + b[k]), ildG, itdG); } }
-  return [own, ...[cllN && earsOf(cllN, ildN, itdN), S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)], nobody, nobodyEar,
-                   slider, six, smooth && earsOf(smooth, ild, itd), cllN && earsOf(cllN, ild, itd)].map(level)];
+  return [own, ...[ownNumbers, S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)], earsOf(base, ildG, itdG), earsOf(base.map((v, i) => v + notches[i]), ildG, itdG)].map(level)];
 }
 
-// ---------- audio: the six versions on one signal, one heard ----------
+// ---------- audio: the five versions on one signal, one heard ----------
 let played = "", swap = 0, now = null;
 function audio() {
-  const head = S.head; if (!head) return;
-  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, S.ildBlur, S.ildOrder, S.itdOrder, !!S.ku, S.shift, S.depth, S.sharp, S.size, S.timbre, S.kind, !!S.generic].join(); if (key === played) return; played = key;
+  const head = S.head; if (!head || !model().genericData) return;
+  const key = [head.entry.file, S.at, !!head.fit, head.fit && head.fit.id, !!S.ku, S.model, S.shift, S.depth, S.size].join(); if (key === played) return; played = key;
   now = responses(head, S.at);
   if (!S.ctx) return;
   const t = S.ctx.currentTime; S.fade.gain.cancelScheduledValues(t); S.fade.gain.setTargetAtTime(0, t, 0.003);
@@ -260,7 +237,7 @@ function draw() {
   const [az, el] = angOf(head.H.xyz[S.at]).map(v => v / D2R);
   $("place").innerHTML = `<b>azimuth ${az.toFixed(0)}°, elevation ${el.toFixed(0)}°</b> · ${az > 1 ? "to the left" : az < -1 ? "to the right" : "in the middle"}`;
   const itd = pair => { if (!pair) return "    –"; const [a, b] = spectrumOf(pair[0], ITD_N), [p, q] = spectrumOf(pair[1], ITD_N); return (itdOf(a, b, p, q) * 1e6).toFixed(0).padStart(5); };
-  $("info").textContent = now ? `ITD, µs: measured ${itd(now[0])} · what plays ${itd(now[S.ver])}` + (now[S.ver] ? "" : "\nnot there yet — the notches are being fitted") : "";
+  $("info").textContent = now ? `ITD, µs: measured ${itd(now[0])} · what plays ${itd(now[S.ver])}` + (now[S.ver] ? "" : "\nnot there yet — the listener's own notches are being fitted") : "";
 }
 let pending = false;
 const update = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; draw(); }); } };
@@ -298,44 +275,24 @@ function panel() {
   $("versions").innerHTML = "";
   VERSIONS.forEach((name, v) => { const b = document.createElement("button"); b.textContent = `${v + 1}  ${name}`;
     if (v === S.ver) b.classList.add("on"); b.onclick = () => version(v); $("versions").appendChild(b); });
+  seg($("segModel"), Object.keys(MODELS).filter(k => MODELS[k].templateData && MODELS[k].genericData), () => S.model, v => { S.model = v; $("reveal").textContent = ""; played = ""; update(); }, v => MODELS[v].name);
   seg($("segSet"), [...new Set(S.index.heads.map(h => h.set))].filter(s => s !== "KU100"), () => S.set, v => { S.set = v; S.number = 0; panel(); choose(); });
   $("headCtl").innerHTML = "";
   if (inSet().length > 1) ctl($("headCtl"), "head", 1, inSet().length, () => S.number + 1, v => { const i = Math.round(v) - 1; if (i !== S.number) { S.number = i; choose(); } }, v => Math.round(v) + " of " + inSet().length);
   seg($("segEar"), ["left", "right"], () => S.ear, v => { S.ear = v; choose(); }, v => v + " ear, mirrored");
-  $("sizes").innerHTML = "";
-  (S.presets ? S.presets.sizes : []).forEach((z, i) => { const b = document.createElement("button"); b.style.flex = "1 1 22%"; b.textContent = `${z.surfaces} × ${z.order}`;
-    if (i === S.preset) b.classList.add("on"); b.onclick = () => { S.preset = i; S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; panel(); fitHead(); }; $("sizes").appendChild(b); });
-  $("knobs").innerHTML = "";
-  const knob = (label, key, min, max, step, show) => ctl($("knobs"), label, min, max, () => S[key], v => { S[key] = Math.round(v / step) * step; later(update); }, v => show(Math.round(v / step) * step));
-  knob("the ILD, blurred along frequency", "ildBlur", 0, 3, 0.25, v => v ? v.toFixed(2) + " ERB" : "not blurred");
-  knob("the ILD's pattern: order over the sphere", "ildOrder", 2, 12, 1, v => "order " + v);
-  knob("the ITD's pattern: order over the sphere", "itdOrder", 2, 12, 1, v => "order " + v);
 }
-seg($("segTimbre"), ["the KU100's for all", "each its own"], () => S.timbre, v => { S.timbre = v; update(); });
+const percent = e => 100 * ((35.96 * 10 ** (e / 21.4) - 1) / 34.96 - 1);      // a shift in ERB as a change of frequency, at 8 kHz
+ctl($("sliders"), "the head: ITD scaled, the low ILD with it", 0.75, 1.3, () => S.size, v => { S.size = Math.round(v * 100) / 100; $("reveal").textContent = ""; later(update); }, v => "× " + (Math.round(v * 100) / 100).toFixed(2));
+ctl($("sliders"), "the ear: all notches shifted", -2, 2, () => S.shift, v => { S.shift = Math.round(v * 20) / 20; $("reveal").textContent = ""; later(update); },
+    v => `${v >= 0 ? "+" : ""}${(Math.round(v * 20) / 20).toFixed(2)} ERB · about ${percent(v) >= 0 ? "+" : ""}${percent(Math.round(v * 20) / 20).toFixed(0)} % in frequency`);
+ctl($("sliders"), "the notches' depth (× 2.5 chosen by ear; × 1 is the template)", 0, 4, () => S.depth, v => { S.depth = Math.round(v * 10) / 10; later(update); }, v => "× " + (Math.round(v * 10) / 10).toFixed(1));
+// The scale of nobody's ITD that is nearest the listener's, over the directions.
+const fittedSize = head => { const G = model().genericData; let gm = 0, gg = 0; for (const d of head.some) { const g = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0]; gm += g * head.A.itd[d]; gg += g * g; } return gm / gg; };
+$("bReveal").onclick = () => { const f = S.head && S.head.fits[S.model], sign = v => (v >= 0 ? "+" : "") + v.toFixed(2);
+  $("reveal").textContent = !S.head ? "" : `the head: fitted ITD × ${fittedSize(S.head).toFixed(2)} · yours × ${S.size.toFixed(2)}\n`
+    + (!f ? "the ear: this head is not among the fitted ones" : `the ear: fitted shift ${sign(f.shift)} ERB (the database's offset out) · yours ${sign(S.shift)} ERB\nfitted depth × ${f.gain.toFixed(2)} of the template · yours × ${S.depth.toFixed(2)}`); };
 seg($("segSignal"), ["bursts", "noise", "clicks", "tone"], () => S.signal, v => { S.signal = v; if (S.ctx) signal(); });
 ctl($("volCtl"), "volume", -30, 0, () => S.vol, v => { S.vol = v; if (S.master) S.master.gain.value = 10 ** (v / 20); }, v => v.toFixed(0) + " dB");
-const percent = e => 100 * ((35.96 * 10 ** (e / 21.4) - 1) / 34.96 - 1);      // a shift in ERB as a change of frequency, at 8 kHz
-ctl($("earCtl"), "all notches shifted", -2, 2, () => S.shift, v => { S.shift = Math.round(v * 20) / 20; $("reveal").textContent = ""; later(update); },
-    v => `${v >= 0 ? "+" : ""}${(Math.round(v * 20) / 20).toFixed(2)} ERB · about ${percent(v) >= 0 ? "+" : ""}${percent(Math.round(v * 20) / 20).toFixed(0)} % in frequency`);
-ctl($("earCtl"), "the notches' depth", 0, 4, () => S.depth, v => { S.depth = Math.round(v * 10) / 10; later(update); }, v => "× " + (Math.round(v * 10) / 10).toFixed(1));
-ctl($("earCtl"), "the notches' sharpness: narrower and deeper, the same area", 1, 5, () => S.sharp, v => { S.sharp = Math.round(v * 10) / 10; later(update); },
-    v => { const f = Math.round(v * 10) / 10; return f === 1 ? "as the template has them" : `× ${f.toFixed(1)}: ${Math.round(100 / f)} % as wide, ${f.toFixed(1)} times as deep`; });
-ctl($("headSlider"), "the head: ITD scaled, the low ILD with it", 0.75, 1.3, () => S.size, v => { S.size = Math.round(v * 100) / 100; $("reveal").textContent = ""; later(update); }, v => "× " + (Math.round(v * 100) / 100).toFixed(2));
-// The scale of nobody's ITD that is nearest the listener's, over the directions.
-const fittedSize = head => { let gm = 0, gg = 0; for (const d of head.some) { const g = onSphere(head.H, S.generic.itd, S.generic.itdOrder, d, 1)[0]; gm += g * head.A.itd[d]; gg += g * g; } return gm / gg; };
-$("bReveal").onclick = () => { const f = S.head && S.head.fits[S.kind], sign = v => (v >= 0 ? "+" : "") + v.toFixed(2);
-  const size = S.head && S.generic ? `the head: fitted ITD × ${fittedSize(S.head).toFixed(2)} · yours × ${S.size.toFixed(2)}\n` : "";
-  $("reveal").textContent = size + (!f ? "the ear: this head is not among the fitted ones" : `the ear: fitted, one shift for all notches   ${sign(f.shift)} ERB · yours ${sign(S.shift)} ERB\n`
-    + `fitted depth × ${f.gain.toFixed(2)} · yours × ${S.depth.toFixed(2)}` + (f.each ? `\nfitted a notch: shifts ${f.each.shift.map(v => v.toFixed(2)).join(" ")} ERB, depths × ${f.each.gain.join(" ")}` : "")); };
-const KINDS = { honest: "learned honestly, the dips shaped as a peaking filter's notch: as narrow as the heads have the notches, present where they have them — the model, at depth × 2.5 (chosen by ear; × 1 is the plain template)",
-                bell: "learned honestly, the dips as bells (Gaussians) — wider and shallower than the notches they stand for",
-                ladder: "as the ladder fitted it: least squares, which left the notches shallow and wide — depth × 1.5 and sharpness × 2.5 made them heard" };
-const TEMPLATES = {};
-function kindSeg() {
-  seg($("segKind"), Object.keys(KINDS).filter(k => TEMPLATES[k]), () => S.kind, v => { S.kind = v; [S.depth, S.sharp] = v === "ladder" ? [1.5, 2.5] : v === "honest" ? [2.5, 1] : [1, 1]; $("reveal").textContent = ""; kindSeg(); panel(); update(); },
-      v => ({ honest: "honest, peak-shaped", bell: "honest, bell-shaped", ladder: "as the ladder fitted it" })[v]);
-  $("kindNote").textContent = KINDS[S.kind] || "";
-}
 $("bStart").onclick = start;
 addEventListener("keydown", e => {
   if (e.key >= "1" && e.key <= String(VERSIONS.length)) version(+e.key - 1);
@@ -345,13 +302,7 @@ addEventListener("keydown", e => {
 addEventListener("resize", update);
 (async () => {
   try { S.index = await (await fetch("run/index.json")).json(); } catch { $("headNote").innerHTML = "No <b>run/index.json</b> — the list of heads."; return; }
-  for (const [kind, file] of [["honest", "template.json"], ["bell", "template-bell.json"], ["ladder", "template-ladder.json"]]) try { TEMPLATES[kind] = await (await fetch("model/" + file, { cache: "no-store" })).json(); } catch { TEMPLATES[kind] = null; }
-  if (!TEMPLATES.honest) { S.kind = "ladder"; [S.depth, S.sharp] = [1.5, 2.5]; }      // the model: the peak-shaped template at depth × 2.5, chosen by ear
-  if (!TEMPLATES.honest && !TEMPLATES.ladder) $("reveal").textContent = "no template in model/ — honest.js or ladder.js writes one";
-  kindSeg();
-  try { S.generic = await (await fetch("model/generic.json", { cache: "no-store" })).json(); } catch { S.generic = null; }
-  try { S.presets = await (await fetch("presets.json", { cache: "no-store" })).json();
-    S.preset = S.presets.sizes.findIndex(z => z.surfaces === 6 && z.order === 4); const z = S.presets.sizes[S.preset]; if (z) S.P = { ...z.P, surfaces: z.surfaces, surfaceOrder: z.order }; } catch { S.presets = null; }
+  await loadModels();
   panel(); choose();
   const ku = S.index.heads.find(h => h.set === "KU100");
   if (ku) { S.ku = parseHead(await (await fetch("heads/" + ku.head)).arrayBuffer(), ku); played = ""; update(); }
