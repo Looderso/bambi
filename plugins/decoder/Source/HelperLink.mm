@@ -33,15 +33,16 @@ void HelperLink::launch(const std::string& appPath, int port) {
     config.activates = NO;
     config.addsToRecentItems = NO;
     config.createsNewApplicationInstance = NO;
-    config.arguments = @[ @"--host-pid", [NSString stringWithFormat:@"%d", getpid()], @"--port",
-                          [NSString stringWithFormat:@"%d", port] ];
+    config.arguments = @[
+        @"--host-pid", [NSString stringWithFormat:@"%d", getpid()], @"--port", [NSString stringWithFormat:@"%d", port]
+    ];
     Impl* impl = impl_.get();
     [[NSWorkspace sharedWorkspace] openApplicationAtURL:url
                                           configuration:config
                                       completionHandler:^(NSRunningApplication* app, NSError* e) {
-                                          if (e != nil) return;
-                                          std::lock_guard<std::mutex> g(impl->lock);
-                                          impl->app = app;
+                                        if (e != nil) return;
+                                        std::lock_guard<std::mutex> g(impl->lock);
+                                        impl->app = app;
                                       }];
 }
 

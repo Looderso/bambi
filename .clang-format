@@ -43,3 +43,48 @@ IncludeCategories:
   - Regex: '^"'
     Priority: 2
 SortIncludes: CaseSensitive
+
+---
+# Objective-C++, for the one file that needs it: the decoder's helper launcher. The same style.
+Language: ObjC
+BasedOnStyle: Google
+ColumnLimit: 120
+IndentWidth: 4
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+NamespaceIndentation: None
+FixNamespaceComments: true
+PointerAlignment: Left
+DerivePointerAlignment: false
+ReferenceAlignment: Pointer
+
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: All
+AllowShortCaseLabelsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeColon
+PackConstructorInitializers: NextLine
+
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+SpacesBeforeTrailingComments: 2
+SpacesInLineCommentPrefix:
+  Minimum: 1
+  Maximum: -1
+ReflowComments: false
+AlignEscapedNewlines: Left
+AlignConsecutiveMacros: false
+
+IncludeBlocks: Regroup
+IncludeIsMainRegex: "$"
+IncludeCategories:
+  - Regex: '^<'
+    Priority: 1
+  - Regex: '^"'
+    Priority: 2
+SortIncludes: CaseSensitive
