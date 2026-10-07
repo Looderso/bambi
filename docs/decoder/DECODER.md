@@ -77,8 +77,17 @@ there is a ring and is designed on 360 virtual loudspeakers around it; otherwise
 its pole. A layout whose hull does not hold the listener is refused with the reason. The IEM reader is the first
 format; the others are still to come. Checked against the IEM plug-in's own matrix for the array (0.02 %), against
 the prototype's order 1–3 decoders tap for tap, and against §3.2's table. Designing a 64-loudspeaker layout takes
-2 ms wall at order 1 and 6 ms at order 7 in Release; it runs on a worker. What is not written yet: applying the
-matrix and the delays on the audio thread, and the swap of a design, as the binaural side has them.
+2 ms wall at order 1 and 6 ms at order 7 in Release; it runs on a worker.
+
+**The matrix, the delays and the swap** (`speakers.hpp`, [0177](../DECISIONS.md)): `SpeakerRenderer` applies the
+matrix per frame with the distance gains folded in, delays each output by whole samples, and takes a new design
+whole from the worker, fading over 10 ms once the new design's delay lines hold its signal; `SpeakerDecoder` carries
+a layout request from the message thread to one worker and the design to the audio thread, and keeps the previous
+design playing when a layout is refused. Measured per 128-sample block at 48 kHz, one core: 0.8 % at order 3 on the
+array, 4.8 % at order 7 on 64 loudspeakers. Checked against the design applied directly however the audio is cut,
+the fade against each design played alone, a delay change for steps, and the decoder bit for bit against a direct
+publish. Still to come: the AmbDec, built-in and typed layouts, the stereo pair, the colour correction, and the
+plugin around all of it.
 
 ### 3.1 Hear the array on headphones
 

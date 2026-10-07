@@ -8,6 +8,7 @@
 #include "bambi/decode/binaural.hpp"
 #include "bambi/decode/decoder.hpp"
 #include "bambi/decode/headmodel.hpp"
+#include "bambi/decode/speakers.hpp"
 #include "bambi/dsp/features.hpp"
 #include "bambi/echo/control.hpp"
 #include "bambi/echo/params.hpp"
@@ -228,6 +229,26 @@ TEST_CASE("the head synthesiser allocates nothing once prepared") {
               decoder.request(0.3, 1.05);
               decoder.work();
               decoder.process(in.data(), out.data(), 100);
+          }) == 0);
+
+    //  Catches: a loudspeaker publish that sizes its rows on the fly, or a render that gathers a frame into a buffer.
+    Layout ring;
+    for (int i = 0; i < 6; ++i) {
+        Loudspeaker s;
+        s.azimuthDeg = 60.0 * i;
+        s.channel = i + 1;
+        ring.speakers.push_back(s);
+    }
+    SpeakerDesign speakerDesign;
+    REQUIRE(designAllrad(ring, 1, Weighting::Basic, speakerDesign));
+    SpeakerRenderer speakers;
+    REQUIRE(speakers.prepare(1, 6, 48000.0));
+    std::vector<float> speakerOut(6 * 100);
+    CHECK(allocationsDuring([&] {
+              speakers.publish(speakerDesign);
+              speakers.process(in.data(), 4, speakerOut.data(), 6, 100);
+              speakers.publish(speakerDesign);  // a second design: the swap path copies into storage it owns
+              speakers.process(in.data(), 4, speakerOut.data(), 6, 100);
           }) == 0);
 }
 
