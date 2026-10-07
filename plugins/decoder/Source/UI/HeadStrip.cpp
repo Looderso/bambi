@@ -16,10 +16,14 @@ bool HeadStrip::liveValue(ParamId id, double& out) const {
     const DecoderState& d = state_.decoder();
     if (d.trackerSource == 0 || !d.trackerOverrides) return false;
     const auto& diag = state_.processor.diagnostics();
-    if (id == state_.param("head.yaw")) out = diag.headYaw.load(std::memory_order_relaxed);
-    else if (id == state_.param("head.pitch")) out = diag.headPitch.load(std::memory_order_relaxed);
-    else if (id == state_.param("head.roll")) out = diag.headRoll.load(std::memory_order_relaxed);
-    else return false;
+    if (id == state_.param("head.yaw"))
+        out = diag.headYaw.load(std::memory_order_relaxed);
+    else if (id == state_.param("head.pitch"))
+        out = diag.headPitch.load(std::memory_order_relaxed);
+    else if (id == state_.param("head.roll"))
+        out = diag.headRoll.load(std::memory_order_relaxed);
+    else
+        return false;
     return true;
 }
 
@@ -28,7 +32,8 @@ void HeadStrip::paint(juce::Graphics& g) {
     clearNameAreas();
     g.fillAll(colour::ground);
     const auto inset = static_cast<float>(space::inset);
-    const juce::Rectangle<float> content{inset, static_cast<float>(space::grid), static_cast<float>(getWidth()) - 2.0f * inset,
+    const juce::Rectangle<float> content{inset, static_cast<float>(space::grid),
+                                         static_cast<float>(getWidth()) - 2.0f * inset,
                                          static_cast<float>(getHeight()) - static_cast<float>(space::grid)};
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
@@ -53,24 +58,31 @@ void HeadStrip::paint(juce::Graphics& g) {
     g.setColour(d.trackerSource == 0 ? colour::inactive : alive ? colour::text : colour::rule);
     g.fillRect(dotX, y + rowH / 2.0f - 3.5f, 7.0f, 7.0f);
     juce::String live;
-    if (d.trackerSource == 0) live = "no tracker " + juce::String::fromUTF8("\xc2\xb7") + " sliders turn the head";
-    else if (alive) live = "osc " + juce::String::fromUTF8("\xc2\xb7") + " " + juce::String(rateHz_, 0) + " hz";
-    else if (lastMs > 0) live = "osc " + juce::String::fromUTF8("\xc2\xb7") + " silent " + juce::String(age, 1) + " s";
-    else live = "osc " + juce::String::fromUTF8("\xc2\xb7") + " port " + juce::String(d.oscPort) + ", nothing yet";
+    if (d.trackerSource == 0)
+        live = "no tracker " + juce::String::fromUTF8("\xc2\xb7") + " sliders turn the head";
+    else if (alive)
+        live = "osc " + juce::String::fromUTF8("\xc2\xb7") + " " + juce::String(rateHz_, 0) + " hz";
+    else if (lastMs > 0)
+        live = "osc " + juce::String::fromUTF8("\xc2\xb7") + " silent " + juce::String(age, 1) + " s";
+    else
+        live = "osc " + juce::String::fromUTF8("\xc2\xb7") + " port " + juce::String(d.oscPort) + ", nothing yet";
     text(g, live, smallFont(), colour::label, {dotX + 12.0f, y, 200.0f, rowH}, juce::Justification::centredLeft);
 
     //  recentre, setup, overrides
     const float recentreW = framedButtonWidth("recentre"), setupW = framedButtonWidth("setup\xe2\x80\xa6");
-    recentre_ = {content.getRight() - recentreW - setupW - 90.0f, y + (rowH - static_cast<float>(space::grid * 2) - 2.0f) / 2.0f, recentreW,
+    recentre_ = {content.getRight() - recentreW - setupW - 90.0f,
+                 y + (rowH - static_cast<float>(space::grid * 2) - 2.0f) / 2.0f, recentreW,
                  static_cast<float>(space::grid * 2) + 2.0f};
     paintButton(g, recentre_, "recentre", d.trackerSource != 0 && mine, [this] { state_.processor.recentre(); });
     setup_ = recentre_.withX(recentre_.getRight() + static_cast<float>(space::grid) / 2.0f).withWidth(setupW);
-    paintButton(g, setup_, juce::String::fromUTF8("setup\xe2\x80\xa6"), true, [this] { state_.openTemp(TempTab::Tracking); });
+    paintButton(g, setup_, juce::String::fromUTF8("setup\xe2\x80\xa6"), true,
+                [this] { state_.openTemp(TempTab::Tracking); });
     const juce::Rectangle<float> row{setup_.getRight(), y, content.getRight() - setup_.getRight(), rowH};
     const auto overrides = paintSceneToggle(g, row, content.getRight(), "overrides", d.trackerOverrides, mine);
     overrides_ = overrides.hit;
     addClickArea(overrides.hit, [this] {
-        model().applyEdit("tracker overrides", [](PluginState& s) { s.decoder.trackerOverrides = !s.decoder.trackerOverrides; });
+        model().applyEdit("tracker overrides",
+                          [](PluginState& s) { s.decoder.trackerOverrides = !s.decoder.trackerOverrides; });
     });
     y += rowH + static_cast<float>(space::grid);
 
@@ -81,11 +93,21 @@ void HeadStrip::paint(juce::Graphics& g) {
     y = tilesBottom(y, cell) + static_cast<float>(space::grid) / 2.0f;
 
     juce::String note;
-    if (d.headphonesPlay)
-        note = d.throughLayout ? "headphones: the head turns what you hear, through the layout" : "headphones: the head turns what you hear";
-    if (d.speakersPlay) note += (note.isEmpty() ? "" : "  " + juce::String::fromUTF8("\xc2\xb7") + "  ") + juce::String("speakers: the head turns nothing, you are in the room");
+    //  A field with no direction in it is the one thing to say before anything else: a track too narrow for the
+    //  encoder's order hands the decoder W alone, and W is heard as mono from everywhere.
+    const int order = state_.processor.engineOrder(), in = diag.mainInputChannels.load(std::memory_order_relaxed);
+    if (order == 0 && in > 0)
+        note = "the input is " + juce::String(in) + (in == 1 ? " channel" : " channels") + ": order 0, no direction " +
+               juce::String::fromUTF8("\xc2\xb7") + " the track needs 4, 9, 16 or more (reaper's master has 2)";
+    else if (d.headphonesPlay)
+        note = d.throughLayout ? "headphones: the head turns what you hear, through the layout"
+                               : "headphones: the head turns what you hear";
+    if (d.speakersPlay)
+        note += (note.isEmpty() ? "" : "  " + juce::String::fromUTF8("\xc2\xb7") + "  ") +
+                juce::String("speakers: the head turns nothing, you are in the room");
     if (note.isEmpty()) note = "nothing plays: the head is shown, and turns nothing";
-    text(g, note, smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
+    text(g, note, smallFont(), colour::label,
+         {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
          juce::Justification::centredLeft);
 }
 

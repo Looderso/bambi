@@ -43,6 +43,11 @@ Switching an output changes which channels the plugin writes.
   fed, as far as known, with ambisonics its own processing turns into beams. Not a layout AllRAD can decode; an
   output of its own, if it comes.
 
+**A trap, found on the first listen:** REAPER's master track has two channels, so a decoder inserted there reads a
+two-channel field — order 0, W alone, heard as mono from everywhere — whatever the tracks feeding it carry. The
+decoder sits on the 16-channel track with the rest of the chain, and the head strip says in words when the input
+holds no direction.
+
 ## 3. Speakers — a layout, not a preset list
 
 - **AllRAD** over a loaded layout, with **imaginary loudspeakers** filling the gaps of an incomplete layout (no
