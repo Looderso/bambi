@@ -244,6 +244,40 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         jr.set("shape", Json{std::string(kRoomShapeNames[static_cast<std::size_t>(std::clamp(s.room.shape, 0, 2))])});
         root.set("room", jr);
     }
+    if (!(s.decoder == DecoderState{})) {
+        const DecoderState& d = s.decoder;
+        Json jd = Json::object();
+        jd.set("headphones_play", Json{d.headphonesPlay});
+        jd.set("speakers_play", Json{d.speakersPlay});
+        jd.set("headphone_channel", Json{d.headphoneChannel});
+        jd.set("hrtf", Json{d.hrtf});
+        jd.set("head_size", Json{static_cast<double>(d.headSize)});
+        jd.set("ear_shift", Json{static_cast<double>(d.earShift)});
+        jd.set("through_layout", Json{d.throughLayout});
+        jd.set("weighting", Json{d.weighting});
+        jd.set("distance_compensation", Json{d.distanceCompensation});
+        jd.set("layout_name", Json{d.layoutName});
+        Json speakers = Json::array();
+        for (const Loudspeaker& l : d.layout) {
+            Json jl = Json::object();
+            jl.set("az", Json{l.azimuthDeg});
+            jl.set("el", Json{l.elevationDeg});
+            jl.set("r", Json{l.radiusM});
+            jl.set("channel", Json{l.channel});
+            if (l.imaginary) jl.set("imaginary", Json{true});
+            if (l.gain != 1.0) jl.set("gain", Json{l.gain});
+            speakers.push(jl);
+        }
+        jd.set("layout", speakers);
+        jd.set("tracker", Json{d.trackerSource});
+        jd.set("tracker_overrides", Json{d.trackerOverrides});
+        jd.set("osc_port", Json{d.oscPort});
+        jd.set("osc_network", Json{d.oscNetwork});
+        Json flips = Json::array();
+        for (bool f : d.flip) flips.push(Json{f});
+        jd.set("flip", flips);
+        root.set("decoder", jd);
+    }
     if (s.echoPattern != PluginState{}.echoPattern)
         root.set("pattern",
                  Json{std::string(kEchoPatternNames[static_cast<std::size_t>(std::clamp(s.echoPattern, 0, 4))])});
@@ -451,6 +485,50 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
     }
     if (const Json* q = j.find("render_quality"); q != nullptr)
         s.renderQuality = parseEnum(q->stringOr(""), kRenderQualityNames, PluginState{}.renderQuality);
+    if (const Json* dec = j.find("decoder"); dec != nullptr && dec->isObject()) {
+        DecoderState& d = s.decoder;
+        const auto boolOf = [&](const char* key, bool def) {
+            const Json* v = dec->find(key);
+            return v ? v->boolOr(def) : def;
+        };
+        const auto intOf = [&](const char* key, int def) {
+            const Json* v = dec->find(key);
+            return v ? static_cast<int>(v->numberOr(def)) : def;
+        };
+        const auto numOf = [&](const char* key, double def) {
+            const Json* v = dec->find(key);
+            return v ? v->numberOr(def) : def;
+        };
+        d.headphonesPlay = boolOf("headphones_play", d.headphonesPlay);
+        d.speakersPlay = boolOf("speakers_play", d.speakersPlay);
+        d.headphoneChannel = std::max(1, intOf("headphone_channel", d.headphoneChannel));
+        d.hrtf = intOf("hrtf", d.hrtf);
+        d.headSize = static_cast<float>(numOf("head_size", d.headSize));
+        d.earShift = static_cast<float>(numOf("ear_shift", d.earShift));
+        d.throughLayout = boolOf("through_layout", d.throughLayout);
+        d.weighting = intOf("weighting", d.weighting);
+        d.distanceCompensation = boolOf("distance_compensation", d.distanceCompensation);
+        if (const Json* v = dec->find("layout_name")) d.layoutName = std::string(v->stringOr(""));
+        if (const Json* lay = dec->find("layout"); lay != nullptr && lay->isArray()) {
+            d.layout.clear();
+            for (const Json& jl : lay->items()) {
+                Loudspeaker l;
+                if (const Json* v = jl.find("az")) l.azimuthDeg = v->numberOr(0);
+                if (const Json* v = jl.find("el")) l.elevationDeg = v->numberOr(0);
+                if (const Json* v = jl.find("r")) l.radiusM = v->numberOr(1.0);
+                if (const Json* v = jl.find("channel")) l.channel = static_cast<int>(v->numberOr(1));
+                if (const Json* v = jl.find("imaginary")) l.imaginary = v->boolOr(false);
+                if (const Json* v = jl.find("gain")) l.gain = v->numberOr(1.0);
+                d.layout.push_back(l);
+            }
+        }
+        d.trackerSource = intOf("tracker", d.trackerSource);
+        d.trackerOverrides = boolOf("tracker_overrides", d.trackerOverrides);
+        d.oscPort = intOf("osc_port", d.oscPort);
+        d.oscNetwork = boolOf("osc_network", d.oscNetwork);
+        if (const Json* fl = dec->find("flip"); fl != nullptr && fl->isArray())
+            for (std::size_t i = 0; i < 3 && i < fl->items().size(); ++i) d.flip[i] = fl->items()[i].boolOr(false);
+    }
     if (const Json* room = j.find("room"); room != nullptr && room->isObject()) {
         if (const Json* v = room->find("preset"))
             s.room.preset = parseEnum(v->stringOr(""), kRoomNames, RoomState{}.preset);

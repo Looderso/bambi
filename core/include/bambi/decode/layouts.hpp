@@ -4,7 +4,7 @@
 #include <string_view>
 #include <vector>
 
-#include "bambi/decode/layout.hpp"
+#include "bambi/patch/layout.hpp"
 
 namespace bambi {
 

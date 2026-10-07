@@ -27,8 +27,9 @@ Mat3 axesOf(Mounting mounting) {
 }  // namespace
 
 Mat3 headFromYpr(double yawDeg, double pitchDeg, double rollDeg) {
-    return multiply(multiply(rotationAbout({0, 0, 1}, yawDeg * kDeg2Rad), rotationAbout({0, 1, 0}, -pitchDeg * kDeg2Rad)),
-                    rotationAbout({1, 0, 0}, rollDeg * kDeg2Rad));
+    return multiply(
+        multiply(rotationAbout({0, 0, 1}, yawDeg * kDeg2Rad), rotationAbout({0, 1, 0}, -pitchDeg * kDeg2Rad)),
+        rotationAbout({1, 0, 0}, rollDeg * kDeg2Rad));
 }
 
 void yprOf(const Mat3& head, double& yawDeg, double& pitchDeg, double& rollDeg) {
@@ -43,7 +44,8 @@ void yprOf(const Mat3& head, double& yawDeg, double& pitchDeg, double& rollDeg) 
 double yawDegOf(const Mat3& head) { return std::atan2(head[3], head[0]) * kRad2Deg; }
 
 bool headFromValues(const OrientationRead& read, std::span<const float> values, Mat3& out) {
-    const bool quaternion = read.form == OrientationForm::QuaternionWxyz || read.form == OrientationForm::QuaternionXyzw;
+    const bool quaternion =
+        read.form == OrientationForm::QuaternionWxyz || read.form == OrientationForm::QuaternionXyzw;
     const std::size_t needed = quaternion ? 4 : 3;
     if (values.size() < needed) return false;
     for (std::size_t i = 0; i < needed; ++i)
@@ -60,11 +62,13 @@ bool headFromValues(const OrientationRead& read, std::span<const float> values, 
         }
         const double n = std::sqrt(w * w + x * x + y * y + z * z);
         if (!(n > 0)) return false;
-        device = fromQuaternion(w / n, (read.flip[0] ? -x : x) / n, (read.flip[1] ? -y : y) / n, (read.flip[2] ? -z : z) / n);
+        device = fromQuaternion(w / n, (read.flip[0] ? -x : x) / n, (read.flip[1] ? -y : y) / n,
+                                (read.flip[2] ? -z : z) / n);
     } else {
         const double scale = read.form == OrientationForm::YprRadians ? kRad2Deg : 1.0;
         const double down = read.form == OrientationForm::YprDegreesPitchDown ? -1.0 : 1.0;
-        device = headFromYpr((read.flip[0] ? -1.0 : 1.0) * values[0] * scale, (read.flip[1] ? -1.0 : 1.0) * down * values[1] * scale,
+        device = headFromYpr((read.flip[0] ? -1.0 : 1.0) * values[0] * scale,
+                             (read.flip[1] ? -1.0 : 1.0) * down * values[1] * scale,
                              (read.flip[2] ? -1.0 : 1.0) * values[2] * scale);
     }
     out = multiply(device, transposed(axesOf(read.mounting)));
@@ -74,11 +78,16 @@ bool headFromValues(const OrientationRead& read, std::span<const float> values, 
 Mat3 recentred(const Mat3& head, double yawDeg) { return multiply(rotationAbout({0, 0, 1}, -yawDeg * kDeg2Rad), head); }
 
 bool knownForm(std::string_view address, OrientationForm& out) {
-    if (address == "/adm/lis/ypr") out = OrientationForm::YprDegrees;
-    else if (address == "/ypr" || address == "/SceneRotator/ypr") out = OrientationForm::YprDegreesPitchDown;
-    else if (address == "/quaternion" || address == "/SceneRotator/quaternions") out = OrientationForm::QuaternionWxyz;
-    else if (address == "/rotationvector") out = OrientationForm::QuaternionXyzw;
-    else return false;
+    if (address == "/adm/lis/ypr")
+        out = OrientationForm::YprDegrees;
+    else if (address == "/ypr" || address == "/SceneRotator/ypr")
+        out = OrientationForm::YprDegreesPitchDown;
+    else if (address == "/quaternion" || address == "/SceneRotator/quaternions")
+        out = OrientationForm::QuaternionWxyz;
+    else if (address == "/rotationvector")
+        out = OrientationForm::QuaternionXyzw;
+    else
+        return false;
     return true;
 }
 

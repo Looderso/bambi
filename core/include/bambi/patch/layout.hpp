@@ -17,6 +17,8 @@ struct Loudspeaker {
     int channel{1};
     bool imaginary{false};
     double gain{1.0};  ///< a trim the layout file carries; linear
+
+    friend bool operator==(const Loudspeaker&, const Loudspeaker&) = default;
 };
 
 struct Layout {

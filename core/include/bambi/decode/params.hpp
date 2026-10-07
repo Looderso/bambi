@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+#include "bambi/mod/manifest.hpp"
+#include "bambi/patch/blocks.hpp"
+#include "bambi/patch/parameters.hpp"
+
+/*  The decoder's parameter list. Never rename or remove a key; ranges, names and defaults may move,
+ *  but a new parameter is appended at the end.
+ *
+ *  Short on purpose: a monitor has few knobs a host should automate. The head's yaw, pitch and roll
+ *  are what an offline render turns the head by, and what the sliders set while no tracker overrides
+ *  them; the level is the output's. Everything else about the decoder -- what plays and where, the
+ *  layout, the listener's two sliders, the weighting, the tracker's setup -- is state: it describes
+ *  the listening situation and is never automated, so a bounce hears it whole and so does the
+ *  worker that builds the filters from it (`patch/state.hpp`, `DecoderState`). The shared blocks are
+ *  every plugin's.
+ */
+namespace bambi {
+
+// clang-format off
+// group | id | key | display name | unit | type | min | max | default | choices
+#define BAMBI_DECODER_PARAM_LIST(X)                                                                 \
+  /*  The head's orientation in the room, degrees: yaw left-positive, pitch up-positive, roll right-ear-down. */ \
+  X(Transform, HeadYaw,   "head.yaw",   "yaw",   "deg", Float, -180, 180, 0, nullptr)             \
+  X(Transform, HeadPitch, "head.pitch", "pitch", "deg", Float,  -90,  90, 0, nullptr)             \
+  X(Transform, HeadRoll,  "head.roll",  "roll",  "deg", Float, -180, 180, 0, nullptr)             \
+                                                                                                    \
+  X(Render, OutputLevel,  "output.level", "level", "dB", Float, -60, 12, 0, nullptr)              \
+                                                                                                    \
+  /*  The one region slot every plugin carries. The decoder reads nothing from it yet; the Lens's  \
+   *  window, a slice of the scene, is what it will be.                                            */ \
+  BAMBI_REGION_BLOCK(X, Region1, "region1", "lens")                                                 \
+  X(Modulation, ModAmountRegion1, "mod.amount.region1", "lens amount", "", Float, 0, 1, 1, nullptr) \
+                                                                                                    \
+  BAMBI_GENERATOR_BLOCK(X)                                                                          \
+  BAMBI_MOD_AMOUNT_BLOCK(X)                                                                         \
+  BAMBI_RATES_BLOCK(X)                                                                              \
+  BAMBI_DETECTOR_BLOCK(X)
+// clang-format on
+
+BAMBI_DEFINE_PARAM_IDS(DecoderParam, BAMBI_DECODER_PARAM_LIST)
+BAMBI_DEFINE_PARAM_SPECS(decoder, BAMBI_DECODER_PARAM_LIST)
+inline constexpr int kNumDecoderParams = DecoderParam::kCount;
+
+/// The decoder's manifest: its descriptors and the side tables beside them.
+const ParamManifest& decodeParams();
+/// What the shared modulation engine reads in the decoder: generators, source amounts, base targets.
+const ModManifest& decodeMod();
+
+}  // namespace bambi

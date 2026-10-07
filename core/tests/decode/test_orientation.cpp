@@ -43,7 +43,8 @@ TEST_CASE("the head's angles follow the suite's convention and come back from th
     CHECK(apply(up, {1, 0, 0}).z == doctest::Approx(std::sin(30.0 * kDeg2Rad)));  // looking up lifts the front
     const Mat3 roll = headFromYpr(0, 0, 20);
     CHECK(apply(roll, {0, 1, 0}).z == doctest::Approx(std::sin(20.0 * kDeg2Rad)));  // the left ear goes up
-    for (const auto [y, p, r] : {std::array{40.0, 25.0, -15.0}, std::array{-170.0, -60.0, 100.0}, std::array{0.0, 0.0, 0.0}}) {
+    for (const auto [y, p, r] :
+         {std::array{40.0, 25.0, -15.0}, std::array{-170.0, -60.0, 100.0}, std::array{0.0, 0.0, 0.0}}) {
         double yy, pp, rr;
         yprOf(headFromYpr(y, p, r), yy, pp, rr);
         CHECK(yy == doctest::Approx(y).epsilon(1e-9));
@@ -62,8 +63,9 @@ TEST_CASE("every format reads back the orientation it was sent, to 0.01 degrees"
     CHECK(apart(read(OrientationForm::YprDegreesPitchDown, {yf, -pf, rf}), want) < 0.01);        // SPARTA, IEM
     CHECK(apart(read(OrientationForm::QuaternionWxyz, {q[0], q[1], q[2], q[3]}), want) < 0.01);  // SPARTA, IEM, AirPods
     CHECK(apart(read(OrientationForm::QuaternionXyzw, {q[1], q[2], q[3], q[0]}), want) < 0.01);  // Android
-    CHECK(apart(read(OrientationForm::YprRadians, {static_cast<float>(yaw * kDeg2Rad), static_cast<float>(pitch * kDeg2Rad),
-                                                   static_cast<float>(roll * kDeg2Rad)}),
+    CHECK(apart(read(OrientationForm::YprRadians,
+                     {static_cast<float>(yaw * kDeg2Rad), static_cast<float>(pitch * kDeg2Rad),
+                      static_cast<float>(roll * kDeg2Rad)}),
                 want) < 0.01);
     // A quaternion twice as long reads the same; one that is not a number, or too short, is refused.
     CHECK(apart(read(OrientationForm::QuaternionWxyz, {2 * q[0], 2 * q[1], 2 * q[2], 2 * q[3]}), want) < 0.01);
@@ -77,10 +79,13 @@ TEST_CASE("every format reads back the orientation it was sent, to 0.01 degrees"
 TEST_CASE("learn mode's flips undo a sender's inverted axis") {
     //  Catches: a flip applied to the wrong component.
     const Mat3 want = headFromYpr(30, 20, -10);
-    CHECK(apart(read(OrientationForm::YprDegrees, {30, -20, -10}, Mounting::AsSent, {false, true, false}), want) < 1e-9);
+    CHECK(apart(read(OrientationForm::YprDegrees, {30, -20, -10}, Mounting::AsSent, {false, true, false}), want) <
+          1e-9);
     CHECK(apart(read(OrientationForm::YprDegrees, {-30, 20, 10}, Mounting::AsSent, {true, false, true}), want) < 1e-9);
     const std::array<float, 4> q = bridgeQuaternion(30, 20, -10);
-    CHECK(apart(read(OrientationForm::QuaternionWxyz, {q[0], q[1], -q[2], q[3]}, Mounting::AsSent, {false, true, false}), want) < 1e-6);
+    CHECK(
+        apart(read(OrientationForm::QuaternionWxyz, {q[0], q[1], -q[2], q[3]}, Mounting::AsSent, {false, true, false}),
+              want) < 1e-6);
 }
 
 TEST_CASE("a phone on the band or held in front maps into the head's frame") {
@@ -119,7 +124,8 @@ TEST_CASE("a phone on the band or held in front maps into the head's frame") {
     double ty, tp, tr;
     yprOf(turned, ty, tp, tr);  // the device's rotation, as the suite's angles about the same world axes
     Mat3 head;
-    REQUIRE(headFromValues(rd, std::vector<float>{static_cast<float>(ty), static_cast<float>(tp), static_cast<float>(tr)}, head));
+    REQUIRE(headFromValues(
+        rd, std::vector<float>{static_cast<float>(ty), static_cast<float>(tp), static_cast<float>(tr)}, head));
     yprOf(head, y, p, r);
     CHECK(y == doctest::Approx(120.0).epsilon(1e-6));
     CHECK(std::abs(p) < 1e-6);

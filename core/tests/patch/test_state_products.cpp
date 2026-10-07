@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <string>
 
+#include "bambi/decode/params.hpp"
 #include "bambi/echo/params.hpp"
 #include "bambi/encode/params.hpp"
 #include "bambi/patch/state.hpp"
@@ -213,4 +214,36 @@ TEST_CASE("what a bounce should do is saved with the patch") {
         REQUIRE(loadState(Product::Reverb, m, text, back).ok);
         CHECK(back.renderQuality == RenderQuality::Realistic);
     }
+}
+
+TEST_CASE("the decoder's listening situation saves and loads whole, and is left out when it is the default") {
+    //  Catches: a field of the decoder's state dropped from the document, or written when nothing was set.
+    PluginState s{decodeParams()};
+    CHECK(saveState(Product::Decoder, decodeParams(), s).find("\"decoder\": {") ==
+          std::string::npos);  // the product line says decoder too
+    s.decoder.speakersPlay = true;
+    s.decoder.headphoneChannel = 13;
+    s.decoder.headSize = 1.12f;
+    s.decoder.earShift = -0.6f;
+    s.decoder.weighting = 1;
+    s.decoder.layoutName = "4+7+0";
+    Loudspeaker l;
+    l.azimuthDeg = 30;
+    l.elevationDeg = 0;
+    l.radiusM = 2.5;
+    l.channel = 1;
+    s.decoder.layout.push_back(l);
+    l.channel = 13;
+    l.elevationDeg = -90;
+    l.imaginary = true;
+    s.decoder.layout.push_back(l);
+    s.decoder.trackerSource = 1;
+    s.decoder.oscPort = 9001;
+    s.decoder.flip = {false, true, false};
+    PluginState back;
+    REQUIRE(loadState(Product::Decoder, decodeParams(), saveState(Product::Decoder, decodeParams(), s), back).ok);
+    CHECK(back.decoder == s.decoder);
+    CHECK(stateVersionFor(Product::Decoder) == 1);
+    CHECK(name(Product::Decoder) == "decoder");
+    CHECK(productFromName("decoder") == Product::Decoder);
 }

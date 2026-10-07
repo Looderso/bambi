@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-#include "bambi/decode/layout.hpp"
 #include "bambi/math/sphere.hpp"
 #include "bambi/math/vec3.hpp"
+#include "bambi/patch/layout.hpp"
 
 /*  AllRAD: the loudspeaker decoder for a layout, designed from its positions alone. A dense grid of
  *  directions is panned to the loudspeakers by VBAP over the convex hull of their directions, and the

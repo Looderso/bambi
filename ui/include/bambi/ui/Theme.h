@@ -133,6 +133,7 @@ namespace colour
         switch (p)
         {
             case Product::Reverb:  return palette::reverbViolet;
+            case Product::Decoder: return palette::green;   // a placeholder until the decoder has its own
             case Product::Echo:    return palette::echoSage;
             case Product::Encoder: return palette::blue;
             case Product::Unknown: return palette::blue;

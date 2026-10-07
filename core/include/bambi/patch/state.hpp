@@ -7,6 +7,7 @@
 
 #include "bambi/patch/identity.hpp"
 #include "bambi/patch/json.hpp"
+#include "bambi/patch/layout.hpp"
 #include "bambi/patch/parameters.hpp"
 #include "bambi/path/shape.hpp"  // a patch contains a trajectory; path/ never includes patch/
 #include "bambi/region/shape.hpp"
@@ -94,6 +95,29 @@ inline constexpr std::array<std::string_view, 6> kRoomNames{"ambience", "room", 
 inline constexpr std::array<std::string_view, 3> kRoomShapeNames{"room", "hall", "tall"};
 inline constexpr std::array<std::string_view, 5> kEchoPatternNames{"even", "ping-pong", "spiral", "cascade", "single"};
 
+/*  The decoder's listening situation: what plays and on which channels, the layout, the listener's two sliders,
+ *  the weighting, the tracker. State rather than parameters, since none of it is automated: a bounce hears it whole,
+ *  and so does the worker that designs the filters from it. Sparse in the document: written when not the default. */
+struct DecoderState {
+    bool headphonesPlay{true}, speakersPlay{false};
+    int headphoneChannel{1};    ///< the first channel of the pair, counted from 1
+    int hrtf{0};                ///< 0 the model; 1 the KU100, 2 a SOFA file: later
+    float headSize{1.0f};       ///< the head slider, 0.75..1.3
+    float earShift{0.0f};       ///< the ear slider, ERB, -2..2
+    bool throughLayout{false};  ///< headphones hear the layout's loudspeakers as points
+    int weighting{0};           ///< 0 one listener (basic), 1 audience (max-rE)
+    bool distanceCompensation{true};
+    std::string layoutName;           ///< a built-in's name, or the file's, for the page
+    std::vector<Loudspeaker> layout;  ///< the loudspeakers themselves, so a session opens without the file
+    int trackerSource{0};             ///< 0 none, 1 OSC; AirPods and a phone later
+    bool trackerOverrides{true};      ///< the tracker replaces yaw, pitch and roll while it sends
+    int oscPort{9000};
+    bool oscNetwork{false};                         ///< bound to this computer until asked
+    std::array<bool, 3> flip{false, false, false};  ///< learn mode's signs
+
+    friend bool operator==(const DecoderState&, const DecoderState&) = default;
+};
+
 struct RoomState {
     int preset{3};  ///< hall: what a fresh Reverb's parameters are
     int shape{1};   ///< RoomShape::Hall
@@ -126,8 +150,9 @@ struct PluginState {
     /// What a bounce should do. Written only when not the default, so a plugin with no quality
     /// switch carries nothing.
     RenderQuality renderQuality{RenderQuality::Realistic};
-    RoomState room;      ///< Reverb's; sparse
-    int echoPattern{2};  ///< Echo's: spiral, what a fresh Echo's taps are; sparse
+    RoomState room;        ///< Reverb's; sparse
+    int echoPattern{2};    ///< Echo's: spiral, what a fresh Echo's taps are; sparse
+    DecoderState decoder;  ///< the decoder's; sparse
     /// Window size as a multiple of its design size. Belongs to the session, not the sound: no
     /// preset carries it, a preset load keeps it, undo doesn't touch it. Sparse.
     float windowScale{1.0f};
