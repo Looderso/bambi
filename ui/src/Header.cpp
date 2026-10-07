@@ -180,6 +180,23 @@ void Header::paintIcon(juce::Graphics& g) const {
         dot(0.0f, 0.0f, 1.4f, colour::source, 1.0f);
         ring(3.8f, 0.75f, theme::stroke::graticule);
         ring(6.4f, 0.4f, theme::stroke::graticule);
+    } else if (plugin_ == "decoder") {
+        //  A layout seen from above, front up: five loudspeakers round the rim, one overhead, and the
+        //  triangles between them; the source sits in the front triangle, shared by its corners.
+        ring(6.0f, 1.0f, theme::stroke::glyph);
+        const juce::Point<float> corners[] = {
+            {-3.23f, -4.45f}, {3.23f, -4.45f}, {5.23f, 1.7f}, {0.0f, 5.5f}, {-5.23f, 1.7f}};
+        juce::Path hull;
+        hull.startNewSubPath(corners[0]);
+        for (const auto& c : corners) hull.lineTo(c);
+        hull.closeSubPath();
+        for (const auto& c : corners) {
+            hull.startNewSubPath(0.0f, 0.0f);
+            hull.lineTo(c);
+        }
+        g.setColour(colour::sphere.withAlpha(0.5f));
+        g.strokePath(hull, juce::PathStrokeType(theme::stroke::graticule), juce::AffineTransform::translation(cx, cy));
+        dot(0.0f, -2.9f, 1.1f, colour::source, 1.0f);
     }
 }
 
@@ -278,7 +295,8 @@ void Header::paint(juce::Graphics& g) {
     if (!tabs_.empty()) {
         juce::Graphics::ScopedSaveState clipped(g);
         g.reduceClipRegion(tabArea_.getSmallestIntegerContainer());
-        for (const auto& tab : tabs_) {
+        int index = 0;
+        for (auto& tab : tabs_) {
             //  the open one stands on the plugin's rule, which runs on beneath it unbroken
             const auto block = tab.area.withBottom(h - theme::stroke::identityRule);
             const bool on = tab.id == instances_.selectedInstance();
@@ -286,8 +304,23 @@ void Header::paint(juce::Graphics& g) {
                 g.setColour(colour::chosen);
                 g.fillRect(block);
             }
-            text(g, tab.label, labelFont(), on ? colour::textInverse : colour::text, block.reduced(hdr::tabPadX, 0.0f),
-                 juce::Justification::centred);
+            //  a plugin whose tabs play something draws a square in each: filled while it plays
+            const int mark = tabMark_ ? tabMark_(index) : -1;
+            auto label = block.reduced(hdr::tabPadX, 0.0f);
+            tab.mark = {};
+            if (mark >= 0) {
+                const float side = theme::scene::toggleBox;
+                tab.mark = {label.getX(), cy - side / 2.0f, side, side};
+                g.setColour(on ? colour::textInverse : colour::text);
+                if (mark > 0)
+                    g.fillRect(tab.mark);
+                else
+                    g.drawRect(tab.mark, theme::stroke::toggle);
+                label = label.withTrimmedLeft(side + theme::scene::toggleGap);
+            }
+            text(g, tab.label, labelFont(), on ? colour::textInverse : colour::text, label,
+                 mark >= 0 ? juce::Justification::centredLeft : juce::Justification::centred);
+            ++index;
         }
     }
 
@@ -356,12 +389,21 @@ void Header::mouseDown(const juce::MouseEvent& e) {
 
     if (homeArea_.contains(e.position) && onHome_) return onHome_();
 
-    if (tabArea_.contains(e.position))
-        for (const auto& tab : tabs_)
+    if (tabArea_.contains(e.position)) {
+        int index = 0;
+        for (const auto& tab : tabs_) {
             if (tab.area.contains(e.position)) {
-                instances_.selectInstance(tab.id);
+                //  the square plays; the name opens
+                if (!tab.mark.isEmpty() && tab.mark.expanded(theme::scene::toggleHitPad).contains(e.position) &&
+                    tabToggle_)
+                    tabToggle_(index);
+                else
+                    instances_.selectInstance(tab.id);
                 return;
             }
+            ++index;
+        }
+    }
 
     const auto grab = static_cast<float>(theme::space::grid) / 2.0f;
     if (preset_.available) {
@@ -376,6 +418,11 @@ void Header::mouseDown(const juce::MouseEvent& e) {
         onUndo_();
     else if (canRedo_ && redoBounds_.expanded(grab).contains(e.position) && onRedo_)
         onRedo_();
+}
+
+juce::Rectangle<float> Header::tabMarkArea(int index) const {
+    return index >= 0 && index < static_cast<int>(tabs_.size()) ? tabs_[static_cast<std::size_t>(index)].mark
+                                                                : juce::Rectangle<float>{};
 }
 
 }  // namespace bambi::ui

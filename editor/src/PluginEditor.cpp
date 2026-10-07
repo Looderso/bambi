@@ -35,6 +35,7 @@ PluginEditor::PluginEditor(host::PluginProcessor& processor, Parts parts, const 
       page_(parts.page),
       globe_(parts.globe),
       equirect_(parts.equirect),
+      underScene_(parts.underScene),
       view_(parts.view),
       header_(
           parts.instances, plugin,
@@ -95,6 +96,7 @@ PluginEditor::PluginEditor(host::PluginProcessor& processor, Parts parts, const 
     for (auto* child :
          std::initializer_list<juce::Component*>{&header_, &globe_, &equirect_, &matrix_, &page_, &levels_, &footer_})
         shell_.addAndMakeVisible(child);
+    if (underScene_ != nullptr) shell_.addAndMakeVisible(underScene_);  // in the matrix's place
     shell_.addChildComponent(settings_);
     shell_.addChildComponent(browser_);
     shell_.addChildComponent(confirm_);
@@ -166,7 +168,11 @@ void PluginEditor::Shell::resized() {
     o.globe_.setVisible(!row.globe.isEmpty());
     if (!row.globe.isEmpty()) o.globe_.setBounds(row.globe);
     o.equirect_.setBounds(row.equirect);
-    o.matrix_.setBounds(0, matrixTop() + 1, m::leftColumn, m::windowHeight - matrixTop() - 1);
+    //  the matrix under the scene, or the plugin's own strip in its place
+    const juce::Rectangle<int> under{0, matrixTop() + 1, m::leftColumn, m::windowHeight - matrixTop() - 1};
+    o.matrix_.setBounds(under);
+    o.matrix_.setVisible(o.underScene_ == nullptr);
+    if (o.underScene_ != nullptr) o.underScene_->setBounds(under);
     /*  The right-hand side: the panel between two rules, the footer under it, and the level
         column down the window's edge. */
     const int rightX = m::leftColumn + 1;

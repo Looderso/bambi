@@ -18,7 +18,8 @@ void orbitView(SceneViewState& view, double dx, double dy) {
     view.preset = ViewPreset::Free;
 }
 
-SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection projection, const SceneViewState& view) {
+SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection projection, const SceneViewState& view,
+                                bool withRegions) {
     SceneStripAreas areas;
     const bool globe = projection == Projection::Globe;
     const auto strip = static_cast<float>(sc::labelStrip);
@@ -48,9 +49,11 @@ SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection project
         switches would be two controls for one setting, and the settings are the window's. */
     const juce::Rectangle<float> row{0.0f, 0.0f, wide, strip};
     auto right = wide - static_cast<float>(sc::labelInset);
-    const auto regions = paintSceneToggle(g, row, right, "regions always", view.regionsAlways);
-    areas.regions = regions.hit;
-    right = regions.left - sc::toggleGroupGap;
+    if (withRegions) {
+        const auto regions = paintSceneToggle(g, row, right, "regions always", view.regionsAlways);
+        areas.regions = regions.hit;
+        right = regions.left - sc::toggleGroupGap;
+    }
     /*  The visualiser switch is greyed while the window shows another instance: a field's energy
         never crosses the bus, so there is nothing to switch. */
     const auto energy =

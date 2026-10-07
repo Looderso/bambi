@@ -457,7 +457,8 @@ readout, and learn mode's picking.
   head's orientation, which arrives from any thread; a 30 ms glide stepped per 64-frame hop and crossfaded within
   it, so nothing snaps; the same bits however the frames are cut; 0.1 % of a core at order 3, 0.5 % at order 7
   while turning. What converts a tracker's quaternion or yaw, pitch and roll into the orientation matrix is the
-  receiver's (§7.1) and is not written yet.
+  receiver's (§7.1), ported as `orientation.hpp`; the plugin's receiver is a `juce::OSCReceiver` on the message
+  thread, the known addresses only, with the sliders taking over while no tracker speaks.
 - **The Lens's window** (§6).
 - **Placing the loudspeakers** of an array (§3.3).
 - **Nothing on an array's output**: the listener's head is really in the room.
@@ -496,7 +497,13 @@ library when the second plugin needs it, not before.
 - **The head strip sits where the effects have their matrix**: what turns the head (none · OSC · AirPods · phone),
   whether data arrives and how evenly, yaw, pitch and roll with the tracker's value as the live mark, recentre. Its
   setup opens as a temporary tab, as **personalisation** does from the headphones' page.
-- The sketch is `prototypes/ui/decoder/`.
+- The sketch is `prototypes/ui/decoder/`. **Built** (`plugins/decoder/`, [0182](../DECISIONS.md)) on the shared
+  window: the scene views draw the room's frame, the loudspeakers, the hull while the speakers' page is open, the
+  head and the session's sources; the head strip stands in the matrix's place (the shared window's one new slot);
+  the outputs are the header's tabs with a square each (its one new option); the panel holds the open output's page
+  and the temporary tabs for the tracker and personalisation. Grey where the sketch says *later*: the lens, the
+  KU100 and a SOFA file, headphone correction, the AirPods helper and the phone's page, learn mode, placing by
+  looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the
   encoders' sources ([0176](../DECISIONS.md), [VISUALISATION §5](../suite/VISUALISATION.md)). Its link record

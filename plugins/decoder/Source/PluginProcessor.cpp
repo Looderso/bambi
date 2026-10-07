@@ -1,0 +1,441 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "PluginProcessor.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+#include "BinaryData.h"
+#include "PluginEditor.h"
+#include "bambi/decode/headmodelfile.hpp"
+#include "bambi/host/ClapPorts.h"
+#include "bambi/math/denormals.hpp"
+
+namespace {
+bambi::ParamId decoderParam(const char* key) { return static_cast<bambi::ParamId>(bambi::decodeParams().byKey(key)); }
+
+/// The layout as the design should see it: with the distances levelled when compensation is off.
+bambi::Layout layoutFor(const bambi::DecoderState& d) {
+    bambi::Layout l;
+    l.speakers = d.layout;
+    if (!d.distanceCompensation)
+        for (bambi::Loudspeaker& s : l.speakers) s.radiusM = 1.0;
+    return l;
+}
+
+/// The channels a layout's real loudspeakers play on, counted from 1.
+std::vector<int> layoutChannels(const bambi::DecoderState& d) {
+    std::vector<int> out;
+    for (const bambi::Loudspeaker& s : d.layout)
+        if (!s.imaginary) out.push_back(s.channel);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+/// What a bus's description says: the same line the layout log keeps.
+juce::String busLine(const juce::AudioProcessor::BusesLayout& layouts) {
+    return "in " + juce::String(layouts.getMainInputChannelSet().size()) + "  |  out " +
+           juce::String(layouts.getMainOutputChannelSet().size());
+}
+}  // namespace
+
+BambiDecoderProcessor::BambiDecoderProcessor()
+    : bambi::host::PluginProcessor({.product = bambi::Product::Decoder,
+                                    .params = bambi::decodeParams(),
+                                    .mod = bambi::decodeMod(),
+                                    .regionSlots = 1},
+                                   BusesProperties()
+                                       .withInput("Ambisonic", juce::AudioChannelSet::ambisonic(3), true)
+                                       .withOutput("Output", juce::AudioChannelSet::stereo(), true),
+                                   diag_) {
+    std::string error;
+    modelLoaded_ = bambi::parseHeadModel(
+        std::string_view(BinaryData::head_json, static_cast<std::size_t>(BinaryData::head_jsonSize)), model_, &error);
+    jassert(modelLoaded_);
+    osc_.addListener(this);
+    begin(bambi::PluginState{bambi::decodeParams()});
+}
+
+BambiDecoderProcessor::~BambiDecoderProcessor() {
+    stopLink();
+    osc_.removeListener(this);
+    osc_.disconnect();
+}
+
+// ---- buses ---------------------------------------------------------------------------------
+
+bool BambiDecoderProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
+    //  The input is the field, at the highest order that fits its width: REAPER offers only even channel counts,
+    //  so orders 2, 4, 6 and 8 arrive with spare channels. The output is as wide as the host gives, two at least
+    //  for the headphones' pair; every output is a set of channels on it.
+    const bool ok = bambi::host::orderThatFits(layouts.getMainInputChannelSet().size()) >= 0 &&
+                    layouts.getMainOutputChannelSet().size() >= 2 &&
+                    layouts.getMainOutputChannelSet().size() <= kMaxOutputs;
+    appendLayoutLog(busLine(layouts) + (ok ? "   -> accepted" : "   -> refused"));
+    return ok;
+}
+
+int BambiDecoderProcessor::clapAmbisonicOrderForBus(bool isInput, int busIndex) {
+    if (!isInput || busIndex != 0) return -1;
+    return bambi::host::orderForChannels(getChannelCountOfBus(true, 0));
+}
+
+uint32_t BambiDecoderProcessor::clapAudioPortsConfigCount() { return static_cast<uint32_t>(kMaxHostOrder); }
+
+bool BambiDecoderProcessor::clapAudioPortsConfigGet(uint32_t index, clap_audio_ports_config* config) {
+    if (config == nullptr || index >= static_cast<uint32_t>(kMaxHostOrder)) return false;
+    const int order = static_cast<int>(index) + 1;
+    const int channels = bambi::numChannels(order);
+    const int outChannels = std::max(2, getChannelCountOfBus(false, 0));
+    //  The id is the position: a host passing either one as if it were the other still selects the same one.
+    config->id = static_cast<clap_id>(index);
+    std::snprintf(config->name, sizeof config->name, "Ambisonic order %d in (%d channels), %d out", order, channels,
+                  outChannels);
+    config->input_port_count = 1;
+    config->output_port_count = 1;
+    config->has_main_input = true;
+    config->main_input_channel_count = static_cast<uint32_t>(channels);
+    config->main_input_port_type = CLAP_PORT_AMBISONIC;
+    config->has_main_output = true;
+    config->main_output_channel_count = static_cast<uint32_t>(outChannels);
+    config->main_output_port_type = outChannels == 2 ? CLAP_PORT_STEREO : nullptr;
+    return true;
+}
+
+bool BambiDecoderProcessor::clapAudioPortsConfigSelect(clap_id configId) {
+    const int order = static_cast<int>(configId) + 1;  // id == position, see above
+    if (order < 1 || order > kMaxHostOrder) return false;
+    auto layout = getBusesLayout();
+    layout.getChannelSet(true, 0) = bambi::host::ambisonicSet(order);
+    return setBusesLayout(layout);
+}
+
+void BambiDecoderProcessor::appendLayoutLog(const juce::String& entry) const {
+    const std::lock_guard<std::mutex> lock(logMutex_);
+    layoutLog_.add(entry);
+    while (layoutLog_.size() > 64) layoutLog_.remove(0);
+}
+
+juce::StringArray BambiDecoderProcessor::layoutLog() const {
+    const std::lock_guard<std::mutex> lock(logMutex_);
+    return layoutLog_;
+}
+
+// ---- lifecycle -----------------------------------------------------------------------------
+
+void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) {
+    //  The committed state first and on its own: committed() takes the document's lock itself, and the work lock
+    //  never nests inside it the other way round than in committing().
+    const bambi::DecoderState state = document().committed().decoder;
+    const std::lock_guard<std::mutex> work(workMutex_);
+    sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
+    maxBlock_ = std::max(1, maximumExpectedSamplesPerBlock);
+    engineOrder_ = bambi::host::orderThatFits(getChannelCountOfBus(true, 0));
+    diag_.sampleRate.store(sampleRate_, std::memory_order_relaxed);
+    diag_.blockSize.store(maxBlock_, std::memory_order_relaxed);
+    modulation().prepare(sampleRate_);
+    setLoadRate(sampleRate_);
+    setLatencySamples(kPartition);
+    if (engineOrder_ < 0 || !modelLoaded_) return;
+
+    //  Everything that allocates happens here and in build(), never on the audio thread.
+    bambi::FilterDesign design;
+    design.order = engineOrder_;
+    design.sampleRate = sampleRate_;
+    binaural_.prepare(model_, design, kPartition);
+    speakers_.prepare(engineOrder_, kMaxOutputs, sampleRate_);
+    virtual_.prepare(model_, engineOrder_, sampleRate_, kPartition);
+    turn_.prepare(engineOrder_, sampleRate_);
+    field_.prepare(maxBlock_, engineOrder_);
+    const auto channels = static_cast<std::size_t>(bambi::numChannels(engineOrder_));
+    turned_.assign(static_cast<std::size_t>(maxBlock_) * channels, 0.0f);
+    stereo_.assign(static_cast<std::size_t>(maxBlock_) * 2, 0.0f);
+    speakersOut_.assign(static_cast<std::size_t>(maxBlock_) * static_cast<std::size_t>(kMaxOutputs), 0.0f);
+    gainRamp_.assign(static_cast<std::size_t>(maxBlock_), 1.0f);
+    gainCoefficient_ = 1.0f - std::exp(-1.0f / (0.01f * static_cast<float>(sampleRate_)));  // 10 ms
+    gainNow_ = 1.0f;
+    trackerSeen_ = false;
+
+    //  Built before the first block, so what plays is a function of the state alone.
+    headBuilt_ = false;
+    builtOrder_ = -1;
+    build(state);
+    connectTracker(state);
+}
+
+std::unique_ptr<bambi::host::PluginProcessor::EngineSnapshot> BambiDecoderProcessor::newSnapshot(
+    const bambi::PluginState& st) const {
+    auto snap = std::make_unique<DecoderSnapshot>();
+    snap->decoder = st.decoder;
+    return snap;
+}
+
+void BambiDecoderProcessor::committing(const EngineSnapshot& next) {
+    const auto& d = static_cast<const DecoderSnapshot&>(next).decoder;
+    const std::lock_guard<std::mutex> work(workMutex_);
+    if (engineOrder_ >= 0 && modelLoaded_) build(d);
+    connectTracker(d);
+}
+
+void BambiDecoderProcessor::snapshotAdopted(const EngineSnapshot& next) noexcept {
+    if (next.snap) modulation().settle();
+}
+
+void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
+    //  The listener's two sliders: the binaural filters, and the array on headphones' at the field's order.
+    const auto differs = [](double a, double b) { return std::abs(a - b) > 1e-9; };
+    if (!headBuilt_ || differs(builtShift_, d.earShift) || differs(builtSize_, d.headSize)) {
+        binaural_.request(d.earShift, d.headSize);
+        binaural_.work();
+        virtual_.buildHead(d.earShift, d.headSize);
+        builtShift_ = d.earShift;
+        builtSize_ = d.headSize;
+        headBuilt_ = true;
+    }
+    //  The layout's decoder, and the same layout heard on headphones.
+    if (builtOrder_ != engineOrder_ || builtLayout_ != d.layout || builtWeighting_ != d.weighting ||
+        builtDistance_ != d.distanceCompensation) {
+        builtOrder_ = engineOrder_;
+        builtLayout_ = d.layout;
+        builtWeighting_ = d.weighting;
+        builtDistance_ = d.distanceCompensation;
+        if (d.layout.empty()) {
+            diag_.speakerOutputs.store(0, std::memory_order_relaxed);
+        } else {
+            speakers_.request(layoutFor(d), engineOrder_,
+                              d.weighting == 1 ? bambi::Weighting::MaxRe : bambi::Weighting::Basic);
+            if (speakers_.work()) {
+                diag_.speakerOutputs.store(speakers_.design().outputs, std::memory_order_relaxed);
+                virtual_.publishLayout(speakers_.design());
+            }
+        }
+    }
+}
+
+// ---- the tracker ---------------------------------------------------------------------------
+
+void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
+    {
+        const std::lock_guard<std::mutex> lock(trackerMutex_);
+        trackerRead_.flip = d.flip;
+        trackerRead_.mounting = bambi::Mounting::AsSent;
+    }
+    const bool want = d.trackerSource == 1;
+    if (want && (!oscConnected_ || oscPort_ != d.oscPort)) {
+        if (oscConnected_) osc_.disconnect();
+        //  Bound to this computer until asked: a port open on the network is open to the whole network.
+        oscConnected_ = d.oscNetwork ? osc_.connect(d.oscPort) : osc_.connect(d.oscPort);
+        oscPort_ = d.oscPort;
+    } else if (!want && oscConnected_) {
+        osc_.disconnect();
+        oscConnected_ = false;
+    }
+}
+
+void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) {
+    bambi::OrientationRead read;
+    {
+        const std::lock_guard<std::mutex> lock(trackerMutex_);
+        read = trackerRead_;
+    }
+    const juce::String address = message.getAddressPattern().toString();
+    if (!bambi::knownForm(address.toStdString(), read.form)) return;  // learn mode reads the rest, later
+    std::array<float, 4> values{};
+    std::size_t count = 0;
+    for (const juce::OSCArgument& a : message) {
+        if (count >= values.size()) break;
+        if (a.isFloat32()) values[count++] = a.getFloat32();
+        else if (a.isInt32()) values[count++] = static_cast<float>(a.getInt32());
+    }
+    bambi::Mat3 head;
+    if (!bambi::headFromValues(read, std::span<const float>(values.data(), count), head)) return;
+    tracker_.write(head);
+    diag_.trackerMessages.fetch_add(1, std::memory_order_relaxed);
+    diag_.trackerLastMs.store(juce::Time::currentTimeMillis(), std::memory_order_relaxed);
+}
+
+// ---- state edits ---------------------------------------------------------------------------
+
+void BambiDecoderProcessor::editDecoder(std::string_view name, const std::function<void(bambi::DecoderState&)>& change) {
+    document().edit(name, [&change](bambi::PluginState& s) { change(s.decoder); });
+}
+
+bambi::DecoderState BambiDecoderProcessor::decoderState() const {
+    return const_cast<BambiDecoderProcessor&>(*this).document().committed().decoder;
+}
+
+std::vector<int> BambiDecoderProcessor::channelsOf(Output which) const {
+    const bambi::DecoderState d = decoderState();
+    if (which == Output::Headphones) return {d.headphoneChannel, d.headphoneChannel + 1};
+    return layoutChannels(d);
+}
+
+void BambiDecoderProcessor::playOutput(Output which, bool on) {
+    const int bus = getChannelCountOfBus(false, 0);
+    const std::vector<int> mine = channelsOf(which);
+    const int needs = mine.empty() ? 0 : *std::max_element(mine.begin(), mine.end());
+    notice_.clear();
+    if (on && (mine.empty() || needs > bus)) {
+        notice_ = mine.empty() ? juce::String("no layout") : juce::String(needs) + " channels needed; the bus has " + juce::String(bus);
+        return;
+    }
+    const Output other = which == Output::Headphones ? Output::Speakers : Output::Headphones;
+    const std::vector<int> theirs = channelsOf(other);
+    bool collide = false;
+    for (int c : mine) collide = collide || std::find(theirs.begin(), theirs.end(), c) != theirs.end();
+    const bambi::DecoderState d = decoderState();
+    const bool otherOn = other == Output::Headphones ? d.headphonesPlay : d.speakersPlay;
+    if (on && collide && otherOn)
+        notice_ = juce::String(other == Output::Headphones ? "headphones" : "speakers") + " stopped: the same channels";
+    editDecoder(on ? "play output" : "stop output", [which, on, collide, other](bambi::DecoderState& s) {
+        (which == Output::Headphones ? s.headphonesPlay : s.speakersPlay) = on;
+        if (on && collide) (other == Output::Headphones ? s.headphonesPlay : s.speakersPlay) = false;
+    });
+}
+
+juce::String BambiDecoderProcessor::notice() const { return notice_; }
+
+juce::String BambiDecoderProcessor::designError() const {
+    const std::lock_guard<std::mutex> work(const_cast<std::mutex&>(workMutex_));
+    return juce::String(speakers_.lastError());
+}
+
+bambi::SpeakerDesign BambiDecoderProcessor::speakerDesign() const {
+    const std::lock_guard<std::mutex> work(const_cast<std::mutex&>(workMutex_));
+    return speakers_.design();
+}
+
+void BambiDecoderProcessor::describe(bambi::LinkStatic& st) const {
+    //  The layout while it plays: every scene may draw it.
+    const bambi::DecoderState d = decoderState();
+    st.speakerCount = 0;
+    if (!d.speakersPlay) return;
+    for (const bambi::Loudspeaker& s : d.layout) {
+        if (st.speakerCount >= static_cast<std::uint32_t>(bambi::kLinkMaxSpeakers)) break;
+        bambi::LinkSpeaker& out = st.speakers[st.speakerCount++];
+        out.azimuthDeg = static_cast<float>(s.azimuthDeg);
+        out.elevationDeg = static_cast<float>(s.elevationDeg);
+        out.channel = static_cast<std::uint8_t>(std::clamp(s.channel, 0, 255));
+        out.imaginary = s.imaginary ? 1 : 0;
+    }
+}
+
+// ---- audio ---------------------------------------------------------------------------------
+
+void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
+    bambi::ScopedFlushDenormals flushDenormals;
+    const int n = buffer.getNumSamples();
+    if (n <= 0) return;
+    adoptPendingSnapshot();
+    catchLearnedNote(midi);
+    intakeParameters();
+
+    auto in = getBusBuffer(buffer, true, 0);
+    auto out = getBusBuffer(buffer, false, 0);
+    const int inChannels = in.getNumChannels(), outChannels = out.getNumChannels();
+    diag_.mainInputChannels.store(inChannels, std::memory_order_relaxed);
+    diag_.outputChannels.store(outChannels, std::memory_order_relaxed);
+    diag_.order.store(engineOrder_, std::memory_order_relaxed);
+    diag_.nonRealtime.store(isNonRealtime(), std::memory_order_relaxed);
+    if (auto* head = getPlayHead()) {
+        const auto position = head->getPosition();
+        diag_.playing.store(position.hasValue() && position->getIsPlaying(), std::memory_order_relaxed);
+        diag_.transportKnown.store(position.hasValue(), std::memory_order_relaxed);
+    }
+
+    const bool ready = engineOrder_ >= 0 && modelLoaded_ && n <= maxBlock_ &&
+                       bambi::host::orderThatFits(inChannels) == engineOrder_ && outChannels >= 2;
+    if (!ready) {
+        //  The layout changed without a prepareToPlay, or a host exceeds its own maximum. Silence rather than a
+        //  guess, and never a resize on this thread.
+        buffer.clear();
+        diag_.layoutMismatches.fetch_add(1, std::memory_order_relaxed);
+        diag_.outputPeak.store(0.0f, std::memory_order_relaxed);
+        return;
+    }
+
+    //  The field, copied out before the outputs are written: on an in-place host they share the buffer.
+    const int C = bambi::numChannels(engineOrder_);
+    field_.read(in, 0, n);
+    float inPeak = 0.0f;
+    for (int c = 0; c < std::min(inChannels, C); ++c) inPeak = std::max(inPeak, in.getMagnitude(c, 0, n));
+    diag_.inputPeak.store(inPeak, std::memory_order_relaxed);
+
+    //  The head: the tracker while it overrides and has spoken, else yaw, pitch and roll as the host has them.
+    //  This thread is the rotation stage's one writer, so the choice is made here.
+    const bambi::DecoderState& d = current().decoder;
+    if (const bambi::Mat3* fresh = tracker_.latest()) {
+        trackerNow_ = *fresh;
+        trackerSeen_ = true;
+    }
+    bambi::Mat3 head;
+    const bool tracked = d.trackerSource != 0 && d.trackerOverrides && trackerSeen_;
+    if (tracked) {
+        if (recentre_.exchange(false, std::memory_order_relaxed)) yaw0_ = bambi::yawDegOf(trackerNow_);
+        head = bambi::recentred(trackerNow_, yaw0_);
+    } else {
+        recentre_.store(false, std::memory_order_relaxed);
+        const auto& p = parameterValues();
+        head = bambi::headFromYpr(p[static_cast<std::size_t>(decoderParam("head.yaw"))],
+                                  p[static_cast<std::size_t>(decoderParam("head.pitch"))],
+                                  p[static_cast<std::size_t>(decoderParam("head.roll"))]);
+    }
+    turn_.setOrientation(head);
+    virtual_.setOrientation(head);
+    {
+        double y, pt, r;
+        bambi::yprOf(head, y, pt, r);
+        diag_.headYaw.store(static_cast<float>(y), std::memory_order_relaxed);
+        diag_.headPitch.store(static_cast<float>(pt), std::memory_order_relaxed);
+        diag_.headRoll.store(static_cast<float>(r), std::memory_order_relaxed);
+    }
+
+    //  The outputs, each a set of channels on the bus; what nothing writes is silent.
+    for (int c = 0; c < outChannels; ++c) out.clear(c, 0, n);
+    //  The level glides per sample toward the parameter, a one-pole with a fixed coefficient, so the same block of
+    //  audio comes out the same however the host cuts it.
+    const float levelDb = parameterValues()[static_cast<std::size_t>(decoderParam("output.level"))];
+    const float gain = levelDb <= -60.0f ? 0.0f : juce::Decibels::decibelsToGain(levelDb);
+    for (int i = 0; i < n; ++i) {
+        gainNow_ += (gain - gainNow_) * gainCoefficient_;
+        gainRamp_[static_cast<std::size_t>(i)] = std::abs(gain - gainNow_) < 1e-7f ? (gainNow_ = gain) : gainNow_;
+    }
+    const auto ramp = [&](int i) { return gainRamp_[static_cast<std::size_t>(i)]; };
+    const int speakerOutputs = diag_.speakerOutputs.load(std::memory_order_relaxed);
+
+    bool hpHeard = false, spHeard = false;
+    if (d.headphonesPlay && d.headphoneChannel >= 1 && d.headphoneChannel + 1 <= outChannels) {
+        if (d.throughLayout && speakerOutputs > 0) {
+            virtual_.process(field_.data(), C, stereo_.data(), n);
+        } else {
+            turn_.process(field_.data(), turned_.data(), n);
+            binaural_.process(turned_.data(), stereo_.data(), n);
+        }
+        float* left = out.getWritePointer(d.headphoneChannel - 1);
+        float* right = out.getWritePointer(d.headphoneChannel);
+        for (int i = 0; i < n; ++i) {
+            const float g = ramp(i);
+            left[i] += stereo_[static_cast<std::size_t>(i) * 2] * g;
+            right[i] += stereo_[static_cast<std::size_t>(i) * 2 + 1] * g;
+        }
+        hpHeard = true;
+    }
+    if (d.speakersPlay && speakerOutputs > 0 && speakerOutputs <= outChannels) {
+        speakers_.process(field_.data(), C, speakersOut_.data(), speakerOutputs, n);
+        for (int o = 0; o < speakerOutputs; ++o) {
+            float* y = out.getWritePointer(o);
+            for (int i = 0; i < n; ++i)
+                y[i] += speakersOut_[static_cast<std::size_t>(i) * static_cast<std::size_t>(speakerOutputs) +
+                                     static_cast<std::size_t>(o)] *
+                        ramp(i);
+        }
+        spHeard = true;
+    }
+    diag_.headphonesHeard.store(hpHeard, std::memory_order_relaxed);
+    diag_.speakersHeard.store(spHeard, std::memory_order_relaxed);
+    float outPeak = 0.0f;
+    for (int c = 0; c < outChannels; ++c) outPeak = std::max(outPeak, out.getMagnitude(c, 0, n));
+    diag_.outputPeak.store(outPeak, std::memory_order_relaxed);
+}
+
+juce::AudioProcessorEditor* BambiDecoderProcessor::createEditor() { return new BambiDecoderEditor(*this); }

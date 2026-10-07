@@ -200,6 +200,9 @@ protected:
         juce::Component& equirect;
         /// How the scene is looked at; the window reads `equirectFull` from it when it lays the scene row out.
         ui::SceneViewState& view;
+        /// A plugin's own strip under the scene, in the matrix's place; the matrix is then not shown. The decoder's
+        /// head strip. Null for every plugin that has the matrix there.
+        juce::Component* underScene{nullptr};
     };
 
     /// `levels` and `footerSwitches` are the plugin's own parameters, shown over the output meter and in the footer.
@@ -254,6 +257,7 @@ private:
     ui::ParameterPage& page_;
     juce::Component& globe_;
     juce::Component& equirect_;
+    juce::Component* underScene_{nullptr};
     int shownTab_{0}, shownSource_{-1};  ///< what the page last showed, to reset its scroll
     ui::SceneViewState& view_;
     juce::Component* overlay_{nullptr};
