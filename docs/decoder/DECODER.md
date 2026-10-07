@@ -442,6 +442,14 @@ decoder, that sends the phone's orientation to the receiver ([0172](../DECISIONS
 - **Applied on arrival, not on a frame.** The orientation is applied as each message lands; the prototype first
   applied it on the screen's frame, and it froze whenever its window was hidden.
 
+**Ported, the conversion** (`core/include/bambi/decode/orientation.hpp`): a sender's numbers — a quaternion w-first
+or w-last, or yaw, pitch and roll in degrees with either pitch sign or in radians — into the head's orientation in
+the world, with learn mode's flips, the phone's mounting (on the band or held in front) mapped into the head's frame,
+the yaw-only recentre, and the table of well-known addresses. Checked against the bridge's own quaternion for every
+family to 0.01°, for the pitch signs, the mountings on canonical poses, and the recentre keeping a plain turn a plain
+turn. What stays in the plugin: the socket, the OSC bytes, gathering values sent under split addresses, the rate
+readout, and learn mode's picking.
+
 ### 7.2 What it drives
 
 - **The scene before the binaural decode** — a rotation of (N+1)² × (N+1)² per block, negligible. *Ported*
