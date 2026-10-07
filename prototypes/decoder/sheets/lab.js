@@ -89,10 +89,17 @@ function blur(x, fwhm) {
   for (let k = 0; k < n; k++) { let s = 0; for (let i = -r; i <= r; i++) s += g[i + r] * x[Math.max(0, Math.min(n - 1, k + i))]; out[k] = s; }
   return out;
 }
-// Dips: Gaussians on the axis, each [centre (ERB), depth (dB, negative), sigma (ERB)].
+// Dips: each [centre (ERB), depth (dB, negative), width (ERB)], one of two shapes in dB over the axis —
+//   bell  a Gaussian, exp(−u²/2): what the first runs used
+//   peak  1 / (1 + u²), a peaking filter's notch: a sharp bottom and wide skirts, as measured notches are
+// u the distance from the centre in widths. The shape is set once for a run; a template records which it was made with.
+let SHAPE = "bell";
+const setShape = name => { SHAPE = name; };
+const shapeOf = u => SHAPE === "peak" ? 1 / (1 + u * u) : Math.exp(-0.5 * u * u);
+const slopeOf = (u, g) => SHAPE === "peak" ? -2 * u * g * g : -u * g;    // d shape / d u
 function bumps(par) {
   const out = new Float32Array(NF);
-  for (const [c, a, s] of par) for (let k = 0; k < NF; k++) { const u = (E0 + k * STEP - c) / s; out[k] += a * Math.exp(-0.5 * u * u); }
+  for (const [c, a, s] of par) for (let k = 0; k < NF; k++) out[k] += a * shapeOf((E0 + k * STEP - c) / s);
   return out;
 }
 function solve(M, b, n) {                                              // Gaussian elimination with pivoting; M and b are used up
@@ -141,7 +148,7 @@ function refine(r, par, steps, prior = null, pull = 0) {
   const hold = q => { for (let j = 0; j < K; j++) { q[3 * j] = Math.max(cLo, Math.min(cHi, q[3 * j]));
     q[3 * j + 1] = Math.max(-60, Math.min(-0.01, q[3 * j + 1])); q[3 * j + 2] = Math.max(0.1, Math.min(1.5, q[3 * j + 2])); } return q; };
   const left = q => { const out = new Float64Array(HI - LO + 1);
-    for (let k = LO; k <= HI; k++) { let m = 0; for (let j = 0; j < K; j++) { const u = (E0 + k * STEP - q[3 * j]) / q[3 * j + 2]; m += q[3 * j + 1] * Math.exp(-0.5 * u * u); } out[k - LO] = r[k] - m; }
+    for (let k = LO; k <= HI; k++) { let m = 0; for (let j = 0; j < K; j++) m += q[3 * j + 1] * shapeOf((E0 + k * STEP - q[3 * j]) / q[3 * j + 2]); out[k - LO] = r[k] - m; }
     return out; };
   const costOf = (q, res) => { let t = 0; for (const x of res) t += x * x;
     for (let p = 0; p < P; p++) if (held(p)) t += tie[p % 3] * (q[p] - held(p)[p % 3]) ** 2; return t; };
@@ -149,8 +156,8 @@ function refine(r, par, steps, prior = null, pull = 0) {
   for (let it = 0; it < steps; it++) {
     const JJ = new Float64Array(P * P), Jr = new Float64Array(P), row = new Float64Array(P);
     for (let k = LO; k <= HI; k++) {
-      for (let j = 0; j < K; j++) { const a = q[3 * j + 1], s = q[3 * j + 2], u = (E0 + k * STEP - q[3 * j]) / s, g = Math.exp(-0.5 * u * u);
-        row[3 * j] = a * g * u / s; row[3 * j + 1] = g; row[3 * j + 2] = a * g * u * u / s; }
+      for (let j = 0; j < K; j++) { const a = q[3 * j + 1], s = q[3 * j + 2], u = (E0 + k * STEP - q[3 * j]) / s, g = shapeOf(u), gu = slopeOf(u, g);
+        row[3 * j] = -a * gu / s; row[3 * j + 1] = g; row[3 * j + 2] = -a * gu * u / s; }
       for (let p = 0; p < P; p++) { Jr[p] += row[p] * res[k - LO]; for (let t = 0; t < P; t++) JJ[p * P + t] += row[p] * row[t]; } }
     for (let p = 0; p < P; p++) if (held(p)) { JJ[p * P + p] += tie[p % 3]; Jr[p] += tie[p % 3] * (held(p)[p % 3] - q[p]); }
     let better = false;
@@ -351,7 +358,7 @@ function asNumbers(H, near, xs, final, order) {
   for (const d of all) { const y = shN(order, ...H.xyz[d]), r = targetOf(xs[d], final[d].filter(Boolean));
     let live = sheets.filter(sh => sh && sh.reach[d]);
     const shape = new Map(live.map(sh => { const c = Math.max(bandLo, Math.min(bandHi, at(sh.centre, y))), w = Math.max(0.1, Math.min(1.5, at(sh.width, y)));
-      return [sh, Float32Array.from({ length: HI - LO + 1 }, (_, k) => Math.exp(-0.5 * ((E0 + (LO + k) * STEP - c) / w) ** 2))]; }));
+      return [sh, Float32Array.from({ length: HI - LO + 1 }, (_, k) => shapeOf((E0 + (LO + k) * STEP - c) / w))]; }));
     while (live.length) { const m = live.length, M = new Float64Array(m * m), b = new Float64Array(m);    // least squares, depths above 0 dropped
       live.forEach((p, i) => { const g = shape.get(p); for (let k = 0; k <= HI - LO; k++) b[i] += g[k] * r[LO + k];
         live.forEach((q, j) => { const h = shape.get(q); let t = 0; for (let k = 0; k <= HI - LO; k++) t += g[k] * h[k]; M[i * m + j] = t + (i === j ? 1e-6 : 0); }); });

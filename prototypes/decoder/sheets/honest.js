@@ -14,11 +14,14 @@
 // costs as before, for the record. Writes <out>/honest.json: the template (centre, depth, width, presence), and every
 // head's shift and depth factor.
 //
-//   node honest.js <out folder> <ladder folder, for the first centres> [processes, default 8]
+//   node honest.js <out folder> <ladder folder, for the first centres> [processes, default 8] [shape: bell or peak, default peak]
+//
+// The shape: a dip as a bell (Gaussian) or as a peaking filter's notch (lab.js), for the dips found and for the template.
 const fs = require("fs"), path = require("path"), { fork } = require("child_process");
 const here = f => path.join(__dirname, f);
 const lab = new Function(["../common.js", "lab.js"].map(f => fs.readFileSync(here(f), "utf8")).join("\n")
-  + "\nreturn { parseHead, analyse, fitted, tracksOf, backToInput, targetOf, bumps, blur, costOf, shN, solve, NOTCHES, E0, STEP, LO, HI, NF };")();
+  + "\nreturn { parseHead, analyse, fitted, tracksOf, backToInput, targetOf, bumps, blur, costOf, shN, solve, setShape, NOTCHES, E0, STEP, LO, HI, NF };")();
+const SHAPE = process.argv[2] === "child" ? process.argv[3] : (process.argv[5] || "peak"); lab.setShape(SHAPE);
 const NOTCHES = 3, ORDER = 6, COEF = (ORDER + 1) ** 2, PRESENT = 0.4;
 const at = (coef, y) => { let v = 0; for (let p = 0; p < coef.length; p++) v += y[p] * coef[p]; return v; }, mirror = ([x, y, z]) => [x, -y, z];
 const median = v => { const s = [...v].sort((a, b) => a - b); return s.length ? s[s.length >> 1] : NaN; };
@@ -76,7 +79,7 @@ if (process.argv[2] === "child") {
   const [out, ladderFolder, procs = "8"] = process.argv.slice(2), count = +procs, started = Date.now(), minutes = () => ((Date.now() - started) / 60000).toFixed(1);
   const index = JSON.parse(fs.readFileSync(here("run/index.json"), "utf8")).heads.filter(h => ["HUTUBS", "3D3A", "SONICOM"].includes(h.set));
   const people = [...new Set(index.map(h => h.set + " " + h.name))], learnt = new Set(people.filter((_, i) => i % 2 === 0)), isLearnt = h => learnt.has(h.set + " " + h.name);
-  const children = Array.from({ length: count }, () => fork(__filename, ["child"]));
+  const children = Array.from({ length: count }, () => fork(__filename, ["child", SHAPE]));
   for (const c of children) c.on("exit", code => { if (code) { console.error("a worker stopped with an error; stopping"); children.forEach(o => o.kill()); process.exit(1); } });
   const mine = i => index.map((h, k) => k).filter(k => k % count === i);
   const ask = msgOf => Promise.all(children.map((c, i) => new Promise(done => { c.once("message", done); c.send(msgOf(i)); })));
@@ -108,6 +111,6 @@ if (process.argv[2] === "child") {
   const front = lab.shN(ORDER, 1, 0, 0);
   console.log("  the template in front: " + template.map(t => `${((10 ** (at(t.centre, front) / 21.4) - 1) / 0.00437 / 1000).toFixed(1)} kHz, ${at(t.depth, front).toFixed(1)} dB, ${at(t.width, front).toFixed(2)} ERB, present in ${Math.round(100 * at(t.presence, front))} %`).join(" · "));
   fs.mkdirSync(out, { recursive: true });
-  fs.writeFileSync(path.join(out, "honest.json"), JSON.stringify({ order: ORDER, present: PRESENT, template, heads: index.map((h, k) => ({ set: h.set, name: h.name, ear: h.ear, learned: isLearnt(h), shift: result[k].shift, gain: result[k].gain })) }));
-  console.log(`\nwrote ${path.join(out, "honest.json")}, ${minutes()} min`);
+  fs.writeFileSync(path.join(out, `honest${SHAPE === "peak" ? "" : "-" + SHAPE}.json`), JSON.stringify({ order: ORDER, present: PRESENT, shape: SHAPE, template, heads: index.map((h, k) => ({ set: h.set, name: h.name, ear: h.ear, learned: isLearnt(h), shift: result[k].shift, gain: result[k].gain })) }));
+  console.log(`\nwrote ${path.join(out, `honest${SHAPE === "peak" ? "" : "-" + SHAPE}.json`)}, ${minutes()} min`);
 })();

@@ -78,7 +78,7 @@
   </div>
 </div>
 <script src="../common.js"></script>
-<script src="lab.js?18"></script>
+<script src="lab.js?19"></script>
 <script>
 // The listener is the head selected: its measurement is what the others are heard against. Nobody's head is the
 // population's average of every part, with no notches or with the template's and the ear slider — nothing in it comes
@@ -106,7 +106,7 @@ async function loadHead(entry) {
     head.fits[kind] = mine ? (mine.fit ? { shift: mine.fit.one[0], gain: 1, each: mine.fit } : { shift: mine.shift, gain: mine.gain }) : null; }
   return head;
 }
-const worker = new Worker("worker.js?18");
+const worker = new Worker("worker.js?19");
 let asked = 0;
 function fitHead() {
   const head = S.head; if (!head) return;
@@ -159,8 +159,10 @@ function responses(head, d) {
   if (head.fit) { const p = onSphere(head.H, head.fit.pattern, 4, d), m = bumps(head.fit.rebuilt[d].filter(Boolean)); cllN = p.map((v, k) => v + m[k] + A.avg[k] + mine[k]);
     smooth = p.map((v, k) => v + A.avg[k] + mine[k]); withDips = dips => { const b = bumps(dips); return earsOf(smooth.map((v, k) => v + b[k]), ild, itd); }; }
   const have = !!head.templates[S.kind], mine6 = have && S.kind === "ladder" && head.fits.ladder && head.fits.ladder.each;
+  if (have) setShape(TEMPLATES[S.kind].shape || "bell");            // the template's dips in the shape it was learned with; the head's own are bells
   const slider = have && withDips(templateDips(head, d, [S.shift, S.shift, S.shift], [S.depth, S.depth, S.depth], S.sharp));
   const six = mine6 ? withDips(templateDips(head, d, mine6.shift, mine6.gain)) : null;
+  setShape("bell");
   const raw = [ear(head.H, head.variant, d, 0), ear(head.H, head.variant, d, 1)], own = mine.some(v => v) ? raw.map(h => toned(h, mine)) : raw, energy = pair => pair.reduce((t, h) => t + h.reduce((u, v) => u + v * v, 0), 0);
   const level = pair => { if (!pair) return null; const g = Math.sqrt(energy(own) / energy(pair)); return pair.map(h => h.map(v => v * g)); };   // as loud as the measured pair
   const k = S.ku && nearest(S.ku, head.H.xyz[d])[0];                   // the KU100's nearest direction
@@ -169,7 +171,7 @@ function responses(head, d) {
     const withSize = onSphere(head.H, G.ildWithSize, G.ildOrder, d);     // the head slider: the ITD scaled, the ILD below 1.5 kHz going with it
     const ildG = onSphere(head.H, G.ild, G.ildOrder, d).map((v, k) => v + (S.size - 1) * withSize[k]), itdG = onSphere(head.H, G.itd, G.itdOrder, d, 1)[0] * S.size;
     nobody = earsOf(base, ildG, itdG);
-    if (have) { const b = bumps(templateDips(head, d, [S.shift, S.shift, S.shift], [S.depth, S.depth, S.depth], S.sharp)); nobodyEar = earsOf(base.map((v, k) => v + b[k]), ildG, itdG); } }
+    if (have) { setShape(TEMPLATES[S.kind].shape || "bell"); const b = bumps(templateDips(head, d, [S.shift, S.shift, S.shift], [S.depth, S.depth, S.depth], S.sharp)); setShape("bell"); nobodyEar = earsOf(base.map((v, k) => v + b[k]), ildG, itdG); } }
   return [own, ...[cllN && earsOf(cllN, ildN, itdN), S.ku && [ear(S.ku, 0, k, 0), ear(S.ku, 0, k, 1)], nobody, nobodyEar,
                    slider, six, smooth && earsOf(smooth, ild, itd), cllN && earsOf(cllN, ild, itd)].map(level)];
 }
@@ -325,12 +327,13 @@ $("bReveal").onclick = () => { const f = S.head && S.head.fits[S.kind], sign = v
   const size = S.head && S.generic ? `the head: fitted ITD × ${fittedSize(S.head).toFixed(2)} · yours × ${S.size.toFixed(2)}\n` : "";
   $("reveal").textContent = size + (!f ? "the ear: this head is not among the fitted ones" : `the ear: fitted, one shift for all notches   ${sign(f.shift)} ERB · yours ${sign(S.shift)} ERB\n`
     + `fitted depth × ${f.gain.toFixed(2)} · yours × ${S.depth.toFixed(2)}` + (f.each ? `\nfitted a notch: shifts ${f.each.shift.map(v => v.toFixed(2)).join(" ")} ERB, depths × ${f.each.gain.join(" ")}` : "")); };
-const KINDS = { honest: "learned honestly: as deep and as narrow as the heads have the notches, present where they have them — depth and sharpness × 1 are the plain template",
+const KINDS = { honest: "learned honestly, the dips shaped as a peaking filter's notch: as deep and as narrow as the heads have the notches, present where they have them — depth and sharpness × 1 are the plain template",
+                bell: "learned honestly, the dips as bells (Gaussians) — wider and shallower than the notches they stand for",
                 ladder: "as the ladder fitted it: least squares, which left the notches shallow and wide — depth × 1.5 and sharpness × 2.5 made them heard" };
 const TEMPLATES = {};
 function kindSeg() {
-  seg($("segKind"), Object.keys(KINDS).filter(k => TEMPLATES[k]), () => S.kind, v => { S.kind = v; [S.depth, S.sharp] = v === "honest" ? [1, 1] : [1.5, 2.5]; $("reveal").textContent = ""; kindSeg(); panel(); update(); },
-      v => v === "honest" ? "learned honestly" : "as the ladder fitted it");
+  seg($("segKind"), Object.keys(KINDS).filter(k => TEMPLATES[k]), () => S.kind, v => { S.kind = v; [S.depth, S.sharp] = v === "ladder" ? [1.5, 2.5] : [1, 1]; $("reveal").textContent = ""; kindSeg(); panel(); update(); },
+      v => ({ honest: "honest, peak-shaped", bell: "honest, bell-shaped", ladder: "as the ladder fitted it" })[v]);
   $("kindNote").textContent = KINDS[S.kind] || "";
 }
 $("bStart").onclick = start;
@@ -342,7 +345,7 @@ addEventListener("keydown", e => {
 addEventListener("resize", update);
 (async () => {
   try { S.index = await (await fetch("run/index.json")).json(); } catch { $("headNote").innerHTML = "No <b>run/index.json</b> — the list of heads."; return; }
-  for (const [kind, file] of [["honest", "honest.json"], ["ladder", "ladder.json"]]) try { TEMPLATES[kind] = await (await fetch("ladder/" + file, { cache: "no-store" })).json(); } catch { TEMPLATES[kind] = null; }
+  for (const [kind, file] of [["honest", "honest.json"], ["bell", "honest-bell.json"], ["ladder", "ladder.json"]]) try { TEMPLATES[kind] = await (await fetch("ladder/" + file, { cache: "no-store" })).json(); } catch { TEMPLATES[kind] = null; }
   if (!TEMPLATES.honest) { S.kind = "ladder"; [S.depth, S.sharp] = [1.5, 2.5]; }
   if (!TEMPLATES.honest && !TEMPLATES.ladder) $("reveal").textContent = "no template — honest.js or ladder.js writes one";
   kindSeg();

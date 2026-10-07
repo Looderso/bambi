@@ -659,8 +659,26 @@ switch, the ladder's with × 1.5 and × 2.5.
 - **The dips are wider than the notches they stand for.** Fitted with width free, a head's dips settle at a sigma of
   0.44–0.49 ERB (fresh fits on the measured CLL 0.35–0.40), where the curves' notches are 0.60 ERB wide at half depth,
   a sigma of 0.25: a notch is not a Gaussian in dB — a sharp bottom with wide skirts — and a Gaussian fitted to it
-  goes wide and shallow. A dip shaped as a peaking filter's notch is in dB (sharp at the bottom, skirts) would fit
-  narrower and deeper, and is what the plugin will play anyway. Not tried.
+  goes wide and shallow.
+
+**A dip shaped as a peaking filter's notch** (`lab.js`: 1/(1+u²) in dB, a sharp bottom and wide skirts; `setShape`)
+**fits the notches as they are.** Fitted fresh per direction on two heads, the dips' own deepest notch a direction
+comes out 8.7 and 9.4 dB deep and 0.70 and 0.60 ERB wide (bells: 7.5 and 8.4 dB, 0.80 and 0.70 ERB; measured 9.4 and
+10.0 dB, 0.60 ERB), for 0.1 dB more left over point for point — the bet the bell was making. The honest template
+learned with it, on the 274 heads not learned from:
+
+| | measured | honest, bell-shaped | honest, peak-shaped |
+|---|---|---|---|
+| a direction's deepest notch, median | 8.5 dB | 5.6 dB | 5.9 dB |
+| its width at half depth | 0.60 ERB | 0.90 ERB | **0.60 ERB** |
+| directions with a notch deeper than 6 dB | 70 % | 37 % | 48 % |
+| the heads' dips met by a template notch | — | 42 % | 44 % |
+| template notches with a dip under them | — | 59 % | 60 % |
+
+In front: 7.3, 9.6 and 14.2 kHz, 9.2–9.6 dB deep, widths 0.59, 0.33 and 0.26 ERB, present in 66, 64 and 23 % of the
+heads. The widths are now the measured ones; the depth is still the population's typical depth, evened over the
+sphere — a head's own deepest places stay deeper (16 dB where the template plays 6, at one place of one head). The
+listening page holds all three templates on a switch; the peak-shaped one is its start, at depth and sharpness × 1.
 
 ## 8. Next
 
