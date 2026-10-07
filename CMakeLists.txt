@@ -11,6 +11,11 @@ if(NOT DEFINED CMAKE_BUILD_TYPE)
 endif()
 
 project(bambi VERSION 0.1.0 LANGUAGES C CXX)
+#  Objective-C, for the one thing that needs it: the decoder's helper app and its launcher, on macOS. A language
+#  is enabled at the top, where CMake can set it up; enabled inside a subdirectory it leaves its rules unset.
+if(APPLE)
+  enable_language(OBJC OBJCXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

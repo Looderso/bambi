@@ -32,6 +32,7 @@ enum class Mounting {
     AsSent,        ///< the device reports the head's axes already: a head tracker, the AirPods
     PhoneTopEdge,  ///< a phone on the headphones' band, screen up, top edge forward
     PhoneBack,     ///< a phone held upright in front, its screen facing the listener
+    AirPods,       ///< Apple's headphone frame: x to the right of the head, y up, z toward the back
 };
 
 /// One way of reading what a sender sends, as learn mode or a preset settles it.

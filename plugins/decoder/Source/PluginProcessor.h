@@ -13,6 +13,7 @@
 #include <string_view>
 #include <vector>
 
+#include "HelperLink.h"
 #include "bambi/decode/decoder.hpp"
 #include "bambi/decode/headmodel.hpp"
 #include "bambi/decode/headrotation.hpp"
@@ -46,8 +47,8 @@ class BambiDecoderProcessor final : public bambi::host::PluginProcessor,
                                     public clap_juce_extensions::clap_juce_audio_processor_capabilities,
                                     private juce::OSCReceiver::Listener<juce::OSCReceiver::MessageLoopCallback> {
 public:
-    static constexpr int kMaxOutputs = 64;   ///< the widest bus a layout may use
-    static constexpr int kPartition = 64;    ///< the binaural convolution's block, and the latency reported
+    static constexpr int kMaxOutputs = 64;  ///< the widest bus a layout may use
+    static constexpr int kPartition = 64;   ///< the binaural convolution's block, and the latency reported
     static constexpr int kMaxHostOrder = bambi::host::kMaxHostOrder;
 
     BambiDecoderProcessor();
@@ -97,6 +98,10 @@ public:
     bambi::SpeakerDesign speakerDesign() const;
     /// What the last `playOutput` had to say, or empty.
     juce::String notice() const;
+    /// The helper's last word about itself: the permission, the headphones, the count. Empty before it speaks.
+    juce::String helperStatus() const;
+    /// Whether this build and this bundle can read AirPods: macOS, and the helper nested in the bundle.
+    bool helperAvailable() const { return HelperLink::available() && !HelperLink::bundledHelperPath().empty(); }
     juce::StringArray layoutLog() const;
 
     /// The sliders the binaural filters were last built with, for a check.
@@ -140,9 +145,9 @@ private:
     int builtWeighting_{-1}, builtOrder_{-1};
     bool builtDistance_{true};
 
-    bambi::host::FieldBuffer field_;                   ///< the input, interleaved
+    bambi::host::FieldBuffer field_;                    ///< the input, interleaved
     std::vector<float> turned_, stereo_, speakersOut_;  ///< scratch, sized in prepareToPlay
-    std::vector<float> gainRamp_;                        ///< the level per sample of the block
+    std::vector<float> gainRamp_;                       ///< the level per sample of the block
     float gainNow_{1.0f}, gainCoefficient_{1.0f};
 
     //  The tracker. The OSC callback runs on the message thread and is the handoff's one writer; the audio
@@ -150,6 +155,8 @@ private:
     juce::OSCReceiver osc_;
     int oscPort_{0};
     bool oscConnected_{false};
+    HelperLink helper_;          ///< the AirPods helper, launched while the tracker source is AirPods
+    juce::String helperStatus_;  ///< under trackerMutex_
     mutable std::mutex trackerMutex_;
     bambi::OrientationRead trackerRead_;
     bambi::LatestValue<bambi::Mat3> tracker_;

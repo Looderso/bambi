@@ -409,6 +409,14 @@ reads the headphones' motion with CoreMotion and sends the quaternion to the rec
 - **The look-and-nod calibration of Headitude** (MIT) tells the decoder how the AirPods sit; recentring stays as
   below, yaw only.
 - **macOS only.** Elsewhere AirPods are a phone's job, through the formats above.
+- **Built** (`plugins/decoder/Helper/`, `Source/HelperLink.mm`): the helper is a target of the plugin build, nested
+  into the VST3 and CLAP bundles after they are built and copied, both signed again; `airpods` in the head strip
+  launches it with the receiver's port and ends it when the source changes; it sends `/quaternion` as SPARTA does,
+  so the receiver needs no new form, and `/bambi/helper/status` with the permission's state, which the strip shows
+  while it starts. **Its frame is Apple's headphone frame** — x to the right of the head, y up, z toward the back —
+  the same as an upright phone facing the listener (`Mounting::AirPods`); the signs are checked by looking and
+  nodding, and learn mode's flips correct a wrong one. Headitude's look-and-nod calibration for how the AirPods
+  sit is not built.
 
 **Any phone, with no app: a page.** The helper also serves a page to the local Wi-Fi, reached by a QR code in the
 decoder, that sends the phone's orientation to the receiver ([0172](../DECISIONS.md)):
@@ -540,8 +548,8 @@ All in the browser, under `prototypes/decoder/`:
 5. **The Lens** (§6), on the stereo pair.
 6. **Placing loudspeakers by looking** (§3.3): how far head pointing scatters, and how far yaw drifts over a
    calibration.
-7. **AirPods read by a bundled helper** (§7.1) — *built*, `airpods-helper/`, a throwaway VST3 with the helper
-   nested in its bundle. In REAPER the helper asked for permission, the orientation arrived smooth over
+7. **AirPods read by a bundled helper** (§7.1) — *built and ported*, `airpods-helper/`, a throwaway VST3 with the
+   helper nested in its bundle; the helper is the decoder's now. In REAPER the helper asked for permission, the orientation arrived smooth over
    localhost UDP, and the helper quit with the host. The plugin's own CoreMotion request, the spike before it,
    crashed REAPER.
 8. **A phone as the tracker, through a page** (§7.1) — *built*, `phone-gyro/`: a standard-library server with a

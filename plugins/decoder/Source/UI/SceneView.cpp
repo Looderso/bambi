@@ -121,7 +121,8 @@ void DecoderSceneView::paint(juce::Graphics& g) {
         for (int i = 0; i < 5; ++i) {
             const auto x = static_cast<float>(vp.screenX(-1.0 + 0.5 * i));
             text(g, letters[i], smallFont(), colour::axisLabel,
-                 juce::Rectangle<float>(0.0f, 0.0f, 2.0f * sc::labelStrip, static_cast<float>(sc::labelStrip)).withCentre({x, y}),
+                 juce::Rectangle<float>(0.0f, 0.0f, 2.0f * sc::labelStrip, static_cast<float>(sc::labelStrip))
+                     .withCentre({x, y}),
                  juce::Justification::centred);
         }
     }
@@ -132,7 +133,8 @@ void DecoderSceneView::paint(juce::Graphics& g) {
         addDragArea(
             frame, [this](juce::Point<float> at) { dragLast_ = at; },
             [this](juce::Point<float> at, bool) {
-                orbitView(state_.sphere, static_cast<double>(at.x - dragLast_.x), static_cast<double>(at.y - dragLast_.y));
+                orbitView(state_.sphere, static_cast<double>(at.x - dragLast_.x),
+                          static_cast<double>(at.y - dragLast_.y));
                 dragLast_ = at;
                 state_.notify();
             },
@@ -151,12 +153,13 @@ void DecoderSceneView::paintGraticule(juce::Graphics& g, const Viewport& vp) {
             projectPolyline(projection_, state_.sphere.camera, vp, arc_, false, lineSegments_);
             segments_.insert(segments_.end(), lineSegments_.begin(), lineSegments_.end());
         }
-        strokeSegments(g, segments_, skipped_, major ? colour::graticuleMain : colour::graticule, stroke::graticule, false);
+        strokeSegments(g, segments_, skipped_, major ? colour::graticuleMain : colour::graticule, stroke::graticule,
+                       false);
     }
 }
 
-void DecoderSceneView::strokeArc(juce::Graphics& g, const Viewport& vp, Vec3 a, Vec3 b, juce::Colour colour, float width,
-                                 bool dashed) {
+void DecoderSceneView::strokeArc(juce::Graphics& g, const Viewport& vp, Vec3 a, Vec3 b, juce::Colour colour,
+                                 float width, bool dashed) {
     arc_.clear();
     for (int i = 0; i <= kArcSteps; ++i) arc_.push_back(toView(slerp(a, b, static_cast<double>(i) / kArcSteps)));
     segments_.clear();
@@ -171,8 +174,11 @@ void DecoderSceneView::paintHull(juce::Graphics& g, const Viewport& vp, float al
         for (const auto [i, j] : {std::pair{t[0], t[1]}, std::pair{t[1], t[2]}, std::pair{t[0], t[2]}})
             edges.insert({std::min(i, j), std::max(i, j)});
     for (const auto& [i, j] : edges) {
-        if (i < 0 || j < 0 || i >= static_cast<int>(design_.points.size()) || j >= static_cast<int>(design_.points.size())) continue;
-        const bool imaginary = design_.imaginary[static_cast<std::size_t>(i)] || design_.imaginary[static_cast<std::size_t>(j)];
+        if (i < 0 || j < 0 || i >= static_cast<int>(design_.points.size()) ||
+            j >= static_cast<int>(design_.points.size()))
+            continue;
+        const bool imaginary =
+            design_.imaginary[static_cast<std::size_t>(i)] || design_.imaginary[static_cast<std::size_t>(j)];
         strokeArc(g, vp, design_.points[static_cast<std::size_t>(i)], design_.points[static_cast<std::size_t>(j)],
                   colour::sphere.withAlpha(alpha * 0.5f), stroke::graticule, imaginary);
     }
@@ -183,9 +189,11 @@ void DecoderSceneView::paintSpeakers(juce::Graphics& g, const Viewport& vp, floa
     speakersDrawn_ = 0;
     const float side = sc::toggleBox;
     for (const Loudspeaker& s : state_.decoder().layout) {
-        const auto p = toScreen(projection_, state_.sphere.camera, vp, toView(fromAzEl(s.azimuthDeg * kDeg2Rad, s.elevationDeg * kDeg2Rad)));
+        const auto p = toScreen(projection_, state_.sphere.camera, vp,
+                                toView(fromAzEl(s.azimuthDeg * kDeg2Rad, s.elevationDeg * kDeg2Rad)));
         const float a = alpha * (p.depth < 0.0 ? sc::backAlpha : 1.0f);
-        const juce::Rectangle<float> box{static_cast<float>(p.x) - side / 2.0f, static_cast<float>(p.y) - side / 2.0f, side, side};
+        const juce::Rectangle<float> box{static_cast<float>(p.x) - side / 2.0f, static_cast<float>(p.y) - side / 2.0f,
+                                         side, side};
         g.setColour(colour::text.withAlpha(a));
         if (s.imaginary) {
             juce::Path outline;
@@ -218,7 +226,9 @@ void DecoderSceneView::paintSources(juce::Graphics& g, const Viewport& vp) {
 }
 
 void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float alpha) {
-    const Vec3 gaze = state_.headFrame ? Vec3{1, 0, 0} : bambi::apply(head_, Vec3{1, 0, 0});  // bambi::, not std::apply through the array
+    const Vec3 gaze = state_.headFrame
+                          ? Vec3{1, 0, 0}
+                          : bambi::apply(head_, Vec3{1, 0, 0});  // bambi::, not std::apply through the array
     const Vec3 up = state_.headFrame ? Vec3{0, 0, 1} : bambi::apply(head_, Vec3{0, 0, 1});
     circleAround(gaze, kGazeRingDeg * kDeg2Rad, 48, arc_);
     segments_.clear();
@@ -241,13 +251,16 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
         g.fillEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r);
         g.setColour(colour::text.withAlpha(alpha));
         g.drawEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r, stroke::toggle);
-        g.drawLine(static_cast<float>(vp.cx), static_cast<float>(vp.cy), static_cast<float>(nose.x), static_cast<float>(nose.y), stroke::toggle);
+        g.drawLine(static_cast<float>(vp.cx), static_cast<float>(vp.cy), static_cast<float>(nose.x),
+                   static_cast<float>(nose.y), stroke::toggle);
         g.fillRect(static_cast<float>(top.x) - 1.5f, static_cast<float>(top.y) - 1.5f, 3.0f, 3.0f);
     } else {
         g.setColour(colour::text.withAlpha(alpha * (tip.depth < 0.0 ? sc::backAlpha : 1.0f)));
         const float c = shape::sourceDot;
-        g.drawLine(static_cast<float>(tip.x) - c, static_cast<float>(tip.y), static_cast<float>(tip.x) + c, static_cast<float>(tip.y), stroke::toggle);
-        g.drawLine(static_cast<float>(tip.x), static_cast<float>(tip.y) - c, static_cast<float>(tip.x), static_cast<float>(tip.y) + c, stroke::toggle);
+        g.drawLine(static_cast<float>(tip.x) - c, static_cast<float>(tip.y), static_cast<float>(tip.x) + c,
+                   static_cast<float>(tip.y), stroke::toggle);
+        g.drawLine(static_cast<float>(tip.x), static_cast<float>(tip.y) - c, static_cast<float>(tip.x),
+                   static_cast<float>(tip.y) + c, stroke::toggle);
     }
 }
 

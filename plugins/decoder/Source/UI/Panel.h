@@ -24,7 +24,7 @@ public:
     }
     juce::Rectangle<float> ituCell(int index) const {
         return index >= 0 && index < static_cast<int>(ituCells_.size()) ? ituCells_[static_cast<std::size_t>(index)]
-                                                                         : juce::Rectangle<float>{};
+                                                                        : juce::Rectangle<float>{};
     }
     bool ituPickerOpen() const { return ituOpen_; }
 
@@ -35,9 +35,10 @@ private:
     void paintLens(juce::Graphics& g, juce::Rectangle<float> content);
     void paintTracking(juce::Graphics& g, juce::Rectangle<float> content);
     void paintPersonalise(juce::Graphics& g, juce::Rectangle<float> content);
-    float paintStateTile(juce::Graphics& g, juce::Rectangle<float> tile, const juce::String& name, const juce::String& value,
-                         double shown, double low, double high, double step, const char* key, bool enabled,
-                         std::function<void(DecoderState&, double)> set, std::function<void(DecoderState&)> reset);
+    float paintStateTile(juce::Graphics& g, juce::Rectangle<float> tile, const juce::String& name,
+                         const juce::String& value, double shown, double low, double high, double step, const char* key,
+                         bool enabled, std::function<void(DecoderState&, double)> set,
+                         std::function<void(DecoderState&)> reset);
     void chooseLayoutFile();
     std::vector<int> channelsOf(OutputPage output) const;
 

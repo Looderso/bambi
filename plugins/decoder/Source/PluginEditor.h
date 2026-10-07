@@ -19,7 +19,11 @@ namespace bambi::ui {
     follows it, and a member is not. */
 struct DecoderWindowParts {
     explicit DecoderWindowParts(BambiDecoderProcessor& p)
-        : controls(p), panel(controls), strip(controls), globe(controls, Projection::Globe), equirect(controls, Projection::Equirect) {}
+        : controls(p),
+          panel(controls),
+          strip(controls),
+          globe(controls, Projection::Globe),
+          equirect(controls, Projection::Equirect) {}
     DecoderControlState controls;
     DecoderPanel panel;
     HeadStrip strip;

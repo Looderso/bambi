@@ -165,3 +165,19 @@ TEST_CASE("the well-known addresses name their form; anything else goes to learn
     CHECK(f == OrientationForm::QuaternionXyzw);
     CHECK_FALSE(knownForm("/gyrosc/quat", f));
 }
+
+TEST_CASE("AirPods report the headphone frame: level on the head is a level head, a nod is a nod") {
+    //  Catches: the headphones' frame mapped as a tracker's own, which would put the front at the top of the head.
+    double y, p, r;
+    //  Apple's frame on the head: x right, y up, z back. Worn level, facing world +y as the arbitrary x reference
+    //  has it, the attitude is the same as an upright phone facing the listener.
+    const auto aboutX = [](double deg) {
+        const double h = deg * kDeg2Rad / 2;
+        return std::vector<float>{static_cast<float>(std::cos(h)), static_cast<float>(std::sin(h)), 0.0f, 0.0f};
+    };
+    yprOf(read(OrientationForm::QuaternionWxyz, aboutX(90), Mounting::AirPods), y, p, r);
+    CHECK(std::abs(p) < 1e-9);
+    CHECK(std::abs(r) < 1e-9);
+    yprOf(read(OrientationForm::QuaternionWxyz, aboutX(110), Mounting::AirPods), y, p, r);
+    CHECK(p == doctest::Approx(20.0).epsilon(1e-6));  // the face tipped up by 20 degrees
+}

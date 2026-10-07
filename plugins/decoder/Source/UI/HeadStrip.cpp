@@ -44,12 +44,18 @@ void HeadStrip::paint(juce::Graphics& g) {
 
     //  what turns the head, and whether it speaks
     const float rowH = static_cast<float>(space::grid * 3);
-    const juce::Rectangle<float> seg{content.getX(), y, 150.0f, rowH};
-    const int source = d.trackerSource == 1 ? 1 : 0;
-    paintSegments(g, seg, {"none", "osc"}, source, mine, [this](int which) {
-        model().applyEdit("tracker", [which](PluginState& s) { s.decoder.trackerSource = which; });
-    });
-    sourceCells_ = {seg.withWidth(seg.getWidth() / 2.0f), seg.withTrimmedLeft(seg.getWidth() / 2.0f)};
+    const juce::Rectangle<float> seg{content.getX(), y, 210.0f, rowH};
+    const int source = std::clamp(d.trackerSource, 0, 2);
+    const bool airpods = state_.processor.helperAvailable();
+    paintSegments(
+        g, seg, {"none", "osc", "airpods"}, source, mine,
+        [this](int which) {
+            model().applyEdit("tracker", [which](PluginState& s) { s.decoder.trackerSource = which; });
+        },
+        airpods ? -1 : 2);
+    const float third = seg.getWidth() / 3.0f;
+    sourceCells_ = {seg.withWidth(third), seg.withX(seg.getX() + third).withWidth(third),
+                    seg.withX(seg.getX() + 2.0f * third).withWidth(third)};
     const auto& diag = state_.processor.diagnostics();
     const auto lastMs = diag.trackerLastMs.load(std::memory_order_relaxed);
     const double age = lastMs > 0 ? static_cast<double>(juce::Time::currentTimeMillis() - lastMs) / 1000.0 : 1e9;
@@ -58,15 +64,19 @@ void HeadStrip::paint(juce::Graphics& g) {
     g.setColour(d.trackerSource == 0 ? colour::inactive : alive ? colour::text : colour::rule);
     g.fillRect(dotX, y + rowH / 2.0f - 3.5f, 7.0f, 7.0f);
     juce::String live;
+    const juce::String dot = juce::String::fromUTF8("\xc2\xb7"), name = d.trackerSource == 2 ? "airpods" : "osc";
     if (d.trackerSource == 0)
-        live = "no tracker " + juce::String::fromUTF8("\xc2\xb7") + " sliders turn the head";
+        live = "no tracker " + dot + " sliders turn the head";
     else if (alive)
-        live = "osc " + juce::String::fromUTF8("\xc2\xb7") + " " + juce::String(rateHz_, 0) + " hz";
+        live = name + " " + dot + " " + juce::String(rateHz_, 0) + " hz";
     else if (lastMs > 0)
-        live = "osc " + juce::String::fromUTF8("\xc2\xb7") + " silent " + juce::String(age, 1) + " s";
-    else
-        live = "osc " + juce::String::fromUTF8("\xc2\xb7") + " port " + juce::String(d.oscPort) + ", nothing yet";
-    text(g, live, smallFont(), colour::label, {dotX + 12.0f, y, 200.0f, rowH}, juce::Justification::centredLeft);
+        live = name + " " + dot + " silent " + juce::String(age, 1) + " s";
+    else if (d.trackerSource == 2) {
+        const juce::String word = state_.processor.helperStatus();  // the helper's own, while it starts and asks
+        live = word.isEmpty() ? "airpods " + dot + " starting the helper" : word;
+    } else
+        live = "osc " + dot + " port " + juce::String(d.oscPort) + ", nothing yet";
+    text(g, live, smallFont(), colour::label, {dotX + 12.0f, y, 150.0f, rowH}, juce::Justification::centredLeft);
 
     //  recentre, setup, overrides
     const float recentreW = framedButtonWidth("recentre"), setupW = framedButtonWidth("setup\xe2\x80\xa6");

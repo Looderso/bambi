@@ -19,7 +19,8 @@ Mat3 fromQuaternion(double w, double x, double y, double z) {
 Mat3 axesOf(Mounting mounting) {
     switch (mounting) {
         case Mounting::PhoneTopEdge: return {0, 1, 0, -1, 0, 0, 0, 0, 1};
-        case Mounting::PhoneBack: return {0, 0, -1, -1, 0, 0, 0, 1, 0};
+        case Mounting::PhoneBack:
+        case Mounting::AirPods: return {0, 0, -1, -1, 0, 0, 0, 1, 0};  // the same frame: a face, upright
         case Mounting::AsSent: break;
     }
     return kIdentity3;

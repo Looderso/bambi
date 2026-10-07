@@ -35,7 +35,9 @@ void BambiDecoderEditor::frame(bambi::ui::EditorFrame& parts) {
     const int messages = diag.trackerMessages.load(std::memory_order_relaxed);
     const double now = juce::Time::getMillisecondCounterHiRes() / 1000.0;
     if (now - trackerRateAt_ >= 0.5) {
-        trackerRate_ = trackerRateAt_ > 0.0 ? static_cast<float>((messages - trackerMessagesSeen_) / (now - trackerRateAt_)) : 0.0f;
+        trackerRate_ = trackerRateAt_ > 0.0
+                           ? static_cast<float>((messages - trackerMessagesSeen_) / (now - trackerRateAt_))
+                           : 0.0f;
         trackerMessagesSeen_ = messages;
         trackerRateAt_ = now;
     }
@@ -70,10 +72,14 @@ void BambiDecoderEditor::controlsChanged() {
 void BambiDecoderEditor::addOwnSettings(bambi::ui::SettingsContent& c) {
     bambi::ui::addHostReadout(c, processor_.diagnostics());
     const juce::String error = processor_.designError();
-    c.readout.push_back({"layout", error.isEmpty() ? juce::String(controls.decoder().layoutName.empty() ? "none" : controls.decoder().layoutName)
-                                                   : "refused: " + error});
-    c.readout.push_back({"head model", processor_.modelLoaded() ? juce::String(processor_.headModel().learnedFrom) : juce::String("missing")});
-    c.readout.push_back({"latency", juce::String(processor_.getLatencySamples()) + " samples, the convolution's partition"});
+    c.readout.push_back(
+        {"layout", error.isEmpty()
+                       ? juce::String(controls.decoder().layoutName.empty() ? "none" : controls.decoder().layoutName)
+                       : "refused: " + error});
+    c.readout.push_back({"head model", processor_.modelLoaded() ? juce::String(processor_.headModel().learnedFrom)
+                                                                : juce::String("missing")});
+    c.readout.push_back(
+        {"latency", juce::String(processor_.getLatencySamples()) + " samples, the convolution's partition"});
 }
 
 void BambiDecoderEditor::showOutput(int index) {
@@ -86,8 +92,8 @@ bool BambiDecoderEditor::clickOutputSquare(int index) {
     paintNow();
     const auto area = header().tabMarkArea(index);
     if (area.isEmpty()) return false;
-    header().mouseDown(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), area.getCentre(), {}, 0.0f, 0.0f, 0.0f, 0.0f,
-                                        0.0f, &header(), &header(), juce::Time::getCurrentTime(), area.getCentre(), juce::Time::getCurrentTime(), 1,
-                                        false));
+    header().mouseDown(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), area.getCentre(), {}, 0.0f,
+                                        0.0f, 0.0f, 0.0f, 0.0f, &header(), &header(), juce::Time::getCurrentTime(),
+                                        area.getCentre(), juce::Time::getCurrentTime(), 1, false));
     return true;
 }

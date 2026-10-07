@@ -60,6 +60,7 @@ BambiDecoderProcessor::~BambiDecoderProcessor() {
     stopLink();
     osc_.removeListener(this);
     osc_.disconnect();
+    helper_.terminate();
 }
 
 // ---- buses ---------------------------------------------------------------------------------
@@ -215,12 +216,16 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
 // ---- the tracker ---------------------------------------------------------------------------
 
 void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
+    const bool airpods = d.trackerSource == 2;
     {
         const std::lock_guard<std::mutex> lock(trackerMutex_);
         trackerRead_.flip = d.flip;
-        trackerRead_.mounting = bambi::Mounting::AsSent;
+        //  AirPods report Apple's headphone frame; a tracker over OSC reports the head's axes already.
+        trackerRead_.mounting = airpods ? bambi::Mounting::AirPods : bambi::Mounting::AsSent;
+        if (!airpods) helperStatus_.clear();
     }
-    const bool want = d.trackerSource == 1;
+    //  Both sources arrive as OSC on the port: a tracker from anywhere, the helper from this computer.
+    const bool want = d.trackerSource == 1 || airpods;
     if (want && (!oscConnected_ || oscPort_ != d.oscPort)) {
         if (oscConnected_) osc_.disconnect();
         //  Bound to this computer until asked: a port open on the network is open to the whole network.
@@ -230,6 +235,18 @@ void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
         osc_.disconnect();
         oscConnected_ = false;
     }
+    //  The helper runs while AirPods are the source, and is ended when they are not: it asks for the motion
+    //  permission in its own name, and quits with the host.
+    if (airpods && oscConnected_) {
+        if (!helper_.running()) helper_.launch(HelperLink::bundledHelperPath(), d.oscPort);
+    } else {
+        helper_.terminate();
+    }
+}
+
+juce::String BambiDecoderProcessor::helperStatus() const {
+    const std::lock_guard<std::mutex> lock(trackerMutex_);
+    return helperStatus_;
 }
 
 void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) {
@@ -239,13 +256,22 @@ void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) 
         read = trackerRead_;
     }
     const juce::String address = message.getAddressPattern().toString();
+    if (address == "/bambi/helper/status") {
+        if (message.size() == 1 && message[0].isString()) {
+            const std::lock_guard<std::mutex> lock(trackerMutex_);
+            helperStatus_ = message[0].getString();
+        }
+        return;
+    }
     if (!bambi::knownForm(address.toStdString(), read.form)) return;  // learn mode reads the rest, later
     std::array<float, 4> values{};
     std::size_t count = 0;
     for (const juce::OSCArgument& a : message) {
         if (count >= values.size()) break;
-        if (a.isFloat32()) values[count++] = a.getFloat32();
-        else if (a.isInt32()) values[count++] = static_cast<float>(a.getInt32());
+        if (a.isFloat32())
+            values[count++] = a.getFloat32();
+        else if (a.isInt32())
+            values[count++] = static_cast<float>(a.getInt32());
     }
     bambi::Mat3 head;
     if (!bambi::headFromValues(read, std::span<const float>(values.data(), count), head)) return;
@@ -256,7 +282,8 @@ void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) 
 
 // ---- state edits ---------------------------------------------------------------------------
 
-void BambiDecoderProcessor::editDecoder(std::string_view name, const std::function<void(bambi::DecoderState&)>& change) {
+void BambiDecoderProcessor::editDecoder(std::string_view name,
+                                        const std::function<void(bambi::DecoderState&)>& change) {
     document().edit(name, [&change](bambi::PluginState& s) { change(s.decoder); });
 }
 
@@ -276,7 +303,8 @@ void BambiDecoderProcessor::playOutput(Output which, bool on) {
     const int needs = mine.empty() ? 0 : *std::max_element(mine.begin(), mine.end());
     notice_.clear();
     if (on && (mine.empty() || needs > bus)) {
-        notice_ = mine.empty() ? juce::String("no layout") : juce::String(needs) + " channels needed; the bus has " + juce::String(bus);
+        notice_ = mine.empty() ? juce::String("no layout")
+                               : juce::String(needs) + " channels needed; the bus has " + juce::String(bus);
         return;
     }
     const Output other = which == Output::Headphones ? Output::Speakers : Output::Headphones;

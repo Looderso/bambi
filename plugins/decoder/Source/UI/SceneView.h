@@ -41,7 +41,8 @@ private:
     void paintSpeakers(juce::Graphics& g, const Viewport& vp, float alpha);
     void paintSources(juce::Graphics& g, const Viewport& vp);
     void paintHead(juce::Graphics& g, const Viewport& vp, float alpha);
-    void strokeArc(juce::Graphics& g, const Viewport& vp, Vec3 a, Vec3 b, juce::Colour colour, float width, bool dashed);
+    void strokeArc(juce::Graphics& g, const Viewport& vp, Vec3 a, Vec3 b, juce::Colour colour, float width,
+                   bool dashed);
     void refreshDesign();  ///< the layout's design, copied from the processor when the layout changed
 
     DecoderControlState& state_;
