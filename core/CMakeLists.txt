@@ -110,6 +110,7 @@ add_library(bambi-decode STATIC
   src/decode/speakers.cpp
   src/decode/layouts.cpp
   src/decode/virtualarray.cpp
+  src/decode/headrotation.cpp
 )
 target_link_libraries(bambi-decode PUBLIC bambi-core PRIVATE convhull_3d)
 bambi_warnings(bambi-decode PEDANTIC)
@@ -191,6 +192,7 @@ add_executable(bambi-tests
   tests/decode/test_speakers.cpp
   tests/decode/test_layouts.cpp
   tests/decode/test_virtualarray.cpp
+  tests/decode/test_headrotation.cpp
 )
 target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode)
 # The tests read the shipped head model and its fixtures from the source tree.

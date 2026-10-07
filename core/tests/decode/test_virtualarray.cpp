@@ -119,3 +119,49 @@ TEST_CASE("a source in front of a symmetric array reaches both ears alike") {
     REQUIRE(total > 0);
     CHECK(same / total < 1e-8);
 }
+
+TEST_CASE("the virtual array turns its field against the head, between its two stages") {
+    //  Catches: the turn applied to the bus instead of the field, or left out of the chain.
+    const double fs = 48000.0;
+    const SpeakerDesign array = design(*bs2051Layout("4+7+0"), 3);
+    const Mat3 head = rotationAbout({0, 0, 1}, 90.0 * kDeg2Rad);
+    VirtualArray va;
+    REQUIRE(va.prepare(shipped(), 3, fs, 64));
+    REQUIRE(va.publishLayout(array));
+    va.buildHead(0.0, 1.0);
+    va.setOrientation(head);
+
+    SpeakerRenderer renderer;
+    REQUIRE(renderer.prepare(3, 64, fs, 0.0));
+    REQUIRE(renderer.publish(fieldDesign(array, 7)));
+    HeadRotation turn;
+    REQUIRE(turn.prepare(7, fs));
+    turn.setOrientation(head);
+    std::vector<Vec3> dirs;
+    std::vector<double> w;
+    quadratureGrid(12, 20, dirs, w);
+    FilterDesign fd;
+    fd.order = 7;
+    BinauralFilterBuilder builder;
+    REQUIRE(builder.prepare(shipped(), fd, dirs, w));
+    builder.build(0.0, 1.0);
+    BinauralConvolver convolver;
+    REQUIRE(convolver.prepare(7, fd.taps, 64));
+    REQUIRE(convolver.publish(builder));
+
+    const int frames = 4096;
+    const std::vector<float> in = noise(16, frames, 12);
+    std::vector<float> got(static_cast<std::size_t>(frames) * 2), want(got.size()),
+        field(static_cast<std::size_t>(frames) * 64), turned(field.size());
+    va.process(in.data(), 16, got.data(), frames);
+    renderer.process(in.data(), 16, field.data(), 64, frames);
+    turn.process(field.data(), turned.data(), frames);
+    convolver.process(turned.data(), want.data(), frames);
+    double worst = 0, energy = 0;
+    for (std::size_t i = 0; i < got.size(); ++i) {
+        worst = std::max(worst, static_cast<double>(std::abs(got[i] - want[i])));
+        energy += want[i] * want[i];
+    }
+    REQUIRE(energy > 0);
+    CHECK(worst < 1e-6);
+}

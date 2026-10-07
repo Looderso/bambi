@@ -5,6 +5,7 @@
 
 #include "bambi/decode/binaural.hpp"
 #include "bambi/decode/convolver.hpp"
+#include "bambi/decode/headrotation.hpp"
 #include "bambi/decode/speakers.hpp"
 
 /*  The layout's loudspeakers heard on headphones: what that array will do to the mix -- its gaps, its
@@ -16,7 +17,8 @@
  *  room's own distances, which a virtual room does not have.
  *
  *  The two steps collapse into one matrix from the bus to the high-order field, which a
- *  SpeakerRenderer plays and swaps as it would a layout; a BinauralConvolver takes it from there.
+ *  SpeakerRenderer plays and swaps as it would a layout; the head's turn against the room goes on
+ *  that field, and a BinauralConvolver takes it from there.
  */
 namespace bambi {
 
@@ -36,6 +38,8 @@ public:
     bool publishLayout(const SpeakerDesign& array);
     /// Worker: the listener's two sliders. Allocates nothing; publishes the filters whole.
     void buildHead(double earShiftErb, double headSize) noexcept;
+    /// Any thread: the head's orientation in the room; the array stays where it is.
+    void setOrientation(const Mat3& headInWorld) noexcept { turn_.setOrientation(headInWorld); }
 
     /// Audio thread: `in` frames x inChannels of the bus, `out` frames of interleaved stereo; may not alias.
     void process(const float* in, int inChannels, float* out, int frames) noexcept;
@@ -49,9 +53,10 @@ private:
     static constexpr int kChunk = 64;
     int fieldOrder_{0}, fieldChannels_{0};
     SpeakerRenderer renderer_;
+    HeadRotation turn_;
     BinauralFilterBuilder builder_;
     BinauralConvolver convolver_;
-    std::vector<float> field_;  // kChunk x fieldChannels
+    std::vector<float> field_, turned_;  // kChunk x fieldChannels each
 };
 
 }  // namespace bambi

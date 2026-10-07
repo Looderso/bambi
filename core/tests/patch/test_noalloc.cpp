@@ -8,6 +8,7 @@
 #include "bambi/decode/binaural.hpp"
 #include "bambi/decode/decoder.hpp"
 #include "bambi/decode/headmodel.hpp"
+#include "bambi/decode/headrotation.hpp"
 #include "bambi/decode/speakers.hpp"
 #include "bambi/dsp/features.hpp"
 #include "bambi/echo/control.hpp"
@@ -249,6 +250,16 @@ TEST_CASE("the head synthesiser allocates nothing once prepared") {
               speakers.process(in.data(), 4, speakerOut.data(), 6, 100);
               speakers.publish(speakerDesign);  // a second design: the swap path copies into storage it owns
               speakers.process(in.data(), 4, speakerOut.data(), 6, 100);
+          }) == 0);
+
+    //  Catches: a turn that builds its blocks or its scratch on the fly while gliding.
+    HeadRotation turn;
+    REQUIRE(turn.prepare(1, 48000.0));
+    std::vector<float> turned(4 * 100);
+    CHECK(allocationsDuring([&] {
+              turn.setOrientation(rotationAbout({0, 0, 1}, 1.0));
+              turn.process(in.data(), turned.data(), 100);
+              turn.process(in.data(), turned.data(), 100);
           }) == 0);
 }
 

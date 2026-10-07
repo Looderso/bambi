@@ -38,6 +38,7 @@ bool VirtualArray::prepare(const HeadModel& model, int busOrder, double sampleRa
     fieldOrder_ = fieldOrder;
     fieldChannels_ = numChannels(fieldOrder);
     if (!renderer_.prepare(busOrder, fieldChannels_, sampleRate, 0.0)) return false;
+    if (!turn_.prepare(fieldOrder, sampleRate)) return false;
     std::vector<Vec3> directions;
     std::vector<double> weights;
     quadratureGrid(12, 20, directions, weights);
@@ -47,6 +48,7 @@ bool VirtualArray::prepare(const HeadModel& model, int busOrder, double sampleRa
     if (!builder_.prepare(model, design, directions, weights)) return false;
     if (!convolver_.prepare(fieldOrder, design.taps, partition)) return false;
     field_.assign(sz(kChunk) * sz(fieldChannels_), 0.0f);
+    turned_.assign(sz(kChunk) * sz(fieldChannels_), 0.0f);
     return true;
 }
 
@@ -63,13 +65,15 @@ void VirtualArray::process(const float* in, int inChannels, float* out, int fram
     for (int done = 0; done < frames;) {
         const int n = std::min(kChunk, frames - done);
         renderer_.process(in + sz(done) * sz(inChannels), inChannels, field_.data(), fieldChannels_, n);
-        convolver_.process(field_.data(), out + sz(done) * 2, n);
+        turn_.process(field_.data(), turned_.data(), n);
+        convolver_.process(turned_.data(), out + sz(done) * 2, n);
         done += n;
     }
 }
 
 void VirtualArray::reset() noexcept {
     renderer_.reset();
+    turn_.reset();
     convolver_.reset();
 }
 

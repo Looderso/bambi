@@ -30,7 +30,8 @@ inline const HeadModel& shipped() {
     static const HeadModel model = [] {
         HeadModel m;
         std::string error;
-        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error), error);
+        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error),
+                        error);
         return m;
     }();
     return model;
@@ -46,7 +47,8 @@ inline const Json& arrayFile() {
 inline Layout array16() {
     Layout l;
     std::string error;
-    REQUIRE_MESSAGE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error), error);
+    REQUIRE_MESSAGE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error),
+                    error);
     for (Loudspeaker& s : l.speakers)
         if (s.channel == 18) s.imaginary = true;
     return l;

@@ -116,8 +116,7 @@ collapse into one matrix from the bus to an order-7 field, which a `SpeakerRende
 layout, and a `BinauralConvolver` at order 7 takes it from there. Every loudspeaker sits at one distance: the room's
 distance gains and delays undo distances a virtual room does not have. Measured per 128-sample block at 48 kHz, one
 core: 1.7 % at bus order 1, 1.9 % at order 3, for 7.1.4. The head's turn against the room goes on the order-7
-field, before the convolver, with the rotation the suite already has; that stage is the tracking's (§7) and is not
-written yet.
+field, between the array's decoder and the convolver (§7.2).
 
 ### 3.2 Measured on the array on hand
 
@@ -445,7 +444,12 @@ decoder, that sends the phone's orientation to the receiver ([0172](../DECISIONS
 
 ### 7.2 What it drives
 
-- **The scene before the binaural decode** — a rotation of (N+1)² × (N+1)² per block, negligible.
+- **The scene before the binaural decode** — a rotation of (N+1)² × (N+1)² per block, negligible. *Ported*
+  (`core/include/bambi/decode/headrotation.hpp`, [0180](../DECISIONS.md)): the field turned by the inverse of the
+  head's orientation, which arrives from any thread; a 30 ms glide stepped per 64-frame hop and crossfaded within
+  it, so nothing snaps; the same bits however the frames are cut; 0.1 % of a core at order 3, 0.5 % at order 7
+  while turning. What converts a tracker's quaternion or yaw, pitch and roll into the orientation matrix is the
+  receiver's (§7.1) and is not written yet.
 - **The Lens's window** (§6).
 - **Placing the loudspeakers** of an array (§3.3).
 - **Nothing on an array's output**: the listener's head is really in the room.
