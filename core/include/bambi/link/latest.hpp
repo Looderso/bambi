@@ -14,27 +14,47 @@ namespace bambi {
  *  write() is wait-free: a copy, then one exchange. read() is wait-free and never sees a torn value, since it never
  *  reads a slot the writer could be writing -- no retry loop, so no retry bound to get wrong. Values written
  *  between two reads are skipped, which is the point: the reader wants where the source is, not its history.
+ *
+ *  A T too big to copy -- a set of filters -- is handled in place: the writer fills staging() and publish()es,
+ *  the reader takes latest() and keeps the pointer until its next latest(). The same three slots, no copy on
+ *  either side; the reader's slot is its own until it asks again.
  */
 template <typename T>
 class LatestValue {
 public:
     /// Writer thread only.
     void write(const T& value) noexcept {
-        slots_[static_cast<std::size_t>(back_)] = value;
-        back_ = middle_.exchange(back_ | kFresh, std::memory_order_acq_rel) & kIndex;
+        static_assert(std::is_trivially_copyable_v<T>,
+                      "LatestValue copies T on the real-time thread; T must not allocate or lock");
+        staging() = value;
+        publish();
     }
 
     /// Reader thread only. True and overwrites `out` if written since the last read; otherwise `out` is untouched.
     bool read(T& out) noexcept {
-        if ((middle_.load(std::memory_order_acquire) & kFresh) == 0) return false;
-        front_ = middle_.exchange(front_, std::memory_order_acq_rel) & kIndex;
-        out = slots_[static_cast<std::size_t>(front_)];
+        static_assert(std::is_trivially_copyable_v<T>,
+                      "LatestValue copies T on the real-time thread; T must not allocate or lock");
+        const T* v = latest();
+        if (v == nullptr) return false;
+        out = *v;
         return true;
     }
 
+    /// Writer thread only: the slot the writer owns, to fill in place and then publish(). Valid until publish().
+    T& staging() noexcept { return slots_[static_cast<std::size_t>(back_)]; }
+    void publish() noexcept { back_ = middle_.exchange(back_ | kFresh, std::memory_order_acq_rel) & kIndex; }
+
+    /// Reader thread only: whether something was published since the last latest(). Only the reader clears it.
+    bool hasFresh() const noexcept { return (middle_.load(std::memory_order_acquire) & kFresh) != 0; }
+    /// Reader thread only: the newest published value, in place, or nullptr when nothing was published since the
+    /// last latest(). The pointer stays valid until the next latest() that returns non-null.
+    const T* latest() noexcept {
+        if (!hasFresh()) return nullptr;
+        front_ = middle_.exchange(front_, std::memory_order_acq_rel) & kIndex;
+        return &slots_[static_cast<std::size_t>(front_)];
+    }
+
 private:
-    static_assert(std::is_trivially_copyable_v<T>,
-                  "LatestValue copies T on the real-time thread; T must not allocate or lock");
     static_assert(std::atomic<int>::is_always_lock_free);
 
     static constexpr int kIndex = 0b011;

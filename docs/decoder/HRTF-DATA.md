@@ -772,7 +772,7 @@ at 1–1.2 ERB are the largest values it was offered. It is run again with wider
    common one by 11–20 µs.
 2. **The model** — *decided and ported* (§7.8, [0168](../DECISIONS.md), [0169](../DECISIONS.md)): nobody's head,
    a head slider and an ear slider, in `core/include/bambi/decode/`, with the decoder's filter builder on top of it
-   ([DECODER §4](DECODER.md)). What is next is the plugin: the convolution on the audio thread and the swap of a
-   finished filter set into it.
+   ([DECODER §4](DECODER.md)), the convolution and the swap of a finished set into the audio thread. What is next
+   is the plugin around it: the JUCE wrapper, its worker thread, the two sliders in the UI.
 3. **Licences** — the shipped model is learned from HUTUBS and 3D3A alone ([0169](../DECISIONS.md)); SONICOM's
    unclear licence (§1) no longer touches it. SONICOM stays a held-out check.

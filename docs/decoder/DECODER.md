@@ -109,10 +109,21 @@ binaural decode.*
 - **MagLS**, with the diffuse-field covariance constraint — the current standard for orders ≤ 3, which keeps the
   high-frequency timbre that a least-squares decode at low order loses.
 - **Headphone EQ** as an optional loaded curve; off by default.
+- *Nice to have:* **a list of headphones to choose from**, each with its correction, from the many published
+  measurements (AutoEq gathers thousands). AirPods suit it unusually well: their adaptive EQ corrects the fit from
+  an inward microphone, so the response at the eardrum barely changes from wear to wear. Open before it is built:
+  the licence of each source's measurements (AutoEq's code is MIT, the measurements are their makers'); the target
+  — published corrections aim at a preference curve such as Harman's, a binaural render wants the response its
+  head was measured against, diffuse field for the KU100 — and how it sits with the KU100's timbre
+  ([0167](../DECISIONS.md)). With AirPods, Apple's own spatial audio must be off for the host's output, or two
+  renderers run one after the other.
 - **No room.** A little room helps a dry binaural render out of the head, but a room is Reverb's job, chained
   before the decoder when wanted. The decoder adds nothing to the field.
-- **Latency**: 64 samples (1.3 ms), a bulk delay that keeps the part of a response ahead of the head's centre
-  causal. The convolution is 2 × (N+1)² filters of 256 taps; its cost is measured before any claim.
+- **Latency**: 64 samples (1.3 ms) of bulk delay inside the filters, which keeps the part of a response ahead of
+  the head's centre causal and stays in the sound; plus one partition of the convolution, 64 samples, which the
+  plugin reports to the host ([0172](../DECISIONS.md)). The convolution is 2 × (N+1)² filters of 256 taps,
+  uniformly partitioned in the frequency domain (`core/include/bambi/decode/convolver.hpp`); measured per
+  128-sample block at 48 kHz, one core: 0.1 % at order 1, 0.3 % at order 3, 0.6 % at order 5, 1.1 % at order 7.
 
 **Measured on the KU100** (the prototype's `build-filters.py`, magnitude error over all 8802 directions, weighted
 by area):
@@ -146,7 +157,14 @@ above it, the covariance constraint, 64 samples of bulk delay, 256 taps with a 3
 | 7 | 2.1 | 3.5 | 0.0 | 7.8 |
 
 The model's notches are deeper than the KU100's, which is where the 8–16 kHz error above the KU100's comes from.
-What is not written yet: the convolution on the audio thread and the swap of a finished set into it.
+
+**The convolution and the swap** (`convolver.hpp`, `decoder.hpp`): a finished set is cut into partitions and
+transformed on the worker, handed to the audio thread whole through the link bus's triple buffer in place, and
+crossfaded in over one partition; `BinauralDecoder` carries the sliders from any thread to one worker and the
+filters to the audio thread, and builds before the first block so a bounce hears the parameters
+([0172](../DECISIONS.md)). Checked against a direct convolution however the audio is cut, and the fade against two
+convolvers playing each set alone. What is not written yet is the plugin around it: the JUCE wrapper, its worker
+thread, and the two sliders in the UI.
 
 ### 4.1 Which HRTF
 
@@ -195,8 +213,11 @@ place.
   loudspeaker at another azimuth relative to the head; tilting it puts the loudspeaker above or below. One
   loudspeaker and a moving head sample many head-relative directions — elevation included, which is where
   personalisation matters most. If the HRTF fits, real and virtual stay together however the head moves.
-- **The loudspeaker must be heard through the headphones**: AirPods in transparency mode, or open headphones —
-  the thesis used acoustically transparent ones for this reason.
+- **The loudspeaker must be heard through the headphones**: open headphones — the thesis used acoustically
+  transparent ones for this reason. **Not an earbud's transparency mode**: measured on AirPods Pro, it changes the
+  level difference between the ears by up to 8 dB and removes the spectral cues above 5 kHz (Ausili et al., 2025);
+  the loudspeaker heard through it has lost what the ear slider is matched by. No EQ restores them: they depend on
+  direction and are made at the ear canal's entrance, which the earbud fills.
 - **Where, not what.** The real loudspeaker brings the room's reflections and the virtual one is dry; the task is
   to match the position, not the character.
 - The neck's range limits the directions reached; how far is measured in the prototype.
@@ -327,6 +348,22 @@ reads the headphones' motion with CoreMotion and sends the quaternion to the rec
   below, yaw only.
 - **macOS only.** Elsewhere AirPods are a phone's job, through the formats above.
 
+**Any phone, with no app: a page.** The helper also serves a page to the local Wi-Fi, reached by a QR code in the
+decoder, that sends the phone's orientation to the receiver ([0172](../DECISIONS.md)):
+
+- **HTTPS, on a certificate the helper makes for this computer's address**, because a browser gives motion data only
+  to a secure page. The phone warns once that the connection is not private; past the warning the page counts as
+  secure. A short tutorial covers the two taps (iPhone: *Show Details → visit this website*; Android: *Advanced →
+  Proceed*).
+- **A WebSocket on the same address carries the data**, with POSTs as a fallback for a browser that refuses it.
+- **Worn or held**: on the headphones' band, screen up and top edge forward, or held upright with the screen facing
+  the listener. Both map into the head's frame on the phone; recentring is yaw only, as for every tracker.
+- **The relative orientation, not the compass**: the page reads `deviceorientation`, which on Android is the
+  gyroscope's own frame; a compass is disturbed by the magnets in headphones and loudspeakers.
+- **Without a warning, later**: the page served from the suite's website over its real certificate, the data going
+  phone to helper directly over WebRTC, a small signalling service carrying only the handshake. A relay through a
+  server is not an option: it adds an internet round trip to every update.
+
 - **Pitch has two signs in use.** ADM-OSC's is up-positive, as the suite's. IEM's and SPARTA's yaw-pitch-roll are
   Tait-Bryan angles about z, y, x on the same axes, so pitch turns about +y (left) and looking *up* is negative —
   confirmed for IEM in Headitude's conversion, assumed for SPARTA, which uses the same order. Read with the wrong
@@ -414,6 +451,11 @@ All in the browser, under `prototypes/decoder/`:
    nested in its bundle. In REAPER the helper asked for permission, the orientation arrived smooth over
    localhost UDP, and the helper quit with the host. The plugin's own CoreMotion request, the spike before it,
    crashed REAPER.
+8. **A phone as the tracker, through a page** (§7.1) — *built*, `phone-gyro/`: a standard-library server with a
+   self-signed certificate, the phone page and a dashboard with the QR code, sending OSC to SPARTA's ambiBIN. On an
+   iPhone the page was a secure context past the warning, the WebSocket held, the round trip was about 9 ms, and it
+   felt usable with a short tutorial. *Open*: an Android phone; the signs of yaw, pitch and roll against a
+   renderer, unchecked.
 7. **Layout import** (§3): AmbDec and the BS.2051 layouts beside the IEM JSON already read.
 8. **A few notches in place of the notch layer** ([HRTF-DATA §7](HRTF-DATA.md)) — *built*, `notches/`: a head's smooth
    part with two or three synthesised notches and a peak, A/B against the head itself at any measured direction of the

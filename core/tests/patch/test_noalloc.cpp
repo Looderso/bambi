@@ -6,6 +6,7 @@
 
 #include "../doctest.h"
 #include "bambi/decode/binaural.hpp"
+#include "bambi/decode/decoder.hpp"
 #include "bambi/decode/headmodel.hpp"
 #include "bambi/dsp/features.hpp"
 #include "bambi/echo/control.hpp"
@@ -209,6 +210,25 @@ TEST_CASE("the head synthesiser allocates nothing once prepared") {
     builder.prepare(m, design, grid, weights);
     builder.build(0.0, 1.0);
     CHECK(allocationsDuring([&] { builder.build(0.5, 1.1); }) == 0);
+
+    //  Catches: a convolution that gathers its block into a fresh buffer, or a publish that transforms into one.
+    BinauralConvolver convolver;
+    REQUIRE(convolver.prepare(1, 32, 32));
+    std::vector<float> in(4 * 100, 0.1f), out(2 * 100);
+    CHECK(allocationsDuring([&] {
+              convolver.publish(builder);
+              convolver.process(in.data(), out.data(), 100);
+          }) == 0);
+
+    //  Catches: a request or a build on the decoder that allocates -- the audio and worker threads share neither.
+    BinauralDecoder decoder;
+    REQUIRE(decoder.prepare(m, design, 32, 3, 5));
+    decoder.work();
+    CHECK(allocationsDuring([&] {
+              decoder.request(0.3, 1.05);
+              decoder.work();
+              decoder.process(in.data(), out.data(), 100);
+          }) == 0);
 }
 
 }  // namespace bambi

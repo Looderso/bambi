@@ -117,3 +117,27 @@ TEST_CASE("the inverse undoes the forward transform, and a linear phase is a del
     fft.inverse(re, im, back);
     for (std::size_t i = 0; i < 64; ++i) CHECK(std::abs(back[i] - (i == 7 ? 1.0 : 0.0)) < 1e-5);
 }
+
+TEST_CASE("the FFT's own layout: a round trip scales by N, and convolve-accumulate is a circular convolution") {
+    //  Catches: the packed DC and Nyquist pair multiplied as one complex number, a scale applied twice.
+    RealFft fft;
+    fft.prepare(64);
+    AlignedFloats a, b, sa, sb, ab, y;
+    for (AlignedFloats* f : {&a, &b, &sa, &sb, &ab, &y}) f->prepare(64);
+    for (std::size_t i = 0; i < 64; ++i) {
+        a.data()[i] = static_cast<float>(std::sin(0.3 * static_cast<double>(i)) + (i == 3 ? 0.5 : 0.0));
+        b.data()[i] = i < 5 ? static_cast<float>(1.0 / (1.0 + static_cast<double>(i))) : 0.0f;
+    }
+    fft.spectrum(a.data(), sa.data());
+    fft.signal(sa.data(), y.data());
+    for (std::size_t i = 0; i < 64; ++i) CHECK(y.data()[i] == doctest::Approx(64.0f * a.data()[i]).epsilon(1e-4));
+
+    fft.spectrum(b.data(), sb.data());
+    fft.convolveAccumulate(sa.data(), sb.data(), ab.data(), 1.0f / 64.0f);
+    fft.signal(ab.data(), y.data());
+    for (std::size_t n = 0; n < 64; ++n) {
+        double direct = 0;
+        for (std::size_t k = 0; k < 5; ++k) direct += b.data()[k] * a.data()[(n + 64 - k) % 64];
+        CHECK(std::abs(y.data()[n] - direct) < 1e-4);
+    }
+}

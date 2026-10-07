@@ -76,15 +76,15 @@ private:
     RealFft fft_;
     int directions_{0}, channels_{0};
     double cutoff_{0};
-    std::vector<double> weight_;   // directions
-    std::vector<double> basis_;    // directions x channels: Y
-    std::vector<double> pinv_;     // channels x directions: the weighted pseudo-inverse of Y
-    std::vector<double> diffuse_;  // channels: a diffuse field's power per channel
-    std::vector<double> window_;   // taps
+    std::vector<double> weight_;     // directions
+    std::vector<double> basis_;      // directions x channels: Y
+    std::vector<double> pinv_;       // channels x directions: the weighted pseudo-inverse of Y
+    std::vector<double> diffuse_;    // channels: a diffuse field's power per channel
+    std::vector<double> window_;     // taps
     std::vector<double> amplitude_;  // bins x directions x 2: the head's magnitudes, linear
-    std::vector<Cx> target_;       // directions x 2: one bin's HRTFs
-    std::vector<Cx> carried_;      // directions x 2: the previous bin's decode at every direction
-    std::vector<Cx> decode_;       // bins x channels x 2: the designed spectra
+    std::vector<Cx> target_;         // directions x 2: one bin's HRTFs
+    std::vector<Cx> carried_;        // directions x 2: the previous bin's decode at every direction
+    std::vector<Cx> decode_;         // bins x channels x 2: the designed spectra
     std::vector<double> re_, im_, ir_;
     std::vector<float> filters_;  // channels x 2 x taps
 };

@@ -119,6 +119,42 @@ void RealFft::inverse(std::span<const double> re, std::span<const double> im, st
     for (std::size_t i = 0; i < n_; ++i) out[i] = out_[i] * scale;
 }
 
+void RealFft::spectrum(const float* in, float* spec) noexcept {
+    if (setup_) pffft_transform(setup_, in, spec, work_, PFFFT_FORWARD);
+}
+
+void RealFft::signal(const float* spec, float* out) noexcept {
+    if (setup_) pffft_transform(setup_, spec, out, work_, PFFFT_BACKWARD);
+}
+
+void RealFft::convolveAccumulate(const float* a, const float* b, float* ab, float scale) const noexcept {
+    if (setup_) pffft_zconvolve_accumulate(setup_, a, b, ab, scale);
+}
+
+AlignedFloats::~AlignedFloats() {
+    if (p_) pffft_aligned_free(p_);
+}
+
+AlignedFloats& AlignedFloats::operator=(AlignedFloats&& o) noexcept {
+    if (this != &o) {
+        if (p_) pffft_aligned_free(p_);
+        p_ = std::exchange(o.p_, nullptr);
+        n_ = std::exchange(o.n_, 0);
+    }
+    return *this;
+}
+
+void AlignedFloats::prepare(std::size_t n) {
+    if (p_) pffft_aligned_free(p_);
+    p_ = n ? static_cast<float*>(pffft_aligned_malloc(n * sizeof(float))) : nullptr;
+    n_ = p_ ? n : 0;
+    clear();
+}
+
+void AlignedFloats::clear() noexcept {
+    for (std::size_t i = 0; i < n_; ++i) p_[i] = 0.0f;
+}
+
 void hannWindow(std::span<double> w) {
     const std::size_t n = w.size();
     for (std::size_t i = 0; i < n; ++i)

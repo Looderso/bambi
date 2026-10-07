@@ -28,7 +28,8 @@ const HeadModel& shipped() {
     static const HeadModel model = [] {
         HeadModel m;
         std::string error;
-        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error), error);
+        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error),
+                        error);
         return m;
     }();
     return model;
@@ -75,7 +76,8 @@ TEST_CASE("the quadrature grid integrates products of spherical harmonics exactl
         shSN3D(dirs[d], order, y);
         for (int i = 0; i < C; ++i)
             for (int j = 0; j < C; ++j)
-                gram[static_cast<std::size_t>(i * C + j)] += w[d] * y[static_cast<std::size_t>(i)] * y[static_cast<std::size_t>(j)];
+                gram[static_cast<std::size_t>(i * C + j)] +=
+                    w[d] * y[static_cast<std::size_t>(i)] * y[static_cast<std::size_t>(j)];
     }
     double worst = 0;
     for (int i = 0; i < C; ++i)
@@ -108,8 +110,9 @@ TEST_CASE("the filters equal the reference design tap for tap") {
                 worst = std::max(worst, std::abs(static_cast<double>(got[t]) - taps[t].numberOr(0)));
                 peak = std::max(peak, std::abs(taps[t].numberOr(0)));
             }
-            CHECK_MESSAGE(worst < 1e-4 * std::max(1.0, peak), "order " << order << " acn " << number(f, "acn") << " ear "
-                                                                      << number(f, "ear") << ": " << worst << " off, peak " << peak);
+            CHECK_MESSAGE(worst < 1e-4 * std::max(1.0, peak), "order " << order << " acn " << number(f, "acn")
+                                                                       << " ear " << number(f, "ear") << ": " << worst
+                                                                       << " off, peak " << peak);
         }
         const std::vector<Json>& bands = c.find("magnitudeError")->items();
         CHECK(builder.magnitudeError(200, 1000) == doctest::Approx(bands[0].numberOr(0)).epsilon(1e-3));
@@ -167,7 +170,8 @@ TEST_CASE("the covariance constraint holds on a quiet head too") {
     //  Catches: an absolute lift in the 2x2 roots, which takes over once the ear spectra fall below about -60 dB and
     //  leaves the mix short of the target.
     HeadModel quiet = shipped();
-    for (int k = 0; k < quiet.axis.points; ++k) quiet.smooth.coef[static_cast<std::size_t>(k)] -= 70.0;  // the order-0 row
+    for (int k = 0; k < quiet.axis.points; ++k)
+        quiet.smooth.coef[static_cast<std::size_t>(k)] -= 70.0;  // the order-0 row
     std::vector<Vec3> dirs;
     std::vector<double> w;
     quadratureGrid(6, 11, dirs, w);

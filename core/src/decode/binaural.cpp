@@ -90,11 +90,12 @@ void quadratureGrid(int rings, int azimuths, std::vector<Vec3>& directions, std:
     }
 }
 
-bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& design, std::span<const Vec3> directions,
-                                    std::span<const double> weights) {
+bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& design,
+                                    std::span<const Vec3> directions, std::span<const double> weights) {
     design_ = design;
     ready_ = fft_.prepare(sz(std::max(design.fftSize, 0))) && design.taps > 0 && design.taps <= design.fftSize &&
-             design.order >= 0 && design.order <= kMaxOrder && !directions.empty() && directions.size() == weights.size();
+             design.order >= 0 && design.order <= kMaxOrder && !directions.empty() &&
+             directions.size() == weights.size();
     if (!ready_) {
         filters_.clear();
         return false;
@@ -111,7 +112,8 @@ bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& 
 
     basis_.resize(sz(directions_) * sz(channels_));
     for (int d = 0; d < directions_; ++d)
-        shSN3D(directions[sz(d)], design.order, std::span<double>(basis_.data() + sz(d) * sz(channels_), sz(channels_)));
+        shSN3D(directions[sz(d)], design.order,
+               std::span<double>(basis_.data() + sz(d) * sz(channels_), sz(channels_)));
 
     // The weighted pseudo-inverse (Y^T W Y)^-1 Y^T W, channels x directions.
     std::vector<double> gram(sz(channels_) * sz(channels_), 0.0);
@@ -125,7 +127,8 @@ bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& 
     for (int c = 0; c < channels_; ++c)
         for (int d = 0; d < directions_; ++d) {
             double s = 0;
-            for (int i = 0; i < channels_; ++i) s += gram[sz(c) * sz(channels_) + sz(i)] * basis_[sz(d) * sz(channels_) + sz(i)];
+            for (int i = 0; i < channels_; ++i)
+                s += gram[sz(c) * sz(channels_) + sz(i)] * basis_[sz(d) * sz(channels_) + sz(i)];
             pinv_[sz(c) * sz(directions_) + sz(d)] = s * weight_[sz(d)];
         }
 

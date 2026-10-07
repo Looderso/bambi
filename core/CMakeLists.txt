@@ -103,6 +103,8 @@ add_library(bambi-decode STATIC
   src/decode/headmodel.cpp
   src/decode/headmodelfile.cpp
   src/decode/binaural.cpp
+  src/decode/convolver.cpp
+  src/decode/decoder.cpp
 )
 target_link_libraries(bambi-decode PUBLIC bambi-core)
 bambi_warnings(bambi-decode PEDANTIC)
@@ -179,6 +181,7 @@ add_executable(bambi-tests
   tests/reverb/test_reverb_params.cpp
   tests/decode/test_headmodel.cpp
   tests/decode/test_binaural.cpp
+  tests/decode/test_convolver.cpp
 )
 target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode)
 # The tests read the shipped head model and its fixtures from the source tree.
