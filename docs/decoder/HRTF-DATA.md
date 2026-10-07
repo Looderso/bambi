@@ -683,7 +683,7 @@ listening page holds all three templates on a switch; the peak-shaped one is its
 ### 7.8 The model, as it stands ([0168](../DECISIONS.md))
 
 A head is synthesised from the population's parts and two numbers. All of it is in `sheets/model/`, read by
-`sheets/listen.html`, which is the reference for the port.
+`sheets/listen.html`; the shipped model is one file, `head.json`, and the core reads it (below).
 
 | part | source | numbers | the slider |
 |---|---|---|---|
@@ -694,7 +694,7 @@ A head is synthesised from the population's parts and two numbers. All of it is 
 | ITD, order 8 | the population's mean (`itd`), µs | 81 | **head**: `itd · size` |
 
 To play a direction: evaluate the patterns there; CLL = timbre + pattern (orders 1–4) + the template's dips (centre
-shifted, depth × 2.5, where presence ≥ 0.4, as 1/(1+u²) in dB); the two ears from CLL and ILD; minimum phase; the
+shifted, depth × 2.5, faded in with the presence, as 1/(1+u²) in dB); the two ears from CLL and ILD; minimum phase; the
 pair delayed to the ITD. The sliders' ranges in the page: the ear −2…2 ERB (a head's fitted shift spreads by 0.58
 ERB), the head 0.75…1.3 (a head's fitted scale spreads by 0.087).
 
@@ -704,8 +704,8 @@ the half of the way from the KU100 to the head's own notches that no slider reac
 **No grid.** Every part is a pattern over the sphere — spherical harmonics of order 4, 6, 8 or 10 — and the dips are
 curves with a centre, a depth and a width; a direction is evaluated, not looked up, and the measured grids are gone
 from the model. What is limited is not the resolution but the detail: an order resolves about 180°/order over the
-sphere, and the template's presence gate (0.4) is a hard edge a notch appears at when a source moves — a fade along
-the presence would be smoother. Along frequency the patterns are sampled at 0.1 ERB; the dips are continuous.
+sphere, and a notch fades in along its presence (below) so that nothing switches when a source moves. Along frequency
+the patterns are sampled at 0.1 ERB; the dips are continuous.
 
 **Without SONICOM** (`WITHOUT=SONICOM` for `generic.js` and `honest.js`; `model/generic-hutubs-3d3a.json`,
 `model/template-hutubs-3d3a.json`), for the licence question of §1: nobody's head moves by 0.42 dB RMS in the smooth
@@ -736,6 +736,23 @@ between the model learned from all three databases and from HUTUBS and 3D3A, the
 timbre is the KU100's throughout; the sharpness, the ILD's blur and order, the ITD's order, the surfaces' preset and
 the older templates are gone from it, decided ([0167](../DECISIONS.md), [0168](../DECISIONS.md)).
 
+**One file, and the core reads it** ([0169](../DECISIONS.md)). `export-model.js` folds `generic-hutubs-3d3a.json`
+and `template-hutubs-3d3a.json` into `model/head.json` (0.36 MB): the axis (ERB 7.79, step 0.1, 339 points); the
+smooth CLL at order 4 with the KU100's timbre already in its order-0 row, at nobody's level; the ILD at order 10 with
+its change per unit of head size; the ITD at order 8; the notches — order 6, shape `peak`, depth × 2.5, the fade,
+the band they stay in, the width range, and the three notches' centre, depth, width and presence maps. Every order is
+read from the file. The same file is `core/data/decode/head.json`, and `core/include/bambi/decode/` holds the port:
+`HeadModel` (the file's contents, checked for fitting together), `parseHeadModel` (from the JSON text; the core
+never opens a file) and `Head`, which `prepare`s once for a fixed set of directions and frequencies — the SH basis
+per direction, the three tables and each direction's notches evaluated, the tables resampled onto any axis (the
+decoder's FFT bins) — and then `synthesise`s both ears and the ITD for the two sliders from those tables alone:
+no allocation, no SH, no minimum phase; the decoder's filter builder takes over from the magnitudes and the ITD.
+Measured in Release on one core: `prepare` 9.4 ms, `synthesise` 1.28 ms for 240 directions × 513 bins — a slider
+move is rebuilt on a worker, far from the audio thread. `export-fixtures.js` writes what the page's math gives for 7
+directions × 3 slider settings (`core/tests/decode/fixtures.json`); the core reproduces every ear to 2 mdB and
+every ITD to 2 ns. Two small differences from the page, decided for the core: it keeps a notch however shallow (the
+page drops one under 0.5 dB, a step when a source moves) and floors a depth at −60 dB as the page does.
+
 ## 8. Next
 
 **Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface
@@ -750,9 +767,8 @@ at 1–1.2 ERB are the largest values it was offered. It is run again with wider
    it can be undone. Every database's average sits on the common one; each one's spread between heads is unchanged.
    The ITD varies between heads by 24–37 µs (mean over directions); the databases' averages had differed from the
    common one by 11–20 µs.
-2. **The model** — what parameterises a head along the horizontal (ILD, ITD) and the vertical (CLL) axis, with shifts
-   in frequency handled; not PCA. If §7's test holds: the notches tracked per ear over all heads, and how few numbers
-   tell one head's from another's — centres being numbers, heads can be compared without the blur of §5. A model that
-   has to ignore the database could take the non-linear remainder out in its own training, where a fixed
-   normalisation cannot.
-3. **Licences** before any shipped model: SONICOM's is unclear (§1).
+2. **The model** — *decided and ported* (§7.8, [0168](../DECISIONS.md), [0169](../DECISIONS.md)): nobody's head,
+   a head slider and an ear slider, in `core/include/bambi/decode/`. What is next is the decoder's filter builder
+   on top of it: MagLS from the synthesised ears at a fixed direction set, on a worker, the filters swapped in whole.
+3. **Licences** — the shipped model is learned from HUTUBS and 3D3A alone ([0169](../DECISIONS.md)); SONICOM's
+   unclear licence (§1) no longer touches it. SONICOM stays a held-out check.

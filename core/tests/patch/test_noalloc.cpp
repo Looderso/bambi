@@ -5,6 +5,7 @@
 #include <new>
 
 #include "../doctest.h"
+#include "bambi/decode/headmodel.hpp"
 #include "bambi/dsp/features.hpp"
 #include "bambi/echo/control.hpp"
 #include "bambi/echo/params.hpp"
@@ -162,6 +163,36 @@ TEST_CASE("the energy visualiser's audio-thread half allocates nothing (rule 9)"
                   if (window.ready()) window.take(out);
               }
           }) == 0);
+}
+
+TEST_CASE("the head synthesiser allocates nothing once prepared") {
+    //  Catches: a per-call vector for the shifted notch centres, or a result built into a fresh buffer.
+    //  (Not an audio-thread call -- a worker rebuilds the filters -- but it runs on every slider move.)
+    HeadModel m;
+    m.axis = {10.0, 0.5, 40};
+    m.smooth.order = 1;
+    m.smooth.coef.assign(4 * 40, -3.0);
+    m.ild.order = 2;
+    m.ild.coef.assign(9 * 40, 0.5);
+    m.ildWithSize.order = 2;
+    m.ildWithSize.coef.assign(9 * 40, 0.1);
+    m.itd.order = 1;
+    m.itd.coef = {0.0, 400.0, 0.0, 0.0};
+    m.notches = {2, 2.5, 0.25, 0.55, 20.0, 29.0, 0.1, 1.5, {}};
+    m.notches.list.push_back({{24.0, 0, 0, 0, 0, 0, 0, 0, 0},
+                              {-6.0, 0, 0, 0, 0, 0, 0, 0, 0},
+                              {0.4, 0, 0, 0, 0, 0, 0, 0, 0},
+                              {1.0, 0, 0, 0, 0, 0, 0, 0, 0}});
+    REQUIRE(m.consistent());
+    const std::array<Vec3, 3> dirs{Vec3{1, 0, 0}, Vec3{0, 1, 0}, Vec3{0, 0, 1}};
+    Head head;
+    head.prepare(m, dirs);
+    head.synthesise(0.0, 1.0);
+    CHECK(allocationsDuring([&] {
+              head.synthesise(0.7, 1.2);
+              head.synthesise(-1.0, 0.8);
+          }) == 0);
+    CHECK(head.itd(1) == doctest::Approx(0.8 * 400.0));
 }
 
 }  // namespace bambi

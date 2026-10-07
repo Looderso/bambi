@@ -243,7 +243,12 @@ ear slider that shifts a learned template of three notch surfaces along frequenc
 ITD with the low ILD going along. [HRTF-DATA §7.8](HRTF-DATA.md) is the recipe, `prototypes/decoder/sheets/model/`
 the files, `sheets/listen.html` the reference. Not PCA, and not the thesis's pipeline: the dataset unification, the
 split of a head into parts and the template were built here, and the licence of each source database decides what
-may ship ([HRTF-DATA §1](HRTF-DATA.md)).
+may ship: the shipped model is learned from HUTUBS and 3D3A ([0169](../DECISIONS.md), [HRTF-DATA §1](HRTF-DATA.md)).
+
+**Ported**: the model is one file, `core/data/decode/head.json`, and `core/include/bambi/decode/` synthesises both
+ears and the ITD from it for any direction set and frequency grid — prepared once, then rebuilt per slider move on a
+worker without allocating, checked against the page's own numbers. The filter builder (MagLS, §4) on top of it is
+the next piece.
 
 ### 5.4 Portability
 
