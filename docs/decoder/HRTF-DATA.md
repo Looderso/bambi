@@ -633,6 +633,35 @@ change — or leaves each its own. Relative to 1 kHz, averaged over the directio
 −0.6…−0.8 and −0.5…−1.8 dB. *Heard 2026-10-05, before the swap: nobody's head with both sliders is "very" good; the
 KU100 sounds like white noise all around, the heads coloured.*
 
+### 7.7 The template learned honestly
+
+`honest.js`: the same three notches, learned without a least-squares bet. Per head the dips are fitted to the measured
+CLL again with depth and width free (the way back's pull on them 0); a head's shift is found by a scan — the one under
+which its dips meet the template's notches best — then the median of what is left; each notch's depth is fitted to the
+dips given to it alone (how deep it is where a head has it), and its presence over the sphere to 1 where a head has it
+and 0 where not; the template plays a notch where the presence passes 0.4. Four turns, four minutes in ten processes;
+the heads' shifts spread by 0.58 ERB.
+
+| on the 274 heads not learned from | measured | the ladder's template | learned honestly |
+|---|---|---|---|
+| a direction's deepest notch, median | 8.5 dB | 3.6 dB | 5.6 dB |
+| its width at half depth | 0.60 ERB | 1.10 ERB | 0.90 ERB |
+| directions with a notch deeper than 6 dB | 70 % | 5 % | 37 % |
+| the heads' dips deeper than 3 dB met by a template notch within 0.5 ERB | — | — | 42 % |
+| the template's notches with such a dip under them | — | 47 % | 59 % |
+
+In front the honest template has its notches at 7.3, 9.6 and 14.2 kHz, 9.5, 9.6 and 9.2 dB deep, present in 61, 62
+and 22 % of the heads. Depth and sharpness × 1 are now the plain template; the page holds both templates on a
+switch, the ladder's with × 1.5 and × 2.5.
+
+- **Deeper and more often a notch, and righter**, but not yet as the heads: the depth map over the sphere (order 6)
+  evens the deep places out, and presence under 0.4 drops notches a third of the heads have.
+- **The dips are wider than the notches they stand for.** Fitted with width free, a head's dips settle at a sigma of
+  0.44–0.49 ERB (fresh fits on the measured CLL 0.35–0.40), where the curves' notches are 0.60 ERB wide at half depth,
+  a sigma of 0.25: a notch is not a Gaussian in dB — a sharp bottom with wide skirts — and a Gaussian fitted to it
+  goes wide and shallow. A dip shaped as a peaking filter's notch is in dB (sharp at the bottom, skirts) would fit
+  narrower and deeper, and is what the plugin will play anyway. Not tried.
+
 ## 8. Next
 
 **Debt**: `search.js` ran into the edge of its ranges — the neighbours' reach at 18° and the distance to join a surface

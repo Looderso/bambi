@@ -320,7 +320,7 @@ function surfacesOf(H, near, set, count, order, join) {
 // passes a direction without a dip in it (the surface around it), a dip is tried at the surface's centre. A dip that
 // ends shallower than `floor` dB, or that the measured spectrum does not support, goes.
 // Returns per direction the dips (or null) and the measured targets they are fitted to.
-function backToInput(H, near, xs, set, coefs, order, floor) {
+function backToInput(H, near, xs, set, coefs, order, floor, pull = [2, 0, 0.5]) {   // pull: on centre, depth, width — 0 leaves one to the spectrum
   const count = (set[0] || []).length, widths = Array.from({ length: count }, (_, s) => { const w = set.map(p => p[s]).filter(Boolean).map(p => p[2]).sort((a, b) => a - b); return w[w.length >> 1] || 0.4; });
   const inside = (s, d) => { let found = 0, far = 0, off = [0, 0, 0]; const u = H.xyz[d];
     for (const [j, angle] of near[d]) { if (angle > 15 || !set[j][s]) continue; found++; far += angle; for (let i = 0; i < 3; i++) off[i] += H.xyz[j][i] - u[i]; }
@@ -329,7 +329,7 @@ function backToInput(H, near, xs, set, coefs, order, floor) {
     const start = places.map((p, s) => p ? [...p] : coefs && coefs[s] && inside(s, d) ? [onSphere(H, coefs[s], order, d, 1)[0], -2, widths[s]] : null);
     const at = start.map((p, s) => p ? s : -1).filter(s => s >= 0); let par = at.map(s => start[s]);
     const prior = par.map(p => [...p]);
-    for (let turn = 0; turn < 2; turn++) par = [...refine(targetOf(xs[d], par), par, 8, prior, [2, 0, 0.5])];
+    for (let turn = 0; turn < 2; turn++) par = [...refine(targetOf(xs[d], par), par, 8, prior, pull)];
     const r = targetOf(xs[d], par), kept = places.map(() => null);
     par.forEach((p, i) => { if (p[1] <= -floor && supported(r, p)) kept[at[i]] = p; });
     targets.push(targetOf(xs[d], kept.filter(Boolean)));
