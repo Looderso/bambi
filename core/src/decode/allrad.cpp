@@ -28,10 +28,10 @@ namespace bambi {
 
 namespace {
 constexpr double kSpeedOfSound = 343.0;
-constexpr int kDesignGrid = 5200;  // directions panned to the loudspeakers
-constexpr int kLevelGrid = 4000;   // a second grid, so the level is not judged on the points the design was fitted at
-constexpr int kRingGrid = 360;     // one direction a degree, for a ring
-constexpr double kRingDeg = 10.0;  // a layout is a ring when every point lies within this of the horizon
+constexpr int kDesignGrid = 5200;    // directions panned to the loudspeakers
+constexpr int kLevelGrid = 4000;     // a second grid, so the level is not judged on the points the design was fitted at
+constexpr int kRingGrid = 360;       // one direction a degree, for a ring
+constexpr double kRingDeg = 10.0;    // a layout is a ring when every point lies within this of the horizon
 constexpr double kGainSlack = 1e-9;  // a panning gain this far below zero still counts as inside the triangle
 
 std::size_t sz(int n) { return static_cast<std::size_t>(n); }
@@ -184,7 +184,8 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         if (n < 4) return fail(error, "too few points for a hull");
 
         std::vector<ch_vertex> vertices(sz(n));
-        for (int i = 0; i < n; ++i) vertices[sz(i)] = {{{out.points[sz(i)].x, out.points[sz(i)].y, out.points[sz(i)].z}}};
+        for (int i = 0; i < n; ++i)
+            vertices[sz(i)] = {{{out.points[sz(i)].x, out.points[sz(i)].y, out.points[sz(i)].z}}};
         int* faceIndices = nullptr;
         int faceCount = 0;
         convhull_3d_build(vertices.data(), n, &faceIndices, &faceCount);

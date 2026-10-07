@@ -37,7 +37,8 @@ const Json& arrayFile() {
 Layout array16() {
     Layout l;
     std::string error;
-    REQUIRE_MESSAGE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error), error);
+    REQUIRE_MESSAGE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error),
+                    error);
     for (Loudspeaker& s : l.speakers)
         if (s.channel == 18) s.imaginary = true;
     return l;
@@ -56,8 +57,8 @@ Loudspeaker at(double az, double el, int channel, double r = 1.0, bool imaginary
 /// ITU-R BS.2051 4+7+0: seven at ear level, four above, nothing below; channel 4 is the LFE and absent here.
 Layout itu470() {
     Layout l;
-    l.speakers = {at(0, 0, 1),    at(30, 0, 2),   at(-30, 0, 3),  at(90, 0, 5),      at(-90, 0, 6),    at(135, 0, 7),
-                  at(-135, 0, 8), at(45, 30, 9),  at(-45, 30, 10), at(135, 30, 11),   at(-135, 30, 12)};
+    l.speakers = {at(0, 0, 1),    at(30, 0, 2),  at(-30, 0, 3),   at(90, 0, 5),    at(-90, 0, 6),   at(135, 0, 7),
+                  at(-135, 0, 8), at(45, 30, 9), at(-45, 30, 10), at(135, 30, 11), at(-135, 30, 12)};
     return l;
 }
 
@@ -74,7 +75,9 @@ std::vector<double> gainsAt(const SpeakerDesign& d, Vec3 t) {
     std::vector<double> y(static_cast<std::size_t>(C)), g(static_cast<std::size_t>(d.outputs), 0.0);
     shSN3D(t, d.order, y);
     for (int o = 0; o < d.outputs; ++o)
-        for (int c = 0; c < C; ++c) g[static_cast<std::size_t>(o)] += d.matrix[static_cast<std::size_t>(o * C + c)] * y[static_cast<std::size_t>(c)];
+        for (int c = 0; c < C; ++c)
+            g[static_cast<std::size_t>(o)] +=
+                d.matrix[static_cast<std::size_t>(o * C + c)] * y[static_cast<std::size_t>(c)];
     return g;
 }
 
@@ -112,7 +115,8 @@ std::array<Reading, 2> read(const SpeakerDesign& d) {
         const std::size_t side = t.z > -0.5 ? 0 : 1;
         energy[side].push_back(10.0 * std::log10(e));
         re[side].push_back(len);
-        angle[side].push_back(std::acos(std::clamp((rv.x * t.x + rv.y * t.y + rv.z * t.z) / len, -1.0, 1.0)) * kRad2Deg);
+        angle[side].push_back(std::acos(std::clamp((rv.x * t.x + rv.y * t.y + rv.z * t.z) / len, -1.0, 1.0)) *
+                              kRad2Deg);
     }
     std::array<Reading, 2> out{};
     for (std::size_t side = 0; side < 2; ++side) {
@@ -120,8 +124,8 @@ std::array<Reading, 2> read(const SpeakerDesign& d) {
         double sum = 0;
         for (double v : re[side]) sum += v;
         out[side] = {*std::min_element(energy[side].begin(), energy[side].end()),
-                     *std::max_element(energy[side].begin(), energy[side].end()), sum / static_cast<double>(re[side].size()),
-                     angle[side][angle[side].size() / 2]};
+                     *std::max_element(energy[side].begin(), energy[side].end()),
+                     sum / static_cast<double>(re[side].size()), angle[side][angle[side].size() / 2]};
     }
     return out;
 }
@@ -216,7 +220,8 @@ TEST_CASE("an imaginary loudspeaker has no output and is not mixed back") {
     for (double g : down) eDown += g * g;
     for (double g : front) eFront += g * g;
     CHECK(eDown / eFront < 0.5);
-    for (int order : {1, 2, 3}) CHECK(design(array16(), order, Weighting::Basic).points.size() == 17);  // nothing added: the file has the nadir
+    for (int order : {1, 2, 3})
+        CHECK(design(array16(), order, Weighting::Basic).points.size() == 17);  // nothing added: the file has the nadir
 }
 
 TEST_CASE("every decoder is energy-preserving, whatever the weighting or the layout") {
@@ -264,7 +269,8 @@ TEST_CASE("a ring is designed on the ring") {
     std::vector<double> sampling(static_cast<std::size_t>(8 * C)), y(static_cast<std::size_t>(C));
     for (int s = 0; s < 8; ++s) {
         shSN3D(d.points[static_cast<std::size_t>(s)], 3, y);
-        for (int c = 0; c < C; ++c) sampling[static_cast<std::size_t>(s * C + c)] = y[static_cast<std::size_t>(c)] * (2.0 * acnOrder(c) + 1.0);
+        for (int c = 0; c < C; ++c)
+            sampling[static_cast<std::size_t>(s * C + c)] = y[static_cast<std::size_t>(c)] * (2.0 * acnOrder(c) + 1.0);
     }
     SpeakerDesign s = d;
     s.matrix = sampling;

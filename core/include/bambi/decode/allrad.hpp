@@ -33,10 +33,10 @@ struct SpeakerDesign {
                                  ///< loudspeaker, or with an imaginary one, has a row of zeros
     std::vector<int> channel;    ///< per real loudspeaker, by channel: its output, counted from 0
     std::vector<double> gain;    ///< per real loudspeaker: r / r_max, so the farthest plays at 1
-    std::vector<double> delaySeconds;  ///< per real loudspeaker: (r_max - r) / c, so the farthest has none
-    bool ring{false};                  ///< designed on the ring: every point within 10 degrees of the horizon
-    std::vector<Vec3> points;          ///< every point the panning used, real and imaginary, unit vectors
-    std::vector<bool> imaginary;       ///< per point
+    std::vector<double> delaySeconds;           ///< per real loudspeaker: (r_max - r) / c, so the farthest has none
+    bool ring{false};                           ///< designed on the ring: every point within 10 degrees of the horizon
+    std::vector<Vec3> points;                   ///< every point the panning used, real and imaginary, unit vectors
+    std::vector<bool> imaginary;                ///< per point
     std::vector<std::array<int, 3>> triangles;  ///< the hull's faces as point indices (3D only)
 };
 
