@@ -87,7 +87,8 @@ int main() {
         BambiDecoderProcessor proc;
         for (int in : {4, 9, 16, 18, 64})
             for (int out : {2, 8, 18, 64})
-                check(proc.checkBusesLayoutSupported(busIn(in, out)), "accepts in " + juce::String(in) + " out " + juce::String(out));
+                check(proc.checkBusesLayoutSupported(busIn(in, out)),
+                      "accepts in " + juce::String(in) + " out " + juce::String(out));
         check(!proc.checkBusesLayoutSupported(busIn(16, 1)), "refuses a one-channel output");
         check(proc.modelLoaded(), "the head model is in the bundle");
         check(proc.getLatencySamples() == 0 || proc.getLatencySamples() == BambiDecoderProcessor::kPartition,
@@ -97,7 +98,8 @@ int main() {
     //  Headphones by default: the pair on 1-2, the rest of the bus silent.
     {
         const Channels y = render(busIn(16, 8), 128, 0.5, {});
-        check(!y.empty() && channelEnergy(y, 0) > 1e-3 && channelEnergy(y, 1) > 1e-3, "headphones play on channels 1 and 2");
+        check(!y.empty() && channelEnergy(y, 0) > 1e-3 && channelEnergy(y, 1) > 1e-3,
+              "headphones play on channels 1 and 2");
         bool silent = true;
         for (int c = 2; c < 8; ++c) silent = silent && channelEnergy(y, c) == 0.0;
         check(silent, "channels 3-8 are silent: nothing plays there");
@@ -152,9 +154,12 @@ int main() {
 
     //  The head turns the field for headphones: yaw 90 against 0 is a different render on the pair.
     {
-        const Channels straight = render(busIn(16, 2), 128, 0.5, [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw", 0.0f); });
-        const Channels turned = render(busIn(16, 2), 128, 0.5, [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw", 90.0f); });
-        check(!straight.empty() && !turned.empty() && !identical(straight, turned), "yaw turns what the headphones hear");
+        const Channels straight =
+            render(busIn(16, 2), 128, 0.5, [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw", 0.0f); });
+        const Channels turned =
+            render(busIn(16, 2), 128, 0.5, [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw", 90.0f); });
+        check(!straight.empty() && !turned.empty() && !identical(straight, turned),
+              "yaw turns what the headphones hear");
     }
 
     //  The listener's sliders reach the filters, and the state goes round through the host.
@@ -162,15 +167,20 @@ int main() {
         BambiDecoderProcessor proc;
         proc.setBusesLayout(busIn(16, 2));
         proc.prepareToPlay(kCheckRate, 128);
-        proc.editDecoder("head size", [](DecoderState& d) { d.headSize = 1.2f; d.earShift = -0.5f; });
+        proc.editDecoder("head size", [](DecoderState& d) {
+            d.headSize = 1.2f;
+            d.earShift = -0.5f;
+        });
         const auto [shift, size] = proc.builtSliders();
-        check(std::abs(shift + 0.5) < 1e-6 && std::abs(size - 1.2) < 1e-6, "an edit of the sliders rebuilds the filters");
+        check(std::abs(shift + 0.5) < 1e-6 && std::abs(size - 1.2) < 1e-6,
+              "an edit of the sliders rebuilds the filters");
         juce::MemoryBlock saved;
         proc.getStateInformation(saved);
         BambiDecoderProcessor other;
         other.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
         const DecoderState back = other.decoderState();
-        check(std::abs(back.headSize - 1.2f) < 1e-6f && std::abs(back.earShift + 0.5f) < 1e-6f, "the sliders survive a save and a load");
+        check(std::abs(back.headSize - 1.2f) < 1e-6f && std::abs(back.earShift + 0.5f) < 1e-6f,
+              "the sliders survive a save and a load");
     }
 
     return checkVerdict();

@@ -43,7 +43,8 @@ int main(int argc, char** argv) {
         for (int c = 0; c < 16; ++c) {
             auto* x = buffer.getWritePointer(c);
             for (int i = 0; i < 128; ++i)
-                x[i] = static_cast<float>(y[static_cast<std::size_t>(c)] * 0.5 * std::sin(6.2831853 * 220.0 * (b * 128 + i) / 48000.0));
+                x[i] = static_cast<float>(y[static_cast<std::size_t>(c)] * 0.5 *
+                                          std::sin(6.2831853 * 220.0 * (b * 128 + i) / 48000.0));
         }
         proc.processBlock(buffer, midi);
     }
