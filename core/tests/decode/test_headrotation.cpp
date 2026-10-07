@@ -20,16 +20,19 @@ std::vector<float> planeWave(Vec3 dir, int order, int frames, unsigned seed) {
     std::vector<float> x(static_cast<std::size_t>(frames * C));
     for (int f = 0; f < frames; ++f)
         for (int c = 0; c < C; ++c)
-            x[static_cast<std::size_t>(f * C + c)] = s[static_cast<std::size_t>(f)] * static_cast<float>(y[static_cast<std::size_t>(c)]);
+            x[static_cast<std::size_t>(f * C + c)] =
+                s[static_cast<std::size_t>(f)] * static_cast<float>(y[static_cast<std::size_t>(c)]);
     return x;
 }
 
-std::vector<float> run(HeadRotation& r, const std::vector<float>& in, int channels, int frames, const std::vector<int>& cuts) {
+std::vector<float> run(HeadRotation& r, const std::vector<float>& in, int channels, int frames,
+                       const std::vector<int>& cuts) {
     std::vector<float> out(in.size());
     std::size_t cut = 0;
     for (int done = 0; done < frames;) {
         const int n = std::min(cuts[cut++ % cuts.size()], frames - done);
-        r.process(in.data() + static_cast<std::size_t>(done * channels), out.data() + static_cast<std::size_t>(done * channels), n);
+        r.process(in.data() + static_cast<std::size_t>(done * channels),
+                  out.data() + static_cast<std::size_t>(done * channels), n);
         done += n;
     }
     return out;
@@ -76,19 +79,22 @@ TEST_CASE("a jump in orientation glides, never steps, and gives the same bits ho
     std::vector<double> y(static_cast<std::size_t>(C));
     shSN3D(direction(0, 0), order, y);
     for (int f = 0; f < frames; ++f)
-        for (int c = 0; c < C; ++c) steady[static_cast<std::size_t>(f * C + c)] = static_cast<float>(y[static_cast<std::size_t>(c)]);
+        for (int c = 0; c < C; ++c)
+            steady[static_cast<std::size_t>(f * C + c)] = static_cast<float>(y[static_cast<std::size_t>(c)]);
     HeadRotation a, b;
     REQUIRE(a.prepare(order, 48000.0));
     REQUIRE(b.prepare(order, 48000.0));
     const Mat3 head = rotationAbout({0, 0, 1}, 90.0 * kDeg2Rad);
     a.setOrientation(head);
     b.setOrientation(head);
-    const std::vector<float> outA = run(a, steady, C, frames, {128}), outB = run(b, steady, C, frames, {1, 7, 64, 100, 513});
+    const std::vector<float> outA = run(a, steady, C, frames, {128}),
+                             outB = run(b, steady, C, frames, {1, 7, 64, 100, 513});
     CHECK(outA == outB);
     // The y channel (ACN 1) goes from 0 to -1 (the source now on the right): monotone-ish, no step wider than a hop's share.
     float biggest = 0;
     for (int f = 1; f < frames; ++f)
-        biggest = std::max(biggest, std::abs(outA[static_cast<std::size_t>(f * C + 1)] - outA[static_cast<std::size_t>((f - 1) * C + 1)]));
-    CHECK(biggest < 0.02f);                                                  // 1.0 spread over hundreds of frames
+        biggest = std::max(biggest, std::abs(outA[static_cast<std::size_t>(f * C + 1)] -
+                                             outA[static_cast<std::size_t>((f - 1) * C + 1)]));
+    CHECK(biggest < 0.02f);  // 1.0 spread over hundreds of frames
     CHECK(outA[static_cast<std::size_t>((frames - 1) * C + 1)] == doctest::Approx(-1.0).epsilon(1e-4));
 }
