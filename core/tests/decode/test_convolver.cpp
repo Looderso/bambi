@@ -27,7 +27,8 @@ const HeadModel& shipped() {
     static const HeadModel model = [] {
         HeadModel m;
         std::string error;
-        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error), error);
+        REQUIRE_MESSAGE(parseHeadModel(readAll(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), m, &error),
+                        error);
         return m;
     }();
     return model;
@@ -65,7 +66,8 @@ std::vector<double> direct(const BinauralFilterBuilder& b, const std::vector<flo
             for (int c = 0; c < C; ++c) {
                 const std::span<const float> h = b.filter(c, e);
                 for (int t = 0; t < T && t <= f; ++t)
-                    acc += static_cast<double>(h[static_cast<std::size_t>(t)]) * in[static_cast<std::size_t>((f - t) * C + c)];
+                    acc += static_cast<double>(h[static_cast<std::size_t>(t)]) *
+                           in[static_cast<std::size_t>((f - t) * C + c)];
             }
             out[static_cast<std::size_t>(f * 2 + e)] = acc;
         }
@@ -73,7 +75,8 @@ std::vector<double> direct(const BinauralFilterBuilder& b, const std::vector<flo
 }
 
 /// Runs `in` through the convolver in pieces of the given sizes, cycling.
-std::vector<float> run(BinauralConvolver& conv, const std::vector<float>& in, int frames, const std::vector<int>& cuts) {
+std::vector<float> run(BinauralConvolver& conv, const std::vector<float>& in, int frames,
+                       const std::vector<int>& cuts) {
     std::vector<float> out(static_cast<std::size_t>(frames) * 2, 0.0f);
     std::size_t cut = 0;
     for (int done = 0; done < frames;) {
@@ -139,7 +142,8 @@ TEST_CASE("a new set fades in over one partition and then plays alone") {
     const int before = 3 * P;  // three blocks with a, then b is published
     swapped.process(in.data(), got.data(), before);
     REQUIRE(swapped.publish(b.builder));
-    swapped.process(in.data() + static_cast<std::size_t>(before * C), got.data() + static_cast<std::size_t>(before) * 2, frames - before);
+    swapped.process(in.data() + static_cast<std::size_t>(before * C), got.data() + static_cast<std::size_t>(before) * 2,
+                    frames - before);
     // The block gathered after the publish (frames 192..255) is convolved with both sets; its result, faded, plays
     // over the following block (256..319); from then on only b plays.
     double stepAtSwap = 0;
@@ -148,11 +152,13 @@ TEST_CASE("a new set fades in over one partition and then plays alone") {
             const std::size_t i = static_cast<std::size_t>(f * 2 + e);
             const int block = f / P;
             float want;
-            if (block <= 3) want = ya[i];
+            if (block <= 3)
+                want = ya[i];
             else if (block == 4) {
                 const float t = static_cast<float>(f % P + 1) / static_cast<float>(P);
                 want = ya[i] * (1.0f - t) + yb[i] * t;
-            } else want = yb[i];
+            } else
+                want = yb[i];
             stepAtSwap = std::max(stepAtSwap, static_cast<double>(std::abs(got[i] - want)));
         }
     CHECK(stepAtSwap < 1e-6);
@@ -183,5 +189,6 @@ TEST_CASE("the decoder builds what was requested, once, and the audio hears exac
     const std::vector<float> want = run(conv, in, frames, {64});
     std::vector<float> got(static_cast<std::size_t>(frames) * 2);
     decoder.process(in.data(), got.data(), frames);
-    for (std::size_t i = 0; i < got.size(); ++i) CHECK(got[i] == want[i]);  // bit for bit: the same build, the same path
+    for (std::size_t i = 0; i < got.size(); ++i)
+        CHECK(got[i] == want[i]);  // bit for bit: the same build, the same path
 }

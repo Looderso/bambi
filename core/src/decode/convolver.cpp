@@ -98,8 +98,10 @@ void BinauralConvolver::runBlock() noexcept {
         live_ = sets_.latest();
         fade = true;
     }
-    if (live_ != nullptr) convolveBlock(*live_, playing_.data());
-    else std::fill(playing_.begin(), playing_.end(), 0.0f);
+    if (live_ != nullptr)
+        convolveBlock(*live_, playing_.data());
+    else
+        std::fill(playing_.begin(), playing_.end(), 0.0f);
     if (fade)
         for (int e = 0; e < 2; ++e)
             for (int i = 0; i < partition_; ++i) {

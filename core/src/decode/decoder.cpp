@@ -12,7 +12,8 @@ bool BinauralDecoder::prepare(const HeadModel& model, const FilterDesign& design
     quadratureGrid(rings, azimuths, directions, weights);
     if (!builder_.prepare(model, design, directions, weights)) return false;
     if (!convolver_.prepare(design.order, design.taps, partition)) return false;
-    built_.store(requested_.load(std::memory_order_acquire) - 1, std::memory_order_release);  // whatever was asked is unbuilt
+    built_.store(requested_.load(std::memory_order_acquire) - 1,
+                 std::memory_order_release);  // whatever was asked is unbuilt
     return true;
 }
 

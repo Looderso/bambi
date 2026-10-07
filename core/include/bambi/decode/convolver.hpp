@@ -56,11 +56,11 @@ private:
     RealFft audioFft_, workerFft_;
     LatestValue<Set> sets_;
     const Set* live_{nullptr};
-    AlignedFloats input_;      // channels x fft: the previous block, then the current one
-    AlignedFloats history_;    // channels x partitions x fft: the spectra of the last blocks, a ring
-    int newest_{0};            // the ring slot the newest block went to
-    AlignedFloats acc_, ear_;  // fft each: one ear's accumulated spectrum and its signal
-    AlignedFloats piece_;      // fft: worker scratch, one partition's taps padded
+    AlignedFloats input_;         // channels x fft: the previous block, then the current one
+    AlignedFloats history_;       // channels x partitions x fft: the spectra of the last blocks, a ring
+    int newest_{0};               // the ring slot the newest block went to
+    AlignedFloats acc_, ear_;     // fft each: one ear's accumulated spectrum and its signal
+    AlignedFloats piece_;         // fft: worker scratch, one partition's taps padded
     std::vector<float> playing_;  // 2 x partition: what is being played during the current block
     std::vector<float> leaving_;  // 2 x partition: the old set's block, while a new set fades in
     int pos_{0};                  // frames of the current block gathered so far
