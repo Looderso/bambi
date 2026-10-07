@@ -1,0 +1,314 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include <algorithm>
+#include <cmath>
+#include <fstream>
+#include <random>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "bambi/decode/allrad.hpp"
+#include "bambi/decode/layoutfile.hpp"
+#include "bambi/math/sh.hpp"
+#include "bambi/patch/json.hpp"
+#include "doctest.h"
+
+using namespace bambi;
+
+/*  The array on hand (array16.json, an IEM AllRADecoder file: 17 loudspeakers on channels 1-3 and 5-18, the file's
+ *  own order-5 N3D matrix) and what the prototype prototypes/decoder/listen/build-array.py designed for it
+ *  (array16-reference.json: orders 1-3, max-rE, SN3D, energy 1, channel 18 imaginary). The file marks channel 18,
+ *  straight below, as a real loudspeaker; the room has none there, so the design treats it as imaginary. */
+namespace {
+std::string readAll(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    REQUIRE_MESSAGE(in.good(), "cannot read " << path);
+    std::stringstream s;
+    s << in.rdbuf();
+    return s.str();
+}
+
+const Json& arrayFile() {
+    static const Json f = Json::parse(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"));
+    return f;
+}
+
+/// The array as the room has it: channel 18 imaginary.
+Layout array16() {
+    Layout l;
+    std::string error;
+    REQUIRE_MESSAGE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error), error);
+    for (Loudspeaker& s : l.speakers)
+        if (s.channel == 18) s.imaginary = true;
+    return l;
+}
+
+Loudspeaker at(double az, double el, int channel, double r = 1.0, bool imaginary = false) {
+    Loudspeaker s;
+    s.azimuthDeg = az;
+    s.elevationDeg = el;
+    s.channel = channel;
+    s.radiusM = r;
+    s.imaginary = imaginary;
+    return s;
+}
+
+/// ITU-R BS.2051 4+7+0: seven at ear level, four above, nothing below; channel 4 is the LFE and absent here.
+Layout itu470() {
+    Layout l;
+    l.speakers = {at(0, 0, 1),    at(30, 0, 2),   at(-30, 0, 3),  at(90, 0, 5),      at(-90, 0, 6),    at(135, 0, 7),
+                  at(-135, 0, 8), at(45, 30, 9),  at(-45, 30, 10), at(135, 30, 11),   at(-135, 30, 12)};
+    return l;
+}
+
+SpeakerDesign design(const Layout& l, int order, Weighting w) {
+    SpeakerDesign d;
+    std::string error;
+    REQUIRE_MESSAGE(designAllrad(l, order, w, d, &error), error);
+    return d;
+}
+
+/// The loudspeaker gains a plane wave from t gets.
+std::vector<double> gainsAt(const SpeakerDesign& d, Vec3 t) {
+    const int C = numChannels(d.order);
+    std::vector<double> y(static_cast<std::size_t>(C)), g(static_cast<std::size_t>(d.outputs), 0.0);
+    shSN3D(t, d.order, y);
+    for (int o = 0; o < d.outputs; ++o)
+        for (int c = 0; c < C; ++c) g[static_cast<std::size_t>(o)] += d.matrix[static_cast<std::size_t>(o * C + c)] * y[static_cast<std::size_t>(c)];
+    return g;
+}
+
+double meanEnergy(const SpeakerDesign& d, const std::vector<Vec3>& grid) {
+    double e = 0;
+    for (const Vec3& t : grid)
+        for (double g : gainsAt(d, t)) e += g * g;
+    return e / static_cast<double>(grid.size());
+}
+
+/// DECODER 3.2's reading of a design: energy range (dB), mean rE and median direction error, above and below -30 degrees.
+struct Reading {
+    double energyMin, energyMax, rE, direction;
+};
+std::array<Reading, 2> read(const SpeakerDesign& d) {
+    std::vector<Vec3> grid;
+    fibonacciSphere(4000, grid);
+    std::vector<Vec3> speaker(static_cast<std::size_t>(d.outputs));
+    for (std::size_t s = 0, p = 0; p < d.points.size(); ++p) {
+        if (d.imaginary[p]) continue;
+        speaker[static_cast<std::size_t>(d.channel[s++])] = d.points[p];
+    }
+    std::array<std::vector<double>, 2> energy, re, angle;
+    for (const Vec3& t : grid) {
+        const std::vector<double> g = gainsAt(d, t);
+        double e = 0;
+        Vec3 rv{0, 0, 0};
+        for (int o = 0; o < d.outputs; ++o) {
+            const double p = g[static_cast<std::size_t>(o)] * g[static_cast<std::size_t>(o)];
+            e += p;
+            rv = rv + speaker[static_cast<std::size_t>(o)] * p;
+        }
+        rv = rv * (1.0 / e);
+        const double len = std::sqrt(rv.x * rv.x + rv.y * rv.y + rv.z * rv.z);
+        const std::size_t side = t.z > -0.5 ? 0 : 1;
+        energy[side].push_back(10.0 * std::log10(e));
+        re[side].push_back(len);
+        angle[side].push_back(std::acos(std::clamp((rv.x * t.x + rv.y * t.y + rv.z * t.z) / len, -1.0, 1.0)) * kRad2Deg);
+    }
+    std::array<Reading, 2> out{};
+    for (std::size_t side = 0; side < 2; ++side) {
+        std::sort(angle[side].begin(), angle[side].end());
+        double sum = 0;
+        for (double v : re[side]) sum += v;
+        out[side] = {*std::min_element(energy[side].begin(), energy[side].end()),
+                     *std::max_element(energy[side].begin(), energy[side].end()), sum / static_cast<double>(re[side].size()),
+                     angle[side][angle[side].size() / 2]};
+    }
+    return out;
+}
+}  // namespace
+
+TEST_CASE("the design matches the IEM plug-in's own matrix for the array") {
+    //  Catches: a wrong hull, wrong VBAP gains, a wrong spherical-harmonic convention.
+    Layout l;
+    std::string error;
+    REQUIRE(parseIemLayout(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16.json"), l, &error));
+    REQUIRE(l.speakers.size() == 17);  // channel 18 real, as the file has it
+    const Json& decoder = *arrayFile().find("Decoder");
+    const std::vector<Json>& ref = decoder.find("Matrix")->items();
+    const std::vector<Json>& routing = decoder.find("Routing")->items();
+    const int order = static_cast<int>(std::lround(std::sqrt(static_cast<double>(ref[0].size())))) - 1;
+    REQUIRE(order == 5);
+    const SpeakerDesign d = design(l, order, Weighting::Basic);
+    const int C = numChannels(order);
+    // Ours is for SN3D in and energy-normalised; the file's for N3D, at its own level: scale per column, then fit one gain.
+    double dotProduct = 0, ours2 = 0, ref2 = 0;
+    std::vector<double> mine(ref.size() * static_cast<std::size_t>(C));
+    for (std::size_t i = 0; i < ref.size(); ++i) {
+        const int row = static_cast<int>(routing[i].numberOr(0)) - 1;
+        for (int c = 0; c < C; ++c) {
+            const double v = d.matrix[static_cast<std::size_t>(row * C + c)] / std::sqrt(2.0 * acnOrder(c) + 1.0);
+            const double r = ref[i].items()[static_cast<std::size_t>(c)].numberOr(0);
+            mine[i * static_cast<std::size_t>(C) + static_cast<std::size_t>(c)] = v;
+            dotProduct += v * r;
+            ours2 += v * v;
+            ref2 += r * r;
+        }
+    }
+    const double scale = dotProduct / ours2;
+    double err2 = 0;
+    for (std::size_t i = 0; i < ref.size(); ++i)
+        for (int c = 0; c < C; ++c) {
+            const double diff = scale * mine[i * static_cast<std::size_t>(C) + static_cast<std::size_t>(c)] -
+                                ref[i].items()[static_cast<std::size_t>(c)].numberOr(0);
+            err2 += diff * diff;
+        }
+    CHECK(std::sqrt(err2 / ref2) < 3e-4);  // the prototype: 0.02 %
+}
+
+TEST_CASE("the design equals the prototype's, max-rE at orders 1 to 3") {
+    //  Catches: a missing SN3D scaling, wrong max-rE weights, a wrong or missing energy normalisation.
+    const Json ref = Json::parse(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16-reference.json"));
+    const Layout l = array16();
+    for (int order : {1, 2, 3}) {
+        const SpeakerDesign d = design(l, order, Weighting::MaxRe);
+        const int C = numChannels(order);
+        REQUIRE(d.outputs == 17);
+        const std::vector<Json>& rows = ref.find(("order" + std::to_string(order)).c_str())->items();
+        REQUIRE(rows.size() == 16);
+        double worst = 0;
+        std::size_t i = 0;
+        for (const Loudspeaker& s : l.speakers) {
+            if (s.imaginary) continue;
+            for (int c = 0; c < C; ++c)
+                worst = std::max(worst, std::abs(d.matrix[static_cast<std::size_t>((s.channel - 1) * C + c)] -
+                                                 rows[i].items()[static_cast<std::size_t>(c)].numberOr(0)));
+            ++i;
+        }
+        CHECK_MESSAGE(worst < 1e-5, "order " << order << ": " << worst);
+    }
+}
+
+TEST_CASE("the array reads as DECODER 3.2 measured it") {
+    //  Catches: the imaginary point dropped from the hull instead of from the output, which would even out the bottom.
+    const Layout l = array16();
+    const double energy[3][4] = {{-0.8, 0.9, -1.5, 0.6}, {-0.9, 1.7, -5.6, 1.0}, {-1.0, 2.0, -9.7, 1.1}};
+    const double rE[3] = {0.64, 0.80, 0.86}, above[3] = {7.1, 3.8, 3.9}, below[3] = {52, 49, 49};
+    for (int order : {1, 2, 3}) {
+        const std::array<Reading, 2> r = read(design(l, order, Weighting::MaxRe));
+        const std::size_t o = static_cast<std::size_t>(order - 1);
+        CHECK(std::abs(r[0].energyMin - energy[o][0]) < 0.1);
+        CHECK(std::abs(r[0].energyMax - energy[o][1]) < 0.1);
+        CHECK(std::abs(r[1].energyMin - energy[o][2]) < 0.1);
+        CHECK(std::abs(r[1].energyMax - energy[o][3]) < 0.1);
+        CHECK(std::abs(r[0].rE - rE[o]) < 0.01);
+        CHECK(std::abs(r[0].direction - above[o]) < 0.3);
+        CHECK(std::abs(r[1].direction - below[o]) < 1.0);
+    }
+}
+
+TEST_CASE("an imaginary loudspeaker has no output and is not mixed back") {
+    //  Catches: the imaginary point's gains folded into its neighbours, which would make the bottom as loud as the top.
+    const SpeakerDesign d = design(array16(), 3, Weighting::MaxRe);
+    CHECK(d.outputs == 17);  // channel 18 has no row
+    CHECK(d.channel.size() == 16);
+    const std::vector<double> down = gainsAt(d, {0, 0, -1}), front = gainsAt(d, {1, 0, 0});
+    double eDown = 0, eFront = 0;
+    for (double g : down) eDown += g * g;
+    for (double g : front) eFront += g * g;
+    CHECK(eDown / eFront < 0.5);
+    for (int order : {1, 2, 3}) CHECK(design(array16(), order, Weighting::Basic).points.size() == 17);  // nothing added: the file has the nadir
+}
+
+TEST_CASE("every decoder is energy-preserving, whatever the weighting or the layout") {
+    //  Catches: a missing normalisation, or one that depends on the weighting.
+    std::vector<Vec3> same, other;
+    fibonacciSphere(4000, same);
+    fibonacciSphere(3000, other);
+    for (const Layout& l : {array16(), itu470()})
+        for (Weighting w : {Weighting::Basic, Weighting::MaxRe}) {
+            const SpeakerDesign d = design(l, 3, w);
+            CHECK(meanEnergy(d, same) == doctest::Approx(1.0).epsilon(1e-9));
+            CHECK(meanEnergy(d, other) == doctest::Approx(1.0).epsilon(0.01));
+        }
+}
+
+TEST_CASE("the same layout designs the same decoder, however it is listed") {
+    //  Catches: tie-breaking in the hull that depends on the input order -- 7.1.4 has coplanar groups.
+    const Layout ordered = itu470();
+    const SpeakerDesign a = design(ordered, 3, Weighting::Basic), again = design(ordered, 3, Weighting::Basic);
+    CHECK(a.matrix == again.matrix);
+    CHECK(a.triangles == again.triangles);
+    CHECK(a.points.size() == 12);  // eleven loudspeakers and the point below
+    Layout shuffled = ordered;
+    std::shuffle(shuffled.speakers.begin(), shuffled.speakers.end(), std::mt19937(5));
+    REQUIRE(shuffled.speakers.front().channel != ordered.speakers.front().channel);
+    const SpeakerDesign b = design(shuffled, 3, Weighting::Basic);
+    CHECK(a.matrix == b.matrix);
+    CHECK(a.triangles == b.triangles);
+    CHECK(a.channel == b.channel);
+}
+
+TEST_CASE("a ring is designed on the ring") {
+    //  Catches: a ring put through the 3D hull, where it would get two poles and pan into them.
+    Layout l;
+    for (int i = 0; i < 8; ++i) l.speakers.push_back(at(45.0 * i, 0, i + 1));
+    const SpeakerDesign d = design(l, 3, Weighting::Basic);
+    CHECK(d.ring);
+    CHECK(d.triangles.empty());
+    CHECK(d.points.size() == 8);
+    std::vector<Vec3> ring;
+    for (int k = 0; k < 720; ++k) ring.push_back({std::cos(kPi * k / 360.0), std::sin(kPi * k / 360.0), 0.0});
+    CHECK(meanEnergy(d, ring) == doctest::Approx(1.0).epsilon(1e-6));
+    // Close to the sampling decoder on the same ring: each loudspeaker's row the harmonics at its direction.
+    const int C = numChannels(3);
+    std::vector<double> sampling(static_cast<std::size_t>(8 * C)), y(static_cast<std::size_t>(C));
+    for (int s = 0; s < 8; ++s) {
+        shSN3D(d.points[static_cast<std::size_t>(s)], 3, y);
+        for (int c = 0; c < C; ++c) sampling[static_cast<std::size_t>(s * C + c)] = y[static_cast<std::size_t>(c)] * (2.0 * acnOrder(c) + 1.0);
+    }
+    SpeakerDesign s = d;
+    s.matrix = sampling;
+    const double level = std::sqrt(meanEnergy(s, ring));
+    double diff2 = 0, ref2 = 0;
+    for (std::size_t i = 0; i < sampling.size(); ++i) {
+        const double v = sampling[i] / level;
+        diff2 += (d.matrix[i] - v) * (d.matrix[i] - v);
+        ref2 += v * v;
+    }
+    // Measured: 20 % apart at order 3, the panning sharper than the sampling (rE 0.88 against 0.84); a sphere design
+    // with two poles would be far off and would have triangles.
+    CHECK(std::sqrt(diff2 / ref2) < 0.25);
+}
+
+TEST_CASE("a layout that does not surround the listener is refused, with a reason") {
+    //  Catches: a silent failure that designs a decoder with the listener outside the hull.
+    Layout front;
+    int ch = 1;
+    for (double az : {-60.0, -30.0, 0.0, 30.0, 60.0})
+        for (double el : {0.0, 30.0}) front.speakers.push_back(at(az, el, ch++));
+    SpeakerDesign d;
+    std::string error;
+    CHECK_FALSE(designAllrad(front, 3, Weighting::Basic, d, &error));
+    CHECK(error.find("surround") != std::string::npos);
+
+    Layout twice = itu470();
+    twice.speakers[1].channel = twice.speakers[0].channel;
+    CHECK_FALSE(designAllrad(twice, 1, Weighting::Basic, d, &error));
+    CHECK_FALSE(error.empty());
+
+    Layout none;
+    none.speakers = {at(0, 0, 1, 1, true), at(120, 0, 2, 1, true), at(-120, 0, 3, 1, true), at(0, 90, 4, 1, true)};
+    CHECK_FALSE(designAllrad(none, 1, Weighting::Basic, d, &error));
+}
+
+TEST_CASE("distance: the farthest loudspeaker plays at one with no delay, the others follow r / r_max") {
+    //  Catches: an inverted ratio, or the delay on the far loudspeaker.
+    const SpeakerDesign d = design(array16(), 1, Weighting::Basic);
+    REQUIRE(d.gain.size() == 16);
+    CHECK(d.channel[0] == 0);
+    CHECK(d.gain[0] == doctest::Approx(1.0));  // channel 1, 1.65 m, the farthest
+    CHECK(d.delaySeconds[0] == doctest::Approx(0.0));
+    CHECK(d.channel[5] == 6);  // channel 7 at 1.39 m
+    CHECK(d.gain[5] == doctest::Approx(1.39 / 1.65).epsilon(1e-6));
+    CHECK(d.delaySeconds[5] == doctest::Approx((1.65 - 1.39) / 343.0).epsilon(1e-6));
+}

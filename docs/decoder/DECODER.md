@@ -27,14 +27,26 @@ One ambisonic input (order 1–3, AmbiX), three things it can produce:
 | **Speakers** | a stereo pair, a 5.1/7.1.4 room, a dome | AllRAD decode of a loaded layout (§3) |
 | **Lens** | inspecting one slice of the scene on a stereo pair | the field turned by the head, then a stereo layout's decode (§6) |
 
-Headphones and a speaker output run **at once**, on separate outputs, so headphones on and speakers on can be
-switched at the interface without touching the plugin. Which pair of outputs goes where is the operating
-system's or the host's routing, not the plugin's.
+**One output at a time**, chosen in the plugin ([0175](../DECISIONS.md)). Its bus is 2 channels for headphones
+and the Lens, N for a layout. Which outputs go where is the operating system's or the host's routing, not the
+plugin's.
+
+**Debt: headphones and a layout at once**, on 2 + N outputs, for listening on both without touching the plugin.
+It needs an interface that routes freely (RME's TotalMix) or a virtual aggregate device, and a host that takes
+2 + N channels. Deferred, but the page is designed as if both ran: the output selector, the sphere drawing what
+the active output plays, the Lens beside headphones — so adding it later redesigns nothing.
 
 ## 3. Speakers — a layout, not a preset list
 
-- **AllRAD** over a loaded layout: max-rE weighting, a **two-band decode** (basic below the crossover, max-rE
-  above), **imaginary loudspeakers** filling the gaps of an incomplete layout (no lower half, no ceiling).
+- **AllRAD** over a loaded layout, with **imaginary loudspeakers** filling the gaps of an incomplete layout (no
+  lower half, no ceiling).
+- **The weighting is the listening situation** ([0174](../DECISIONS.md)): *one listener*, the default, decodes
+  unweighted (basic); *audience* decodes max-rE, which widens the sweet area for listeners spread across a room
+  and costs the centred one sharpness, decorrelation and treble. **Both are energy-preserving**: a source panned
+  anywhere gives, averaged over all directions, the energy of one loudspeaker playing it — so switching keeps
+  the level by construction, and so does changing layout.
+- *Later:* **a colour correction** per layout, order and weighting — one high shelf and one peak, after Frank et
+  al. (DAGA 2023) — measured on the KU100 through §3.1.
 - **Per-speaker delay and gain from its distance**, so a room that is not a perfect sphere still images.
 - **A layout comes in every way it is commonly found**, and the decoder is always designed here, at the suite's
   order, from the positions alone:
@@ -44,13 +56,29 @@ system's or the host's routing, not the plugin's.
   - **The ITU BS.2051 layouts**, built in: 0+2+0 (stereo), 0+5+0, 2+5+0, 4+5+0, 4+7+0 (7.1.4), 4+9+0 (9.1.6) and on.
   - **Typed in**, or pasted as a list of azimuth, elevation and distance.
   - **Placed by looking** (§3.3).
-- **A loudspeaker can be imaginary**: it takes part in the triangulation and its signal is dropped. A layout with
-  nothing below the listener gets a point there, so a source below pans to the lowest ring instead of vanishing.
+- **A loudspeaker can be imaginary**: it takes part in the triangulation and its signal is dropped — never mixed
+  back into its neighbours, which cuts the effective order by about a third (Zotter, Riedel & Frank, DAGA 2022).
+  A layout with nothing below the listener gets a point there, so a source below pans to the lowest ring instead
+  of vanishing. **A ring with nothing above or below** is designed from virtual loudspeakers on the ring only.
 - **The subwoofer channel** is skipped by the decoder; bass management is a question of its own.
 - **A stereo pair** is the smallest layout — a virtual-microphone downmix, which doubles as the check that the mix
   survives stereo.
 - **Crosstalk cancellation** (3D from two speakers) is **not a feature**: a sweet spot of a head's width and a
   treated room. It stays a research question until a prototype says otherwise.
+
+**Ported** (`core/include/bambi/decode/allrad.hpp`, `layout.hpp`, `layoutfile.hpp`): `designAllrad` takes a layout,
+an order and the weighting and returns the matrix for AmbiX in, one row per output channel, with each
+loudspeaker's gain and delay from its distance. The loudspeakers are sorted by channel first, the hull is
+convhull_3d's in double precision on the unit vectors (its tie-breaking noise is a function of the point index, so a
+layout designs the same decoder however it is listed), 5200 directions on a Fibonacci sphere are panned by VBAP
+over the hull, the decoder is that panning sampled against the harmonics with (2n+1) and the order weights, and the
+level is set on a second grid of 4000. A point within 10° of the horizon counts as on it: a layout with every point
+there is a ring and is designed on 360 virtual loudspeakers around it; otherwise a missing lower or upper half gets
+its pole. A layout whose hull does not hold the listener is refused with the reason. The IEM reader is the first
+format; the others are still to come. Checked against the IEM plug-in's own matrix for the array (0.02 %), against
+the prototype's order 1–3 decoders tap for tap, and against §3.2's table. Designing a 64-loudspeaker layout takes
+2 ms wall at order 1 and 6 ms at order 7 in Release; it runs on a worker. What is not written yet: applying the
+matrix and the delays on the audio thread, and the swap of a design, as the binaural side has them.
 
 ### 3.1 Hear the array on headphones
 
@@ -418,14 +446,17 @@ library when the second plugin needs it, not before.
 - **An output selector** where the effects keep their pages: Headphones · Speakers · Lens, and the layout
   loader under Speakers.
 - **Personalisation is its own page**, entered on purpose, left when done.
+- **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
+  the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the
+  encoders' sources ([0176](../DECISIONS.md), [VISUALISATION §5](../suite/VISUALISATION.md)). Its link record
+  carries the layout from the first version, not added later.
 
 ## 9. Open questions
 
 - **Name.** "Decoder" is a working title. Does it keep the name *Lens*, or take another?
-- **Buses**: headphones and a speaker output at once is an output of 2 + N channels. **REAPER is the host for it**
-  (128 channels a track); Pro Tools Ultimate takes ambisonic tracks to order 7, Nuendo, Cubase and Studio One to
-  16 channels, so they can feed the decoder but not run headphones and an array of 16 at once. Those hosts get
-  headphones or a standard layout. What each negotiates is settled with the conformance suite.
+- **Buses**: one output at a time needs 2 or N channels; the deferred both-at-once needs 2 + N, which **REAPER**
+  carries (128 channels a track) and Nuendo, Cubase and Studio One (16) do not for an array of 16. What each host
+  negotiates for an N-channel output is settled with the conformance suite.
 - **Orders**: 1–3 like the rest of the suite, or higher for arrays that can use it?
 - **Does stage one (§5.1) already give most of the thesis's gain?** Settled by listening, against the KU100 and
   against a deliberately poor set, as the thesis did.

@@ -11,3 +11,8 @@ target_include_directories(dr_libs INTERFACE dr_libs)
 add_library(yyjson STATIC yyjson/yyjson.c)
 target_include_directories(yyjson PUBLIC yyjson)
 target_compile_options(yyjson PRIVATE -w)
+
+# convhull_3d — MIT, header-only (implementation compiled in convhull_3d/convhull_3d.c)
+add_library(convhull_3d STATIC convhull_3d/convhull_3d.c)
+target_include_directories(convhull_3d PUBLIC convhull_3d)
+target_compile_options(convhull_3d PRIVATE -w)

@@ -105,8 +105,10 @@ add_library(bambi-decode STATIC
   src/decode/binaural.cpp
   src/decode/convolver.cpp
   src/decode/decoder.cpp
+  src/decode/layoutfile.cpp
+  src/decode/allrad.cpp
 )
-target_link_libraries(bambi-decode PUBLIC bambi-core)
+target_link_libraries(bambi-decode PUBLIC bambi-core PRIVATE convhull_3d)
 bambi_warnings(bambi-decode PEDANTIC)
 
 # ---- one test binary over all of them ----------------------------------------------------------
@@ -182,6 +184,7 @@ add_executable(bambi-tests
   tests/decode/test_headmodel.cpp
   tests/decode/test_binaural.cpp
   tests/decode/test_convolver.cpp
+  tests/decode/test_allrad.cpp
 )
 target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode)
 # The tests read the shipped head model and its fixtures from the source tree.

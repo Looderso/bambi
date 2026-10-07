@@ -42,6 +42,7 @@ OWN = [
     ("pffft", "third_party/pffft", "the FFT for the spectral features", "LICENSE"),
     ("yyjson", "third_party/yyjson", "reading and writing state and presets", "LICENSE"),
     ("dr_libs", "third_party/dr_libs", "reading and writing WAV files", "LICENSE"),
+    ("convhull_3d", "third_party/convhull_3d", "the convex hull for the loudspeaker decoder", "LICENSE"),
 ]
 
 LICENCE_FILE = re.compile(r"^(licen[cs]e|copying)|licen[cs]e\.txt$", re.I)

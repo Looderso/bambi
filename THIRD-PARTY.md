@@ -50,6 +50,7 @@ dependency that can change under you is a dependency that can change your test r
 | [pffft](https://bitbucket.org/jpommier/pffft) | unversioned; `pffft.c` md5 `8d86728f` | BSD-3-Clause (FFTPACK) | yes | real FFT for the spectral features |
 | [dr_wav](https://github.com/mackron/dr_libs) | 0.14.6 | Public domain **or** MIT-0 | yes | WAV read/write in the offline tools |
 | [yyjson](https://github.com/ibireme/yyjson) | 0.13.0 | MIT | yes | preset / state parsing and serialisation |
+| [convhull_3d](https://github.com/leomccormack/convhull_3d) | `c41bf92` (2025-04-05) | MIT | yes | the convex hull for the AllRAD loudspeaker design |
 | [doctest](https://github.com/doctest/doctest) | 2.4.11 | MIT | yes | test framework (test binary only, not shipped) |
 | [JUCE](https://github.com/juce-framework/JUCE) | 9.0.2 (submodule, pinned) | AGPLv3 or commercial | yes, via GPLv3 §13 | the plugin: formats, buses, parameters, editor — plugin builds only, never `core/` |
 | [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) | `9fbefae`, **vendored with bambi patches** | MIT | yes | the CLAP format, which JUCE does not build natively |
