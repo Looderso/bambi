@@ -121,7 +121,7 @@ binaural decode.*
   before the decoder when wanted. The decoder adds nothing to the field.
 - **Latency**: 64 samples (1.3 ms) of bulk delay inside the filters, which keeps the part of a response ahead of
   the head's centre causal and stays in the sound; plus one partition of the convolution, 64 samples, which the
-  plugin reports to the host ([0172](../DECISIONS.md)). The convolution is 2 × (N+1)² filters of 256 taps,
+  plugin reports to the host ([0173](../DECISIONS.md)). The convolution is 2 × (N+1)² filters of 256 taps,
   uniformly partitioned in the frequency domain (`core/include/bambi/decode/convolver.hpp`); measured per
   128-sample block at 48 kHz, one core: 0.1 % at order 1, 0.3 % at order 3, 0.6 % at order 5, 1.1 % at order 7.
 
@@ -162,7 +162,7 @@ The model's notches are deeper than the KU100's, which is where the 8–16 kHz e
 transformed on the worker, handed to the audio thread whole through the link bus's triple buffer in place, and
 crossfaded in over one partition; `BinauralDecoder` carries the sliders from any thread to one worker and the
 filters to the audio thread, and builds before the first block so a bounce hears the parameters
-([0172](../DECISIONS.md)). Checked against a direct convolution however the audio is cut, and the fade against two
+([0173](../DECISIONS.md)). Checked against a direct convolution however the audio is cut, and the fade against two
 convolvers playing each set alone. What is not written yet is the plugin around it: the JUCE wrapper, its worker
 thread, and the two sliders in the UI.
 
