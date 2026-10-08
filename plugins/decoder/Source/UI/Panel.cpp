@@ -493,34 +493,31 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
         const float buttonH = static_cast<float>(space::grid * 2) + 2.0f;
         const bool live = d.trackerSource == 2 && mine;
         const bool levelDone = state_.processor.levelCaptured();
-        const juce::String lookLabel = "1  look: ahead, level", nodLabel = "2  nod: look down";
-        const juce::Rectangle<float> look{content.getX(), y, framedButtonWidth(lookLabel), buttonH};
-        paintButton(g, look, lookLabel, live, [this] {
-            if (!state_.processor.captureLevel())
-                calibrationNote_ = "nothing from the airpods yet";
+        //  one button, pressed twice: the second press comes while looking down, where nobody sees a second button
+        const juce::String lookLabel = "calibrate: look ahead, level, press", nodLabel = "now look down, press again";
+        const juce::Rectangle<float> button{
+            content.getX(), y, std::max(framedButtonWidth(lookLabel), framedButtonWidth(nodLabel)), buttonH};
+        paintButton(g, button, levelDone ? nodLabel : lookLabel, live, [this, levelDone] {
+            if (!levelDone)
+                calibrationNote_ = state_.processor.captureLevel() ? "level kept: look down, press again"
+                                                                   : "nothing from the airpods yet";
             else
-                calibrationNote_ = "level kept: now look down, and press 2";
-            repaint();
-        });
-        const juce::Rectangle<float> nod{look.getRight() + static_cast<float>(space::grid) / 2.0f, y,
-                                         framedButtonWidth(nodLabel), buttonH};
-        paintButton(g, nod, nodLabel, live && levelDone, [this] {
-            calibrationNote_ = state_.processor.captureNod()
-                                   ? "calibrated and recentred"
-                                   : "that was no nod: look ahead, press 1, look down, press 2";
+                calibrationNote_ = state_.processor.captureNod()
+                                       ? "calibrated and recentred"
+                                       : "that was no nod: look ahead and press, look down and press again";
             repaint();
         });
         const juce::String forgetLabel = "forget";
-        const juce::Rectangle<float> forget{nod.getRight() + static_cast<float>(space::grid) / 2.0f, y,
+        const juce::Rectangle<float> forget{button.getRight() + static_cast<float>(space::grid) / 2.0f, y,
                                             framedButtonWidth(forgetLabel), buttonH};
         paintButton(g, forget, forgetLabel, mine && d.airpodsCalibrated, [this] {
             state_.processor.forgetCalibration();
             calibrationNote_ = "back to apple's frame";
         });
         y += buttonH + 2.0f;
-        const juce::String standing =
-            d.airpodsCalibrated ? juce::String("calibrated: look and nod found how they sit")
-                                : juce::String("not calibrated: apple's frame assumed, which may tilt the head");
+        const juce::String standing = d.airpodsCalibrated
+                                          ? juce::String("calibrated: look and nod found how they sit")
+                                          : juce::String("not calibrated: the airpods' own frame, worn upright");
         text(g, calibrationNote_.isEmpty() ? standing : calibrationNote_, smallFont(), colour::label,
              {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
              juce::Justification::centredLeft);

@@ -171,20 +171,35 @@ TEST_CASE("the well-known addresses name their form; anything else goes to learn
     CHECK_FALSE(knownForm("/gyrosc/quat", f));
 }
 
-TEST_CASE("AirPods report the headphone frame: level on the head is a level head, a nod is a nod") {
-    //  Catches: the headphones' frame mapped as a tracker's own, which would put the front at the top of the head.
-    double y, p, r;
-    //  Apple's frame on the head: x right, y up, z back. Worn level, facing world +y as the arbitrary x reference
-    //  has it, the attitude is the same as an upright phone facing the listener.
-    const auto aboutX = [](double deg) {
-        const double h = deg * kDeg2Rad / 2;
-        return std::vector<float>{static_cast<float>(std::cos(h)), static_cast<float>(std::sin(h)), 0.0f, 0.0f};
+TEST_CASE("AirPods report a head frame: level on the head is a level head, a nod is a nod") {
+    //  Catches: the frame taken as a phone's face (y up, z back), which reads a level head as looking straight up
+    //  and turns a nod backwards; or the x-right axis taken as the head's left.
+    //  Worn upright, the AirPods' x is the head's right, y its front, z its up. Against the reference frame (z
+    //  vertical, x arbitrary), a head that faces world +x and is level has its sensor turned -90 degrees about z.
+    const auto quat = [](double deg, double ax, double ay, double az) {
+        const double h = deg * kDeg2Rad / 2, s = std::sin(h);
+        return std::array<double, 4>{std::cos(h), s * ax, s * ay, s * az};
     };
-    yprOf(read(OrientationForm::QuaternionWxyz, aboutX(90), Mounting::AirPods), y, p, r);
-    CHECK(std::abs(p) < 1e-9);
-    CHECK(std::abs(r) < 1e-9);
-    yprOf(read(OrientationForm::QuaternionWxyz, aboutX(110), Mounting::AirPods), y, p, r);
-    CHECK(p == doctest::Approx(20.0).epsilon(1e-6));  // the face tipped up by 20 degrees
+    const auto times = [](std::array<double, 4> a, std::array<double, 4> b) {
+        return std::vector<float>{static_cast<float>(a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]),
+                                  static_cast<float>(a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2]),
+                                  static_cast<float>(a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1]),
+                                  static_cast<float>(a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0])};
+    };
+    const auto level = quat(-90, 0, 0, 1);
+    double y, p, r;
+    yprOf(read(OrientationForm::QuaternionWxyz, times(quat(0, 0, 0, 1), level), Mounting::AirPods), y, p, r);
+    CHECK(std::abs(y) < 1e-6);
+    CHECK(std::abs(p) < 1e-6);
+    CHECK(std::abs(r) < 1e-6);
+    //  a nod down by 20 degrees turns the sensor about the world's +y, the head's left; a turn to the left is a yaw
+    yprOf(read(OrientationForm::QuaternionWxyz, times(quat(20, 0, 1, 0), level), Mounting::AirPods), y, p, r);
+    CHECK(std::abs(y) < 1e-6);
+    CHECK(p == doctest::Approx(-20.0).epsilon(1e-6));
+    CHECK(std::abs(r) < 1e-6);
+    yprOf(read(OrientationForm::QuaternionWxyz, times(quat(30, 0, 0, 1), level), Mounting::AirPods), y, p, r);
+    CHECK(y == doctest::Approx(30.0).epsilon(1e-6));
+    CHECK(std::abs(p) < 1e-6);
 }
 
 TEST_CASE("look and nod find how a device sits on the head, whichever way it sits") {

@@ -32,7 +32,7 @@ enum class Mounting {
     AsSent,        ///< the device reports the head's axes already: a head tracker, the AirPods
     PhoneTopEdge,  ///< a phone on the headphones' band, screen up, top edge forward
     PhoneBack,     ///< a phone held upright in front, its screen facing the listener
-    AirPods,       ///< Apple's headphone frame as documented: x to the right of the head, y up, z toward the back
+    AirPods,       ///< the frame AirPods report, worn upright: x to the right of the head, y forward, z up
     Axes,          ///< as OrientationRead::axes says: the frame a calibration found
 };
 

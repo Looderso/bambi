@@ -413,12 +413,15 @@ reads the headphones' motion with CoreMotion and sends the quaternion to the rec
   into the VST3 and CLAP bundles after they are built and copied, both signed again; `airpods` in the head strip
   launches it with the receiver's port and ends it when the source changes; it sends `/quaternion` as SPARTA does,
   so the receiver needs no new form, and `/bambi/helper/status` with the permission's state, which the strip shows
-  while it starts. **Its frame is Apple's headphone frame** — x to the right of the head, y up, z toward the back —
-  the same as an upright phone facing the listener (`Mounting::AirPods`) — assumed until **the look-and-nod
-  calibration** replaces it: on the tracking tab, *look* while facing ahead and level keeps the sensor's pose,
-  *nod* while looking down gives the turn; the level pose yields the head's up in the sensor's frame, the nod its
-  left axis, the front follows (`axesFromLookAndNod`), and the axes are state, kept with the session. On the first
-  real AirPods the assumed frame sat tilted and nodded the wrong way, which is what the calibration is for.
+  while it starts. **The AirPods report a head frame, not Apple's phone-like one**: worn upright, x is the head's
+  right, y its front, z its up (`Mounting::AirPods`, the frame Headitude's `(x, y, z) → (y, −x, z)` remap stands
+  on); the documented "y up, z toward the back" was tried first and read a level head as looking straight up,
+  which put the recentred front at the zenith and turned a nod backwards. The frame is assumed until **the
+  look-and-nod calibration** replaces it for a pair that sits askew: one button on the tracking tab, pressed while
+  facing ahead and level, then pressed again while looking down — one button, because nobody sees where to click
+  while nodding. The level pose yields the head's up in the sensor's frame, the nod its left axis, the front
+  follows (`axesFromLookAndNod`), and the axes are state, kept with the session; *forget* returns to the frame
+  above.
 
 **Any phone, with no app: a page.** The helper also serves a page to the local Wi-Fi, reached by a QR code in the
 decoder, that sends the phone's orientation to the receiver ([0172](../DECISIONS.md)):

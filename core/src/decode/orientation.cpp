@@ -20,9 +20,9 @@ Mat3 fromQuaternion(double w, double x, double y, double z) {
 /// screen). The device's rotation times this transposed is the head's.
 Mat3 axesOfMounting(Mounting mounting, const Mat3& custom) {
     switch (mounting) {
-        case Mounting::PhoneTopEdge: return {0, 1, 0, -1, 0, 0, 0, 0, 1};
-        case Mounting::PhoneBack:
-        case Mounting::AirPods: return {0, 0, -1, -1, 0, 0, 0, 1, 0};  // the same frame: a face, upright
+        case Mounting::PhoneTopEdge:
+        case Mounting::AirPods: return {0, 1, 0, -1, 0, 0, 0, 0, 1};  // the same frame: a top edge forward, z up
+        case Mounting::PhoneBack: return {0, 0, -1, -1, 0, 0, 0, 1, 0};
         case Mounting::Axes: return custom;
         case Mounting::AsSent: break;
     }

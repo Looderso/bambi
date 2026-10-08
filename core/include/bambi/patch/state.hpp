@@ -115,8 +115,8 @@ struct DecoderState {
     bool oscNetwork{false};                         ///< bound to this computer until asked
     std::array<bool, 3> flip{false, false, false};  ///< learn mode's signs
     /// How the AirPods sit on the head, as look-and-nod found it: rows the head's front, left and up in the
-    /// sensor's frame. Apple's documented frame until a calibration replaces it.
-    std::array<double, 9> airpodsAxes{0, 0, -1, -1, 0, 0, 0, 1, 0};
+    /// sensor's frame. The frame they report worn upright (x right, y forward, z up) until a calibration replaces it.
+    std::array<double, 9> airpodsAxes{0, 1, 0, -1, 0, 0, 0, 0, 1};
     bool airpodsCalibrated{false};
 
     friend bool operator==(const DecoderState&, const DecoderState&) = default;
