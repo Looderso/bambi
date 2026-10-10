@@ -426,6 +426,7 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         buffer.clear();
         diag_.layoutMismatches.fetch_add(1, std::memory_order_relaxed);
         diag_.outputPeak.store(0.0f, std::memory_order_relaxed);
+        for (auto& p : diag_.channelPeak) p.store(0.0f, std::memory_order_relaxed);
         return;
     }
 
@@ -509,7 +510,12 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     diag_.headphonesHeard.store(hpHeard, std::memory_order_relaxed);
     diag_.speakersHeard.store(spHeard, std::memory_order_relaxed);
     float outPeak = 0.0f;
-    for (int c = 0; c < outChannels; ++c) outPeak = std::max(outPeak, out.getMagnitude(c, 0, n));
+    for (int c = 0; c < outChannels; ++c) {
+        const float peak = out.getMagnitude(c, 0, n);
+        outPeak = std::max(outPeak, peak);
+        if (c < static_cast<int>(diag_.channelPeak.size()))
+            diag_.channelPeak[static_cast<std::size_t>(c)].store(peak, std::memory_order_relaxed);
+    }
     diag_.outputPeak.store(outPeak, std::memory_order_relaxed);
 }
 

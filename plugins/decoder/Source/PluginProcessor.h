@@ -83,6 +83,8 @@ public:
     struct Diagnostics : bambi::host::PluginProcessor::Diagnostics {
         std::atomic<int> blockSize{0};
         std::atomic<int> speakerOutputs{0};  ///< channels the layout's design spans; 0 without a layout
+        /// The block's peak on each output channel, linear, the first kMaxChannels of the bus; 0 where nothing plays.
+        std::array<std::atomic<float>, bambi::kMaxChannels> channelPeak{};
         std::atomic<bool> headphonesHeard{false}, speakersHeard{false};
         std::atomic<int> trackerMessages{0};
         std::atomic<std::int64_t> trackerLastMs{0};  ///< when the last orientation arrived, juce::Time millis

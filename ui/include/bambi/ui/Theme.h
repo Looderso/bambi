@@ -472,6 +472,10 @@ namespace meter
     inline constexpr float  valueTop     = 12.0f;
     inline constexpr float  unitGap      = 10.0f;
     inline constexpr float  footer       = 20.0f;
+    inline constexpr float  channelInset = 5.0f;   ///< a per-channel well, in from the column's sides
+    inline constexpr float  channelGap   = 1.0f;   ///< between per-channel bars; none past denseFrom channels
+    inline constexpr int    denseFrom    = 40;
+    inline constexpr float  pairGap      = 6.0f;   ///< between the two bars of a pair, each a meterBar wide
 } // namespace meter
 
 // ---- spacing and layout, px at 1x --------------------------------------------------------------

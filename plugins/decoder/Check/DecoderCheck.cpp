@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -29,7 +30,7 @@ Buses busIn(int inChannels, int outChannels) {
 
 /// The checks' own render: like renderField, but a layout with one input bus, no sidechain.
 Channels render(const Buses& l, int block, double seconds, const std::function<void(BambiDecoderProcessor&)>& setUp,
-                const PluginState* patch = nullptr) {
+                const PluginState* patch = nullptr, const std::function<void(BambiDecoderProcessor&)>& after = {}) {
     BambiDecoderProcessor proc;
     if (!proc.setBusesLayout(l)) return {};
     host::TestPlayHead head;
@@ -57,6 +58,7 @@ Channels render(const Buses& l, int block, double seconds, const std::function<v
             captured[static_cast<std::size_t>(c)].insert(captured[static_cast<std::size_t>(c)].end(), y, y + block);
         }
     }
+    if (after) after(proc);
     return captured;
 }
 
@@ -108,7 +110,10 @@ int main() {
     //  A layout on its channels: 7.1.4 fills 1-3 and 5-12, 4 is the LFE's and stays silent; headphones off.
     {
         const PluginState s = withLayout("4+7+0", true, false);
-        const Channels y = render(busIn(16, 18), 128, 0.5, {}, &s);
+        std::array<float, 18> peaks{};
+        const Channels y = render(busIn(16, 18), 128, 0.5, {}, &s, [&peaks](BambiDecoderProcessor& p) {
+            for (std::size_t c = 0; c < peaks.size(); ++c) peaks[c] = p.diagnostics().channelPeak[c].load();
+        });
         bool on = !y.empty();
         for (int c : {0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11}) on = on && channelEnergy(y, c) > 1e-4;
         check(on, "7.1.4 plays on channels 1-3 and 5-12");
@@ -116,6 +121,11 @@ int main() {
         bool rest = !y.empty();
         for (int c = 12; c < 18; ++c) rest = rest && channelEnergy(y, c) == 0.0;
         check(rest, "channels 13-18 are silent");
+        //  Catches: a per-channel peak stored one channel off, or never stored: the LFE's and the spare channels'
+        //  meters read zero while the loudspeakers' read the last block's peak.
+        bool metersAgree = peaks[0] > 1e-3f && peaks[2] > 1e-3f && peaks[11] > 1e-3f && peaks[3] == 0.0f;
+        for (std::size_t c = 12; c < 18; ++c) metersAgree = metersAgree && peaks[c] == 0.0f;
+        check(metersAgree, "the channel meters read the channels that play, and zero on the LFE and the spares");
         //  The same on a bus too narrow for it: it does not play, and says how many channels it needs.
         const Channels narrow = render(busIn(16, 8), 128, 0.25, {}, &s);
         check(!narrow.empty() && energy(narrow) == 0.0, "a layout needing 12 channels does not play on 8");

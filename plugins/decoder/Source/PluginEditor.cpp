@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "PluginEditor.h"
 
+#include <array>
+
 #include "bambi/ui/SettingsPage.h"
 
 namespace {
@@ -43,6 +45,14 @@ void BambiDecoderEditor::frame(bambi::ui::EditorFrame& parts) {
     }
     strip.setTrackerRate(trackerRate_);
 
+    //  a meter per channel of the bus: what each output writes is read off the column, and the channel map says whose
+    std::array<float, bambi::kMaxChannels> peaks{};
+    const int metered =
+        std::min(diag.outputChannels.load(std::memory_order_relaxed), static_cast<int>(bambi::kMaxChannels));
+    for (int c = 0; c < metered; ++c)
+        peaks[static_cast<std::size_t>(c)] =
+            diag.channelPeak[static_cast<std::size_t>(c)].load(std::memory_order_relaxed);
+
     const auto link = processor_.linkStatus();
     const bool moved = parts.refresh({{link.open, link.session, link.peers},
                                       controls.target().canUndo(),
@@ -53,7 +63,9 @@ void BambiDecoderEditor::frame(bambi::ui::EditorFrame& parts) {
                                       diag.outputPeak.load(std::memory_order_relaxed),
                                       controls.anotherLabel(),
                                       processor_.engineOrder(),
-                                      processor_.dspLoad()});
+                                      processor_.dspLoad(),
+                                      peaks.data(),
+                                      metered});
     //  the head moves every frame, whoever moves it, and so does what the scene draws of it
     globe.repaint();
     equirect.repaint();

@@ -519,7 +519,9 @@ library when the second plugin needs it, not before.
   window: the scene views draw the room's frame, the loudspeakers, the hull while the speakers' page is open, the
   head and the session's sources; the head strip stands in the matrix's place (the shared window's one new slot);
   the outputs are the header's tabs with a square each (its one new option); the panel holds the open output's page
-  and the temporary tabs for the tracker and personalisation. Grey where the sketch says *later*: the lens, the
+  and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
+  bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read
+  off the column and the channel map on the page says whose channel it is. Grey where the sketch says *later*: the lens, the
   KU100 and a SOFA file, headphone correction, the AirPods helper and the phone's page, learn mode, placing by
   looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on

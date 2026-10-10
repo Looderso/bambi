@@ -21,7 +21,10 @@ bool EditorFrame::refresh(const Facts& now) {
     matrix.repaintHeader();  // the live source values move every frame; the rows do not
 
     //  what leaves the plugin, and what is true of the whole instance
-    levels.update(now.outputPeak, 1.0 / kFrameHz);
+    if (now.channelPeaks != nullptr && now.channels > 0)
+        levels.updateChannels(now.channelPeaks, now.channels, 1.0 / kFrameHz);
+    else
+        levels.update(now.outputPeak, 1.0 / kFrameHz);
     footer.setStatus(now.instance, now.order, now.dspPercent);
     return moved;
 }

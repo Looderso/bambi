@@ -20,16 +20,30 @@ double normalisedDb(double db) { return std::clamp((db - mtr::floorDb) / -mtr::f
 LevelColumn::LevelColumn(PatchModel& model, std::vector<Level> levels)
     : model_(model), levels_(std::move(levels)), areas_(levels_.size()) {}
 
-void LevelColumn::update(float peakLinear, double dtSeconds) {
+void LevelColumn::Meter::feed(float peakLinear, double dtSeconds) {
     const double db = peakLinear > 0.0f ? std::max(mtr::silenceDb, 20.0 * std::log10(static_cast<double>(peakLinear)))
                                         : mtr::silenceDb;
-    levelDb_ = std::max(db, levelDb_ - mtr::fallDbPerSec * dtSeconds);
-    if (db >= holdDb_) {
-        holdDb_ = db;
-        holdLeft_ = mtr::holdSeconds;
-    } else if ((holdLeft_ -= dtSeconds) <= 0.0) {
-        holdDb_ -= mtr::fallDbPerSec * dtSeconds;
+    levelDb = std::max(db, levelDb - mtr::fallDbPerSec * dtSeconds);
+    if (db >= holdDb) {
+        holdDb = db;
+        holdLeft = mtr::holdSeconds;
+    } else if ((holdLeft -= dtSeconds) <= 0.0) {
+        holdDb -= mtr::fallDbPerSec * dtSeconds;
     }
+}
+
+void LevelColumn::update(float peakLinear, double dtSeconds) {
+    channels_ = 0;
+    meters_.resize(1);
+    meters_[0].feed(peakLinear, dtSeconds);
+    repaint();
+}
+
+void LevelColumn::updateChannels(const float* peaksLinear, int channels, double dtSeconds) {
+    if (channels <= 0) return update(0.0f, dtSeconds);
+    if (channels != channels_) meters_.assign(static_cast<std::size_t>(channels), Meter{});  // a new bus: fresh bars
+    channels_ = channels;
+    for (int c = 0; c < channels; ++c) meters_[static_cast<std::size_t>(c)].feed(peaksLinear[c], dtSeconds);
     repaint();
 }
 
@@ -70,25 +84,42 @@ void LevelColumn::paint(juce::Graphics& g) {
         y += blockHeight + mtr::unitGap;
     }
 
-    //  the output, under them
+    //  the output, under them: one bar, or a bar per channel of the bus across the same well
     const auto bar = static_cast<float>(theme::metrics::meterBar);
-    const juce::Rectangle<float> well{(width - bar) / 2.0f, y, bar, static_cast<float>(getHeight()) - y - mtr::footer};
+    const int bars = std::max(1, channels_);
+    float barWidth = bar, gap = 0.0f;
+    if (bars == 2) {
+        gap = mtr::pairGap;
+    } else if (bars > 2) {
+        gap = bars >= mtr::denseFrom ? 0.0f : mtr::channelGap;
+        barWidth = std::max(
+            0.5f, (width - 2.0f * mtr::channelInset - gap * static_cast<float>(bars - 1)) / static_cast<float>(bars));
+    }
+    const float span = barWidth * static_cast<float>(bars) + gap * static_cast<float>(bars - 1);
+    const juce::Rectangle<float> well{(width - span) / 2.0f, y, span,
+                                      static_cast<float>(getHeight()) - y - mtr::footer};
     g.setColour(colour::panel);
     g.fillRect(well);
     const auto yFor = [&](double db) {
         return well.getBottom() - static_cast<float>(normalisedDb(db)) * well.getHeight();
     };
-
-    const auto levelTop = yFor(levelDb_);
-    g.setColour(colour::meterFill);
-    g.fillRect(well.getX(), levelTop, well.getWidth(), well.getBottom() - levelTop);
-    for (const double tick : mtr::ticksDb) ruleH(g, well.getX(), well.getRight(), yFor(tick), colour::meterTick);
-    if (holdDb_ > mtr::floorDb) {
-        g.setColour(colour::meterPeak);
-        g.fillRect(well.getX(), yFor(holdDb_) - theme::stroke::meterPeak / 2.0f, well.getWidth(),
-                   theme::stroke::meterPeak);
+    for (int b = 0; b < bars; ++b) {
+        const Meter& m = meters_[static_cast<std::size_t>(b)];
+        const float x = well.getX() + static_cast<float>(b) * (barWidth + gap);
+        if (gap > 0.0f && b > 0) {
+            g.setColour(colour::ground);
+            g.fillRect(x - gap, well.getY(), gap, well.getHeight());
+        }
+        const auto levelTop = yFor(m.levelDb);
+        g.setColour(colour::meterFill);
+        g.fillRect(x, levelTop, barWidth, well.getBottom() - levelTop);
+        if (m.holdDb > mtr::floorDb) {
+            g.setColour(colour::meterPeak);
+            g.fillRect(x, yFor(m.holdDb) - theme::stroke::meterPeak / 2.0f, barWidth, theme::stroke::meterPeak);
+        }
     }
-    text(g, "out", smallFont(), colour::label,
+    for (const double tick : mtr::ticksDb) ruleH(g, well.getX(), well.getRight(), yFor(tick), colour::meterTick);
+    text(g, channels_ > 0 ? juce::String(channels_) + " ch" : juce::String("out"), smallFont(), colour::label,
          {0.0f, static_cast<float>(getHeight()) - mtr::footer, width, mtr::footer}, juce::Justification::centred);
 }
 
