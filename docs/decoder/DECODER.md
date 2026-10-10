@@ -528,12 +528,15 @@ library when the second plugin needs it, not before.
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the
   encoders' sources ([0176](../DECISIONS.md), [VISUALISATION §5](../suite/VISUALISATION.md)). Its link record
   carries the layout from the first version, not added later.
+- **Its buses are the conformance suite's third shape** ([0183](../DECISIONS.md)): the field on one input bus at
+  the order that fits, no sidechain, an output of any width from 2 to 64 that the input never moves — asked of
+  the sources in both formats, of the installed VST3 as a host loads it, and of the installed CLAP through its
+  entry point, where the port configurations move the field's order and leave the output the bus it was. The
+  widths a host offers (REAPER up to 128 a track, the Steinberg hosts 16) are inside what it claims.
 
 ## 9. Open questions
 
 - **Name.** "Decoder" is a working title. Does it keep the name *Lens*, or take another?
-- **Buses**: which width each host gives a plugin with an ambisonic input — REAPER up to 128 a track; Nuendo,
-  Cubase and Studio One 16 — settled with the conformance suite. The channel map needs no renegotiation either way.
 - **Orders**: 1–3 like the rest of the suite, or higher for arrays that can use it?
 - **Does stage one (§5.1) already give most of the thesis's gain?** Settled by listening, against the KU100 and
   against a deliberately poor set, as the thesis did.

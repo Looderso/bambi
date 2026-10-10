@@ -10,7 +10,7 @@
 # The picture tools are here on purpose. A constructor that called a member of a base it had not
 # built yet passed every check in both effect suites and crashed the first tool that took a picture
 # after audio had run -- so "it exits 0" is asserted of each of them, which costs nothing.
-# conformance.sh is not run: it needs a real host and takes minutes. Run it before a release.
+# conformance.sh is not run: it loads the installed bundles as a host does and takes a minute. Run it before a release.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 

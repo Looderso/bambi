@@ -20,18 +20,23 @@
  */
 namespace bambi::conformance {
 
+/*  The three shapes a plugin's buses take in this suite. This is the whole of what `isBusesLayoutSupported`
+ *  differs by across the suite, so it is the whole of what a Subject has to say. */
+enum class Kind {
+    Source,       ///< the encoder: a mono or stereo source in, a sidechain, the field out
+    FieldEffect,  ///< the field in, a sidechain, the field out at the same width
+    Decoder,      ///< the field in on its one bus, no sidechain; an output of any width from two, never renegotiated
+};
+
 /// One plugin under test: how to make one, and what it says it accepts.
 struct Subject {
     std::string name;
     /// A fresh processor. The caller has already set the wrapper type this round stands for.
     std::function<std::unique_ptr<juce::AudioProcessor>()> make;
 
-    /*  A field effect takes the field in and returns it at the same width; the encoder takes a
-     *  source. This is the whole of what `isBusesLayoutSupported` differs by across the suite,
-     *  so it is the whole of what a Subject has to say. */
-    bool fieldEffect{true};
+    Kind kind{Kind::FieldEffect};
 
-    /// The orders it is expected to accept on its main output.
+    /// The orders it is expected to accept: on its main output, or for a decoder on its input.
     std::vector<int> orders{0, 1, 2, 3, 5, 7, 10};
 };
 
