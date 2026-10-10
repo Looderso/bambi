@@ -49,9 +49,10 @@ void start(const std::shared_ptr<HelperLink::Impl>& impl, const std::string& app
                                       }];
 }
 
-/// Polls every 100 ms, up to five seconds, until `old` has quit, then starts.
-void startWhenGone(const std::shared_ptr<HelperLink::Impl>& impl, NSRunningApplication* old, const std::string& appPath,
-                   int port, bool phone, int triesLeft) {
+/// Polls every 100 ms, up to five seconds, until `old` has quit, then starts. The state and the path are taken
+/// by value: the block outlives the caller's frame, and a captured reference would dangle.
+void startWhenGone(std::shared_ptr<HelperLink::Impl> impl, NSRunningApplication* old, std::string appPath, int port,
+                   bool phone, int triesLeft) {
     if (old == nil || old.terminated || triesLeft <= 0) {
         start(impl, appPath, port, phone);
         return;
