@@ -42,3 +42,10 @@ add_executable(bambi-nulltest nulltest/main.cpp)
 target_link_libraries(bambi-nulltest PRIVATE bambi-core)
 bambi_warnings(bambi-nulltest)
 
+# Ableton Live's tracks spatialised outside Live, through a loopback device. Core Audio, so macOS only.
+if(APPLE)
+  add_executable(bambi-live-bridge live-bridge/main.cpp)
+  target_link_libraries(bambi-live-bridge PRIVATE bambi-decode "-framework CoreAudio" "-framework CoreFoundation")
+  target_compile_definitions(bambi-live-bridge PRIVATE BAMBI_CORE_DIR="${PROJECT_SOURCE_DIR}/core")
+  bambi_warnings(bambi-live-bridge)
+endif()
