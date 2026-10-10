@@ -18,10 +18,15 @@ public:
     /// Launches the helper to send to `port`, serving the phone page when `phone`. False when it did not: no path,
     /// one running already, or a launch still pending.
     bool launch(const std::string& appPath, int port, bool phone);
+    /// Ends the running helper and launches it again, in the other mode, once the old process is gone: asked while
+    /// it still quits, Launch Services answers that the app is not running any more instead of starting it.
+    void relaunch(const std::string& appPath, int port, bool phone);
     void terminate();
     bool running() const;
 
+public:
+    struct Impl;  ///< shared with the launch completion and the relaunch's wait
+
 private:
-    struct Impl;
     std::shared_ptr<Impl> impl_;  ///< shared with the launch completion, which may outlive this
 };

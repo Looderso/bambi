@@ -275,6 +275,7 @@ void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
         //  and the phone's page report the head's axes already.
         trackerRead_.mounting = airpods ? bambi::Mounting::Axes : bambi::Mounting::AsSent;
         for (std::size_t i = 0; i < 9; ++i) trackerRead_.axes[i] = d.airpodsAxes[i];
+        trackerSource_ = d.trackerSource;
         if (!airpods && !phone) helperStatus_.clear();
         if (!phone) {
             phoneUrl_.clear();
@@ -296,9 +297,12 @@ void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
     //  permission in its own name, serves the phone page in its own process, and quits with the host. A change
     //  between the two modes relaunches it.
     if ((airpods || phone) && oscConnected_) {
-        if (helper_.running() && helperPhone_ != phone) helper_.terminate();
-        if (!helper_.running() && helper_.launch(HelperLink::bundledHelperPath(), d.oscPort, phone))
+        if (helper_.running() && helperPhone_ != phone) {
+            helper_.relaunch(HelperLink::bundledHelperPath(), d.oscPort, phone);
             helperPhone_ = phone;
+        } else if (!helper_.running() && helper_.launch(HelperLink::bundledHelperPath(), d.oscPort, phone)) {
+            helperPhone_ = phone;
+        }
     } else {
         helper_.terminate();
     }
@@ -355,9 +359,11 @@ juce::String BambiDecoderProcessor::helperStatus() const {
 
 void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) {
     bambi::OrientationRead read;
+    int source = 0;
     {
         const std::lock_guard<std::mutex> lock(trackerMutex_);
         read = trackerRead_;
+        source = trackerSource_;
     }
     const juce::String address = message.getAddressPattern().toString();
     if (address == "/bambi/helper/status") {
@@ -376,6 +382,9 @@ void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) 
         return;
     }
     if (!bambi::knownForm(address.toStdString(), read.form)) return;  // learn mode reads the rest, later
+    //  The helper's own sources arrive by their own address; another form on the port is not theirs to turn the head.
+    if (source == 2 && address != "/quaternion") return;
+    if (source == 3 && address != "/bambi/phone/ypr") return;
     std::array<float, 4> values{};
     std::size_t count = 0;
     for (const juce::OSCArgument& a : message) {

@@ -27,13 +27,9 @@ std::string HelperLink::bundledHelperPath() {
     return app.isDirectory() ? app.getFullPathName().toStdString() : std::string();
 }
 
-bool HelperLink::launch(const std::string& appPath, int port, bool phone) {
-    if (appPath.empty() || running()) return false;
-    {
-        std::lock_guard<std::mutex> g(impl_->lock);
-        if (impl_->pending) return false;
-        impl_->pending = true;
-    }
+namespace {
+/// The launch itself, on the shared state: the completion may land after the launcher is gone.
+void start(const std::shared_ptr<HelperLink::Impl>& impl, const std::string& appPath, int port, bool phone) {
     NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:appPath.c_str()]];
     NSWorkspaceOpenConfiguration* config = [NSWorkspaceOpenConfiguration configuration];
     config.activates = NO;
@@ -44,7 +40,6 @@ bool HelperLink::launch(const std::string& appPath, int port, bool phone) {
     ]];
     if (phone) [arguments addObject:@"--phone"];
     config.arguments = arguments;
-    std::shared_ptr<Impl> impl = impl_;
     [[NSWorkspace sharedWorkspace] openApplicationAtURL:url
                                           configuration:config
                                       completionHandler:^(NSRunningApplication* app, NSError* e) {
@@ -52,7 +47,43 @@ bool HelperLink::launch(const std::string& appPath, int port, bool phone) {
                                         impl->pending = false;
                                         if (e == nil) impl->app = app;
                                       }];
+}
+
+/// Polls every 100 ms, up to five seconds, until `old` has quit, then starts.
+void startWhenGone(const std::shared_ptr<HelperLink::Impl>& impl, NSRunningApplication* old, const std::string& appPath,
+                   int port, bool phone, int triesLeft) {
+    if (old == nil || old.terminated || triesLeft <= 0) {
+        start(impl, appPath, port, phone);
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(100 * NSEC_PER_MSEC)), dispatch_get_main_queue(),
+                   ^{ startWhenGone(impl, old, appPath, port, phone, triesLeft - 1); });
+}
+}  // namespace
+
+bool HelperLink::launch(const std::string& appPath, int port, bool phone) {
+    if (appPath.empty() || running()) return false;
+    {
+        std::lock_guard<std::mutex> g(impl_->lock);
+        if (impl_->pending) return false;
+        impl_->pending = true;
+    }
+    start(impl_, appPath, port, phone);
     return true;
+}
+
+void HelperLink::relaunch(const std::string& appPath, int port, bool phone) {
+    if (appPath.empty()) return;
+    NSRunningApplication* old = nil;
+    {
+        std::lock_guard<std::mutex> g(impl_->lock);
+        if (impl_->pending) return;  // a launch under way: the next connect sees its mode and asks again
+        old = impl_->app;
+        impl_->app = nil;
+        impl_->pending = true;
+    }
+    if (old != nil) [old terminate];
+    startWhenGone(impl_, old, appPath, port, phone, 50);
 }
 
 void HelperLink::terminate() {
@@ -75,6 +106,7 @@ HelperLink::~HelperLink() = default;
 bool HelperLink::available() { return false; }
 std::string HelperLink::bundledHelperPath() { return {}; }
 bool HelperLink::launch(const std::string&, int, bool) { return false; }
+void HelperLink::relaunch(const std::string&, int, bool) {}
 void HelperLink::terminate() {}
 bool HelperLink::running() const { return false; }
 #endif

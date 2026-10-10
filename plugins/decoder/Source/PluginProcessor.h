@@ -190,6 +190,7 @@ private:
     bool helperPhone_{false};              ///< the mode the helper was last launched in
     mutable std::mutex trackerMutex_;
     bambi::OrientationRead trackerRead_;
+    int trackerSource_{0};  ///< under trackerMutex_: which form the port is read for
     bambi::LatestValue<bambi::Mat3> tracker_;
     bambi::Mat3 rawNow_{bambi::kIdentity3};  ///< the device's own orientation, last received; under trackerMutex_
     bool rawSeen_{false};

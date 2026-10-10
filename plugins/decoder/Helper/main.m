@@ -109,11 +109,15 @@ static const char* statusName(CMAuthorizationStatus s) {
         if (![self.server start:&error]) logLine([@"phone page: " stringByAppendingString:error.localizedDescription]);
         else logLine([@"phone page at " stringByAppendingString:self.server.url]);
     }
-    self.manager = [[CMHeadphoneMotionManager alloc] init];
-    self.manager.delegate = self;
-    self.queue = [[NSOperationQueue alloc] init];
-    self.queue.maxConcurrentOperationCount = 1;
-    [self.manager startDeviceMotionUpdatesToQueue:self.queue
+    //  The headphones are read in AirPods mode only: in phone mode their quaternion would fight the phone's angles
+    //  for the head, and the motion permission is asked for nothing.
+    if (!self.phone) {
+        self.manager = [[CMHeadphoneMotionManager alloc] init];
+        self.manager.delegate = self;
+        self.queue = [[NSOperationQueue alloc] init];
+        self.queue.maxConcurrentOperationCount = 1;
+    }
+    if (!self.phone) [self.manager startDeviceMotionUpdatesToQueue:self.queue
                                       withHandler:^(CMDeviceMotion* m, NSError* e) {
                                           if (e != nil) {
                                               self.lastError = e.localizedDescription;
@@ -132,10 +136,11 @@ static const char* statusName(CMAuthorizationStatus s) {
                                               logLine(@"host gone, quitting");
                                               [NSApp terminate:nil];
                                           }
-                                          NSString* s = [NSString stringWithFormat:@"%s | headphones %s | %ld updates%@%@",
-                                                                                   statusName([CMHeadphoneMotionManager authorizationStatus]),
-                                                                                   self.connected ? "connected" : "not connected", self.updates,
-                                                                                   self.lastError ? @" | " : @"", self.lastError ?: @""];
+                                          NSString* s = self.phone ? @"serving the phone page"
+                                                                   : [NSString stringWithFormat:@"%s | headphones %s | %ld updates%@%@",
+                                                                                                statusName([CMHeadphoneMotionManager authorizationStatus]),
+                                                                                                self.connected ? "connected" : "not connected", self.updates,
+                                                                                                self.lastError ? @" | " : @"", self.lastError ?: @""];
                                           sendStatus(s.UTF8String);
                                           if (self.server != nil) {
                                               const long now = self.server.updates;
