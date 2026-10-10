@@ -31,6 +31,13 @@ pipeline attaches a source archive to every release.
 pffft ships no version number of its own, so the pinned copy is identified by content hash.
 That is the only identifier that actually distinguishes one snapshot from another here.
 
+**libmysofa and zlib are vendored as subsets**, each with its licence file: of libmysofa the reader (the
+HDF5 layout a SOFA file uses, the conventions check, spherical to cartesian), not the lookup, interpolation,
+resampling or cache; of zlib the inflate half, which that reader needs for compressed datasets. zlib is
+vendored rather than found so that `core/` builds the same on a bare Windows runner as on macOS and Linux.
+Both are unmodified apart from two one-line headers libmysofa's build would have generated
+(`config.h`, `mysofa_export.h`), marked as bambi's.
+
 Two exceptions to the rules below, both confined to plugin builds:
 
 - **JUCE is a git submodule**, pinned to the 9.0.2 tag, because it is far too large to commit as
@@ -51,6 +58,8 @@ dependency that can change under you is a dependency that can change your test r
 | [dr_wav](https://github.com/mackron/dr_libs) | 0.14.6 | Public domain **or** MIT-0 | yes | WAV read/write in the offline tools |
 | [yyjson](https://github.com/ibireme/yyjson) | 0.13.0 | MIT | yes | preset / state parsing and serialisation |
 | [convhull_3d](https://github.com/leomccormack/convhull_3d) | `c41bf92` (2025-04-05) | MIT | yes | the convex hull for the AllRAD loudspeaker design |
+| [libmysofa](https://github.com/hoene/libmysofa) | 1.3.5, `648eed0` (2026-09-08); the reader only | BSD-3-Clause | yes | reading a SOFA file (AES69, HDF5) as a measured head for the decoder |
+| [zlib](https://github.com/madler/zlib) | 1.3.1; the inflate half only | zlib | yes | a SOFA file's compressed datasets, for libmysofa |
 | [doctest](https://github.com/doctest/doctest) | 2.4.11 | MIT | yes | test framework (test binary only, not shipped) |
 | [JUCE](https://github.com/juce-framework/JUCE) | 9.0.2 (submodule, pinned) | AGPLv3 or commercial | yes, via GPLv3 §13 | the plugin: formats, buses, parameters, editor — plugin builds only, never `core/` |
 | [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) | `9fbefae`, **vendored with bambi patches** | MIT | yes | the CLAP format, which JUCE does not build natively |

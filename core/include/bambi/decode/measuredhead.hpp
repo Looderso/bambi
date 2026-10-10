@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "bambi/decode/headmodel.hpp"
+#include "bambi/dsp/fft.hpp"
 #include "bambi/math/vec3.hpp"
 
 /*  A measured head -- the KU100, a SOFA file's -- as a HeadModel, so the decoder plays it through the
@@ -29,17 +30,28 @@ struct MeasuredHead {
 };
 
 struct HeadFit {
-    int order{20};             ///< the level tables'
-    int itdOrder{10};          ///< the time difference's
-    double roughness{1e-3};    ///< the penalty on order n is roughness * n (n + 1), relative to the fit's own scale
-    double ildLimitDb{40.0};   ///< the far ear's notches held to this
-    HeadModel::Axis axis{7.7853, 0.1, 339};  ///< the shipped model's: about 300 Hz to 20 kHz
+    int order{20};            ///< the level tables'
+    int itdOrder{10};         ///< the time difference's
+    double roughness{1e-3};   ///< the penalty on order n is roughness * n (n + 1), relative to the fit's own scale
+    double ildLimitDb{40.0};  ///< the far ear's notches held to this
+    /// The shipped KU100's: about 300 Hz to 20 kHz at 0.2 ERB, which costs 0.02 dB against the model's 0.1 and
+    /// halves the file.
+    HeadModel::Axis axis{7.7853, 0.2, 170};
 };
 
-/// The measured time difference of one direction, microseconds, left minus right: the cross-correlation of the
-/// two ears weighted by a fourth-order low-pass at 1.5 kHz applied both ways, read at an eighth of a sample and
-/// refined between samples. Allocates.
-double itdMicroseconds(std::span<const float> left, std::span<const float> right, double sampleRate);
+/*  The measured time difference of one direction, microseconds, left minus right: the cross-correlation of the
+ *  two ears weighted by a fourth-order low-pass at 1.5 kHz applied both ways, read at an eighth of a sample and
+ *  refined between samples. prepare() allocates; microseconds() does not, so one estimator serves a whole set. */
+class ItdEstimator {
+public:
+    bool prepare(double sampleRate);
+    double microseconds(std::span<const float> left, std::span<const float> right);
+
+private:
+    double rate_{48000.0};
+    RealFft fft_, up_;
+    std::vector<double> l_, r_, lr_, li_, rr_, ri_, cr_, ci_, cc_;
+};
 
 /// Fits the model. False, with `error` set, when the set is empty, its arrays do not fit its counts, or the fit
 /// cannot hold (fewer directions than the order's channels). Allocates; seconds for a dense grid at order 20.

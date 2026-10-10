@@ -242,6 +242,9 @@ TEST_CASE("the decoder's listening situation saves and loads whole, and is left 
     s.decoder.flip = {false, true, false};
     s.decoder.airpodsAxes = {0, 1, 0, -1, 0, 0, 0, 0, 1};
     s.decoder.airpodsCalibrated = true;
+    s.decoder.hrtf = 2;
+    s.decoder.hrtfFile = "/heads/mine.sofa";
+    s.decoder.hrtfFileHead.text = std::make_shared<const std::string>("{\"version\":1,\"a head\":true}");
     PluginState back;
     REQUIRE(loadState(Product::Decoder, decodeParams(), saveState(Product::Decoder, decodeParams(), s), back).ok);
     CHECK(back.decoder == s.decoder);

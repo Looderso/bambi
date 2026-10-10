@@ -43,6 +43,8 @@ OWN = [
     ("yyjson", "third_party/yyjson", "reading and writing state and presets", "LICENSE"),
     ("dr_libs", "third_party/dr_libs", "reading and writing WAV files", "LICENSE"),
     ("convhull_3d", "third_party/convhull_3d", "the convex hull for the loudspeaker decoder", "LICENSE"),
+    ("libmysofa", "third_party/libmysofa", "reading SOFA files, the reader only", "LICENSE"),
+    ("zlib", "third_party/zlib", "inflating a SOFA file's compressed datasets, the inflate half only", "LICENSE"),
 ]
 
 LICENCE_FILE = re.compile(r"^(licen[cs]e|copying)|licen[cs]e\.txt$", re.I)

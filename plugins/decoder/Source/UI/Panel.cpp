@@ -197,25 +197,33 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
         static_cast<float>(space::grid);
     y = paintChannels(g, content, y, OutputPage::Headphones);
 
-    //  the HRTF: the model, or the KU100 as measured; a SOFA file later
+    //  the HRTF: the model, the KU100 as measured, or a SOFA file fitted on load
     y = paintGroupTitle(g, content, y, "hrtf");
     const juce::Rectangle<float> hrtf{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)};
-    const int head = d.hrtf == 1 ? 1 : 0;
-    paintSegments(
-        g, hrtf, {"model", "ku100", "sofa file"}, head, mine,
-        [this](int which) {
-            if (which > 1) return;
-            model().applyEdit("hrtf", [which](PluginState& s) { s.decoder.hrtf = which; });
-        },
-        2);
+    const int head = std::clamp(d.hrtf, 0, 2);
+    paintSegments(g, hrtf, {"model", "ku100", "sofa file"}, head, mine, [this](int which) {
+        if (which == 2) {
+            chooseSofaFile();  // chosen again: another file
+            return;
+        }
+        model().applyEdit("hrtf", [which](PluginState& s) { s.decoder.hrtf = which; });
+    });
     y = hrtf.getBottom() + static_cast<float>(space::grid) / 2.0f;
-    text(
-        g,
-        head == 0
-            ? "nobody's head, learned from measured heads; the sliders make it yours " + kDot + " sofa file later"
-            : "the ku100 as measured; head size scales its time difference, the ears rest " + kDot + " sofa file later",
-        smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-        juce::Justification::centredLeft);
+    juce::String about;
+    if (head == 0)
+        about = "nobody's head, learned from measured heads; the sliders make it yours";
+    else if (head == 1)
+        about = "the ku100 as measured; head size scales its time difference, the ears rest";
+    else {
+        const juce::String name = juce::File(d.hrtfFile).getFileName();
+        const juce::String note = state_.processor.sofaNote();
+        about = (name.isEmpty() ? juce::String("a sofa file") : name) + " as measured; the ears rest" +
+                (note.isEmpty() ? juce::String() : " " + kDot + " " + note);
+    }
+    if (!sofaError_.isEmpty()) about = "not read: " + sofaError_;
+    text(g, about, smallFont(), colour::label,
+         {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
+         juce::Justification::centredLeft);
     y += static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
 
     //  the listener's two sliders
@@ -264,6 +272,18 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
          {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
          juce::Justification::centredLeft);
     noteContentBottom(y + static_cast<float>(space::grid * 3));
+}
+
+void DecoderPanel::chooseSofaFile() {
+    chooser_ = std::make_unique<juce::FileChooser>("a measured head (SOFA)", juce::File(), "*.sofa");
+    chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this](const juce::FileChooser& fc) {
+                              const juce::File file = fc.getResult();
+                              if (!file.existsAsFile()) return;
+                              juce::String error;
+                              sofaError_ = state_.processor.loadSofaFile(file, &error) ? juce::String() : error;
+                              repaint();
+                          });
 }
 
 void DecoderPanel::chooseLayoutFile() {

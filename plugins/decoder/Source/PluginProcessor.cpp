@@ -8,6 +8,8 @@
 #include "BinaryData.h"
 #include "PluginEditor.h"
 #include "bambi/decode/headmodelfile.hpp"
+#include "bambi/decode/measuredhead.hpp"
+#include "bambi/decode/sofafile.hpp"
 #include "bambi/host/ClapPorts.h"
 #include "bambi/math/denormals.hpp"
 
@@ -188,7 +190,40 @@ void BambiDecoderProcessor::snapshotAdopted(const EngineSnapshot& next) noexcept
 }
 
 int BambiDecoderProcessor::headIndex(const bambi::DecoderState& d) {
-    return d.hrtf == 1 ? 1 : 0;  // a SOFA file is not read yet: it plays the model until it is
+    if (d.hrtfFileHead.text != fileHeadText_) {
+        fileHeadText_ = d.hrtfFileHead.text;
+        std::string error;
+        fileLoaded_ = fileHeadText_ != nullptr && bambi::parseHeadModel(*fileHeadText_, fileModel_, &error);
+    }
+    if (d.hrtf == 2) return fileLoaded_ ? 2 : 0;  // a file head the session lost plays the model, not silence
+    return d.hrtf == 1 ? 1 : 0;
+}
+
+bool BambiDecoderProcessor::loadSofaFile(const juce::File& file, juce::String* error) {
+    bambi::MeasuredHead measured;
+    std::string why;
+    if (!bambi::readSofa(file.getFullPathName().toStdString(), measured, &why)) {
+        if (error) *error = juce::String(why);
+        return false;
+    }
+    const bambi::HeadFit fit;  // the shipped KU100's: order 20 on the 0.2-ERB axis
+    bambi::HeadModel head;
+    if (!bambi::fitHeadModel(measured, fit, head, &why)) {
+        if (error) *error = juce::String(why);
+        return false;
+    }
+    const bambi::HeadFitError e = bambi::headFitError(measured, head, 2000.0, 16000.0);
+    sofaNote_ = juce::String(measured.directions.size()) + " directions, " + juce::String(measured.taps) + " taps at " +
+                juce::String(measured.sampleRate / 1000.0, 1) + " kHz; fitted within " + juce::String(e.cllDb, 2) +
+                " dB level, " + juce::String(e.ildDb, 2) + " dB difference, " + juce::String(e.itdUs, 0) + " us";
+    auto text = std::make_shared<const std::string>(bambi::headModelJson(head));
+    const std::string path = file.getFullPathName().toStdString();
+    editDecoder("load sofa file", [text, path](bambi::DecoderState& s) {
+        s.hrtf = 2;
+        s.hrtfFile = path;
+        s.hrtfFileHead.text = text;
+    });
+    return true;
 }
 
 void BambiDecoderProcessor::build(const bambi::DecoderState& d) {

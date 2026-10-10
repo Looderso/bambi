@@ -213,5 +213,35 @@ int main() {
         check(other.decoderState().hrtf == 1, "the choice survives a save and a load");
     }
 
+    //  A SOFA file: read, fitted, put into the state as a head, heard, and kept through the host without the file.
+    {
+        BambiDecoderProcessor proc;
+        proc.setBusesLayout(busIn(16, 2));
+        proc.prepareToPlay(kCheckRate, 128);
+        juce::String error;
+        const bool loaded =
+            proc.loadSofaFile(juce::File(std::string(BAMBI_CORE_DIR) + "/tests/decode/made.sofa"), &error);
+        check(loaded && proc.builtHead() == 2, "a sofa file is read, fitted and built: " + error + proc.sofaNote());
+        const DecoderState with = proc.decoderState();
+        check(with.hrtf == 2 && !with.hrtfFileHead.empty() && with.hrtfFile.find("made.sofa") != std::string::npos,
+              "the file's head travels in the state as text");
+        //  Catches: a file head that never reaches the chain, or a state whose head text is not what plays.
+        PluginState s{decodeParams()};
+        s.decoder = with;
+        const Channels model = render(busIn(16, 2), 128, 0.25, {}), file = render(busIn(16, 2), 128, 0.25, {}, &s);
+        check(!model.empty() && !file.empty() && !identical(model, file), "the file's head is heard, not the model");
+        juce::MemoryBlock saved;
+        proc.getStateInformation(saved);
+        BambiDecoderProcessor other;
+        other.setBusesLayout(busIn(16, 2));
+        other.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+        other.prepareToPlay(kCheckRate, 128);
+        check(other.decoderState().hrtfFileHead == with.hrtfFileHead && other.builtHead() == 2,
+              "the head survives a save and a load, and plays without the file");
+        check(!proc.loadSofaFile(juce::File(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), &error) &&
+                  error.isNotEmpty(),
+              "a file that is not SOFA is refused with a reason: " + error);
+    }
+
     return checkVerdict();
 }

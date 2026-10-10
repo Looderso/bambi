@@ -2,9 +2,10 @@
 //
 //  bambi-head: a measured head as a head file the decoder plays.
 //
-//    bambi-head <measured.bin> <out.json> [--name "..."] [--order N] [--itd-order N] [--step S] [--roughness L]
+//    bambi-head <measured.sofa | measured.bin> <out.json> [--name "..."] [--order N] [--itd-order N] [--step S]
+//               [--roughness L]
 //
-//  The measured set is a flat little-endian file: int32 the number of directions, then float32 azimuth and
+//  A SOFA file is read as AES69 lays it out. The other measured set is a flat little-endian file: int32 the number of directions, then float32 azimuth and
 //  elevation of each in degrees (azimuth counter-clockwise from the front, elevation up), then float32 responses,
 //  directions x ears x taps, the left ear first, at 48 kHz; the taps follow from the file's size. It prints how
 //  far the fitted model is from the set over 2-16 kHz -- the summed level and the difference in dB, the time
@@ -19,6 +20,7 @@
 
 #include "bambi/decode/headmodelfile.hpp"
 #include "bambi/decode/measuredhead.hpp"
+#include "bambi/decode/sofafile.hpp"
 #include "bambi/math/vec3.hpp"
 
 namespace {
@@ -68,20 +70,26 @@ bool readMeasured(const std::string& path, bambi::MeasuredHead& m, std::string& 
 
 int main(int argc, char** argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: bambi-head <measured.bin> <out.json> [--name N] [--order N] [--itd-order N] [--step S] [--roughness L]\n");
+        std::fprintf(stderr,
+                     "usage: bambi-head <measured.bin> <out.json> [--name N] [--order N] [--itd-order N] [--step S] "
+                     "[--roughness L]\n");
         return 2;
     }
     bambi::HeadFit fit;
     std::string name = "a measured head";
     for (int i = 3; i + 1 < argc; i += 2) {
         const std::string key = argv[i], value = argv[i + 1];
-        if (key == "--name") name = value;
-        else if (key == "--order") fit.order = std::stoi(value);
-        else if (key == "--itd-order") fit.itdOrder = std::stoi(value);
+        if (key == "--name")
+            name = value;
+        else if (key == "--order")
+            fit.order = std::stoi(value);
+        else if (key == "--itd-order")
+            fit.itdOrder = std::stoi(value);
         else if (key == "--step") {
             fit.axis.step = std::stod(value);
             fit.axis.points = static_cast<int>((41.6 - fit.axis.erb0) / fit.axis.step) + 1;  // up to about 20 kHz
-        } else if (key == "--roughness") fit.roughness = std::stod(value);
+        } else if (key == "--roughness")
+            fit.roughness = std::stod(value);
         else {
             std::fprintf(stderr, "unknown option %s\n", key.c_str());
             return 2;
@@ -89,11 +97,13 @@ int main(int argc, char** argv) {
     }
     bambi::MeasuredHead m;
     std::string error;
-    if (!readMeasured(argv[1], m, error)) {
+    const std::string in = argv[1];
+    const bool sofa = in.size() > 5 && in.compare(in.size() - 5, 5, ".sofa") == 0;
+    if (sofa ? !bambi::readSofa(in, m, &error) : !readMeasured(in, m, error)) {
         std::fprintf(stderr, "bambi-head: %s\n", error.c_str());
         return 1;
     }
-    m.name = name;
+    if (name != "a measured head" || !sofa) m.name = name;
     std::printf("%zu directions, %d taps at %.0f Hz\n", m.directions.size(), m.taps, m.sampleRate);
     bambi::HeadModel model;
     if (!bambi::fitHeadModel(m, fit, model, &error)) {
@@ -105,11 +115,12 @@ int main(int argc, char** argv) {
     const bambi::HeadFitError e = bambi::headFitError(m, model, 2000.0, 16000.0, &fine);
     const bambi::HeadFitError low = bambi::headFitError(m, model, 300.0, 2000.0, &fine);
     const std::string json = bambi::headModelJson(model);
-    std::printf("order %d, itd order %d, step %.3g (%d points), roughness %g\n", fit.order, fit.itdOrder,
-                fit.axis.step, fit.axis.points, fit.roughness);
-    std::printf("2-16 kHz: summed level %.2f dB, difference %.2f dB rms; 0.3-2 kHz: %.2f / %.2f dB; "
-                "time difference %.1f us rms\n",
-                e.cllDb, e.ildDb, low.cllDb, low.ildDb, e.itdUs);
+    std::printf("order %d, itd order %d, step %.3g (%d points), roughness %g\n", fit.order, fit.itdOrder, fit.axis.step,
+                fit.axis.points, fit.roughness);
+    std::printf(
+        "2-16 kHz: summed level %.2f dB, difference %.2f dB rms; 0.3-2 kHz: %.2f / %.2f dB; "
+        "time difference %.1f us rms\n",
+        e.cllDb, e.ildDb, low.cllDb, low.ildDb, e.itdUs);
     std::printf("file: %.0f kB\n", static_cast<double>(json.size()) / 1000.0);
     std::ofstream out(argv[2], std::ios::binary);
     out << json;

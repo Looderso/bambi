@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include <array>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -95,13 +96,24 @@ inline constexpr std::array<std::string_view, 6> kRoomNames{"ambience", "room", 
 inline constexpr std::array<std::string_view, 3> kRoomShapeNames{"room", "hall", "tall"};
 inline constexpr std::array<std::string_view, 5> kEchoPatternNames{"even", "ping-pong", "spiral", "cascade", "single"};
 
+/// A large text held by value, copied by reference: equal when the texts are, however they are held.
+struct SharedText {
+    std::shared_ptr<const std::string> text;
+    bool empty() const { return text == nullptr || text->empty(); }
+    friend bool operator==(const SharedText& a, const SharedText& b) {
+        return a.text == b.text || (a.text != nullptr && b.text != nullptr && *a.text == *b.text);
+    }
+};
+
 /*  The decoder's listening situation: what plays and on which channels, the layout, the listener's two sliders,
  *  the weighting, the tracker. State rather than parameters, since none of it is automated: a bounce hears it whole,
  *  and so does the worker that designs the filters from it. Sparse in the document: written when not the default. */
 struct DecoderState {
     bool headphonesPlay{true}, speakersPlay{false};
     int headphoneChannel{1};    ///< the first channel of the pair, counted from 1
-    int hrtf{0};                ///< 0 the model; 1 the KU100, 2 a SOFA file: later
+    int hrtf{0};                ///< 0 the model; 1 the KU100 as measured; 2 a SOFA file, fitted on load
+    std::string hrtfFile;       ///< the SOFA file's path, for the page
+    SharedText hrtfFileHead;    ///< the file's head as a head file's text, so a session opens without the file
     float headSize{1.0f};       ///< the head slider, 0.75..1.3
     float earShift{0.0f};       ///< the ear slider, ERB, -2..2
     bool throughLayout{false};  ///< headphones hear the layout's loudspeakers as points

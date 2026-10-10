@@ -246,10 +246,17 @@ audio runs.
 **Every bundled set is checked for its licence first** — several databases forbid commercial use, which would
 also bind any model built from them (§5.3). SADIE II's KU100 is Apache 2.0.
 
-**Loading a SOFA file** is the same route at run time — the file's responses through `fitHeadModel`, the result
-set on the chain — and waits on one thing: a SOFA reader. SOFA is HDF5, which nothing in the tree reads;
-libmysofa (BSD-3, C, no HDF5 dependency) is the candidate to vendor beside convhull_3d, and is the owner's call.
-The segment is drawn and says *later*.
+**Loading a SOFA file is the same route at run time** ([0185](../DECISIONS.md)): the third segment opens a
+chooser; the file is read through libmysofa (vendored, the reader only, with the inflate half of zlib for its
+compressed datasets — [THIRD-PARTY.md](../../THIRD-PARTY.md)), its responses go through `fitHeadModel` with the
+KU100's settings, and the result goes **into the state as a head file's text**, so a session opens and bounces
+without the file and a bounce elsewhere hears the same head; the path is kept for the page only. About 1 MB a
+file in the session, held by reference so undo steps do not copy it. The caption says the set and how close the
+fit came. The owner's own measured head, 793 directions at 512 taps, loads in a second and fits within 0.39 dB
+of its summed level, 2.2 dB of its difference and 15 µs of its time difference. libmysofa's check holds a file to
+AES69 — two receivers, the left first, cartesian and near the head — and one that breaks it is refused with the
+reason, never read wrong. The fixtures the reader is tested on are written as NetCDF-4, which is what a SOFA
+file is; a file written as plain HDF5 is not one, and libmysofa says so.
 
 ## 5. Personalisation — perceptual, not anthropometric
 
@@ -536,8 +543,8 @@ library when the second plugin needs it, not before.
   the outputs are the header's tabs with a square each (its one new option); the panel holds the open output's page
   and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
   bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read
-  off the column and the channel map on the page says whose channel it is. Grey where the sketch says *later*: the lens, a SOFA
-  file, headphone correction, the AirPods helper and the phone's page, learn mode, placing by
+  off the column and the channel map on the page says whose channel it is. Grey where the sketch says *later*: the lens,
+  headphone correction, the AirPods helper and the phone's page, learn mode, placing by
   looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the

@@ -93,7 +93,9 @@ public:
     const Diagnostics& diagnostics() const noexcept { return diag_; }
     int engineOrder() const noexcept override { return engineOrder_; }
     bool modelLoaded() const noexcept { return modelLoaded_; }
-    const bambi::HeadModel& headModel() const noexcept { return models_[static_cast<std::size_t>(chosenHead_)]; }
+    const bambi::HeadModel& headModel() const noexcept {
+        return chosenHead_ == 2 ? fileModel_ : models_[static_cast<std::size_t>(chosenHead_)];
+    }
     /// Why the layout could not be designed, or empty. Message thread.
     juce::String designError() const;
     /// The layout's design as last built, for the page and the scene. Message thread.
@@ -115,7 +117,14 @@ public:
 
     /// The sliders the binaural filters were last built with, for a check.
     std::pair<double, double> builtSliders() const { return {builtShift_, builtSize_}; }
-    int builtHead() const { return chosenHead_; }  ///< 0 the model, 1 the KU100: what the filters were built from
+    int builtHead() const {
+        return chosenHead_;
+    }  ///< 0 the model, 1 the KU100, 2 a file: what the filters are built from
+    /*  Message thread: a SOFA file read, fitted into a head and put into the state as a head file's text, so the
+        session opens without the file; the head plays at the next commit. Seconds for a dense set. False, with
+        `error`, when the file is not a SOFA file of two ears. */
+    bool loadSofaFile(const juce::File& file, juce::String* error = nullptr);
+    const juce::String& sofaNote() const { return sofaNote_; }
 
 private:
     struct DecoderSnapshot : EngineSnapshot {
@@ -133,14 +142,19 @@ private:
     /// Designs what `d` asks for that is not built yet: the filters for the sliders, the layout's decoder, the
     /// array on headphones. Message thread, under `workMutex_`. Allocates.
     void build(const bambi::DecoderState& d);
-    static int headIndex(const bambi::DecoderState& d);
+    /// Parses the state's file head when its text changed; then which head the state asks for and can have.
+    int headIndex(const bambi::DecoderState& d);
     void connectTracker(const bambi::DecoderState& d);
     void oscMessageReceived(const juce::OSCMessage& message) override;
     void appendLayoutLog(const juce::String& entry) const;
 
     std::array<bambi::HeadModel, 2> models_;  ///< the model, and the KU100 as measured
     bool modelLoaded_{false};
-    int chosenHead_{0};  ///< which of models_ the chain plays; message thread
+    bambi::HeadModel fileModel_;                       ///< a SOFA file's head, parsed from the state's text
+    std::shared_ptr<const std::string> fileHeadText_;  ///< the text fileModel_ was parsed from
+    bool fileLoaded_{false};
+    int chosenHead_{0};      ///< 0 the model, 1 the KU100, 2 the file: what the chain plays; message thread
+    juce::String sofaNote_;  ///< what the last file load said: the set and how close the fit came
 
     //  The engines. Prepared in prepareToPlay, fed on commit, read by the audio thread.
     bambi::BinauralDecoder binaural_;

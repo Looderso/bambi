@@ -86,8 +86,7 @@ bool shapeOk(const MeasuredHead& m, std::string* error) {
 /// Fits one table (directions x points, or x 1) over the basis with the roughness penalty: coef is channels x
 /// points. `ginv` is the penalised Gram's inverse for `channels`.
 void fitTable(std::span<const double> basis, int stride, int channels, std::span<const double> weights,
-              const std::vector<double>& ginv, std::span<const double> values, int points,
-              std::vector<double>& coef) {
+              const std::vector<double>& ginv, std::span<const double> values, int points, std::vector<double>& coef) {
     const int directions = static_cast<int>(weights.size());
     //  Y^T W V first, channels x points, then the inverse Gram on it: never a channels x directions matrix.
     std::vector<double> ytwv(sz(channels) * sz(points), 0.0);
@@ -132,42 +131,51 @@ void penalisedInverse(std::span<const double> basis, int stride, int channels, s
 }
 }  // namespace
 
-double itdMicroseconds(std::span<const float> left, std::span<const float> right, double sampleRate) {
-    RealFft fft, up;
-    if (!fft.prepare(sz(kItdSize)) || !up.prepare(sz(kItdSize * kItdUpsample))) return 0.0;
-    std::vector<double> l(sz(kItdSize), 0.0), r(sz(kItdSize), 0.0);
-    for (std::size_t i = 0; i < std::min(left.size(), l.size()); ++i) l[i] = left[i];
-    for (std::size_t i = 0; i < std::min(right.size(), r.size()); ++i) r[i] = right[i];
-    const int bins = kItdSize / 2 + 1;
-    std::vector<double> lr(sz(bins)), li(sz(bins)), rr(sz(bins)), ri(sz(bins));
-    fft.forward(l, lr, li);
-    fft.forward(r, rr, ri);
+bool ItdEstimator::prepare(double sampleRate) {
+    rate_ = sampleRate;
+    if (!fft_.prepare(sz(kItdSize)) || !up_.prepare(sz(kItdSize * kItdUpsample))) return false;
+    const int bins = kItdSize / 2 + 1, upBins = kItdSize * kItdUpsample / 2 + 1;
+    l_.assign(sz(kItdSize), 0.0);
+    r_.assign(sz(kItdSize), 0.0);
+    for (auto* v : {&lr_, &li_, &rr_, &ri_}) v->assign(sz(bins), 0.0);
+    cr_.assign(sz(upBins), 0.0);
+    ci_.assign(sz(upBins), 0.0);
+    cc_.assign(sz(kItdSize * kItdUpsample), 0.0);
+    return true;
+}
+
+double ItdEstimator::microseconds(std::span<const float> left, std::span<const float> right) {
+    if (cc_.empty()) return 0.0;
+    std::fill(l_.begin(), l_.end(), 0.0);
+    std::fill(r_.begin(), r_.end(), 0.0);
+    for (std::size_t i = 0; i < std::min(left.size(), l_.size()); ++i) l_[i] = left[i];
+    for (std::size_t i = 0; i < std::min(right.size(), r_.size()); ++i) r_[i] = right[i];
+    fft_.forward(l_, lr_, li_);
+    fft_.forward(r_, rr_, ri_);
     //  the cross spectrum L R*, weighted by |B|^4 of a fourth-order Butterworth at the cutoff, on the long grid
-    const int upBins = kItdSize * kItdUpsample / 2 + 1;
-    std::vector<double> cr(sz(upBins), 0.0), ci(sz(upBins), 0.0);
+    const int bins = kItdSize / 2 + 1;
     for (int k = 0; k < bins; ++k) {
-        const double f = k * sampleRate / kItdSize;
+        const double f = k * rate_ / kItdSize;
         const double w = 1.0 / std::pow(1.0 + std::pow(f / kItdCutoffHz, 8.0), 2.0);
-        cr[sz(k)] = w * (lr[sz(k)] * rr[sz(k)] + li[sz(k)] * ri[sz(k)]);
-        ci[sz(k)] = w * (li[sz(k)] * rr[sz(k)] - lr[sz(k)] * ri[sz(k)]);
+        cr_[sz(k)] = w * (lr_[sz(k)] * rr_[sz(k)] + li_[sz(k)] * ri_[sz(k)]);
+        ci_[sz(k)] = w * (li_[sz(k)] * rr_[sz(k)] - lr_[sz(k)] * ri_[sz(k)]);
     }
-    std::vector<double> cc(sz(kItdSize * kItdUpsample));
-    up.inverse(cr, ci, cc);
+    up_.inverse(cr_, ci_, cc_);
     //  the peak within the search window, lags wrapping round the end; then the parabola through its neighbours
-    const int span = kItdSearchSamples * kItdUpsample, n = static_cast<int>(cc.size());
+    const int span = kItdSearchSamples * kItdUpsample, n = static_cast<int>(cc_.size());
     int best = 0;
     double bestValue = -1e300;
     for (int lag = -span; lag <= span; ++lag) {
-        const double v = cc[sz((lag + n) % n)];
+        const double v = cc_[sz((lag + n) % n)];
         if (v > bestValue) {
             bestValue = v;
             best = lag;
         }
     }
-    const double a = cc[sz((best - 1 + n) % n)], b = bestValue, c = cc[sz((best + 1 + n) % n)];
+    const double a = cc_[sz((best - 1 + n) % n)], b = bestValue, c = cc_[sz((best + 1 + n) % n)];
     const double denom = a - 2.0 * b + c;
     const double refine = std::abs(denom) > 1e-300 ? std::clamp(0.5 * (a - c) / denom, -1.0, 1.0) : 0.0;
-    return (best + refine) / kItdUpsample / sampleRate * 1e6;
+    return (best + refine) / kItdUpsample / rate_ * 1e6;
 }
 
 bool fitHeadModel(const MeasuredHead& m, const HeadFit& fit, HeadModel& out, std::string* error) {
@@ -185,15 +193,18 @@ bool fitHeadModel(const MeasuredHead& m, const HeadFit& fit, HeadModel& out, std
         return fail("fewer directions than channels, and no roughness penalty to hold the fit");
 
     Magnitudes mag;
-    if (!mag.prepare(fit.axis, m.sampleRate)) return fail("the spectrum's FFT could not be prepared");
+    ItdEstimator itdOf;
+    if (!mag.prepare(fit.axis, m.sampleRate) || !itdOf.prepare(m.sampleRate))
+        return fail("the spectrum's FFT could not be prepared");
     const int points = fit.axis.points;
     std::vector<double> cll(sz(directions) * sz(points)), ild(sz(directions) * sz(points)), itd(sz(directions));
     for (int d = 0; d < directions; ++d) {
         const std::span<const float> l(m.left.data() + sz(d) * sz(m.taps), sz(m.taps));
         const std::span<const float> r(m.right.data() + sz(d) * sz(m.taps), sz(m.taps));
         mag.both(l, r);
-        cllIld(mag.levelL, mag.levelR, fit.ildLimitDb, cll.data() + sz(d) * sz(points), ild.data() + sz(d) * sz(points));
-        itd[sz(d)] = itdMicroseconds(l, r, m.sampleRate);
+        cllIld(mag.levelL, mag.levelR, fit.ildLimitDb, cll.data() + sz(d) * sz(points),
+               ild.data() + sz(d) * sz(points));
+        itd[sz(d)] = itdOf.microseconds(l, r);
     }
 
     //  every direction weighs the same; the penalty holds the fit where the grid has no points
@@ -244,7 +255,8 @@ HeadFitError headFitError(const MeasuredHead& m, const HeadModel& model, double 
     head.prepare(model, m.directions, erbs);
     head.synthesise(0.0, 1.0);
     Magnitudes mag;
-    if (!mag.prepare(on, m.sampleRate)) return e;
+    ItdEstimator itdOf;
+    if (!mag.prepare(on, m.sampleRate) || !itdOf.prepare(m.sampleRate)) return e;
     const int points = head.points();
     std::vector<double> cll(sz(points)), ild(sz(points));
     double sumCll = 0, sumIld = 0, sumItd = 0;
@@ -259,13 +271,14 @@ HeadFitError headFitError(const MeasuredHead& m, const HeadModel& model, double 
         for (int k = 0; k < points; ++k) {
             const double hz = mag.hz[sz(k)];
             if (hz < loHz || hz >= hiHz) continue;
-            const double haveCll = 10.0 * std::log10(std::pow(10.0, left[sz(k)] / 10.0) + std::pow(10.0, right[sz(k)] / 10.0));
+            const double haveCll =
+                10.0 * std::log10(std::pow(10.0, left[sz(k)] / 10.0) + std::pow(10.0, right[sz(k)] / 10.0));
             const double dc = haveCll - cll[sz(k)], di = (left[sz(k)] - right[sz(k)]) - ild[sz(k)];
             sumCll += dc * dc;
             sumIld += di * di;
             ++cells;
         }
-        const double dt = head.itd(d) - itdMicroseconds(l, r, m.sampleRate);
+        const double dt = head.itd(d) - itdOf.microseconds(l, r);
         sumItd += dt * dt;
     }
     if (cells > 0) {

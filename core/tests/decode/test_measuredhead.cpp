@@ -23,8 +23,12 @@ constexpr double kRate = 48000.0;
 constexpr int kTaps = 2048;
 
 //  left louder on the left (y > 0), both brighter above (z > 0), the left ear earlier on the left
-double leftDb(const Vec3& v, double hz) { return -3.0 * (1.0 - v.y) * hz / (hz + 2000.0) + 2.0 * v.z * hz / (hz + 6000.0); }
-double rightDb(const Vec3& v, double hz) { return -3.0 * (1.0 + v.y) * hz / (hz + 2000.0) + 2.0 * v.z * hz / (hz + 6000.0); }
+double leftDb(const Vec3& v, double hz) {
+    return -3.0 * (1.0 - v.y) * hz / (hz + 2000.0) + 2.0 * v.z * hz / (hz + 6000.0);
+}
+double rightDb(const Vec3& v, double hz) {
+    return -3.0 * (1.0 + v.y) * hz / (hz + 2000.0) + 2.0 * v.z * hz / (hz + 6000.0);
+}
 double itdUs(const Vec3& v) { return -600.0 * v.y; }
 
 MeasuredHead madeHead(const std::vector<Vec3>& directions) {
@@ -77,7 +81,8 @@ HeadFitError againstTruth(const HeadModel& model, const std::vector<Vec3>& direc
         for (int k = 0; k < head.points(); ++k) {
             const double hz = erbToHz(head.erbs()[static_cast<std::size_t>(k)]);
             if (hz < 1000.0 || hz >= 16000.0) continue;
-            const double l = head.left(di)[static_cast<std::size_t>(k)], r = head.right(di)[static_cast<std::size_t>(k)];
+            const double l = head.left(di)[static_cast<std::size_t>(k)],
+                         r = head.right(di)[static_cast<std::size_t>(k)];
             const double cll = 10.0 * std::log10(std::pow(10.0, l / 10.0) + std::pow(10.0, r / 10.0));
             const double dc = cll - cllOf(directions[d], hz);
             const double dl = (l - r) - (leftDb(directions[d], hz) - rightDb(directions[d], hz));
@@ -99,13 +104,15 @@ TEST_CASE("the time difference is measured with its sign: the ear a sound reache
     //  Catches: the ears swapped in the cross-correlation, the lag read from the wrong end of the window, or an
     //  estimate a whole sample coarse.
     const MeasuredHead m = madeHead({direction(90.0, 0.0), direction(-30.0, 10.0), direction(0.0, 0.0)});
+    ItdEstimator itd;
+    REQUIRE(itd.prepare(kRate));
     const auto at = [&](std::size_t d) {
-        return itdMicroseconds(std::span<const float>(m.left.data() + d * kTaps, kTaps),
-                               std::span<const float>(m.right.data() + d * kTaps, kTaps), kRate);
+        return itd.microseconds(std::span<const float>(m.left.data() + d * kTaps, kTaps),
+                                std::span<const float>(m.right.data() + d * kTaps, kTaps));
     };
-    CHECK(at(0) == doctest::Approx(-600.0).epsilon(0.01));   // on the left: left first, negative
+    CHECK(at(0) == doctest::Approx(-600.0).epsilon(0.01));  // on the left: left first, negative
     CHECK(at(1) == doctest::Approx(600.0 * std::cos(10.0 * kDeg2Rad) * 0.5).epsilon(0.01));  // 30 right, 10 up
-    CHECK(std::abs(at(2)) < 2.0);                            // in front: none
+    CHECK(std::abs(at(2)) < 2.0);                                                            // in front: none
 }
 
 TEST_CASE("a made head comes back from its fit: levels, difference and time difference, and a file round trip") {

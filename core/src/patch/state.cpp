@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -251,6 +252,8 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         jd.set("speakers_play", Json{d.speakersPlay});
         jd.set("headphone_channel", Json{d.headphoneChannel});
         jd.set("hrtf", Json{d.hrtf});
+        if (!d.hrtfFile.empty()) jd.set("hrtf_file", Json{d.hrtfFile});
+        if (!d.hrtfFileHead.empty()) jd.set("hrtf_file_head", Json{*d.hrtfFileHead.text});
         jd.set("head_size", Json{static_cast<double>(d.headSize)});
         jd.set("ear_shift", Json{static_cast<double>(d.earShift)});
         jd.set("through_layout", Json{d.throughLayout});
@@ -508,6 +511,9 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
         d.speakersPlay = boolOf("speakers_play", d.speakersPlay);
         d.headphoneChannel = std::max(1, intOf("headphone_channel", d.headphoneChannel));
         d.hrtf = intOf("hrtf", d.hrtf);
+        if (const Json* v = dec->find("hrtf_file")) d.hrtfFile = std::string(v->stringOr(""));
+        if (const Json* v = dec->find("hrtf_file_head"); v != nullptr && v->isString())
+            d.hrtfFileHead.text = std::make_shared<const std::string>(v->stringOr(""));
         d.headSize = static_cast<float>(numOf("head_size", d.headSize));
         d.earShift = static_cast<float>(numOf("ear_shift", d.earShift));
         d.throughLayout = boolOf("through_layout", d.throughLayout);

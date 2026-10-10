@@ -69,6 +69,7 @@ clap_juce_extensions_plugin(TARGET BambiDecoder
 # as the host gives, every output a set of channels on it -- and its renders. Exit code 0 means every check passed.
 bambi_plugin_tool(bambi-decoder-check NAME "${BAMBI_DECODER_NAME}" SOURCES Check/DecoderCheck.cpp
                   LIBRARIES bambi-decoder-code)
+target_compile_definitions(bambi-decoder-check PRIVATE BAMBI_CORE_DIR="${PROJECT_SOURCE_DIR}/core")  # the SOFA fixture
 
 # bambi-decoder-shot: a PNG of the editor, so a UI change is looked at rather than assumed.
 bambi_plugin_tool(bambi-decoder-shot NAME "${BAMBI_DECODER_NAME}" SOURCES Check/Shot.cpp LIBRARIES bambi-decoder-code)

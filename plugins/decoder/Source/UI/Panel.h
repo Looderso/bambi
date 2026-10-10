@@ -40,6 +40,7 @@ private:
                          bool enabled, std::function<void(DecoderState&, double)> set,
                          std::function<void(DecoderState&)> reset);
     void chooseLayoutFile();
+    void chooseSofaFile();
     std::vector<int> channelsOf(OutputPage output) const;
 
     DecoderControlState& state_;
@@ -47,6 +48,7 @@ private:
     std::vector<juce::Rectangle<float>> ituCells_;
     bool ituOpen_{false};
     juce::String calibrationNote_;  ///< what the last calibration step said
+    juce::String sofaError_;        ///< why the last SOFA file was not read, until the next is
     std::unique_ptr<juce::FileChooser> chooser_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DecoderPanel)
