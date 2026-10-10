@@ -192,6 +192,7 @@ add_executable(bambi-tests
   tests/decode/test_headmodel.cpp
   tests/decode/test_measuredhead.cpp
   tests/decode/test_sofafile.cpp
+  tests/decode/test_layoutfile.cpp
   tests/decode/test_binaural.cpp
   tests/decode/test_convolver.cpp
   tests/decode/test_allrad.cpp

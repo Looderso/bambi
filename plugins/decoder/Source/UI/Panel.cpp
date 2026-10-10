@@ -287,15 +287,15 @@ void DecoderPanel::chooseSofaFile() {
 }
 
 void DecoderPanel::chooseLayoutFile() {
-    chooser_ =
-        std::make_unique<juce::FileChooser>("a loudspeaker layout (IEM AllRADecoder JSON)", juce::File(), "*.json");
+    chooser_ = std::make_unique<juce::FileChooser>("a loudspeaker layout (IEM AllRADecoder JSON, or AmbDec)",
+                                                   juce::File(), "*.json;*.ambdec");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
                               const juce::File file = fc.getResult();
                               if (!file.existsAsFile()) return;
                               Layout layout;
                               std::string error;
-                              if (!parseIemLayout(file.loadFileAsString().toStdString(), layout, &error)) return;
+                              if (!parseLayoutFile(file.loadFileAsString().toStdString(), layout, &error)) return;
                               const std::string name = file.getFileNameWithoutExtension().toStdString();
                               model().applyEdit("load layout", [layout, name](PluginState& s) {
                                   s.decoder.layout = layout.speakers;

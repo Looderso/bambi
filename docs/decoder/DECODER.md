@@ -64,7 +64,11 @@ holds no direction.
   order, from the positions alone:
   - **IEM JSON** — the AllRADecoder's configuration, and the same format SPARTA's plug-ins import and export, so
     one reader serves both suites. The array on hand comes as one.
-  - **AmbDec `.ambdec`** — the format of the Ambisonic Decoder Toolbox and the Linux decoders.
+  - **AmbDec `.ambdec`** — the format of the Ambisonic Decoder Toolbox and the Linux decoders. **Read**
+    ([0186](../DECISIONS.md)): the `add_spkr` lines' id, distance, azimuth (counter-clockwise, as ours) and
+    elevation; the JACK port's trailing number is the channel, a port without one puts the loudspeaker on its
+    position; the file's own matrices are not read, the decoder is designed here. One chooser takes both files
+    and tells them apart by the first character.
   - **The ITU BS.2051 layouts**, built in: 0+2+0 (stereo), 0+5+0, 2+5+0, 4+5+0, 4+7+0 (7.1.4), 4+9+0 (9.1.6) and on.
   - **Typed in**, or pasted as a list of azimuth, elevation and distance.
   - **Placed by looking** (§3.3).
@@ -90,7 +94,7 @@ its pole. Four or more loudspeakers on one plane — 7.1.4's height square — a
 gain they share, instead of along whichever diagonal the hull picked ([0179](../DECISIONS.md)). A layout whose hull
 does not hold the listener is refused with the reason. Layouts come from the IEM reader and from the built-in
 ITU-R BS.2051 table (`layouts.hpp`: the ten systems by name, channels in the recommendation's order, the LFE a
-gap); AmbDec and typed-in layouts are still to come. Checked against the IEM plug-in's own matrix for the array
+gap) and from the AmbDec reader; typed-in layouts are still to come. Checked against the IEM plug-in's own matrix for the array
 (0.02 %), against the prototype's order 1–3 decoders tap for tap, against §3.2's table, and for symmetry on 7.1.4.
 Designing a 64-loudspeaker layout takes 2 ms wall at order 1 and 6 ms at order 7 in Release; it runs on a worker.
 
@@ -101,8 +105,7 @@ a layout request from the message thread to one worker and the design to the aud
 design playing when a layout is refused. Measured per 128-sample block at 48 kHz, one core: 0.8 % at order 3 on the
 array, 4.8 % at order 7 on 64 loudspeakers. Checked against the design applied directly however the audio is cut,
 the fade against each design played alone, a delay change for steps, and the decoder bit for bit against a direct
-publish. Still to come: the AmbDec, built-in and typed layouts, the stereo pair, the colour correction, and the
-plugin around all of it.
+publish. Still to come: typed layouts, the stereo pair and the colour correction.
 
 ### 3.1 Hear the array on headphones
 
@@ -589,7 +592,7 @@ All in the browser, under `prototypes/decoder/`:
    iPhone the page was a secure context past the warning, the WebSocket held, the round trip was about 9 ms, and it
    felt usable with a short tutorial. *Open*: an Android phone; the signs of yaw, pitch and roll against a
    renderer, unchecked.
-7. **Layout import** (§3): AmbDec and the BS.2051 layouts beside the IEM JSON already read.
+7. **Layout import** (§3): AmbDec and the BS.2051 layouts beside the IEM JSON — *built*, both.
 8. **A few notches in place of the notch layer** ([HRTF-DATA §7](HRTF-DATA.md)) — *built*, `notches/`: a head's smooth
    part with two or three synthesised notches and a peak, A/B against the head itself at any measured direction of the
    median plane, with plots of what plays. *Waiting on ears.*
