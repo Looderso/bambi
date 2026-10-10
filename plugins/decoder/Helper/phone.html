@@ -1,0 +1,154 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+     The page the decoder's helper serves to a phone: its orientation, as the head's angles, over a WebSocket
+     (or POSTs) to the helper, which sends it on to the decoder as OSC. Ported from prototypes/decoder/phone-gyro. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>bambi Decoder · phone</title>
+<style>
+  body { margin: 0; padding: 16px; font: 16px/1.4 -apple-system, system-ui, sans-serif; background: #111; color: #eee; }
+  button { display: block; width: 100%; padding: 18px; margin: 10px 0; font-size: 20px; border: 0; border-radius: 10px;
+           background: #333; color: #eee; }
+  button.main { background: #e07a2f; color: #111; font-weight: 600; }
+  label { display: block; padding: 8px 0; }
+  .numbers { font: 22px/1.5 ui-monospace, monospace; margin: 12px 0; }
+  .small { font-size: 13px; color: #aaa; }
+  .bad { color: #ff7a6a; }
+</style>
+</head>
+<body>
+<h2>bambi Decoder &middot; phone</h2>
+
+<div id="setup">
+  <p>How is the phone worn?</p>
+  <label><input type="radio" name="mount" value="top" checked> On the headphones' band, screen up, top edge forward</label>
+  <label><input type="radio" name="mount" value="face"> Held upright in front, screen facing me</label>
+  <button class="main" id="start">Start</button>
+</div>
+
+<div id="running" hidden>
+  <button class="main" id="recentre">Recentre (face the front)</button>
+  <div class="numbers" id="numbers">waiting for motion…</div>
+</div>
+
+<p class="small" id="info"></p>
+
+<script>
+const info = document.getElementById('info');
+const numbers = document.getElementById('numbers');
+const status = { secure: window.isSecureContext, transport: 'none', source: 'deviceorientation', rtt: null };
+let mount = 'top', yawOffset = 0, last = null, events = 0, socket = null, posting = false, pending = null;
+
+function showInfo() {
+  info.innerHTML = `secure context: <b class="${status.secure ? '' : 'bad'}">${status.secure}</b> · ` +
+    `transport: <b>${status.transport}</b> · rtt: ${status.rtt == null ? '–' : status.rtt.toFixed(1) + ' ms'} · ` +
+    `events: ${events}`;
+}
+showInfo();
+
+// ---- orientation: device -> head -> the suite's frame (x front, y left, z up) ----
+const rad = Math.PI / 180;
+function deviceToEnu(a, b, g) {
+  // W3C DeviceOrientation: R = Rz(alpha) Rx(beta) Ry(gamma), device axes into east-north-up.
+  const ca = Math.cos(a * rad), sa = Math.sin(a * rad), cb = Math.cos(b * rad), sb = Math.sin(b * rad),
+        cg = Math.cos(g * rad), sg = Math.sin(g * rad);
+  return [
+    [ca * cg - sa * sb * sg, -sa * cb, ca * sg + sa * sb * cg],
+    [sa * cg + ca * sb * sg,  ca * cb, sa * sg - ca * sb * cg],
+    [-cb * sg,                sb,      cb * cg],
+  ];
+}
+const mounts = {
+  // head axes (front, left, up) in device coordinates (x right, y top edge, z out of the screen)
+  top:  { f: [0, 1, 0],  l: [-1, 0, 0], u: [0, 0, 1] },
+  face: { f: [0, 0, -1], l: [-1, 0, 0], u: [0, 1, 0] },
+};
+const apply = (R, v) => [0, 1, 2].map(i => R[i][0] * v[0] + R[i][1] * v[1] + R[i][2] * v[2]);
+const enuToNwu = v => [v[1], -v[0], v[2]];  // north = front, west = left, up = up
+
+function headAngles(a, b, g) {
+  const R = deviceToEnu(a, b, g), m = mounts[mount];
+  const f = enuToNwu(apply(R, m.f)), l = enuToNwu(apply(R, m.l)), u = enuToNwu(apply(R, m.u));
+  const yaw = Math.atan2(f[1], f[0]) / rad;                          // left positive
+  const pitch = Math.asin(Math.max(-1, Math.min(1, f[2]))) / rad;   // up positive
+  const roll = Math.atan2(l[2], u[2]) / rad;                         // left side up positive
+  return { yaw, pitch, roll };
+}
+const wrap = d => ((d + 540) % 360) - 180;
+
+function onOrientation(e) {
+  if (e.alpha == null) return;
+  events++;
+  const h = headAngles(e.alpha, e.beta, e.gamma);
+  last = h;
+  const msg = { type: 'o', yaw: wrap(h.yaw - yawOffset), pitch: h.pitch, roll: h.roll, rtt: status.rtt };
+  numbers.textContent = `yaw   ${msg.yaw.toFixed(1)}\npitch ${msg.pitch.toFixed(1)}\nroll  ${msg.roll.toFixed(1)}`;
+  numbers.style.whiteSpace = 'pre';
+  send(msg);
+}
+
+// ---- transport: WebSocket, or POSTs when it will not open ----
+function send(msg) {
+  if (socket && socket.readyState === 1) { socket.send(JSON.stringify(msg)); return; }
+  if (status.transport === 'post') {
+    pending = msg;                       // only the newest; never queue behind a slow request
+    if (!posting) postNext();
+  }
+}
+async function postNext() {
+  posting = true;
+  while (pending) {
+    const msg = pending; pending = null;
+    const t0 = performance.now();
+    try {
+      await fetch('/post', { method: 'POST', body: JSON.stringify(msg), headers: { 'Content-Type': 'application/json' } });
+      status.rtt = performance.now() - t0;
+    } catch (err) { status.transport = 'post failed: ' + err.message; break; }
+  }
+  posting = false;
+}
+function hello() {
+  const m = { type: 'hello', ua: navigator.userAgent, secure: status.secure, mount, source: status.source };
+  if (socket && socket.readyState === 1) socket.send(JSON.stringify(m));
+  else fetch('/post', { method: 'POST', body: JSON.stringify(m) }).catch(() => {});
+}
+function connect() {
+  let opened = false;
+  socket = new WebSocket(`wss://${location.host}/ws`);
+  socket.onopen = () => { opened = true; status.transport = 'websocket'; hello(); showInfo(); };
+  socket.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'pong') status.rtt = performance.now() - m.t;
+  };
+  const fallback = () => { if (!opened && status.transport !== 'post') { status.transport = 'post'; hello(); showInfo(); } };
+  socket.onerror = fallback;
+  socket.onclose = () => { if (opened) { status.transport = 'websocket closed'; showInfo(); } else fallback(); };
+  setTimeout(fallback, 3000);
+}
+setInterval(() => {
+  if (socket && socket.readyState === 1) socket.send(JSON.stringify({ type: 'ping', t: performance.now() }));
+  showInfo();
+}, 1000);
+
+// ---- start ----
+document.getElementById('start').onclick = async () => {
+  mount = document.querySelector('input[name=mount]:checked').value;
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
+      const answer = await DeviceOrientationEvent.requestPermission();   // iOS: needs this tap
+      if (answer !== 'granted') { info.innerHTML = '<b class="bad">Motion permission: ' + answer + '</b>'; return; }
+    }
+  } catch (err) { info.innerHTML = '<b class="bad">Permission request failed: ' + err.message + '</b>'; return; }
+  try { await navigator.wakeLock?.request('screen'); } catch (err) {}
+  window.addEventListener('deviceorientation', onOrientation);
+  connect();
+  document.getElementById('setup').hidden = true;
+  document.getElementById('running').hidden = false;
+  setTimeout(() => { if (!events) numbers.innerHTML = '<span class="bad">No motion data after 2 s.</span>'; }, 2000);
+};
+document.getElementById('recentre').onclick = () => { if (last) yawOffset = last.yaw; };
+</script>
+</body>
+</html>

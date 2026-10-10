@@ -156,6 +156,8 @@ TEST_CASE("recentring takes off the yaw only: pitch and roll stay against gravit
 TEST_CASE("the well-known addresses name their form; anything else goes to learn") {
     //  Catches: an address mapped to the other family's pitch sign.
     OrientationForm f;
+    REQUIRE(knownForm("/bambi/phone/ypr", f));
+    CHECK(f == OrientationForm::YprDegrees);
     REQUIRE(knownForm("/adm/lis/ypr", f));
     CHECK(f == OrientationForm::YprDegrees);
     REQUIRE(knownForm("/ypr", f));

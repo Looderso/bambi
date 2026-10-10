@@ -15,7 +15,9 @@ public:
     static bool available();
     /// The helper app inside this plugin's bundle, or empty when there is none there.
     static std::string bundledHelperPath();
-    void launch(const std::string& appPath, int port);
+    /// Launches the helper to send to `port`, serving the phone page when `phone`. False when it did not: no path,
+    /// one running already, or a launch still pending.
+    bool launch(const std::string& appPath, int port, bool phone);
     void terminate();
     bool running() const;
 

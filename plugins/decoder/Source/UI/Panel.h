@@ -34,6 +34,7 @@ private:
     void paintSpeakers(juce::Graphics& g, juce::Rectangle<float> content);
     void paintLens(juce::Graphics& g, juce::Rectangle<float> content);
     void paintTracking(juce::Graphics& g, juce::Rectangle<float> content);
+    float paintPhone(juce::Graphics& g, juce::Rectangle<float> content, float y);  ///< the QR code and the steps
     void paintPersonalise(juce::Graphics& g, juce::Rectangle<float> content);
     float paintStateTile(juce::Graphics& g, juce::Rectangle<float> tile, const juce::String& name,
                          const juce::String& value, double shown, double low, double high, double step, const char* key,

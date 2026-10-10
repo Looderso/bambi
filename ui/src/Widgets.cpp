@@ -98,7 +98,7 @@ std::vector<juce::Rectangle<float>> drawSegments(juce::Graphics& g, juce::Rectan
                                           area.getHeight()};
         const bool on = static_cast<int>(i) == selected;
         drawChoice(g, cell, names[i], font(theme::type::body), on,
-                   enabled && (on || static_cast<int>(i) != unavailable));
+                   enabled && (on || unavailable < 0 || static_cast<int>(i) < unavailable));
         cells.push_back(cell);
     }
     return cells;
@@ -122,7 +122,7 @@ std::vector<juce::Rectangle<float>> drawSegmentLines(juce::Graphics& g, float x,
         const int n = std::min(columns, count - first);
         std::vector<juce::String> line(names.begin() + first, names.begin() + first + n);
         const int sel = (selected >= first && selected < first + n) ? selected - first : -1;
-        const int un = (unavailable >= first && unavailable < first + n) ? unavailable - first : -1;
+        const int un = unavailable < 0 || unavailable >= first + n ? -1 : std::max(0, unavailable - first);
         const auto lineCells =
             drawSegments(g, {x, y, cellWidth * static_cast<float>(n), ctl::segmentHeight}, line, sel, enabled, un);
         cells.insert(cells.end(), lineCells.begin(), lineCells.end());

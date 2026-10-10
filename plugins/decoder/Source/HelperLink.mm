@@ -27,11 +27,11 @@ std::string HelperLink::bundledHelperPath() {
     return app.isDirectory() ? app.getFullPathName().toStdString() : std::string();
 }
 
-void HelperLink::launch(const std::string& appPath, int port) {
-    if (appPath.empty() || running()) return;
+bool HelperLink::launch(const std::string& appPath, int port, bool phone) {
+    if (appPath.empty() || running()) return false;
     {
         std::lock_guard<std::mutex> g(impl_->lock);
-        if (impl_->pending) return;
+        if (impl_->pending) return false;
         impl_->pending = true;
     }
     NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:appPath.c_str()]];
@@ -39,9 +39,11 @@ void HelperLink::launch(const std::string& appPath, int port) {
     config.activates = NO;
     config.addsToRecentItems = NO;
     config.createsNewApplicationInstance = NO;
-    config.arguments = @[
+    NSMutableArray<NSString*>* arguments = [NSMutableArray arrayWithArray:@[
         @"--host-pid", [NSString stringWithFormat:@"%d", getpid()], @"--port", [NSString stringWithFormat:@"%d", port]
-    ];
+    ]];
+    if (phone) [arguments addObject:@"--phone"];
+    config.arguments = arguments;
     std::shared_ptr<Impl> impl = impl_;
     [[NSWorkspace sharedWorkspace] openApplicationAtURL:url
                                           configuration:config
@@ -50,6 +52,7 @@ void HelperLink::launch(const std::string& appPath, int port) {
                                         impl->pending = false;
                                         if (e == nil) impl->app = app;
                                       }];
+    return true;
 }
 
 void HelperLink::terminate() {
@@ -71,7 +74,7 @@ HelperLink::HelperLink() = default;
 HelperLink::~HelperLink() = default;
 bool HelperLink::available() { return false; }
 std::string HelperLink::bundledHelperPath() { return {}; }
-void HelperLink::launch(const std::string&, int) {}
+bool HelperLink::launch(const std::string&, int, bool) { return false; }
 void HelperLink::terminate() {}
 bool HelperLink::running() const { return false; }
 #endif

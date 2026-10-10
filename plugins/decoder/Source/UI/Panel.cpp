@@ -10,6 +10,7 @@
 #include "bambi/ui/Theme.h"
 #include "bambi/ui/Tiles.h"
 #include "bambi/ui/Widgets.h"
+#include "qrcodegen.hpp"
 
 namespace bambi::ui {
 
@@ -556,10 +557,58 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
     }
     y += static_cast<float>(space::groupGap) / 2.0f;
     y = paintGroupTitle(g, content, y, "phone");
-    text(g, "a page any phone opens " + kDot + " later", smallFont(), colour::inactive,
-         {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-         juce::Justification::centredLeft);
-    noteContentBottom(y + static_cast<float>(space::grid * 3));
+    y = paintPhone(g, content, y);
+    noteContentBottom(y + static_cast<float>(space::grid));
+}
+
+float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content, float y) {
+    const DecoderState& d = state_.decoder();
+    const float lineH = static_cast<float>(space::grid * 2);
+    const auto line = [&](const juce::String& what, juce::Colour ink, float x, float width) {
+        text(g, what, smallFont(), ink, {x, y, width, lineH}, juce::Justification::centredLeft);
+        y += lineH;
+    };
+    if (!state_.processor.helperAvailable()) {
+        line("the helper is not in this bundle; macOS only", colour::label, content.getX(), content.getWidth());
+        return y;
+    }
+    if (d.trackerSource != 3) {
+        line(
+            "choose phone in the head strip: the helper serves a page on this computer's address, and its code appears "
+            "here",
+            colour::label, content.getX(), content.getWidth());
+        return y;
+    }
+    const juce::String url = state_.processor.phoneUrl(), status = state_.processor.phoneStatus();
+    if (url.isEmpty()) {
+        line(status.isEmpty() ? juce::String("the helper is starting") : status, colour::label, content.getX(),
+             content.getWidth());
+        return y;
+    }
+    //  the code, modules as squares on the page's own ground, a quiet zone of two modules around it
+    const qrcodegen::QrCode qr = qrcodegen::QrCode::encodeText(url.toRawUTF8(), qrcodegen::QrCode::Ecc::MEDIUM);
+    const float module = static_cast<float>(space::grid) / 2.0f, quiet = 2.0f * module;
+    const float side = static_cast<float>(qr.getSize()) * module + 2.0f * quiet;
+    const juce::Rectangle<float> code{content.getX(), y, side, side};
+    g.setColour(colour::ground);
+    g.fillRect(code);
+    g.setColour(colour::text);
+    for (int row = 0; row < qr.getSize(); ++row)
+        for (int col = 0; col < qr.getSize(); ++col)
+            if (qr.getModule(col, row))
+                g.fillRect(code.getX() + quiet + static_cast<float>(col) * module,
+                           code.getY() + quiet + static_cast<float>(row) * module, module, module);
+    //  beside it: the address, the three steps, and what the helper says
+    const float textX = code.getRight() + static_cast<float>(space::grid), textW = content.getRight() - textX;
+    const float top = y;
+    line(url, colour::text, textX, textW);
+    line("1  point the phone's camera at the code and open the page", colour::label, textX, textW);
+    line("2  it warns the connection is not private " + kDot + " iPhone: show details, visit this website " + kDot +
+             " android: advanced, proceed",
+         colour::label, textX, textW);
+    line("3  say how the phone is worn, tap start, face the front and press recentre", colour::label, textX, textW);
+    line(status, colour::label, textX, textW);
+    return std::max(y, top + side);
 }
 
 void DecoderPanel::paintPersonalise(juce::Graphics& g, juce::Rectangle<float> content) {

@@ -449,7 +449,15 @@ reads the headphones' motion with CoreMotion and sends the quaternion to the rec
   above.
 
 **Any phone, with no app: a page.** The helper also serves a page to the local Wi-Fi, reached by a QR code in the
-decoder, that sends the phone's orientation to the receiver ([0172](../DECISIONS.md)):
+decoder, that sends the phone's orientation to the receiver ([0172](../DECISIONS.md)). **Built** ([0187](../DECISIONS.md)):
+*phone* in the head strip launches the helper with `--phone`; it serves the page on port 8443 over Network.framework
+with an identity from a certificate the system's openssl writes for this computer's address, held in a keychain
+file of the helper's own, and
+says the address and its state twice a second on `/bambi/helper/phone`; the tracking tab draws the code
+(qrcodegen, [THIRD-PARTY.md](../../THIRD-PARTY.md)), the address and the three steps. The page sends the head's
+yaw, pitch and roll, mapped on the phone for how it is worn; the helper sends them on as `/bambi/phone/ypr`, the
+suite's own form. Checked end to end from a test client: the page over TLS 1.3, a POST, the WebSocket upgrade,
+pings answered, fifty orientations through as OSC. macOS only, as the helper is.
 
 - **HTTPS, on a certificate the helper makes for this computer's address**, because a browser gives motion data only
   to a secure page. The phone warns once that the connection is not private; past the warning the page counts as
@@ -547,7 +555,7 @@ library when the second plugin needs it, not before.
   and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
   bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read
   off the column and the channel map on the page says whose channel it is. Grey where the sketch says *later*: the lens,
-  headphone correction, the AirPods helper and the phone's page, learn mode, placing by
+  headphone correction, learn mode, placing by
   looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the

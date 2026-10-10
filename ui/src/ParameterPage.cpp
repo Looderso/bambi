@@ -157,7 +157,7 @@ void ParameterPage::paintSegments(juce::Graphics& g, juce::Rectangle<float> area
     for (const auto* name : names) labels.emplace_back(name);
     const auto cells = drawSegments(g, area, labels, selected, enabled, unavailable);
     for (int i = 0; i < static_cast<int>(cells.size()); ++i)
-        if (enabled && i != unavailable && i != selected)
+        if (enabled && (unavailable < 0 || i < unavailable) && i != selected)
             addRegion({cells[static_cast<std::size_t>(i)], {}, {}, {}, [choose, i] { choose(i); }, {}});
     noteContentBottom(area.getBottom() + scroll());
 }
@@ -170,7 +170,7 @@ ParameterPage::PickerLayout ParameterPage::paintPicker(juce::Graphics& g, float 
     const auto cells = drawSegmentLines(g, x, y, width, names, selected, enabled, unavailable, columns);
     for (int i = 0; i < static_cast<int>(cells.size()); ++i) {
         const auto& cell = cells[static_cast<std::size_t>(i)];
-        if (!enabled || i == unavailable) continue;
+        if (!enabled || (unavailable >= 0 && i >= unavailable)) continue;
         if (i != selected)
             addRegion({cell, {}, {}, {}, [choose, i] { choose(i); }, {}});
         else if (reselect)

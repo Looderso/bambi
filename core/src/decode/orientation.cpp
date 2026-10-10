@@ -100,7 +100,7 @@ bool headFromValues(const OrientationRead& read, std::span<const float> values, 
 Mat3 recentred(const Mat3& head, double yawDeg) { return multiply(rotationAbout({0, 0, 1}, -yawDeg * kDeg2Rad), head); }
 
 bool knownForm(std::string_view address, OrientationForm& out) {
-    if (address == "/adm/lis/ypr")
+    if (address == "/adm/lis/ypr" || address == "/bambi/phone/ypr")  // the phone's page, through the helper
         out = OrientationForm::YprDegrees;
     else if (address == "/ypr" || address == "/SceneRotator/ypr")
         out = OrientationForm::YprDegreesPitchDown;

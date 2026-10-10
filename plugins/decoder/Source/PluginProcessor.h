@@ -104,6 +104,9 @@ public:
     juce::String notice() const;
     /// The helper's last word about itself: the permission, the headphones, the count. Empty before it speaks.
     juce::String helperStatus() const;
+    /// The phone page's address and the helper's word on it, while a phone is the source. Empty before it speaks.
+    juce::String phoneUrl() const;
+    juce::String phoneStatus() const;
     /// Whether this build and this bundle can read AirPods: macOS, and the helper nested in the bundle.
     bool helperAvailable() const { return HelperLink::available() && !HelperLink::bundledHelperPath().empty(); }
     /*  The look-and-nod calibration of how the AirPods sit: captureLevel() while the head looks straight ahead and
@@ -181,8 +184,10 @@ private:
     juce::OSCReceiver osc_;
     int oscPort_{0};
     bool oscConnected_{false};
-    HelperLink helper_;          ///< the AirPods helper, launched while the tracker source is AirPods
-    juce::String helperStatus_;  ///< under trackerMutex_
+    HelperLink helper_;                    ///< the AirPods helper, launched while the tracker source is AirPods
+    juce::String helperStatus_;            ///< under trackerMutex_
+    juce::String phoneUrl_, phoneStatus_;  ///< under trackerMutex_
+    bool helperPhone_{false};              ///< the mode the helper was last launched in
     mutable std::mutex trackerMutex_;
     bambi::OrientationRead trackerRead_;
     bambi::LatestValue<bambi::Mat3> tracker_;

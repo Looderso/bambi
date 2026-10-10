@@ -64,7 +64,8 @@ SceneRow sceneRow(int left, int top, bool full);
 void drawChoice(juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& label, const juce::Font& f,
                 bool chosen, bool offered = true);
 /// A choice as segments: equal cells, one `drawChoice` each. Returns each segment's cell.
-/// `unavailable` is one drawn greyed that the state cannot reach, or -1.
+/// `unavailable` is the first of the segments drawn greyed that the state cannot reach -- it and every one after
+/// it -- or -1.
 std::vector<juce::Rectangle<float>> drawSegments(juce::Graphics& g, juce::Rectangle<float> area,
                                                  const std::vector<juce::String>& names, int selected, bool enabled,
                                                  int unavailable = -1);

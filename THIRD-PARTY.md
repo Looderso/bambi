@@ -60,6 +60,7 @@ dependency that can change under you is a dependency that can change your test r
 | [convhull_3d](https://github.com/leomccormack/convhull_3d) | `c41bf92` (2025-04-05) | MIT | yes | the convex hull for the AllRAD loudspeaker design |
 | [libmysofa](https://github.com/hoene/libmysofa) | 1.3.5, `648eed0` (2026-09-08); the reader only | BSD-3-Clause | yes | reading a SOFA file (AES69, HDF5) as a measured head for the decoder |
 | [zlib](https://github.com/madler/zlib) | 1.3.1; the inflate half only | zlib | yes | a SOFA file's compressed datasets, for libmysofa |
+| [QR Code generator](https://github.com/nayuki/QR-Code-generator) | `3c6d0b3` (2026-08-31); the C++ files | MIT | yes | the QR code the decoder shows for its phone page |
 | [doctest](https://github.com/doctest/doctest) | 2.4.11 | MIT | yes | test framework (test binary only, not shipped) |
 | [JUCE](https://github.com/juce-framework/JUCE) | 9.0.2 (submodule, pinned) | AGPLv3 or commercial | yes, via GPLv3 §13 | the plugin: formats, buses, parameters, editor — plugin builds only, never `core/` |
 | [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) | `9fbefae`, **vendored with bambi patches** | MIT | yes | the CLAP format, which JUCE does not build natively |

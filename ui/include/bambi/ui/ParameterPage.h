@@ -122,7 +122,8 @@ public:
     float paintGroup(juce::Graphics& g, juce::Rectangle<float> content, float y, const juce::String& title,
                      std::initializer_list<Cell> cells);
 
-    /*  A choice as segments. `unavailable` is a segment drawn greyed that takes no click -- an
+    /*  A choice as segments. `unavailable` is the first segment drawn greyed that takes no click, it and every
+        one after it -- an
      *  option this state cannot reach, shown rather than hidden so the set does not change shape. */
     void paintSegments(juce::Graphics& g, juce::Rectangle<float> area, std::initializer_list<const char*> names,
                        int selected, bool enabled, const std::function<void(int)>& choose, int unavailable = -1);

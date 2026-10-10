@@ -28,6 +28,11 @@ target_include_directories(libmysofa PUBLIC libmysofa/hrtf)
 target_link_libraries(libmysofa PRIVATE zlib-inflate)
 target_compile_options(libmysofa PRIVATE -w)
 
+# qrcodegen — MIT; the QR code the decoder draws for its phone page
+add_library(qrcodegen STATIC qrcodegen/qrcodegen.cpp)
+target_include_directories(qrcodegen PUBLIC qrcodegen)
+target_compile_options(qrcodegen PRIVATE -w)
+
 # convhull_3d — MIT, header-only (implementation compiled in convhull_3d/convhull_3d.c)
 add_library(convhull_3d STATIC convhull_3d/convhull_3d.c)
 target_include_directories(convhull_3d PUBLIC convhull_3d)

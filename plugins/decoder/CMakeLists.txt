@@ -37,7 +37,7 @@ juce_add_binary_data(bambi-decoder-data SOURCES
     ${PROJECT_SOURCE_DIR}/core/data/decode/ku100.json)
 set_target_properties(bambi-decoder-data PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bambi-decode bambi-decoder-data juce::juce_osc
+bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bambi-decode bambi-decoder-data qrcodegen juce::juce_osc
     SOURCES
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
@@ -78,21 +78,33 @@ bambi_plugin_tool(bambi-decoder-shot NAME "${BAMBI_DECODER_NAME}" SOURCES Check/
 # carries one. Built here, nested into both bundles' Contents/Helpers after they are built and copied, and the
 # bundles signed again. Launched by the decoder through Launch Services.
 if(APPLE)
-  add_executable(bambi-decoder-helper MACOSX_BUNDLE Helper/main.m)
-  set_source_files_properties(Helper/main.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  #  The phone page travels inside the helper as bytes, generated from Helper/phone.html at configure time.
+  file(READ ${CMAKE_CURRENT_SOURCE_DIR}/Helper/phone.html PHONE_HTML HEX)
+  string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," PHONE_HTML_BYTES "${PHONE_HTML}")
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/helper/phone_page.h
+       "/* generated from Helper/phone.html */\nstatic const unsigned char kPhonePage[] = {${PHONE_HTML_BYTES}};\nstatic const unsigned long kPhonePageSize = sizeof kPhonePage;\n")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/Helper/phone.html)
+  add_executable(bambi-decoder-helper MACOSX_BUNDLE Helper/main.m Helper/server.m)
+  set_source_files_properties(Helper/main.m Helper/server.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  target_include_directories(bambi-decoder-helper PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/helper)
   set_target_properties(bambi-decoder-helper PROPERTIES
       OUTPUT_NAME "bambi Decoder Helper"
       MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Helper/Info.plist)
-  target_link_libraries(bambi-decoder-helper PRIVATE "-framework Cocoa" "-framework CoreMotion")
+  target_link_libraries(bambi-decoder-helper PRIVATE "-framework Cocoa" "-framework CoreMotion" "-framework Network"
+                                                     "-framework Security")
   target_compile_options(bambi-decoder-helper PRIVATE -mmacosx-version-min=14.0)
   target_link_options(bambi-decoder-helper PRIVATE -mmacosx-version-min=14.0)
+  #  Nested after whichever side was built: the plugin, or the helper alone, whose change would otherwise never reach
+  #  the installed bundles. The script skips a bundle that is not there yet.
   foreach(format VST3 CLAP)
     add_dependencies(BambiDecoder_${format} bambi-decoder-helper)
     string(TOLOWER "${format}" ext)
     set(installed "$ENV{HOME}/Library/Audio/Plug-Ins/${format}/${BAMBI_DECODER_NAME}.${ext}")
-    add_custom_command(TARGET BambiDecoder_${format} POST_BUILD
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/Helper/nest.sh "$<TARGET_BUNDLE_DIR:bambi-decoder-helper>"
-                "$<TARGET_BUNDLE_DIR:BambiDecoder_${format}>" "${installed}"
-        COMMENT "nesting the helper into the ${format} bundle")
+    foreach(built BambiDecoder_${format} bambi-decoder-helper)
+      add_custom_command(TARGET ${built} POST_BUILD
+          COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/Helper/nest.sh "$<TARGET_BUNDLE_DIR:bambi-decoder-helper>"
+                  "$<TARGET_BUNDLE_DIR:BambiDecoder_${format}>" "${installed}"
+          COMMENT "nesting the helper into the ${format} bundle")
+    endforeach()
   endforeach()
 endif()

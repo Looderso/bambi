@@ -45,6 +45,7 @@ OWN = [
     ("convhull_3d", "third_party/convhull_3d", "the convex hull for the loudspeaker decoder", "LICENSE"),
     ("libmysofa", "third_party/libmysofa", "reading SOFA files, the reader only", "LICENSE"),
     ("zlib", "third_party/zlib", "inflating a SOFA file's compressed datasets, the inflate half only", "LICENSE"),
+    ("qrcodegen", "third_party/qrcodegen", "the QR code for the decoder's phone page", "LICENSE"),
 ]
 
 LICENCE_FILE = re.compile(r"^(licen[cs]e|copying)|licen[cs]e\.txt$", re.I)

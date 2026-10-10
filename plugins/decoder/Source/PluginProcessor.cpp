@@ -267,18 +267,22 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
 // ---- the tracker ---------------------------------------------------------------------------
 
 void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
-    const bool airpods = d.trackerSource == 2;
+    const bool airpods = d.trackerSource == 2, phone = d.trackerSource == 3;
     {
         const std::lock_guard<std::mutex> lock(trackerMutex_);
         trackerRead_.flip = d.flip;
         //  AirPods report their own frame, as the calibration found it or as Apple documents it; a tracker over OSC
-        //  reports the head's axes already.
+        //  and the phone's page report the head's axes already.
         trackerRead_.mounting = airpods ? bambi::Mounting::Axes : bambi::Mounting::AsSent;
         for (std::size_t i = 0; i < 9; ++i) trackerRead_.axes[i] = d.airpodsAxes[i];
-        if (!airpods) helperStatus_.clear();
+        if (!airpods && !phone) helperStatus_.clear();
+        if (!phone) {
+            phoneUrl_.clear();
+            phoneStatus_.clear();
+        }
     }
-    //  Both sources arrive as OSC on the port: a tracker from anywhere, the helper from this computer.
-    const bool want = d.trackerSource == 1 || airpods;
+    //  Every source arrives as OSC on the port: a tracker from anywhere, the helper from this computer.
+    const bool want = d.trackerSource == 1 || airpods || phone;
     if (want && (!oscConnected_ || oscPort_ != d.oscPort)) {
         if (oscConnected_) osc_.disconnect();
         //  Bound to this computer until asked: a port open on the network is open to the whole network.
@@ -288,10 +292,13 @@ void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
         osc_.disconnect();
         oscConnected_ = false;
     }
-    //  The helper runs while AirPods are the source, and is ended when they are not: it asks for the motion
-    //  permission in its own name, and quits with the host.
-    if (airpods && oscConnected_) {
-        if (!helper_.running()) helper_.launch(HelperLink::bundledHelperPath(), d.oscPort);
+    //  The helper runs while AirPods or a phone are the source, and is ended when neither is: it asks for the motion
+    //  permission in its own name, serves the phone page in its own process, and quits with the host. A change
+    //  between the two modes relaunches it.
+    if ((airpods || phone) && oscConnected_) {
+        if (helper_.running() && helperPhone_ != phone) helper_.terminate();
+        if (!helper_.running() && helper_.launch(HelperLink::bundledHelperPath(), d.oscPort, phone))
+            helperPhone_ = phone;
     } else {
         helper_.terminate();
     }
@@ -331,6 +338,16 @@ void BambiDecoderProcessor::forgetCalibration() {
     });
 }
 
+juce::String BambiDecoderProcessor::phoneUrl() const {
+    const std::lock_guard<std::mutex> lock(trackerMutex_);
+    return phoneUrl_;
+}
+
+juce::String BambiDecoderProcessor::phoneStatus() const {
+    const std::lock_guard<std::mutex> lock(trackerMutex_);
+    return phoneStatus_;
+}
+
 juce::String BambiDecoderProcessor::helperStatus() const {
     const std::lock_guard<std::mutex> lock(trackerMutex_);
     return helperStatus_;
@@ -347,6 +364,14 @@ void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) 
         if (message.size() == 1 && message[0].isString()) {
             const std::lock_guard<std::mutex> lock(trackerMutex_);
             helperStatus_ = message[0].getString();
+        }
+        return;
+    }
+    if (address == "/bambi/helper/phone") {
+        if (message.size() == 2 && message[0].isString() && message[1].isString()) {
+            const std::lock_guard<std::mutex> lock(trackerMutex_);
+            phoneUrl_ = message[0].getString();
+            phoneStatus_ = message[1].getString();
         }
         return;
     }
