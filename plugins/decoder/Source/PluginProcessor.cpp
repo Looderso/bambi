@@ -50,7 +50,11 @@ BambiDecoderProcessor::BambiDecoderProcessor()
                                    diag_) {
     std::string error;
     modelLoaded_ = bambi::parseHeadModel(
-        std::string_view(BinaryData::head_json, static_cast<std::size_t>(BinaryData::head_jsonSize)), model_, &error);
+                       std::string_view(BinaryData::head_json, static_cast<std::size_t>(BinaryData::head_jsonSize)),
+                       models_[0], &error) &&
+                   bambi::parseHeadModel(
+                       std::string_view(BinaryData::ku100_json, static_cast<std::size_t>(BinaryData::ku100_jsonSize)),
+                       models_[1], &error);
     jassert(modelLoaded_);
     osc_.addListener(this);
     begin(bambi::PluginState{bambi::decodeParams()});
@@ -143,9 +147,10 @@ void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpected
     bambi::FilterDesign design;
     design.order = engineOrder_;
     design.sampleRate = sampleRate_;
-    binaural_.prepare(model_, design, kPartition);
+    chosenHead_ = headIndex(state);
+    binaural_.prepare(headModel(), design, kPartition);
     speakers_.prepare(engineOrder_, kMaxOutputs, sampleRate_);
-    virtual_.prepare(model_, engineOrder_, sampleRate_, kPartition);
+    virtual_.prepare(headModel(), engineOrder_, sampleRate_, kPartition);
     turn_.prepare(engineOrder_, sampleRate_);
     field_.prepare(maxBlock_, engineOrder_);
     const auto channels = static_cast<std::size_t>(bambi::numChannels(engineOrder_));
@@ -182,7 +187,18 @@ void BambiDecoderProcessor::snapshotAdopted(const EngineSnapshot& next) noexcept
     if (next.snap) modulation().settle();
 }
 
+int BambiDecoderProcessor::headIndex(const bambi::DecoderState& d) {
+    return d.hrtf == 1 ? 1 : 0;  // a SOFA file is not read yet: it plays the model until it is
+}
+
 void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
+    //  Another head: the chain's synthesised head is replaced between builds, and the sliders are built on it anew.
+    if (headIndex(d) != chosenHead_) {
+        chosenHead_ = headIndex(d);
+        binaural_.setModel(headModel());
+        virtual_.setModel(headModel());
+        headBuilt_ = false;
+    }
     //  The listener's two sliders: the binaural filters, and the array on headphones' at the field's order.
     const auto differs = [](double a, double b) { return std::abs(a - b) > 1e-9; };
     if (!headBuilt_ || differs(builtShift_, d.earShift) || differs(builtSize_, d.headSize)) {

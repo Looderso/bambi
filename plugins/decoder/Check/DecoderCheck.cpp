@@ -92,7 +92,7 @@ int main() {
                 check(proc.checkBusesLayoutSupported(busIn(in, out)),
                       "accepts in " + juce::String(in) + " out " + juce::String(out));
         check(!proc.checkBusesLayoutSupported(busIn(16, 1)), "refuses a one-channel output");
-        check(proc.modelLoaded(), "the head model is in the bundle");
+        check(proc.modelLoaded(), "both heads are in the bundle: the model and the KU100");
         check(proc.getLatencySamples() == 0 || proc.getLatencySamples() == BambiDecoderProcessor::kPartition,
               "latency is the convolution's partition, or none before prepare");
     }
@@ -191,6 +191,26 @@ int main() {
         const DecoderState back = other.decoderState();
         check(std::abs(back.headSize - 1.2f) < 1e-6f && std::abs(back.earShift + 0.5f) < 1e-6f,
               "the sliders survive a save and a load");
+    }
+
+    //  The KU100 is another head on the same chain: chosen, it is built, heard, and kept through the host.
+    {
+        BambiDecoderProcessor proc;
+        proc.setBusesLayout(busIn(16, 2));
+        proc.prepareToPlay(kCheckRate, 128);
+        proc.editDecoder("ku100", [](DecoderState& d) { d.hrtf = 1; });
+        check(proc.builtHead() == 1 && proc.headModel().learnedFrom.find("KU100") != std::string::npos,
+              "choosing the ku100 rebuilds the filters from it: " + proc.headModel().learnedFrom);
+        PluginState ku{decodeParams()};
+        ku.decoder.hrtf = 1;
+        //  Catches: a choice that never reaches the chain, or a second head that is the first under another name.
+        const Channels model = render(busIn(16, 2), 128, 0.25, {}), ku100 = render(busIn(16, 2), 128, 0.25, {}, &ku);
+        check(!model.empty() && !ku100.empty() && !identical(model, ku100), "the ku100 is heard, not the model");
+        juce::MemoryBlock saved;
+        proc.getStateInformation(saved);
+        BambiDecoderProcessor other;
+        other.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+        check(other.decoderState().hrtf == 1, "the choice survives a save and a load");
     }
 
     return checkVerdict();

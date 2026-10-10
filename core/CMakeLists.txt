@@ -102,6 +102,7 @@ bambi_warnings(bambi-reverb PEDANTIC)
 add_library(bambi-decode STATIC
   src/decode/headmodel.cpp
   src/decode/headmodelfile.cpp
+  src/decode/measuredhead.cpp
   src/decode/binaural.cpp
   src/decode/convolver.cpp
   src/decode/decoder.cpp
@@ -188,6 +189,7 @@ add_executable(bambi-tests
   tests/reverb/test_reverb_regions.cpp
   tests/reverb/test_reverb_params.cpp
   tests/decode/test_headmodel.cpp
+  tests/decode/test_measuredhead.cpp
   tests/decode/test_binaural.cpp
   tests/decode/test_convolver.cpp
   tests/decode/test_allrad.cpp

@@ -93,7 +93,7 @@ public:
     const Diagnostics& diagnostics() const noexcept { return diag_; }
     int engineOrder() const noexcept override { return engineOrder_; }
     bool modelLoaded() const noexcept { return modelLoaded_; }
-    const bambi::HeadModel& headModel() const noexcept { return model_; }
+    const bambi::HeadModel& headModel() const noexcept { return models_[static_cast<std::size_t>(chosenHead_)]; }
     /// Why the layout could not be designed, or empty. Message thread.
     juce::String designError() const;
     /// The layout's design as last built, for the page and the scene. Message thread.
@@ -115,6 +115,7 @@ public:
 
     /// The sliders the binaural filters were last built with, for a check.
     std::pair<double, double> builtSliders() const { return {builtShift_, builtSize_}; }
+    int builtHead() const { return chosenHead_; }  ///< 0 the model, 1 the KU100: what the filters were built from
 
 private:
     struct DecoderSnapshot : EngineSnapshot {
@@ -132,12 +133,14 @@ private:
     /// Designs what `d` asks for that is not built yet: the filters for the sliders, the layout's decoder, the
     /// array on headphones. Message thread, under `workMutex_`. Allocates.
     void build(const bambi::DecoderState& d);
+    static int headIndex(const bambi::DecoderState& d);
     void connectTracker(const bambi::DecoderState& d);
     void oscMessageReceived(const juce::OSCMessage& message) override;
     void appendLayoutLog(const juce::String& entry) const;
 
-    bambi::HeadModel model_;
+    std::array<bambi::HeadModel, 2> models_;  ///< the model, and the KU100 as measured
     bool modelLoaded_{false};
+    int chosenHead_{0};  ///< which of models_ the chain plays; message thread
 
     //  The engines. Prepared in prepareToPlay, fed on commit, read by the audio thread.
     bambi::BinauralDecoder binaural_;

@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "bambi/math/legendre.hpp"
+#include "bambi/math/lstsq.hpp"
 #include "bambi/math/sh.hpp"
 
 namespace bambi {
@@ -48,31 +49,6 @@ M2 polarOfAdjoint(M2 x) {
     return mul(adjoint(x), inverse(sqrtPsd(mul(x, adjoint(x)))));
 }
 
-/// Replaces the symmetric positive-definite n x n matrix `g` (row-major) by its inverse, through its Cholesky factor.
-void invertSpd(std::vector<double>& g, int n) {
-    std::vector<double> l(g.size(), 0.0);  // lower triangular, L L^T = G
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j <= i; ++j) {
-            double s = g[sz(i) * sz(n) + sz(j)];
-            for (int k = 0; k < j; ++k) s -= l[sz(i) * sz(n) + sz(k)] * l[sz(j) * sz(n) + sz(k)];
-            l[sz(i) * sz(n) + sz(j)] = i == j ? std::sqrt(std::max(s, 1e-300)) : s / l[sz(j) * sz(n) + sz(j)];
-        }
-    }
-    // G^-1 = L^-T L^-1: solve L X = I column by column, then L^T G^-1 = X.
-    std::vector<double> x(g.size(), 0.0);
-    for (int col = 0; col < n; ++col) {
-        for (int i = 0; i < n; ++i) {
-            double s = i == col ? 1.0 : 0.0;
-            for (int k = 0; k < i; ++k) s -= l[sz(i) * sz(n) + sz(k)] * x[sz(k) * sz(n) + sz(col)];
-            x[sz(i) * sz(n) + sz(col)] = s / l[sz(i) * sz(n) + sz(i)];
-        }
-        for (int i = n - 1; i >= 0; --i) {
-            double s = x[sz(i) * sz(n) + sz(col)];
-            for (int k = i + 1; k < n; ++k) s -= l[sz(k) * sz(n) + sz(i)] * g[sz(k) * sz(n) + sz(col)];
-            g[sz(i) * sz(n) + sz(col)] = s / l[sz(i) * sz(n) + sz(i)];
-        }
-    }
-}
 }  // namespace
 
 bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& design,
@@ -91,9 +67,10 @@ bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& 
     weight_.assign(weights.begin(), weights.end());
 
     // The head on the design's bins: the ERB number of each bin's frequency.
-    std::vector<double> erbs(sz(bins()));
-    for (int k = 0; k < bins(); ++k) erbs[sz(k)] = 21.4 * std::log10(1.0 + 0.00437 * binHz(k));
-    head_.prepare(model, directions, erbs);
+    grid_.assign(directions.begin(), directions.end());
+    binErbs_.resize(sz(bins()));
+    for (int k = 0; k < bins(); ++k) binErbs_[sz(k)] = 21.4 * std::log10(1.0 + 0.00437 * binHz(k));
+    head_.prepare(model, grid_, binErbs_);
 
     basis_.resize(sz(directions_) * sz(channels_));
     for (int d = 0; d < directions_; ++d)
@@ -101,12 +78,8 @@ bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& 
                std::span<double>(basis_.data() + sz(d) * sz(channels_), sz(channels_)));
 
     // The weighted pseudo-inverse (Y^T W Y)^-1 Y^T W, channels x directions.
-    std::vector<double> gram(sz(channels_) * sz(channels_), 0.0);
-    for (int d = 0; d < directions_; ++d) {
-        const double* y = basis_.data() + sz(d) * sz(channels_);
-        for (int i = 0; i < channels_; ++i)
-            for (int j = 0; j < channels_; ++j) gram[sz(i) * sz(channels_) + sz(j)] += weight_[sz(d)] * y[i] * y[j];
-    }
+    std::vector<double> gram;
+    gramMatrix(basis_, weight_, channels_, gram);
     invertSpd(gram, channels_);
     pinv_.assign(sz(channels_) * sz(directions_), 0.0);
     for (int c = 0; c < channels_; ++c)
@@ -134,6 +107,10 @@ bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& 
     ir_.resize(sz(design.fftSize));
     filters_.assign(sz(channels_) * 2 * sz(design.taps), 0.0f);
     return true;
+}
+
+void BinauralFilterBuilder::setModel(const HeadModel& model) {
+    if (ready_) head_.prepare(model, grid_, binErbs_);
 }
 
 void BinauralFilterBuilder::decodedEars(int k, std::span<Cx> out) const {

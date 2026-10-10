@@ -30,8 +30,11 @@ juce_add_plugin(BambiDecoder
     NEEDS_WEB_BROWSER FALSE
     NEEDS_CURL FALSE)
 
-# The head model ships inside the plugin: nobody's head and the template, learned from HUTUBS and 3D3A.
-juce_add_binary_data(bambi-decoder-data SOURCES ${PROJECT_SOURCE_DIR}/core/data/decode/head.json)
+# Two heads ship inside the plugin: nobody's head and the template, learned from HUTUBS and 3D3A, and the KU100 as
+# measured (SADIE II, Apache 2.0), fitted into the same tables by tools/head.
+juce_add_binary_data(bambi-decoder-data SOURCES
+    ${PROJECT_SOURCE_DIR}/core/data/decode/head.json
+    ${PROJECT_SOURCE_DIR}/core/data/decode/ku100.json)
 set_target_properties(bambi-decoder-data PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bambi-decode bambi-decoder-data juce::juce_osc

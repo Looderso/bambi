@@ -197,14 +197,25 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
         static_cast<float>(space::grid);
     y = paintChannels(g, content, y, OutputPage::Headphones);
 
-    //  the HRTF: the model; the KU100 and a SOFA file later
+    //  the HRTF: the model, or the KU100 as measured; a SOFA file later
     y = paintGroupTitle(g, content, y, "hrtf");
     const juce::Rectangle<float> hrtf{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)};
-    paintSegments(g, hrtf, {"model", "ku100", "sofa file"}, 0, false, [](int) {}, 1);
+    const int head = d.hrtf == 1 ? 1 : 0;
+    paintSegments(
+        g, hrtf, {"model", "ku100", "sofa file"}, head, mine,
+        [this](int which) {
+            if (which > 1) return;
+            model().applyEdit("hrtf", [which](PluginState& s) { s.decoder.hrtf = which; });
+        },
+        2);
     y = hrtf.getBottom() + static_cast<float>(space::grid) / 2.0f;
-    text(g, "nobody's head, learned from measured heads " + kDot + " ku100 and a sofa file later", smallFont(),
-         colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-         juce::Justification::centredLeft);
+    text(
+        g,
+        head == 0
+            ? "nobody's head, learned from measured heads; the sliders make it yours " + kDot + " sofa file later"
+            : "the ku100 as measured; head size scales its time difference, the ears rest " + kDot + " sofa file later",
+        smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
+        juce::Justification::centredLeft);
     y += static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
 
     //  the listener's two sliders
@@ -216,7 +227,7 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
         [](DecoderState& s) { s.headSize = 1.0f; });
     paintStateTile(
         g, earTile, "ears", juce::String(d.earShift, 2) + " erb", d.earShift, -2.0, 2.0, 0.01, "decoder.ear_shift",
-        mine, [](DecoderState& s, double v) { s.earShift = static_cast<float>(v); },
+        mine && head == 0, [](DecoderState& s, double v) { s.earShift = static_cast<float>(v); },
         [](DecoderState& s) { s.earShift = 0.0f; });
     y = tilesBottom(y, 2) + static_cast<float>(space::grid) / 2.0f;
     const float buttonH = static_cast<float>(space::grid * 2) + 2.0f;

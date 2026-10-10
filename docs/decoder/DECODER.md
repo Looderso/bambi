@@ -227,14 +227,29 @@ thread, and the two sliders in the UI.
 
 ### 4.1 Which HRTF
 
-**Default: the KU100.** It sounds good out of the box, and the thesis behind §5 found it the clear winner on
-timbre (colouration rated 16 against 8 for an individualised set) — its moderate spectral features suit a broad
-population. A listener adapts to a set that is not theirs; they do not adapt to one that sounds bad.
+**Default: the model** — nobody's head with the two sliders ([0168](../DECISIONS.md)), since the browser heard it
+place a sound better than the KU100. **The KU100 is the second head, as measured** ([0184](../DECISIONS.md)): the
+thesis behind §5 found it the clear winner on timbre (colouration rated 16 against 8 for an individualised set),
+its moderate spectral features suit a broad population, and it is the reference the model's timbre is held to —
+so it stays one segment away, on the same chain. A measured head becomes a head file by one route,
+`fitHeadModel` (`core/decode/measuredhead`): the two ears' summed level and their difference as spherical-harmonic
+tables over the ERB axis, fitted with the roughness penalty [HRTF-DATA §2](HRTF-DATA.md) found, the time
+difference from the low-passed cross-correlation the match prototype used; no notch layer, no size morph, so the
+head slider scales only its time difference and the ears slider rests. `tools/head` runs it on a measured set and
+writes the file. Measured on the KU100 against its own 8802 directions, on a fine axis so the step is charged
+for its interpolation: order 20 holds the summed level to 0.41 dB and the difference to 1.7 dB RMS over
+2–16 kHz, the time difference to 3.3 µs — the prototype's numbers; a 0.2-ERB axis costs 0.02 dB against 0.1
+for half the file (1.1 MB), order 24 buys 0.04 dB for half again. The chain takes another head between builds
+(`setModel`, the synthesised head replaced; the filters swap as a slider move does), never a re-prepare while
+audio runs.
 
 **Every bundled set is checked for its licence first** — several databases forbid commercial use, which would
-also bind any model built from them (§5.3).
+also bind any model built from them (§5.3). SADIE II's KU100 is Apache 2.0.
 
-**Loading a SOFA file** is supported, for anyone with a measured set of their own.
+**Loading a SOFA file** is the same route at run time — the file's responses through `fitHeadModel`, the result
+set on the chain — and waits on one thing: a SOFA reader. SOFA is HDF5, which nothing in the tree reads;
+libmysofa (BSD-3, C, no HDF5 dependency) is the candidate to vendor beside convhull_3d, and is the owner's call.
+The segment is drawn and says *later*.
 
 ## 5. Personalisation — perceptual, not anthropometric
 
@@ -521,8 +536,8 @@ library when the second plugin needs it, not before.
   the outputs are the header's tabs with a square each (its one new option); the panel holds the open output's page
   and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
   bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read
-  off the column and the channel map on the page says whose channel it is. Grey where the sketch says *later*: the lens, the
-  KU100 and a SOFA file, headphone correction, the AirPods helper and the phone's page, learn mode, placing by
+  off the column and the channel map on the page says whose channel it is. Grey where the sketch says *later*: the lens, a SOFA
+  file, headphone correction, the AirPods helper and the phone's page, learn mode, placing by
   looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the

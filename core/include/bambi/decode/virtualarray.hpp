@@ -36,6 +36,8 @@ public:
 
     /// Worker: the array to hear, as designed for the room. Allocates (the field design); publishes it whole.
     bool publishLayout(const SpeakerDesign& array);
+    /// Worker, between builds: another head; buildHead() then publishes its filters. Allocates the head's tables.
+    void setModel(const HeadModel& model) { builder_.setModel(model); }
     /// Worker: the listener's two sliders. Allocates nothing; publishes the filters whole.
     void buildHead(double earShiftErb, double headSize) noexcept;
     /// Any thread: the head's orientation in the room; the array stays where it is.

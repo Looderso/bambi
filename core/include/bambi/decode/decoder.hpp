@@ -24,6 +24,11 @@ public:
     bool prepare(const HeadModel& model, const FilterDesign& design, int partition = 64, int rings = 12,
                  int azimuths = 20);
 
+    /// Worker, between builds: another head, built at the next work(). Allocates the head's tables.
+    void setModel(const HeadModel& model) {
+        builder_.setModel(model);
+        requested_.fetch_add(1, std::memory_order_release);
+    }
     /// Any thread: the sliders as the listener set them. Marks the filters stale. The two land separately, so a
     /// build that starts between them pairs a new value with an old one; the count says so and the next work()
     /// builds the pair.
