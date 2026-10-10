@@ -28,8 +28,9 @@ std::string HelperLink::bundledHelperPath() {
 }
 
 namespace {
-/// The launch itself, on the shared state: the completion may land after the launcher is gone.
-void start(const std::shared_ptr<HelperLink::Impl>& impl, const std::string& appPath, int port, bool phone) {
+/// The launch itself, on the shared state, both by value: the completion lands on Launch Services' own queue after
+/// the caller's frame is gone, and the block copies what it captures only when that is a value.
+void start(std::shared_ptr<HelperLink::Impl> impl, std::string appPath, int port, bool phone) {
     NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:appPath.c_str()]];
     NSWorkspaceOpenConfiguration* config = [NSWorkspaceOpenConfiguration configuration];
     config.activates = NO;
