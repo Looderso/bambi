@@ -10,8 +10,10 @@
 #include "bambi/decode/headmodelfile.hpp"
 #include "bambi/decode/measuredhead.hpp"
 #include "bambi/decode/sofafile.hpp"
+#include "bambi/dsp/resample.hpp"
 #include "bambi/host/ClapPorts.h"
 #include "bambi/math/denormals.hpp"
+#include "bambi/math/sh.hpp"
 
 namespace {
 bambi::ParamId decoderParam(const char* key) { return static_cast<bambi::ParamId>(bambi::decodeParams().byKey(key)); }
@@ -25,9 +27,13 @@ bambi::Layout layoutFor(const bambi::DecoderState& d) {
     return l;
 }
 
-/// The channels a layout's real loudspeakers play on, counted from 1.
+/// The channels a layout's real loudspeakers play on, counted from 1; a filter matrix plays on 1 to its outputs.
 std::vector<int> layoutChannels(const bambi::DecoderState& d) {
     std::vector<int> out;
+    if (!d.matrixFile.empty()) {
+        for (int c = 1; c <= d.matrixOutputs; ++c) out.push_back(c);
+        return out;
+    }
     for (const bambi::Loudspeaker& s : d.layout)
         if (!s.imaginary) out.push_back(s.channel);
     std::sort(out.begin(), out.end());
@@ -167,6 +173,8 @@ void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpected
     //  Built before the first block, so what plays is a function of the state alone.
     headBuilt_ = false;
     builtOrder_ = -1;
+    builtMatrixOrder_ = -1;
+    matrixPlays_.store(false, std::memory_order_relaxed);
     build(state);
     connectTracker(state);
 }
@@ -244,9 +252,19 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
         builtSize_ = d.headSize;
         headBuilt_ = true;
     }
+    //  A decoder as filters, when the state names one: it replaces the layout's design below.
+    if (d.matrixFile != builtMatrixFile_ || d.matrixNormalization != builtMatrixNormalization_ ||
+        builtMatrixOrder_ != engineOrder_) {
+        const bool leaving = !builtMatrixFile_.empty() && d.matrixFile.empty();
+        builtMatrixFile_ = d.matrixFile;
+        builtMatrixNormalization_ = d.matrixNormalization;
+        builtMatrixOrder_ = engineOrder_;
+        buildMatrix(d);
+        if (leaving) builtOrder_ = -1;  // the layout's design decides the outputs again
+    }
     //  The layout's decoder, and the same layout heard on headphones.
-    if (builtOrder_ != engineOrder_ || builtLayout_ != d.layout || builtWeighting_ != d.weighting ||
-        builtDistance_ != d.distanceCompensation) {
+    if (d.matrixFile.empty() && (builtOrder_ != engineOrder_ || builtLayout_ != d.layout ||
+                                 builtWeighting_ != d.weighting || builtDistance_ != d.distanceCompensation)) {
         builtOrder_ = engineOrder_;
         builtLayout_ = d.layout;
         builtWeighting_ = d.weighting;
@@ -262,6 +280,119 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
             }
         }
     }
+}
+
+void BambiDecoderProcessor::buildMatrix(const bambi::DecoderState& d) {
+    const auto stop = [this] {
+        //  the audio thread may be inside the convolver: wait for it to pass a block before the buffers move
+        const bool wasPlaying = matrixPlays_.exchange(false, std::memory_order_acq_rel);
+        if (!wasPlaying) return;
+        const std::uint64_t before = blocksDone_.load(std::memory_order_acquire);
+        for (int i = 0; i < 100 && blocksDone_.load(std::memory_order_acquire) == before; ++i) juce::Thread::sleep(1);
+    };
+    if (d.matrixFile.empty()) {
+        stop();
+        matrixNote_.clear();
+        matrixError_.clear();
+        return;
+    }
+    if (matrixDataFile_ != d.matrixFile) {
+        std::string error;
+        if (!bambi::readSofaMatrix(d.matrixFile, matrixData_, &error)) {
+            stop();
+            matrixDataFile_.clear();
+            matrixError_ = juce::File(d.matrixFile).existsAsFile()
+                               ? "the filter matrix could not be read: " + juce::String(error)
+                               : "the filter matrix file is not there: " + juce::String(d.matrixFile);
+            matrixNote_.clear();
+            diag_.speakerOutputs.store(0, std::memory_order_relaxed);
+            return;
+        }
+        matrixDataFile_ = d.matrixFile;
+    }
+    const bambi::FirMatrix& m = matrixData_;
+    if (m.outputs > kMaxOutputs) {
+        stop();
+        matrixError_ = "the filter matrix has " + juce::String(m.outputs) + " outputs; " + juce::String(kMaxOutputs) +
+                       " is the most a bus holds";
+        diag_.speakerOutputs.store(0, std::memory_order_relaxed);
+        return;
+    }
+    //  The filters at the host's rate, the field's channels as its inputs: a file with fewer inputs leaves the higher
+    //  channels unheard, one with more drops its extra inputs. The input's normalisation as the file says, or as chosen.
+    const int C = bambi::numChannels(engineOrder_);
+    const int inputs = std::min(C, m.inputs);
+    const bool n3d = d.matrixNormalization == 2 || (d.matrixNormalization == 0 && m.normalization != "SN3D");
+    std::vector<float> one, scaled;
+    bambi::resampleSinc(m.filter(0, 0), m.sampleRate, sampleRate_, one);
+    const int taps = static_cast<int>(one.size());
+    std::vector<float> filters(
+        static_cast<std::size_t>(C) * static_cast<std::size_t>(m.outputs) * static_cast<std::size_t>(taps), 0.0f);
+    for (int i = 0; i < inputs; ++i) {
+        const float factor = n3d ? static_cast<float>(std::sqrt(2.0 * bambi::acnOrder(i) + 1.0)) : 1.0f;
+        for (int o = 0; o < m.outputs; ++o) {
+            bambi::resampleSinc(m.filter(i, o), m.sampleRate, sampleRate_, scaled);
+            float* dst = filters.data() + (static_cast<std::size_t>(i) * static_cast<std::size_t>(m.outputs) +
+                                           static_cast<std::size_t>(o)) *
+                                              static_cast<std::size_t>(taps);
+            for (std::size_t t = 0; t < scaled.size() && t < static_cast<std::size_t>(taps); ++t)
+                dst[t] = scaled[t] * factor;
+        }
+    }
+    stop();
+    const bool ready =
+        matrix_.prepareMatrix(C, m.outputs, taps, kPartition) && matrix_.publish(filters, C, m.outputs, taps);
+    if (!ready) {
+        matrixError_ = "the filter matrix could not be built";
+        diag_.speakerOutputs.store(0, std::memory_order_relaxed);
+        return;
+    }
+    matrix_.reset();
+    matrixError_.clear();
+    matrixNote_ =
+        juce::String(m.inputs) + " in (order " +
+        juce::String(m.order >= 0 ? m.order : bambi::host::orderThatFits(m.inputs)) + ", " + (n3d ? "n3d" : "sn3d") +
+        "), " + juce::String(m.outputs) + " out, " + juce::String(m.taps) + " taps at " +
+        juce::String(m.sampleRate / 1000.0, 1) + " khz" +
+        (std::abs(m.sampleRate - sampleRate_) > 1.0 ? ", resampled to " + juce::String(sampleRate_ / 1000.0, 1) + " khz"
+                                                    : juce::String()) +
+        (inputs < C ? "; field channels past " + juce::String(inputs) + " unheard" : juce::String());
+    diag_.speakerOutputs.store(m.outputs, std::memory_order_relaxed);
+    matrixPlays_.store(true, std::memory_order_release);
+}
+
+bool BambiDecoderProcessor::loadMatrixFile(const juce::File& file, juce::String* error) {
+    bambi::FirMatrix m;
+    std::string why;
+    if (!bambi::readSofaMatrix(file.getFullPathName().toStdString(), m, &why)) {
+        if (error) *error = juce::String(why);
+        return false;
+    }
+    if (m.outputs > kMaxOutputs) {
+        if (error)
+            *error = juce::String(m.outputs) + " outputs; " + juce::String(kMaxOutputs) + " is the most a bus holds";
+        return false;
+    }
+    const std::string path = file.getFullPathName().toStdString();
+    const std::string name = m.title.empty() ? file.getFileNameWithoutExtension().toStdString() : m.title;
+    const int outputs = m.outputs;
+    {
+        const std::lock_guard<std::mutex> work(workMutex_);
+        matrixData_ = std::move(m);
+        matrixDataFile_ = path;
+    }
+    editDecoder("load filter matrix", [path, name, outputs](bambi::DecoderState& s) {
+        s.matrixFile = path;
+        s.matrixOutputs = outputs;
+        s.layout.clear();
+        s.layoutName = name;
+    });
+    return true;
+}
+
+juce::String BambiDecoderProcessor::matrixNote() const {
+    const std::lock_guard<std::mutex> work(const_cast<std::mutex&>(workMutex_));
+    return matrixNote_;
 }
 
 // ---- the tracker ---------------------------------------------------------------------------
@@ -457,7 +588,7 @@ juce::String BambiDecoderProcessor::notice() const { return notice_; }
 
 juce::String BambiDecoderProcessor::designError() const {
     const std::lock_guard<std::mutex> work(const_cast<std::mutex&>(workMutex_));
-    return juce::String(speakers_.lastError());
+    return matrixError_.isNotEmpty() ? matrixError_ : juce::String(speakers_.lastError());
 }
 
 bambi::SpeakerDesign BambiDecoderProcessor::speakerDesign() const {
@@ -563,10 +694,11 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     }
     const auto ramp = [&](int i) { return gainRamp_[static_cast<std::size_t>(i)]; };
     const int speakerOutputs = diag_.speakerOutputs.load(std::memory_order_relaxed);
+    const bool matrix = matrixPlays_.load(std::memory_order_acquire);
 
     bool hpHeard = false, spHeard = false;
     if (d.headphonesPlay && d.headphoneChannel >= 1 && d.headphoneChannel + 1 <= outChannels) {
-        if (d.throughLayout && speakerOutputs > 0) {
+        if (d.throughLayout && speakerOutputs > 0 && !matrix) {
             virtual_.process(field_.data(), C, stereo_.data(), n);
         } else {
             turn_.process(field_.data(), turned_.data(), n);
@@ -582,7 +714,10 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         hpHeard = true;
     }
     if (d.speakersPlay && speakerOutputs > 0 && speakerOutputs <= outChannels) {
-        speakers_.process(field_.data(), C, speakersOut_.data(), speakerOutputs, n);
+        if (matrix)
+            matrix_.process(field_.data(), speakersOut_.data(), n);
+        else
+            speakers_.process(field_.data(), C, speakersOut_.data(), speakerOutputs, n);
         for (int o = 0; o < speakerOutputs; ++o) {
             float* y = out.getWritePointer(o);
             for (int i = 0; i < n; ++i)
@@ -594,6 +729,7 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     }
     diag_.headphonesHeard.store(hpHeard, std::memory_order_relaxed);
     diag_.speakersHeard.store(spHeard, std::memory_order_relaxed);
+    blocksDone_.fetch_add(1, std::memory_order_release);
     float outPeak = 0.0f;
     for (int c = 0; c < outChannels; ++c) {
         const float peak = out.getMagnitude(c, 0, n);

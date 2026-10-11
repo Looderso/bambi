@@ -64,3 +64,26 @@ TEST_CASE("a SOFA file is read as a measured head: directions, both ears in orde
     CHECK_FALSE(error.empty());
     CHECK_FALSE(readSofa("/nowhere/at/all.sofa", none, &error));
 }
+
+TEST_CASE("a FIR-E file is read as a decoder matrix: inputs as emitters, outputs as receivers, taps in order") {
+    //  Catches: the emitter dimension taken as the slowest instead of the fastest, inputs and outputs swapped, an
+    //  attribute not read, a head file taken for a matrix.
+    FirMatrix m;
+    std::string error;
+    REQUIRE_MESSAGE(readSofaMatrix(std::string(BAMBI_CORE_DIR) + "/tests/decode/made-matrix.sofa", m, &error), error);
+    CHECK(m.inputs == 4);
+    CHECK(m.outputs == 3);
+    CHECK(m.taps == 32);
+    CHECK(m.sampleRate == doctest::Approx(44100.0));
+    CHECK(m.order == 1);
+    CHECK(m.channelOrder == "ACN");
+    CHECK(m.normalization == "N3D");
+    for (int i = 0; i < 4; ++i)
+        for (int o = 0; o < 3; ++o)
+            for (int n : {0, 7, 31})
+                CHECK(m.filter(i, o)[static_cast<std::size_t>(n)] ==
+                      doctest::Approx((i + 1) / 10.0 + (o + 1) / 100.0 + n / 10000.0).epsilon(1e-6));
+    FirMatrix notOne;
+    CHECK_FALSE(readSofaMatrix(std::string(BAMBI_CORE_DIR) + "/tests/decode/made.sofa", notOne, &error));
+    CHECK(error.find("FIR-E") != std::string::npos);
+}

@@ -50,6 +50,7 @@ private:
     bool ituOpen_{false};
     juce::String calibrationNote_;  ///< what the last calibration step said
     juce::String sofaError_;        ///< why the last SOFA file was not read, until the next is
+    juce::String layoutError_;      ///< why the last layout or matrix file was not read, until the next is
     std::unique_ptr<juce::FileChooser> chooser_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DecoderPanel)

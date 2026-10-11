@@ -167,3 +167,37 @@ TEST_CASE("the decoder builds what was requested, once, and the audio hears exac
     for (std::size_t i = 0; i < got.size(); ++i)
         CHECK(got[i] == want[i]);  // bit for bit: the same build, the same path
 }
+
+TEST_CASE("a matrix of filters convolves every input into every output, one partition late") {
+    //  Catches: inputs and outputs swapped in the spectra's layout, an output written over another's, the general
+    //  publish laying the taps out differently from the builder's.
+    const int inputs = 3, outputs = 4, taps = 100, P = 32, frames = 400;
+    std::vector<float> filters(static_cast<std::size_t>(inputs * outputs * taps));
+    for (int i = 0; i < inputs; ++i)
+        for (int o = 0; o < outputs; ++o)
+            for (int t = 0; t < taps; ++t)
+                filters[static_cast<std::size_t>((i * outputs + o) * taps + t)] =
+                    static_cast<float>(std::exp(-t / 20.0) * std::cos(0.1 * t * (i + 1) + o));
+    MatrixConvolver conv;
+    REQUIRE(conv.prepareMatrix(inputs, outputs, taps, P));
+    REQUIRE(conv.publish(filters, inputs, outputs, taps));
+    const std::vector<float> in = noise(inputs, frames, 7);
+    std::vector<float> out(static_cast<std::size_t>(frames * outputs), 0.0f);
+    for (int done = 0; done < frames; done += 37)
+        conv.process(in.data() + static_cast<std::size_t>(done * inputs),
+                     out.data() + static_cast<std::size_t>(done * outputs), std::min(37, frames - done));
+    double err = 0, ref = 0;
+    for (int f = P; f < frames; ++f)
+        for (int o = 0; o < outputs; ++o) {
+            double want = 0;
+            for (int i = 0; i < inputs; ++i)
+                for (int t = 0; t < taps && t <= f - P; ++t)
+                    want += static_cast<double>(filters[static_cast<std::size_t>((i * outputs + o) * taps + t)]) *
+                            in[static_cast<std::size_t>((f - P - t) * inputs + i)];
+            const double got = out[static_cast<std::size_t>(f * outputs + o)];
+            err += (got - want) * (got - want);
+            ref += want * want;
+        }
+    CHECK(err / ref < 1e-9);
+    CHECK_FALSE(conv.publish(filters, inputs, outputs + 1, taps));  // the wrong shape is refused
+}

@@ -22,6 +22,7 @@ add_library(bambi-core STATIC
 
   src/dsp/features.cpp
   src/dsp/biquad.cpp
+  src/dsp/resample.cpp
   src/dsp/field.cpp
   src/dsp/fielddelay.cpp
   src/dsp/fft.cpp
@@ -193,6 +194,7 @@ add_executable(bambi-tests
   tests/decode/test_measuredhead.cpp
   tests/decode/test_sofafile.cpp
   tests/decode/test_layoutfile.cpp
+  tests/dsp/test_resample.cpp
   tests/decode/test_binaural.cpp
   tests/decode/test_convolver.cpp
   tests/decode/test_allrad.cpp

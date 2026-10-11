@@ -213,6 +213,51 @@ int main() {
         check(other.decoderState().hrtf == 1, "the choice survives a save and a load");
     }
 
+    //  A decoder as filters: a FIR-E matrix loaded, its outputs on the first channels, the rest silent, the input's
+    //  normalisation switch heard, the path kept through the host, and a missing file said so.
+    {
+        BambiDecoderProcessor proc;
+        proc.setBusesLayout(busIn(16, 8));
+        proc.prepareToPlay(kCheckRate, 128);
+        juce::String error;
+        const bool loaded =
+            proc.loadMatrixFile(juce::File(std::string(BAMBI_CORE_DIR) + "/tests/decode/made-matrix.sofa"), &error);
+        check(loaded && proc.decoderState().matrixOutputs == 3 && proc.decoderState().layout.empty(),
+              "a filter matrix loads into the state: " + error + proc.matrixNote());
+        proc.playOutput(BambiDecoderProcessor::Output::Speakers, true);
+        PluginState s{decodeParams()};
+        s.decoder = proc.decoderState();
+        //  Catches: the matrix never reaching the audio thread, its outputs on the wrong channels, the layout's
+        //  (empty) design playing instead.
+        const Channels y = render(busIn(16, 8), 128, 0.25, {}, &s);
+        bool on = !y.empty();
+        for (int c : {0, 1, 2}) on = on && channelEnergy(y, c) > 1e-6;
+        check(on, "the matrix plays on channels 1-3");
+        bool rest = !y.empty();
+        for (int c = 3; c < 8; ++c) rest = rest && channelEnergy(y, c) == 0.0;
+        check(rest, "channels 4-8 are silent: the matrix has three outputs");
+        PluginState sn3d = s;
+        sn3d.decoder.matrixNormalization = 1;
+        const Channels y2 = render(busIn(16, 8), 128, 0.25, {}, &sn3d);
+        check(!y2.empty() && !identical(y, y2) && channelEnergy(y2, 0) < channelEnergy(y, 0),
+              "sn3d on the input scales the higher orders down against n3d");
+        juce::MemoryBlock saved;
+        proc.getStateInformation(saved);
+        BambiDecoderProcessor other;
+        other.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+        check(other.decoderState().matrixFile == s.decoder.matrixFile && other.decoderState().matrixOutputs == 3,
+              "the matrix's path survives a save and a load");
+        PluginState gone = s;
+        gone.decoder.matrixFile = "/nowhere/iko.sofa";
+        BambiDecoderProcessor missing;
+        missing.setBusesLayout(busIn(16, 8));
+        missing.prepareToPlay(kCheckRate, 128);
+        missing.commitDocument(gone, true);
+        check(missing.designError().contains("not there"), "a missing file is said so: " + missing.designError());
+        const Channels silent = render(busIn(16, 8), 128, 0.1, {}, &gone);
+        check(!silent.empty() && energy(silent) == 0.0, "and the speakers stay silent rather than wrong");
+    }
+
     //  A SOFA file: read, fitted, put into the state as a head, heard, and kept through the host without the file.
     {
         BambiDecoderProcessor proc;

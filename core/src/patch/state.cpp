@@ -260,6 +260,11 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         jd.set("weighting", Json{d.weighting});
         jd.set("distance_compensation", Json{d.distanceCompensation});
         jd.set("layout_name", Json{d.layoutName});
+        if (!d.matrixFile.empty()) {
+            jd.set("matrix_file", Json{d.matrixFile});
+            jd.set("matrix_outputs", Json{d.matrixOutputs});
+            jd.set("matrix_normalization", Json{d.matrixNormalization});
+        }
         Json speakers = Json::array();
         for (const Loudspeaker& l : d.layout) {
             Json jl = Json::object();
@@ -520,6 +525,9 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
         d.weighting = intOf("weighting", d.weighting);
         d.distanceCompensation = boolOf("distance_compensation", d.distanceCompensation);
         if (const Json* v = dec->find("layout_name")) d.layoutName = std::string(v->stringOr(""));
+        if (const Json* v = dec->find("matrix_file")) d.matrixFile = std::string(v->stringOr(""));
+        d.matrixOutputs = intOf("matrix_outputs", d.matrixOutputs);
+        d.matrixNormalization = intOf("matrix_normalization", d.matrixNormalization);
         if (const Json* lay = dec->find("layout"); lay != nullptr && lay->isArray()) {
             d.layout.clear();
             for (const Json& jl : lay->items()) {

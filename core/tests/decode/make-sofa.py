@@ -3,9 +3,10 @@
 
   made.sofa          8 directions, 2 receivers, 64 samples at 48 kHz, the left ear first, datasets compressed
   made-swapped.sofa  the same with the receivers the other way round in the file, which the reader must refuse
+  made-matrix.sofa   a GeneralFIR-E decoder matrix: 4 emitters (inputs) to 3 receivers (outputs), 32 taps at 44.1 kHz
 
 Sample n of measurement m at ear e (0 left, 1 right) is (m + 1)(e + 1) / 1000 + n / 100000, a formula the test
-recomputes. Written as NetCDF-4, which is what AES69 says a SOFA file is and what libmysofa's reader expects.
+recomputes. The matrix's tap n from input i to output o is (i + 1) / 10 + (o + 1) / 100 + n / 10000. Written as NetCDF-4, which is what AES69 says a SOFA file is and what libmysofa's reader expects.
 Needs netCDF4:  uv run --with netCDF4 --with numpy core/tests/decode/make-sofa.py
 """
 from pathlib import Path
@@ -57,6 +58,44 @@ def write(path: Path, left_first: bool):
     f.close()
 
 
+def write_matrix(path: Path):
+    E, R, N = 4, 3, 32
+    f = netCDF4.Dataset(path, "w", format="NETCDF4")
+    for k, v in {
+        "Conventions": "SOFA", "Version": "2.1", "SOFAConventions": "GeneralFIR-E", "SOFAConventionsVersion": "1.0",
+        "DataType": "FIR-E", "RoomType": "free field", "Title": "a made decoder matrix for bambi's tests",
+        "DateCreated": "2026-10-11 00:00:00", "DateModified": "2026-10-11 00:00:00", "APIName": "netCDF4-python",
+        "APIVersion": netCDF4.__version__, "AuthorContact": "bambi", "Organization": "bambi",
+        "License": "GPL-3.0-or-later", "AmbisonicsOrder": "1", "AmbisonicsChannelOrder": "ACN",
+        "AmbisonicsNormalization": "N3D",
+    }.items():
+        f.setncattr(k, v)
+    for name, size in {"M": 1, "R": R, "E": E, "N": N, "I": 1, "C": 3}.items():
+        f.createDimension(name, size)
+
+    def var(name, dims, data, **attrs):
+        v = f.createVariable(name, "f8", dims, zlib=True)
+        v[:] = np.asarray(data, dtype=np.float64)
+        for k, a in attrs.items():
+            v.setncattr(k, a)
+
+    var("ListenerPosition", ("I", "C"), [[0.0, 0.0, 0.0]], Type="cartesian", Units="metre")
+    var("ListenerUp", ("I", "C"), [[0.0, 0.0, 1.0]], Type="cartesian", Units="metre")
+    var("ListenerView", ("I", "C"), [[1.0, 0.0, 0.0]], Type="cartesian", Units="metre")
+    var("ReceiverPosition", ("R", "C", "I"), np.zeros((R, 3, 1)), Type="cartesian", Units="metre")
+    var("SourcePosition", ("I", "C"), [[0.0, 0.0, 0.0]], Type="cartesian", Units="metre")
+    var("EmitterPosition", ("E", "C", "I"), np.zeros((E, 3, 1)), Type="cartesian", Units="metre")
+    var("Data.SamplingRate", ("I",), [44100.0], Units="hertz")
+    var("Data.Delay", ("I", "R", "E"), np.zeros((1, R, E)))
+    ir = np.zeros((1, R, N, E))
+    for i in range(E):
+        for o in range(R):
+            ir[0, o, :, i] = (i + 1) / 10 + (o + 1) / 100 + np.arange(N) / 10000
+    var("Data.IR", ("M", "R", "N", "E"), ir)
+    f.close()
+
+
 write(HERE / "made.sofa", True)
 write(HERE / "made-swapped.sofa", False)
-print("wrote", HERE / "made.sofa", HERE / "made-swapped.sofa")
+write_matrix(HERE / "made-matrix.sofa")
+print("wrote", HERE / "made.sofa", HERE / "made-swapped.sofa", HERE / "made-matrix.sofa")

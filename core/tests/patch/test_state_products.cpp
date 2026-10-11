@@ -242,6 +242,9 @@ TEST_CASE("the decoder's listening situation saves and loads whole, and is left 
     s.decoder.flip = {false, true, false};
     s.decoder.airpodsAxes = {0, 1, 0, -1, 0, 0, 0, 0, 1};
     s.decoder.airpodsCalibrated = true;
+    s.decoder.matrixFile = "/arrays/iko.sofa";
+    s.decoder.matrixOutputs = 20;
+    s.decoder.matrixNormalization = 2;
     s.decoder.hrtf = 2;
     s.decoder.hrtfFile = "/heads/mine.sofa";
     s.decoder.hrtfFileHead.text = std::make_shared<const std::string>("{\"version\":1,\"a head\":true}");

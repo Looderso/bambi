@@ -3,6 +3,8 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
+#include <cstdlib>
 
 #include "mysofa.h"
 
@@ -28,8 +30,7 @@ bool take(MYSOFA_HRTF* h, int err, MeasuredHead& out, std::string* error) {
         return fail(error, "not two receivers, the two ears: " + r);
     }
     const std::size_t M = h->M, N = h->N;
-    if (h->DataIR.elements != M * 2 * N || h->SourcePosition.elements != M * 3 ||
-        h->DataSamplingRate.elements < 1) {
+    if (h->DataIR.elements != M * 2 * N || h->SourcePosition.elements != M * 3 || h->DataSamplingRate.elements < 1) {
         mysofa_free(h);
         return fail(error, "the file's arrays do not fit its dimensions");
     }
@@ -71,6 +72,48 @@ bool readSofaData(std::span<const char> bytes, MeasuredHead& out, std::string* e
     if (!take(h, err, out, error)) return false;
     out.name = "a SOFA file";
     return true;
+}
+
+namespace {
+std::string attribute(MYSOFA_HRTF* h, const char* name) {
+    char key[64];
+    std::snprintf(key, sizeof key, "%s", name);
+    const char* v = mysofa_getAttribute(h->attributes, key);
+    return v != nullptr ? std::string(v) : std::string();
+}
+}  // namespace
+
+bool readSofaMatrix(const std::string& path, FirMatrix& out, std::string* error) {
+    int err = 0;
+    MYSOFA_HRTF* h = mysofa_load(path.c_str(), &err);
+    if (h == nullptr) return fail(error, "not a SOFA file (libmysofa error " + std::to_string(err) + ")");
+    const std::string type = attribute(h, "DataType");
+    if (type != "FIR-E") {
+        mysofa_free(h);
+        return fail(error, "not a FIR-E file: its DataType is \"" + type + "\"");
+    }
+    const std::size_t M = h->M, R = h->R, N = h->N, E = h->E;
+    if (M != 1 || R < 1 || E < 1 || N < 1 || h->DataIR.elements != M * R * N * E || h->DataSamplingRate.elements < 1) {
+        mysofa_free(h);
+        return fail(error, "the file's arrays do not fit one measurement of receivers x taps x emitters");
+    }
+    out.sampleRate = h->DataSamplingRate.values[0];
+    out.inputs = static_cast<int>(E);
+    out.outputs = static_cast<int>(R);
+    out.taps = static_cast<int>(N);
+    out.filters.resize(E * R * N);
+    //  Data.IR is [M R N E]: the emitter runs fastest
+    for (std::size_t r = 0; r < R; ++r)
+        for (std::size_t n = 0; n < N; ++n)
+            for (std::size_t e = 0; e < E; ++e)
+                out.filters[(e * R + r) * N + n] = h->DataIR.values[(r * N + n) * E + e];
+    const std::string order = attribute(h, "AmbisonicsOrder");
+    out.order = order.empty() ? -1 : std::atoi(order.c_str());
+    out.channelOrder = attribute(h, "AmbisonicsChannelOrder");
+    out.normalization = attribute(h, "AmbisonicsNormalization");
+    out.title = attribute(h, "Title");
+    mysofa_free(h);
+    return out.sampleRate > 0 ? true : fail(error, "no sample rate");
 }
 
 }  // namespace bambi

@@ -72,6 +72,20 @@ holds no direction.
   - **The ITU BS.2051 layouts**, built in: 0+2+0 (stereo), 0+5+0, 2+5+0, 4+5+0, 4+7+0 (7.1.4), 4+9+0 (9.1.6) and on.
   - **Typed in**, or pasted as a list of azimuth, elevation and distance.
   - **Placed by looking** (§3.3).
+  - **A decoder as filters** ([0189](../DECISIONS.md)): a compact array such as IEM's IKO comes with its decoder
+    already designed — a matrix of FIRs from the harmonics to the drivers, crosstalk cancellation and radial
+    filters inside — as a jconvolver set. `tools/matrix/jconvolver-to-sofa.py` makes one SOFA FIR-E file of it,
+    the inputs as emitters, the drivers as receivers, cut to the taps that hold the energy (the IKO's 4096 hold
+    99.99 % in 1024), with the input's order, channel order and normalisation as attributes; the page's *load…*
+    takes it beside the layouts. The decoder then convolves instead of designing: `MatrixConvolver`, the binaural
+    convolver generalised to any outputs, in the same 64-sample partitions, the filters resampled to the host's
+    rate on load (`dsp/resample.hpp`, a windowed sinc). Measured in Release for the IKO's 16 × 20 at 1024 taps:
+    7.9 % of one core at 128 samples / 48 kHz in 64-sample partitions, 3.7 % at 128, 2.1 % at 256 — 64 it is,
+    the latency every output reports. The file is read again from its path on open, not carried in the session:
+    the page says when it is not there and the speakers stay silent. No weighting, no distance compensation, no
+    positions, so nothing to draw and nothing to hear through on headphones; the IKO's directions are a known
+    icosahedron for later. **Debt:** the normalisation the IKO's filters expect is unconfirmed — converted as
+    N3D, with a switch on the page — and the matrix is unheard on the device ([LISTENING](../LISTENING.md)).
 - **A loudspeaker can be imaginary**: it takes part in the triangulation and its signal is dropped — never mixed
   back into its neighbours, which cuts the effective order by about a third (Zotter, Riedel & Frank, DAGA 2022).
   A layout with nothing below the listener gets a point there, so a source below pans to the lowest ring instead
@@ -121,7 +135,7 @@ against the room, as it would standing in it.
 
 **Ported** (`core/include/bambi/decode/virtualarray.hpp`): the array's decoder and the encoding of its loudspeakers
 collapse into one matrix from the bus to an order-7 field, which a `SpeakerRenderer` plays and swaps as it would a
-layout, and a `BinauralConvolver` at order 7 takes it from there. Every loudspeaker sits at one distance: the room's
+layout, and the `MatrixConvolver` at order 7 takes it from there. Every loudspeaker sits at one distance: the room's
 distance gains and delays undo distances a virtual room does not have. Measured per 128-sample block at 48 kHz, one
 core: 1.7 % at bus order 1, 1.9 % at order 3, for 7.1.4. The head's turn against the room goes on the order-7
 field, between the array's decoder and the convolver (§7.2).

@@ -41,6 +41,10 @@ std::vector<int> DecoderPanel::channelsOf(OutputPage output) const {
     const DecoderState& d = state_.decoder();
     if (output == OutputPage::Headphones) return {d.headphoneChannel, d.headphoneChannel + 1};
     std::vector<int> out;
+    if (!d.matrixFile.empty()) {
+        for (int c = 1; c <= d.matrixOutputs; ++c) out.push_back(c);
+        return out;
+    }
     for (const Loudspeaker& s : d.layout)
         if (!s.imaginary) out.push_back(s.channel);
     std::sort(out.begin(), out.end());
@@ -288,19 +292,33 @@ void DecoderPanel::chooseSofaFile() {
 }
 
 void DecoderPanel::chooseLayoutFile() {
-    chooser_ = std::make_unique<juce::FileChooser>("a loudspeaker layout (IEM AllRADecoder JSON, or AmbDec)",
-                                                   juce::File(), "*.json;*.ambdec");
+    chooser_ = std::make_unique<juce::FileChooser>(
+        "a loudspeaker layout (IEM AllRADecoder JSON, AmbDec), or a decoder as filters (SOFA FIR-E)", juce::File(),
+        "*.json;*.ambdec;*.sofa");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
                               const juce::File file = fc.getResult();
                               if (!file.existsAsFile()) return;
+                              layoutError_.clear();
+                              if (file.hasFileExtension("sofa")) {
+                                  juce::String error;
+                                  if (!state_.processor.loadMatrixFile(file, &error)) layoutError_ = error;
+                                  repaint();
+                                  return;
+                              }
                               Layout layout;
                               std::string error;
-                              if (!parseLayoutFile(file.loadFileAsString().toStdString(), layout, &error)) return;
+                              if (!parseLayoutFile(file.loadFileAsString().toStdString(), layout, &error)) {
+                                  layoutError_ = juce::String(error);
+                                  repaint();
+                                  return;
+                              }
                               const std::string name = file.getFileNameWithoutExtension().toStdString();
                               model().applyEdit("load layout", [layout, name](PluginState& s) {
                                   s.decoder.layout = layout.speakers;
                                   s.decoder.layoutName = name;
+                                  s.decoder.matrixFile.clear();
+                                  s.decoder.matrixOutputs = 0;
                               });
                           });
 }
@@ -350,6 +368,8 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
                 model().applyEdit("layout", [speakers, name](PluginState& s) {
                     s.decoder.layout = speakers;
                     s.decoder.layoutName = name;
+                    s.decoder.matrixFile.clear();
+                    s.decoder.matrixOutputs = 0;
                 });
                 ituOpen_ = false;
             },
@@ -357,19 +377,56 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         ituCells_ = picked.cells;
         y = picked.bottom + static_cast<float>(space::grid) / 2.0f;
     }
-    const juce::String error = state_.processor.designError();
+    const juce::String error = layoutError_.isNotEmpty() ? layoutError_ : state_.processor.designError();
     if (!error.isEmpty()) {
         text(g, "refused: " + error, smallFont(), colour::text,
              {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
              juce::Justification::centredLeft);
         y += static_cast<float>(space::grid * 2);
     }
-    text(g, "place by looking " + kDot + " later", smallFont(), colour::inactive,
-         {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-         juce::Justification::centredLeft);
-    y += static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
+    const bool matrix = !d.matrixFile.empty();
+    if (matrix) {
+        //  a decoder as filters: the file's decoder plays, so nothing here designs one
+        const juce::String note = state_.processor.matrixNote();
+        text(g, "filter matrix " + kDot + " " + (note.isEmpty() ? juce::String("not built yet") : note), smallFont(),
+             colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
+             juce::Justification::centredLeft);
+        y += static_cast<float>(space::grid * 2);
+        const juce::Rectangle<float> norm{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)};
+        paintSegments(g, norm, {"input as the file says", "sn3d", "n3d"}, std::clamp(d.matrixNormalization, 0, 2), mine,
+                      [this](int which) {
+                          model().applyEdit("matrix input",
+                                            [which](PluginState& s) { s.decoder.matrixNormalization = which; });
+                      });
+        y = norm.getBottom() + 2.0f;
+        text(g, "what the filters expect on their input; the file was converted as n3d, unconfirmed by its maker",
+             smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
+             juce::Justification::centredLeft);
+        y += static_cast<float>(space::grid * 2);
+    } else {
+        text(g, "place by looking " + kDot + " later", smallFont(), colour::inactive,
+             {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
+             juce::Justification::centredLeft);
+        y += static_cast<float>(space::grid * 2);
+    }
+    y += static_cast<float>(space::groupGap) / 2.0f;
 
     y = paintChannels(g, content, y, OutputPage::Speakers);
+    if (matrix) {
+        y = paintGroupTitle(g, content, y, "listening");
+        text(g,
+             "the file's decoder as it is: no weighting, no distance compensation, no positions to hear it on "
+             "headphones",
+             smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)},
+             juce::Justification::topLeft);
+        y += static_cast<float>(space::grid * 3) + static_cast<float>(space::groupGap) / 2.0f;
+        y = paintGroupTitle(g, content, y, "later");
+        text(g, "the drivers' directions on the scene " + kDot + " test tone per output", smallFont(), colour::inactive,
+             {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
+             juce::Justification::centredLeft);
+        noteContentBottom(y + static_cast<float>(space::grid * 3));
+        return;
+    }
 
     //  the listening situation
     y = paintGroupTitle(g, content, y, "listening");

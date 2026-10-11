@@ -14,11 +14,13 @@
 #include <vector>
 
 #include "HelperLink.h"
+#include "bambi/decode/convolver.hpp"
 #include "bambi/decode/decoder.hpp"
 #include "bambi/decode/headmodel.hpp"
 #include "bambi/decode/headrotation.hpp"
 #include "bambi/decode/orientation.hpp"
 #include "bambi/decode/params.hpp"
+#include "bambi/decode/sofafile.hpp"
 #include "bambi/decode/speakers.hpp"
 #include "bambi/decode/virtualarray.hpp"
 #include "bambi/host/FieldBuffer.h"
@@ -76,6 +78,11 @@ public:
     std::vector<int> channelsOf(Output which) const;
     /// The current state, copied: for the editor.
     bambi::DecoderState decoderState() const;
+    /*  Message thread: a decoder as filters from a SOFA FIR-E file (tools/matrix/jconvolver-to-sofa.py writes one
+        from a jconvolver set). The path goes into the state and the filters play at the next commit. False, with
+        `error`, when the file is not one, or has more outputs than a bus can hold. */
+    bool loadMatrixFile(const juce::File& file, juce::String* error = nullptr);
+    juce::String matrixNote() const;  ///< the loaded matrix in a line, for the page; empty without one
     /// Take the yaw off the tracker's orientation at the next block; pitch and roll stay. Any thread.
     void recentre() noexcept { recentre_.store(true, std::memory_order_relaxed); }
 
@@ -145,6 +152,7 @@ private:
     /// Designs what `d` asks for that is not built yet: the filters for the sliders, the layout's decoder, the
     /// array on headphones. Message thread, under `workMutex_`. Allocates.
     void build(const bambi::DecoderState& d);
+    void buildMatrix(const bambi::DecoderState& d);  ///< under workMutex_: reads, resamples, publishes
     /// Parses the state's file head when its text changed; then which head the state asks for and can have.
     int headIndex(const bambi::DecoderState& d);
     void connectTracker(const bambi::DecoderState& d);
@@ -162,6 +170,16 @@ private:
     //  The engines. Prepared in prepareToPlay, fed on commit, read by the audio thread.
     bambi::BinauralDecoder binaural_;
     bambi::SpeakerDecoder speakers_;
+    //  A decoder as filters, a SOFA FIR-E file's: read on the message thread, resampled to the host's rate, published
+    //  whole; the audio thread convolves with it in place of the layout's matrix while matrixPlays_ says so.
+    bambi::MatrixConvolver matrix_;
+    bambi::FirMatrix matrixData_;  ///< the file as read, kept so a change of normalisation needs no second read
+    std::string matrixDataFile_;   ///< which file matrixData_ holds
+    std::atomic<bool> matrixPlays_{false};
+    std::atomic<std::uint64_t> blocksDone_{0};  ///< so a rebuild can wait for the audio thread to leave the convolver
+    std::string builtMatrixFile_;
+    int builtMatrixNormalization_{-1}, builtMatrixOrder_{-1};
+    juce::String matrixNote_, matrixError_;  ///< what the page says of the matrix; under workMutex_
     bambi::VirtualArray virtual_;
     bambi::HeadRotation turn_;
     std::mutex workMutex_;  ///< prepare and build: never the audio thread
