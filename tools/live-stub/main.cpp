@@ -7,8 +7,10 @@
 //  reports the song position while playing.
 //
 //    bambi-live-stub [--port 9461] [--pairs 7]
+//    bambi-live-stub --names       sets test names on the loop device, reads them back, and exits
 //
-//  Seven pairs by default: the loop device's channels 1-14, with 15/16 left for the binaural return.
+//  Seven pairs by default: the loop device's channels 1-14, with 15/16 left for the binaural return. On macOS,
+//  with bambi's own loop device installed, every assignment also names the device's channels after the tracks.
 
 #include <algorithm>
 #include <arpa/inet.h>
@@ -23,6 +25,10 @@
 
 #include "bambi/live/pairs.hpp"
 #include "bambi/patch/json.hpp"
+
+#ifdef __APPLE__
+#include <CoreAudio/CoreAudio.h>
+#endif
 
 namespace {
 
@@ -43,6 +49,53 @@ struct Session {
     std::vector<double> intervalsMs;  // between song position reports while playing
 };
 
+#ifdef __APPLE__
+//  bambi's loop device, by the uid its build gives it; none when it is not installed.
+AudioObjectID loopDevice() {
+    CFStringRef uid = CFSTR("bambi_UID");
+    AudioObjectID id = kAudioObjectUnknown;
+    UInt32 size = sizeof id;
+    const AudioObjectPropertyAddress a{kAudioHardwarePropertyTranslateUIDToDevice, kAudioObjectPropertyScopeGlobal,
+                                       kAudioObjectPropertyElementMain};
+    AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, sizeof uid, &uid, &size, &id);
+    return id;
+}
+
+/// Names the loop device's channels, channel 1 first, through its custom property 'bnam'. False when the device
+/// is not there or refuses.
+bool nameChannels(const std::vector<std::string>& names) {
+    const AudioObjectID device = loopDevice();
+    if (device == kAudioObjectUnknown) return false;
+    CFMutableArrayRef list = CFArrayCreateMutable(nullptr, static_cast<CFIndex>(names.size()), &kCFTypeArrayCallBacks);
+    for (const std::string& n : names) {
+        CFStringRef str = CFStringCreateWithCString(nullptr, n.c_str(), kCFStringEncodingUTF8);
+        CFArrayAppendValue(list, str);
+        CFRelease(str);
+    }
+    const AudioObjectPropertyAddress a{'bnam', kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+    CFPropertyListRef value = list;
+    const OSStatus status = AudioObjectSetPropertyData(device, &a, 0, nullptr, sizeof value, &value);
+    CFRelease(list);
+    return status == noErr;
+}
+
+/// A channel's name as any program reads it: the device's element name.
+std::string channelName(int channel) {
+    const AudioObjectID device = loopDevice();
+    CFStringRef name = nullptr;
+    UInt32 size = sizeof name;
+    const AudioObjectPropertyAddress a{kAudioObjectPropertyElementName, kAudioObjectPropertyScopeOutput,
+                                       static_cast<AudioObjectPropertyElement>(channel)};
+    if (device == kAudioObjectUnknown || AudioObjectGetPropertyData(device, &a, 0, nullptr, &size, &name) != noErr ||
+        name == nullptr)
+        return {};
+    char buf[256] = {};
+    CFStringGetCString(name, buf, sizeof buf, kCFStringEncodingUTF8);
+    CFRelease(name);
+    return buf;
+}
+#endif
+
 void send(Session& s, const Json& message) {
     const std::string line = message.dump(0) + "\n";
     if (s.fd >= 0) (void)::write(s.fd, line.data(), line.size());
@@ -62,6 +115,7 @@ void onTree(Session& s, const Json& m) {
     const Json* nodes = m.find("nodes");
     if (nodes == nullptr) return;
     std::vector<TrackId> top;
+    std::vector<std::pair<TrackId, std::string>> names;
     std::printf("tree: %zu nodes\n", nodes->size());
     for (const Json& n : nodes->items()) {
         const std::string kind = text(n, "kind");
@@ -74,6 +128,7 @@ void onTree(Session& s, const Json& m) {
                     number(n, "audio", 1) != 0 ? "" : ", no audio");
         if (topLevel && !elsewhere && kind != "return" && number(n, "audio", 1) != 0)
             top.push_back(static_cast<TrackId>(number(n, "id")));
+        names.emplace_back(static_cast<TrackId>(number(n, "id")), text(n, "name"));
     }
     const bambi::live::PairAssignment a = bambi::live::assignPairs(s.pairs, top, s.pairCount);
     s.pairs = a.pairs;
@@ -89,6 +144,18 @@ void onTree(Session& s, const Json& m) {
     route.set("tracks", std::move(tracks));
     send(s, route);
     std::printf("route: %zu tracks on pairs, %zu left over\n", a.pairs.size(), a.unassigned.size());
+#ifdef __APPLE__
+    std::vector<std::string> channels(static_cast<std::size_t>(2 * s.pairCount + 2));
+    for (const TrackPair& p : a.pairs)
+        for (const auto& [id, name] : names)
+            if (id == p.track) {
+                channels[static_cast<std::size_t>(2 * p.pair)] = name + " L";
+                channels[static_cast<std::size_t>(2 * p.pair + 1)] = name + " R";
+            }
+    channels[static_cast<std::size_t>(2 * s.pairCount)] = "bambi return L";
+    channels[static_cast<std::size_t>(2 * s.pairCount + 1)] = "bambi return R";
+    std::printf("loop device channels %s\n", nameChannels(channels) ? "named" : "not named (no bambi loop device)");
+#endif
 }
 
 void onTransport(Session& s, const Json& m) {
@@ -156,6 +223,18 @@ void handle(Session& s, const std::string& line) {
 int main(int argc, char** argv) {
     int port = 9461;
     Session s;
+#ifdef __APPLE__
+    if (argc > 1 && std::string(argv[1]) == "--names") {
+        std::vector<std::string> names;
+        for (int c = 1; c <= 16; ++c) names.push_back("test " + std::to_string(c));
+        if (!nameChannels(names)) {
+            std::printf("no bambi loop device, or it refused the names\n");
+            return 1;
+        }
+        for (int c = 1; c <= 16; ++c) std::printf("channel %2d: %s\n", c, channelName(c).c_str());
+        return 0;
+    }
+#endif
     for (int i = 1; i + 1 < argc; i += 2) {
         const std::string key = argv[i];
         if (key == "--port")
