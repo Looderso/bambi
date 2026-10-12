@@ -432,12 +432,18 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
     if (!error.isEmpty()) line("refused: " + error, colour::text);
     y += static_cast<float>(space::groupGap);
 
-    //  two loudspeakers: the fold, or the slice the head points at
     int realCount = 0;
     for (const Loudspeaker& s : d.layout)
         if (!s.imaginary) ++realCount;
     const bool pairLayout = !matrix && realCount == 2;
+
+    y = paintChannels(g, content, y, OutputPage::Speakers);
+
+    //  options
+    y = paintGroupTitle(g, content, y, "options");
     if (pairLayout) {
+        //  two loudspeakers: the fold, or the slice the head points at -- under the channels, so the layout's own
+        //  section keeps its height whichever layout is chosen
         const juce::Rectangle<float> pair{content.getX(), y, content.getWidth(), ctl::segmentHeight};
         paintSegments(g, pair, {"fold", "slice"}, d.pairSlice ? 1 : 0, mine, [this](int which) {
             model().applyEdit("pair", [which](PluginState& s) { s.decoder.pairSlice = which == 1; });
@@ -446,13 +452,8 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         line(d.pairSlice ? "only what the head points at plays, between the loudspeakers"
                          : "the whole field on the pair, as a stereo listener hears the mix",
              colour::label);
-        y += static_cast<float>(space::groupGap);
+        y += ctl::segmentGap;
     }
-
-    y = paintChannels(g, content, y, OutputPage::Speakers);
-
-    //  options
-    y = paintGroupTitle(g, content, y, "options");
     if (matrix) {
         line("the file's decoder as it is: no weighting, no distance compensation", colour::label);
     } else {
