@@ -34,7 +34,6 @@ private:
                          std::function<void(DecoderState&)> reset);
     void chooseLayoutFile();
     void chooseSofaFile();
-    std::vector<int> channelsOf(OutputPage output) const;
 
     DecoderControlState& state_;
     int shownKind_{-1};  ///< the layout kind whose section is open before anything of it is loaded: 0 itu, 1 file

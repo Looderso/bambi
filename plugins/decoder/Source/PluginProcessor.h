@@ -19,6 +19,7 @@
 #include "bambi/decode/headmodel.hpp"
 #include "bambi/decode/headrotation.hpp"
 #include "bambi/decode/orientation.hpp"
+#include "bambi/decode/outputs.hpp"
 #include "bambi/decode/params.hpp"
 #include "bambi/decode/sofafile.hpp"
 #include "bambi/decode/speakers.hpp"
@@ -50,8 +51,8 @@ class BambiDecoderProcessor final : public bambi::host::PluginProcessor,
                                     public clap_juce_extensions::clap_juce_audio_processor_capabilities,
                                     private juce::OSCReceiver::Listener<juce::OSCReceiver::MessageLoopCallback> {
 public:
-    static constexpr int kMaxOutputs = 64;  ///< the widest bus a layout may use
-    static constexpr int kPartition = 64;   ///< the binaural convolution's block, and the latency reported
+    static constexpr int kMaxOutputs = bambi::kMaxDecoderOutputs;
+    static constexpr int kPartition = 64;  ///< the binaural convolution's block, and the latency reported
     static constexpr int kMaxHostOrder = bambi::host::kMaxHostOrder;
 
     BambiDecoderProcessor();
@@ -71,12 +72,11 @@ public:
     //  ---- the listening situation: state, edited as a document ---------------------------------
     /// Message thread: one undoable edit of the decoder's state, committed to the audio thread.
     void editDecoder(std::string_view name, const std::function<void(bambi::DecoderState&)>& change);
-    enum class Output { Headphones, Speakers };
+    using Output = bambi::Output;
     /// Light or stop an output. Lighting one whose channels collide with another's stops that one and says so in
     /// `notice()`; one needing more channels than the bus has does not light and says how many it needs.
     void playOutput(Output which, bool on);
     /// The channels an output would write, counted from 1, as the state has it.
-    std::vector<int> channelsOf(Output which) const;
     /// The current state, copied: for the editor.
     bambi::DecoderState decoderState() const;
     /*  Message thread: a decoder as filters from a SOFA FIR-E file (tools/matrix/jconvolver-to-sofa.py writes one
@@ -94,6 +94,8 @@ public:
         testChannel_.store(busChannel, std::memory_order_release);
     }
     int testing() const noexcept { return testChannel_.load(std::memory_order_relaxed); }  ///< the channel, or 0
+    /// Whether the port is bound and the receiver reads it, for a check. Message thread.
+    bool trackerPortOpen() const { return oscConnected_; }
 
     //  ---- what the window reads -----------------------------------------------------------------
     struct Diagnostics : bambi::host::PluginProcessor::Diagnostics {
@@ -225,9 +227,10 @@ private:
 
     //  The tracker. The OSC callback runs on the message thread and is the handoff's one writer; the audio
     //  thread reads it and is both rotation stages' one writer.
-    juce::OSCReceiver osc_;
+    std::unique_ptr<juce::DatagramSocket> oscSocket_;  ///< the port, bound to this computer or to every interface
+    juce::OSCReceiver osc_;  ///< reads it; after the socket, so it stops before the socket goes
     int oscPort_{0};
-    bool oscConnected_{false};
+    bool oscConnected_{false}, oscNetwork_{false};
     HelperLink helper_;                            ///< the AirPods helper, launched while the tracker source is AirPods
     juce::String helperStatus_;                    ///< under trackerMutex_
     std::vector<SeenAddress> seen_;                ///< under trackerMutex_

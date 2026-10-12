@@ -151,6 +151,10 @@ struct DecoderState {
     friend bool operator==(const DecoderState&, const DecoderState&) = default;
 };
 
+/// Every field held to the range the window gives it, so a session written by hand or by an older build opens
+/// without a value the engine cannot take: a head of size 0, a loudspeaker at no distance, a port below 1.
+void sanitiseDecoder(DecoderState& d);
+
 struct RoomState {
     int preset{3};  ///< hall: what a fresh Reverb's parameters are
     int shape{1};   ///< RoomShape::Hall

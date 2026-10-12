@@ -25,4 +25,15 @@ struct Layout {
     std::vector<Loudspeaker> speakers;
 };
 
+/// The widest bus a layout may use: outputs counted from its first channel, and the link's record of it.
+inline constexpr int kMaxDecoderOutputs = 64;
+
+/// The loudspeakers that are fed: every one that is not imaginary.
+inline int realLoudspeakers(const std::vector<Loudspeaker>& layout) {
+    int n = 0;
+    for (const Loudspeaker& s : layout)
+        if (!s.imaginary) ++n;
+    return n;
+}
+
 }  // namespace bambi

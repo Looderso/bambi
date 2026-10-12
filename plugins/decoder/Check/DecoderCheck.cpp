@@ -354,6 +354,28 @@ int main() {
         check(other.decoderState().hrtf == 1, "the choice survives a save and a load");
     }
 
+    //  The port: bound on the loopback alone, or on every interface when opened to the network, and handed to the
+    //  receiver; closed again when no source wants it. Catches: the socket bound but never handed over, the port
+    //  not reopened when the flag changes, the port left open with no tracker.
+    {
+        BambiDecoderProcessor proc;
+        proc.setBusesLayout(busIn(16, 2));
+        proc.prepareToPlay(kCheckRate, 128);
+        const int port = 19000 + static_cast<int>(juce::Random::getSystemRandom().nextInt(1000));
+        proc.editDecoder("osc", [port](DecoderState& d) {
+            d.trackerSource = 1;
+            d.oscPort = port;
+            d.oscNetwork = false;
+        });
+        check(proc.trackerPortOpen(), "choosing osc binds the port and the receiver reads it: " + juce::String(port));
+        proc.editDecoder("network", [](DecoderState& d) { d.oscNetwork = true; });
+        check(proc.trackerPortOpen(), "opened to the network, the port is bound again on every interface");
+        proc.editDecoder("none", [](DecoderState& d) { d.trackerSource = 0; });
+        check(!proc.trackerPortOpen(), "and closed when no source wants it");
+        juce::DatagramSocket probe(false);
+        check(probe.bindToPort(port, "127.0.0.1"), "so the port is free again");
+    }
+
     //  Learn mode: the known table serves without learning; a learned address with its form turns the head and an
     //  address not learned is then ignored; three split addresses gather into one triple.
     {

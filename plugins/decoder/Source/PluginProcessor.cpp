@@ -27,21 +27,6 @@ bambi::Layout layoutFor(const bambi::DecoderState& d) {
     return l;
 }
 
-/// The bus channels a layout's real loudspeakers play on, the layout moved as a block to start on its first
-/// channel; a filter matrix plays on its outputs from there.
-std::vector<int> layoutChannels(const bambi::DecoderState& d) {
-    std::vector<int> out;
-    const int shift = std::max(1, d.speakerFirstChannel) - 1;
-    if (!d.matrixFile.empty()) {
-        for (int c = 1; c <= d.matrixOutputs; ++c) out.push_back(c + shift);
-        return out;
-    }
-    for (const bambi::Loudspeaker& s : d.layout)
-        if (!s.imaginary) out.push_back(s.channel + shift);
-    std::sort(out.begin(), out.end());
-    return out;
-}
-
 /// What a bus's description says: the same line the layout log keeps.
 juce::String busLine(const juce::AudioProcessor::BusesLayout& layouts) {
     return "in " + juce::String(layouts.getMainInputChannelSet().size()) + "  |  out " +
@@ -271,10 +256,8 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
     //  The layout's decoder, and the same layout heard on headphones. A pair's slice is narrow microphones at the
     //  loudspeakers, as narrow as the field's order allows, and follows the head.
     const bambi::Microphones microphones{d.pairSlice, d.pairSlice ? std::max(1, engineOrder_) : 1};
-    int realCount = 0;
-    for (const bambi::Loudspeaker& s : d.layout)
-        if (!s.imaginary) ++realCount;
-    pairFollows_.store(d.matrixFile.empty() && realCount == 2 && d.pairSlice, std::memory_order_relaxed);
+    pairFollows_.store(d.matrixFile.empty() && bambi::realLoudspeakers(d.layout) == 2 && d.pairSlice,
+                       std::memory_order_relaxed);
     if (d.matrixFile.empty() &&
         (builtOrder_ != engineOrder_ || builtLayout_ != d.layout || builtWeighting_ != d.weighting ||
          builtDistance_ != d.distanceCompensation || builtMicrophones_.atLoudspeakers != microphones.atLoudspeakers ||
@@ -436,11 +419,15 @@ void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
     }
     //  Every source arrives as OSC on the port: a tracker from anywhere, the helper from this computer.
     const bool want = d.trackerSource == 1 || airpods || phone;
-    if (want && (!oscConnected_ || oscPort_ != d.oscPort)) {
+    if (want && (!oscConnected_ || oscPort_ != d.oscPort || oscNetwork_ != d.oscNetwork)) {
         if (oscConnected_) osc_.disconnect();
-        //  JUCE's receiver binds the port on every interface, whichever way the state's network flag is set.
-        oscConnected_ = d.oscNetwork ? osc_.connect(d.oscPort) : osc_.connect(d.oscPort);
+        //  Bound to this computer alone until asked -- the helper and the phone's page send from here -- or, open to
+        //  the network, on every interface for a tracker from anywhere.
+        oscSocket_ = std::make_unique<juce::DatagramSocket>(false);
+        oscConnected_ = oscSocket_->bindToPort(d.oscPort, d.oscNetwork ? juce::String() : juce::String("127.0.0.1")) &&
+                        osc_.connectToSocket(*oscSocket_);
         oscPort_ = d.oscPort;
+        oscNetwork_ = d.oscNetwork;
     } else if (!want && oscConnected_) {
         osc_.disconnect();
         oscConnected_ = false;
@@ -651,40 +638,25 @@ bambi::DecoderState BambiDecoderProcessor::decoderState() const {
     return const_cast<BambiDecoderProcessor&>(*this).document().committed().decoder;
 }
 
-std::vector<int> BambiDecoderProcessor::channelsOf(Output which) const {
-    const bambi::DecoderState d = decoderState();
-    if (which == Output::Headphones) return {d.headphoneChannel, d.headphoneChannel + 1};
-    return layoutChannels(d);
-}
-
 void BambiDecoderProcessor::playOutput(Output which, bool on) {
     const int bus = getChannelCountOfBus(false, 0);
-    const std::vector<int> mine = channelsOf(which);
-    const int needs = mine.empty() ? 0 : *std::max_element(mine.begin(), mine.end());
+    const bambi::DecoderState d = decoderState();
+    const bambi::Placement p = bambi::placeOutput(d, which, bus);
     notice_.clear();
-    if (on && (mine.empty() || needs > bus)) {
-        notice_ = mine.empty() ? juce::String("no layout")
-                               : juce::String(needs) + " channels needed; the bus has " + juce::String(bus);
+    if (on && !p.fits) {
+        notice_ = p.needs == 0 ? juce::String("no layout")
+                               : juce::String(p.needs) + " channels needed; the bus has " + juce::String(bus);
         return;
     }
     const Output other = which == Output::Headphones ? Output::Speakers : Output::Headphones;
-    const std::vector<int> theirs = channelsOf(other);
-    bool collide = false;
-    for (int c : mine) collide = collide || std::find(theirs.begin(), theirs.end(), c) != theirs.end();
-    const bambi::DecoderState d = decoderState();
-    const bool otherOn = other == Output::Headphones ? d.headphonesPlay : d.speakersPlay;
-    //  Lit on the other output's channels: this one moves to the first free channels after it when the bus has
-    //  room, and the other stops when it has not. Headphones take an odd pair, as the page picks them.
-    const int afterTheirs = theirs.empty() ? 1 : *std::max_element(theirs.begin(), theirs.end()) + 1;
-    const int span = needs - (which == Output::Headphones ? d.headphoneChannel : d.speakerFirstChannel) + 1;
-    const int movedTo = which == Output::Headphones ? afterTheirs + (afterTheirs % 2 == 0 ? 1 : 0) : afterTheirs;
-    const bool moves = on && collide && otherOn && movedTo + span - 1 <= bus;
-    const bool stops = on && collide && otherOn && !moves;
+    const bool moves = on && p.moves, stops = on && p.stops;
     if (moves)
         notice_ = juce::String(which == Output::Headphones ? "headphones" : "speakers") + " moved to " +
-                  juce::String(movedTo) + juce::String::fromUTF8("\xe2\x80\x93") + juce::String(movedTo + span - 1);
+                  juce::String(p.movedTo) + juce::String::fromUTF8("\xe2\x80\x93") +
+                  juce::String(p.movedTo + p.span - 1);
     else if (stops)
         notice_ = juce::String(other == Output::Headphones ? "headphones" : "speakers") + " stopped: the same channels";
+    const int movedTo = p.movedTo;
     editDecoder(on ? "play output" : "stop output", [which, on, moves, stops, movedTo, other](bambi::DecoderState& s) {
         (which == Output::Headphones ? s.headphonesPlay : s.speakersPlay) = on;
         if (moves) (which == Output::Headphones ? s.headphoneChannel : s.speakerFirstChannel) = movedTo;

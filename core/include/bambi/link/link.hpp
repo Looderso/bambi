@@ -12,6 +12,7 @@
 #include "bambi/math/vec3.hpp"
 #include "bambi/mod/manifest.hpp"
 #include "bambi/patch/identity.hpp"
+#include "bambi/patch/layout.hpp"
 #include "bambi/patch/parameters.hpp"
 #include "bambi/patch/state.hpp"
 #include "bambi/path/trajectory.hpp"
@@ -78,7 +79,7 @@ struct LinkPoint {
     float x{0.0f}, y{0.0f}, z{0.0f};
 };
 /// One loudspeaker of the decoder's layout, for other scenes to draw: its direction and its channel.
-inline constexpr int kLinkMaxSpeakers = 64;
+inline constexpr int kLinkMaxSpeakers = kMaxDecoderOutputs;
 struct LinkSpeaker {
     float azimuthDeg{0.0f}, elevationDeg{0.0f};
     std::uint8_t channel{0};    ///< counted from 1; 0 for a point with no output

@@ -318,6 +318,27 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
     return root;
 }
 
+void sanitiseDecoder(DecoderState& d) {
+    d.hrtf = std::clamp(d.hrtf, 0, 2);
+    d.headSize = std::clamp(d.headSize, 0.75f, 1.3f);
+    d.earShift = std::clamp(d.earShift, -2.0f, 2.0f);
+    d.weighting = std::clamp(d.weighting, 0, 1);
+    d.headphoneChannel = std::max(1, d.headphoneChannel);
+    d.speakerFirstChannel = std::max(1, d.speakerFirstChannel);
+    d.matrixOutputs = std::clamp(d.matrixOutputs, 0, kMaxDecoderOutputs);
+    d.matrixNormalization = std::clamp(d.matrixNormalization, 0, 2);
+    d.trackerSource = std::clamp(d.trackerSource, 0, 3);
+    d.oscPort = std::clamp(d.oscPort, 1, 65535);
+    d.oscForm = std::clamp(d.oscForm, 0, 5);
+    if (d.layout.size() > static_cast<std::size_t>(kMaxDecoderOutputs)) d.layout.resize(kMaxDecoderOutputs);
+    for (Loudspeaker& l : d.layout) {
+        l.radiusM = std::max(0.1, l.radiusM);
+        l.elevationDeg = std::clamp(l.elevationDeg, -90.0, 90.0);
+        l.channel = std::max(1, l.channel);
+        l.gain = std::max(0.0, l.gain);
+    }
+}
+
 LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginState& out) {
     LoadResult r;
     if (!j.isObject()) {
@@ -569,6 +590,7 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
             for (std::size_t i = 0; i < 9; ++i) d.airpodsAxes[i] = ax->items()[i].numberOr(0);
             d.airpodsCalibrated = true;
         }
+        sanitiseDecoder(d);
     }
     if (const Json* room = j.find("room"); room != nullptr && room->isObject()) {
         if (const Json* v = room->find("preset"))

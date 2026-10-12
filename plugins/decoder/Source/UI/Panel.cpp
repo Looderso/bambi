@@ -6,6 +6,7 @@
 
 #include "bambi/decode/layoutfile.hpp"
 #include "bambi/decode/layouts.hpp"
+#include "bambi/decode/outputs.hpp"
 #include "bambi/ui/Draw.h"
 #include "bambi/ui/Theme.h"
 #include "bambi/ui/Tiles.h"
@@ -37,21 +38,6 @@ juce::String rangesOf(const std::vector<int>& channels) {
 }  // namespace
 
 DecoderPanel::DecoderPanel(DecoderControlState& state) : ParameterPage(state), state_(state) {}
-
-std::vector<int> DecoderPanel::channelsOf(OutputPage output) const {
-    const DecoderState& d = state_.decoder();
-    if (output == OutputPage::Headphones) return {d.headphoneChannel, d.headphoneChannel + 1};
-    std::vector<int> out;
-    const int shift = std::max(1, d.speakerFirstChannel) - 1;  // the layout moved as a block along the bus
-    if (!d.matrixFile.empty()) {
-        for (int c = 1; c <= d.matrixOutputs; ++c) out.push_back(c + shift);
-        return out;
-    }
-    for (const Loudspeaker& s : d.layout)
-        if (!s.imaginary) out.push_back(s.channel + shift);
-    std::sort(out.begin(), out.end());
-    return out;
-}
 
 void DecoderPanel::paint(juce::Graphics& g) {
     clearRegions();
@@ -111,8 +97,9 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
     const DecoderState& d = state_.decoder();
     const int bus = state_.processor.diagnostics().outputChannels.load(std::memory_order_relaxed);
     const int shownBus = std::max(bus, 2);
-    const std::vector<int> mine = channelsOf(output);
-    const std::vector<int> hp = channelsOf(OutputPage::Headphones), sp = channelsOf(OutputPage::Speakers);
+    const std::vector<int> mine =
+        outputChannels(d, output == OutputPage::Headphones ? Output::Headphones : Output::Speakers);
+    const std::vector<int> hp = outputChannels(d, Output::Headphones), sp = outputChannels(d, Output::Speakers);
     const bool playing = output == OutputPage::Headphones ? d.headphonesPlay : d.speakersPlay;
 
     if (output == OutputPage::Headphones) {
@@ -177,21 +164,20 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
     //  one line only when the picture cannot say it: the host's bus is too narrow, or the other output has the
     //  same channels and would stop
     juce::String status;
-    const int needs = mine.empty() ? 0 : *std::max_element(mine.begin(), mine.end());
-    const std::vector<int>& other = output == OutputPage::Headphones ? sp : hp;
-    const bool otherOn = output == OutputPage::Headphones ? d.speakersPlay : d.headphonesPlay;
-    bool collide = false;
-    for (int c : mine) collide = collide || std::find(other.begin(), other.end(), c) != other.end();
+    const Placement p = placeOutput(d, output == OutputPage::Headphones ? Output::Headphones : Output::Speakers, bus);
     const juce::String otherName = output == OutputPage::Headphones ? "speakers" : "headphones";
-    if (needs > bus)
-        status = juce::String(needs) + " channels needed; the host gives " + juce::String(bus);
-    else if (otherOn && collide && !mine.empty())
-        status = playing ? "on the same channels as the " + otherName + ": both are heard there"
-                         : "playing would stop " + otherName + ": the same channels";
+    const bool collide = p.collide;
+    if (!mine.empty() && !p.fits)
+        status = juce::String(p.needs) + " channels needed; the host gives " + juce::String(bus);
+    else if (p.otherOn && p.collide && !mine.empty())
+        status = playing   ? "on the same channels as the " + otherName + ": both are heard there"
+                 : p.moves ? "playing would move it to " + juce::String(p.movedTo) +
+                                 juce::String::fromUTF8("\xe2\x80\x93") + juce::String(p.movedTo + p.span - 1)
+                           : "playing would stop " + otherName + ": the same channels";
     if (!status.isEmpty()) {
         y += ctl::segmentGap;
         const float lineH = type::label * ctl::noticeLineHeight;
-        text(g, status, labelFont(), needs > bus || (playing && collide) ? colour::text : colour::label,
+        text(g, status, labelFont(), !p.fits || (playing && collide) ? colour::text : colour::label,
              {content.getX(), y, content.getWidth(), lineH}, juce::Justification::centredLeft);
         y += lineH;
     }
@@ -383,9 +369,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         repaint();
     });
     y = row.getBottom() + ctl::segmentGap;
-    int real = 0;
-    for (const Loudspeaker& s : d.layout)
-        if (!s.imaginary) ++real;
+    const int real = realLoudspeakers(d.layout);
     if (kind == 0) {
         //  the ten systems, the loaded one black
         std::vector<juce::String> names;
@@ -468,10 +452,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
     if (!error.isEmpty()) line("refused: " + error, colour::text);
     y += static_cast<float>(space::groupGap);
 
-    int realCount = 0;
-    for (const Loudspeaker& s : d.layout)
-        if (!s.imaginary) ++realCount;
-    const bool pairLayout = !matrix && realCount == 2;
+    const bool pairLayout = !matrix && realLoudspeakers(d.layout) == 2;
 
     y = paintChannels(g, content, y, OutputPage::Speakers);
 

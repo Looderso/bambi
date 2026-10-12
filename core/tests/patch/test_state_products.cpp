@@ -262,3 +262,25 @@ TEST_CASE("the decoder's listening situation saves and loads whole, and is left 
     CHECK(name(Product::Decoder) == "decoder");
     CHECK(productFromName("decoder") == Product::Decoder);
 }
+
+TEST_CASE("a decoder state loads sanitised: every value held to the range the window gives it") {
+    //  Catches: the sanitiser not called on load, or a clamp missing -- a head of size 0, a loudspeaker at no
+    //  distance, a port of 0, a head choice past the last.
+    PluginState s{decodeParams()};
+    s.decoder.headSize = 0.0f;
+    s.decoder.hrtf = 7;
+    s.decoder.oscPort = 0;
+    Loudspeaker l;
+    l.radiusM = 0.0;
+    l.channel = 0;
+    s.decoder.layout.push_back(l);
+    const Json j = toJson(Product::Decoder, decodeParams(), s);
+    PluginState back{decodeParams()};
+    REQUIRE(fromJson(Product::Decoder, decodeParams(), j, back).ok);
+    CHECK(back.decoder.headSize == doctest::Approx(0.75));
+    CHECK(back.decoder.hrtf == 2);
+    CHECK(back.decoder.oscPort == 1);
+    REQUIRE(back.decoder.layout.size() == 1);
+    CHECK(back.decoder.layout[0].radiusM == doctest::Approx(0.1));
+    CHECK(back.decoder.layout[0].channel == 1);
+}
