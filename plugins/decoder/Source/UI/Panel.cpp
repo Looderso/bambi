@@ -510,6 +510,22 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
     const DecoderState& d = state_.decoder();
     float y = content.getY();
     const float rowH = static_cast<float>(space::grid * 2) + 4.0f;
+    const bool mine = !model().showingAnother();
+    const int testing = state_.processor.testing();
+    const float testW = framedButtonWidth("test");
+    //  a burst on that channel alone, so the loudspeaker and its channel are checked by ear; black while it plays
+    const auto testButton = [&](int busChannel, float top) {
+        const juce::Rectangle<float> button{content.getRight() - testW, top + (rowH - ctl::buttonHeight) / 2.0f, testW,
+                                            ctl::buttonHeight};
+        if (busChannel == testing) {
+            g.setColour(colour::chosen);
+            g.fillRect(button);
+            text(g, "test", labelFont(), colour::textInverse, button, juce::Justification::centred);
+            addClickArea(button, [this] { state_.processor.testChannel(0); });
+        } else {
+            paintButton(g, button, "test", mine, [this, busChannel] { state_.processor.testChannel(busChannel); });
+        }
+    };
     if (!d.matrixFile.empty()) {
         const int first = std::max(1, d.speakerFirstChannel);
         text(g,
@@ -518,9 +534,17 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
              labelFont(), colour::label, {content.getX(), y, content.getWidth(), rowH},
              juce::Justification::centredLeft);
         y += rowH;
+        for (int o = 0; o < d.matrixOutputs; ++o) {
+            text(g, "output " + juce::String(o + 1) + " " + kDot + " channel " + juce::String(first + o),
+                 font(type::matrix), colour::text, {content.getX(), y, content.getWidth() - testW, rowH},
+                 juce::Justification::centredLeft);
+            testButton(first + o, y);
+            y += rowH;
+            ruleH(g, content.getX(), content.getRight(), y, colour::rowDivider);
+        }
     } else {
-        //  the loudspeakers, one row each, with what distance compensation does to them
-        const float colW[6] = {30.0f, 48.0f, 46.0f, 56.0f, 58.0f, 62.0f};
+        //  the loudspeakers, one row each, with what distance compensation does to them, and a test each
+        const float colW[6] = {26.0f, 42.0f, 42.0f, 48.0f, 50.0f, 54.0f};
         const char* heads[6] = {"ch", "az", "el", "dist m", "gain db", "delay ms"};
         float cx = content.getX();
         for (int c = 0; c < 6; ++c) {
@@ -554,6 +578,7 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
                      c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight);
                 cx += colW[c];
             }
+            if (!s.imaginary) testButton(s.channel + std::max(1, d.speakerFirstChannel) - 1, y);
             y += rowH;
             ruleH(g, content.getX(), content.getRight(), y, colour::rowDivider);
         }
@@ -564,9 +589,7 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
         }
     }
     y += static_cast<float>(space::grid);
-    text(g,
-         "place by looking " + kDot + " test tone per loudspeaker " + kDot + " colour correction " + kDot +
-             " bass management " + kDot + " later",
+    text(g, "place by looking " + kDot + " colour correction " + kDot + " bass management " + kDot + " later",
          labelFont(), colour::inactive, {content.getX(), y, content.getWidth(), rowH},
          juce::Justification::centredLeft);
     noteContentBottom(y + rowH + static_cast<float>(space::grid));

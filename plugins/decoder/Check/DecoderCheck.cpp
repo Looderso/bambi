@@ -238,6 +238,29 @@ int main() {
         check(!over.empty() && channelEnergy(over, 3) == 0.0, "a layout past the bus edge plays nothing");
     }
 
+    //  The test burst: noise on the asked channel alone while the array's feeds hold back, over when it is over.
+    //  Catches: the burst on the wrong channel, the array still playing under it, the burst never ending.
+    {
+        const PluginState s = withLayout("4+7+0", true, false);
+        const Channels y = render(busIn(16, 18), 128, 0.2, [](BambiDecoderProcessor& p) { p.testChannel(5); }, &s);
+        bool alone = !y.empty() && channelEnergy(y, 4) > 1e-4;
+        for (int c = 0; c < 12; ++c)
+            if (c != 4) alone = alone && channelEnergy(y, c) == 0.0;
+        check(alone, "the test burst plays on channel 5 and the array holds back");
+        BambiDecoderProcessor proc;
+        proc.setBusesLayout(busIn(16, 18));
+        proc.prepareToPlay(kCheckRate, 128);
+        loadState(proc, s);
+        proc.testChannel(5);
+        juce::AudioBuffer<float> buffer(18, 128);
+        juce::MidiBuffer midi;
+        for (int b = 0; b * 128 < static_cast<int>(0.5 * kCheckRate); ++b) {
+            buffer.clear();
+            proc.processBlock(buffer, midi);
+        }
+        check(proc.testing() == 0, "and it is over after half a second");
+    }
+
     //  Determinism: the same render twice, and however the host cuts its blocks.
     {
         const PluginState s = withLayout("4+7+0", true, true, 13);

@@ -169,6 +169,13 @@ Above −30° the array is even and sharp. Below it has nothing: a source there 
 off, and up to 10 dB quiet at order 3. Heard through the prototype, a source straight behind comes out 5 dB louder
 on the array than in the reference — the two loudspeakers at ±145° reach the ears more than a source at 180° does.
 
+### 3.2b A test tone per loudspeaker
+
+**A burst on one channel, alone** ([0200](../DECISIONS.md)): `test` on a loudspeaker's row in the table plays 0.4 s
+of noise at −20 dBFS on its bus channel while the array's own feeds hold back, so the loudspeaker that sounds is
+the one the row names and a wrong channel map shows itself without a tracker. A filter matrix gets one per
+output. The button stands black while its burst plays; the burst is the same samples at every press.
+
 ### 3.3 Placing the loudspeakers by looking at them
 
 **The plugin plays a burst on one channel; the listener looks at the loudspeaker that sounds and presses a key.**
@@ -585,7 +592,7 @@ library when the second plugin needs it, not before.
   and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
   bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read
   off the column and the channel map on the page says whose channel it is. Grey where it is *later*: typed
-  layouts, headphone correction, placing by looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
+  layouts, headphone correction, placing by looking; a test burst per loudspeaker is in the table (§3.2b). `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the
   encoders' sources ([0176](../DECISIONS.md), [VISUALISATION §5](../suite/VISUALISATION.md)). Its link record

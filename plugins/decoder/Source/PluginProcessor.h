@@ -86,6 +86,14 @@ public:
     juce::String matrixNote() const;  ///< the loaded matrix in a line, for the page; empty without one
     /// Take the yaw off the tracker's orientation at the next block; pitch and roll stay. Any thread.
     void recentre() noexcept { recentre_.store(true, std::memory_order_relaxed); }
+    /*  A burst of noise on one bus channel, counted from 1, so a loudspeaker is heard alone and its channel
+        checked: 0.4 s at -20 dBFS peak with 10 ms fades, the array's own feeds held back while it plays. 0 stops
+        it. Any thread; the audio thread plays it from the next block and clears it when it ends. */
+    void testChannel(int busChannel) noexcept {
+        testPos_.store(0, std::memory_order_relaxed);
+        testChannel_.store(busChannel, std::memory_order_release);
+    }
+    int testing() const noexcept { return testChannel_.load(std::memory_order_relaxed); }  ///< the channel, or 0
 
     //  ---- what the window reads -----------------------------------------------------------------
     struct Diagnostics : bambi::host::PluginProcessor::Diagnostics {
@@ -241,6 +249,9 @@ private:
     bool trackerSeen_{false};
     double yaw0_{0.0};
     std::atomic<bool> recentre_{false};
+    std::atomic<int> testChannel_{0};  ///< the burst's channel, 0 for none
+    std::atomic<int> testPos_{0};      ///< frames of the burst played; audio thread
+    std::uint32_t testNoise_{1};       ///< the burst's noise generator, reseeded at each start; audio thread
 
     Diagnostics diag_;
     mutable std::mutex logMutex_;

@@ -849,8 +849,28 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         }
         hpHeard = true;
     }
+    //  The test burst: noise on one channel, the array's feeds held back so the loudspeaker is heard alone.
+    //  Deterministic: the same xorshift sequence from the same seed at every start.
+    const int test = testChannel_.load(std::memory_order_acquire);
+    const int testLength = static_cast<int>(0.4 * sampleRate_), testFade = static_cast<int>(0.01 * sampleRate_);
+    if (test >= 1 && test <= outChannels) {
+        int pos = testPos_.load(std::memory_order_relaxed);
+        if (pos == 0) testNoise_ = 0x9e3779b9u;
+        float* y = out.getWritePointer(test - 1);
+        for (int i = 0; i < n && pos < testLength; ++i, ++pos) {
+            testNoise_ ^= testNoise_ << 13;
+            testNoise_ ^= testNoise_ >> 17;
+            testNoise_ ^= testNoise_ << 5;
+            const float white = static_cast<float>(testNoise_) / 2147483648.0f - 1.0f;  // -1..1
+            const float edge =
+                static_cast<float>(std::min({pos, testLength - 1 - pos, testFade})) / static_cast<float>(testFade);
+            y[i] += white * 0.1f * std::min(edge, 1.0f);
+        }
+        testPos_.store(pos, std::memory_order_relaxed);
+        if (pos >= testLength) testChannel_.store(0, std::memory_order_relaxed);
+    }
     const int firstOut = std::max(1, d.speakerFirstChannel) - 1;  // the layout's channel 1 counted from 0 on the bus
-    if (d.speakersPlay && speakerOutputs > 0 && firstOut + speakerOutputs <= outChannels) {
+    if (d.speakersPlay && speakerOutputs > 0 && firstOut + speakerOutputs <= outChannels && test == 0) {
         if (matrix) {
             matrix_.process(sceneField_.data(), speakersOut_.data(), n);
         } else if (pairFollows_.load(std::memory_order_relaxed)) {
