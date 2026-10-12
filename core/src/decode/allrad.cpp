@@ -187,6 +187,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
             field's zeroth and first order only -- one loudspeaker an omni -- so nothing in the field vanishes, a
             source behind folds in quietly and in phase. The level is set as for every decoder: a plane wave gives,
             averaged over all directions, the energy of one loudspeaker. */
+        out.ring = false;  // microphones, not a ring of virtual loudspeakers
         const int total = static_cast<int>(out.points.size());
         std::vector<double> d(sz(total) * sz(C), 0.0);
         std::vector<double> first(4);
