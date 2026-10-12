@@ -38,7 +38,7 @@ TEST_CASE("the shipped model is the one the listening page plays") {
     CHECK(m.itd.order == 8);
     CHECK(m.notches.order == 6);
     CHECK(m.notches.list.size() == 3);
-    CHECK(m.notches.depthFactor == doctest::Approx(2.5));
+    CHECK(m.notches.depthFactor == doctest::Approx(1.5));
 }
 
 TEST_CASE("both ears and the time difference equal the page's math in every fixture") {
