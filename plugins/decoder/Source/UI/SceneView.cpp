@@ -223,7 +223,8 @@ void DecoderSceneView::paintSources(juce::Graphics& g, const Viewport& vp) {
         g.setColour(colour::otherInstance.withAlpha(a));
         g.fillEllipse(static_cast<float>(p.x) - r, static_cast<float>(p.y) - r, 2.0f * r, 2.0f * r);
         text(g, juce::String(entry.label()), smallFont(), colour::label.withAlpha(a),
-             {static_cast<float>(p.x) + r + 3.0f, static_cast<float>(p.y) - r - 2.0f, 80.0f, 2.0f * r + 4.0f},
+             {static_cast<float>(p.x) + r + 3.0f, static_cast<float>(p.y) - r - 2.0f, sc::otherSourceLabelWidth,
+              2.0f * r + 4.0f},
              juce::Justification::centredLeft);
     }
 }
@@ -242,7 +243,7 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
         //  the head itself at the centre: a circle with two eyes on its rim, a quarter turn apart astride the gaze.
         //  Each eye is a direction scaled to the head's radius before projection, so the pair foreshortens as the
         //  head turns toward or away from the viewer, and tilts with roll.
-        const float r = shape::sourceDot + 4.0f;
+        const float r = shape::sourceDot + sc::headRadiusPad;
         const double unit = static_cast<double>(r) / vp.rx;
         const double c = std::cos(kEyeAngleRad), sn = std::sin(kEyeAngleRad);
         const Vec3 leftEye{gaze.x * c + left.x * sn, gaze.y * c + left.y * sn, gaze.z * c + left.z * sn};
@@ -260,7 +261,7 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
         g.fillEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r);
         g.setColour(colour::text.withAlpha(alpha));
         g.drawEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r, stroke::toggle);
-        const float eye = 2.0f;
+        const float eye = sc::eyeRadius;
         for (const auto& e : {eyeL, eyeR})
             g.fillEllipse(static_cast<float>(e.x) - eye, static_cast<float>(e.y) - eye, 2.0f * eye, 2.0f * eye);
     } else {

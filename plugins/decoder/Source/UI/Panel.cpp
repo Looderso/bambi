@@ -534,14 +534,10 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
     const auto testButton = [&](int busChannel, float top, float right) {
         const juce::Rectangle<float> button{right - testW, top + (rowH - ctl::buttonHeight) / 2.0f, testW,
                                             ctl::buttonHeight};
-        if (busChannel == testing) {
-            g.setColour(colour::chosen);
-            g.fillRect(button);
-            text(g, "test", labelFont(), colour::textInverse, button, juce::Justification::centred);
-            addClickArea(button, [this] { state_.processor.testChannel(0); });
-        } else {
-            paintButton(g, button, "test", mine, [this, busChannel] { state_.processor.testChannel(busChannel); });
-        }
+        const bool playing = busChannel == testing;
+        paintButton(
+            g, button, "test", mine,
+            [this, busChannel, playing] { state_.processor.testChannel(playing ? 0 : busChannel); }, playing);
     };
     if (!d.matrixFile.empty()) {
         const int first = std::max(1, d.speakerFirstChannel);
@@ -565,7 +561,7 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
         //  right removes it. Any edit makes the layout a typed one. Gain and delay are what distance
         //  compensation gives it, read only.
         const float boxW = sc::toggleBox + static_cast<float>(space::grid) / 2.0f;
-        const float colW[6] = {24.0f, 40.0f, 40.0f, 40.0f, 40.0f, 44.0f};
+        const auto& colW = ctl::tableColumns;
         const char* heads[6] = {"ch", "az", "el", "dist m", "gain db", "delay ms"};
         const float crossW = ctl::closeGlyph + static_cast<float>(space::grid) / 2.0f;
         const float tableRight = content.getRight() - crossW;
@@ -846,7 +842,7 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
     }
     line("on the port now " + kDot + " take a message whole, or one number as yaw, pitch or roll:", colour::label);
     const char* slots[4] = {"message", "yaw", "pitch", "roll"};
-    const float slotW = 44.0f;
+    const float slotW = ctl::learnSlotWidth;
     int shown = 0;
     for (const BambiDecoderProcessor::SeenAddress& s : seen) {
         if (shown++ >= 6) break;

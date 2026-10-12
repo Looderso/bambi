@@ -193,8 +193,8 @@ float ParameterPage::paintButtonNote(juce::Graphics& g, juce::Rectangle<float> c
 }
 
 void ParameterPage::paintButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled,
-                                std::function<void()> click) {
-    drawFramedButton(g, area, label, enabled);
+                                std::function<void()> click, bool on) {
+    drawFramedButton(g, area, label, enabled, on);
     if (enabled) addRegion({area, {}, {}, {}, std::move(click), {}});
 }
 

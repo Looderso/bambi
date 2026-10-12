@@ -76,7 +76,9 @@ std::vector<juce::Rectangle<float>> drawSegmentLines(juce::Graphics& g, float x,
                                                      int unavailable, int columns);
 float segmentLinesHeight(int count, int columns);
 /// An action: framed, its label centred, greyed while disabled.
-void drawFramedButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled);
+/// `on` draws it as a chosen block: an action that is running, such as a test burst, until clicked again.
+void drawFramedButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled,
+                      bool on = false);
 /// How wide `drawFramedButton` wants to be for `label`.
 float framedButtonWidth(const juce::String& label);
 /// A chevron in its box. `dx`/`dy` are the direction it points -- (1, 0) right, (0, 1) down -- one of them zero.

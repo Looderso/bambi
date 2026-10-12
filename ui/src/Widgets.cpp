@@ -138,8 +138,15 @@ std::vector<juce::Rectangle<float>> drawSegmentLines(juce::Graphics& g, float x,
     return cells;
 }
 
-void drawFramedButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled) {
+void drawFramedButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled,
+                      bool on) {
     namespace colour = theme::colour;
+    if (on) {
+        g.setColour(colour::chosen);
+        g.fillRect(area);
+        text(g, label, font(theme::type::body), colour::textInverse, area, juce::Justification::centred);
+        return;
+    }
     g.setColour(enabled ? colour::text : colour::inactive);
     g.drawRect(area, theme::stroke::rule);
     text(g, label, font(theme::type::body), enabled ? colour::text : colour::inactive, area,

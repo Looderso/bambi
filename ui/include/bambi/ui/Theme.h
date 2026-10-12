@@ -290,6 +290,10 @@ namespace scene
     inline constexpr float insertCross    = 3.0f;
     inline constexpr int   handleStem     = 12;      ///< points in a handle's stem: it follows the sphere
     inline constexpr float noticeInset    = 10.0f;
+    //  the decoder's scene: the head at the globe's centre and the sources it draws
+    inline constexpr float headRadiusPad       = 4.0f;   ///< the head's circle is a source dot this much wider
+    inline constexpr float eyeRadius           = 2.0f;   ///< the head's two eyes
+    inline constexpr float otherSourceLabelWidth = 80.0f;  ///< room for another instance's label beside its dot
 } // namespace scene
 
 // ---- controls: the matrix and the parameter tabs ---------------------------------------------
@@ -392,6 +396,10 @@ namespace controls
     inline constexpr float hysteresisDragSpan = 0.5f;
     inline constexpr float triggerStep        = 0.01f;
     inline constexpr float handleStep         = 0.002f;   ///< a handle length, in radians
+    //  the decoder's orientation strip and its loudspeaker table
+    inline constexpr float pairChoiceWidth = 112.0f;  ///< a two-entry segments row beside a tab row: head · scene
+    inline constexpr float tableColumns[6] = {24.0f, 40.0f, 40.0f, 40.0f, 40.0f, 44.0f};  ///< ch, az, el, dist, gain, delay
+    inline constexpr float learnSlotWidth  = 44.0f;   ///< a learned address's slot column
 } // namespace controls
 
 // ---- the settings page -------------------------------------------------------------------------

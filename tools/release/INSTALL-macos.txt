@@ -11,6 +11,9 @@ bambi for macOS: VST3 and CLAP, Apple silicon and Intel
 
 3. Restart your host and rescan its plugins.
 
+The Decoder's AirPods and phone head tracking use a helper app nested in its bundle; macOS asks once for the
+motion permission in the helper's name. OSC head tracking needs no helper.
+
 The plugins are licensed under the GNU AGPLv3 (LICENSE-AGPL-3.0.md), bambi's own code under the GPLv3
 (LICENSE); third-party components and their licences are in THIRD-PARTY-NOTICES.txt. The complete source
 of this release is attached to it: https://github.com/Looderso/bambi/releases

@@ -141,7 +141,7 @@ public:
 
     /// An action, not a value: framed, and inert while disabled.
     void paintButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled,
-                     std::function<void()> click);
+                     std::function<void()> click, bool on = false);
     /// A button at its label's width with a note beside it, one row at the button's height; returns the row's bottom.
     float paintButtonNote(juce::Graphics& g, juce::Rectangle<float> content, float y, const juce::String& label,
                           bool enabled, std::function<void()> click, const juce::String& note,
