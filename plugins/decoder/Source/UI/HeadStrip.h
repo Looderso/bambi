@@ -6,11 +6,11 @@
 
 namespace bambi::ui {
 
-/*  The orientation strip, where the effects have their matrix: what tracks the head (none, OSC, AirPods, a phone)
- *  and whether it speaks, whether its orientation is undone as a head or turns the scene, recentre, the tracker's
- *  setup as a temporary tab, static; then the scene's turn as parameters -- yaw, pitch and roll with their rates
- *  under them -- the turn in force as the live mark. The scene's turn is heard by every output, so the strip is
- *  always on screen.
+/*  The orientation strip, where the effects have their matrix. Its tabs are what tracks the head (none, OSC,
+ *  AirPods, a phone), the tracker's word beside them; under them whether its orientation is undone as a head or
+ *  turns the scene, recentre, the tracker's setup as a temporary tab, static; then the scene's turn as parameters
+ *  -- yaw, pitch and roll with the tracker's sign on each axis in the name line, their rates under them -- the
+ *  turn in force as the live mark. The scene's turn is heard by every output, so the strip is always on screen.
  */
 class HeadStrip final : public ParameterPage {
 public:

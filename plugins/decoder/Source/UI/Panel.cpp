@@ -623,25 +623,6 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
              juce::Justification::centredLeft);
         y += lineH;
     }
-    y += static_cast<float>(space::groupGap);
-
-    //  the signs, for any source
-    y = paintGroupTitle(g, content, y, "signs");
-    float x = content.getX();
-    const char* names[3] = {"flip yaw", "flip pitch", "flip roll"};
-    for (int i = 0; i < 3; ++i) {
-        const juce::Rectangle<float> r{x, y, content.getRight() - x, lineH};
-        const auto flip = paintSceneToggle(g, r, x + sceneToggleWidth(names[i]) + 2.0f * sc::toggleBox, names[i],
-                                           d.flip[static_cast<std::size_t>(i)], mine);
-        if (mine)
-            addClickArea(flip.hit, [this, i] {
-                model().applyEdit("flip", [i](PluginState& s) {
-                    s.decoder.flip[static_cast<std::size_t>(i)] = !s.decoder.flip[static_cast<std::size_t>(i)];
-                });
-            });
-        x = flip.hit.getRight() + static_cast<float>(space::grid);
-    }
-    y += lineH;
     noteContentBottom(y + static_cast<float>(space::grid));
 }
 

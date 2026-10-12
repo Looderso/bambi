@@ -564,12 +564,13 @@ library when the second plugin needs it, not before.
   its *fold · slice* switch (§6) between the layout and the channels. The loudspeaker table, with what distance
   compensation does to each, is a temporary tab opened by `loudspeakers…`, so no page scrolls at the window's
   size. **The hull the layout pans across is drawn on the scene while the speakers' page is open.**
-- **The orientation strip sits where the effects have their matrix** ([0196](../DECISIONS.md)): its heading
-  carries the tracker's word (which source, whether it speaks and how often — or the one warning that the input
-  has no direction); under it what tracks the head (none · OSC · AirPods · phone), whether its orientation is
-  undone as a `head` or turns the `scene`, recentre, the setup tab, and `static`; then the scene's turn as
-  parameters, yaw, pitch and roll with their rates stacked under them, the turn in force as the live mark. The
-  setup opens as a temporary tab, the chosen source's own setup first and the signs under it, as
+- **The orientation strip sits where the effects have their matrix** ([0196](../DECISIONS.md),
+  [0197](../DECISIONS.md)): its tabs are what tracks the head (none · OSC · AirPods · phone), the tracker's word
+  beside them in the bar (whether it speaks and how often — or the one warning that the input has no direction);
+  under them whether the tracker's orientation is undone as a `head` or turns the `scene`, recentre, the setup tab,
+  and `static`, everything a tracker needs greyed under *none*; then the scene's turn as parameters, yaw, pitch
+  and roll with the tracker's sign on each axis as a `flip` in the name line, their rates stacked under them, the
+  turn in force as the live mark. The setup opens as a temporary tab holding the chosen source's own setup, as
   **personalisation** does from the headphones' page and the loudspeaker table from the speakers'.
 - The sketch is `prototypes/ui/decoder/`. **Built** (`plugins/decoder/`, [0182](../DECISIONS.md)) on the shared
   window: the scene views draw the room's frame, the loudspeakers, the hull while the speakers' page is open, the
