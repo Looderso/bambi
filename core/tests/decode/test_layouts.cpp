@@ -36,8 +36,9 @@ TEST_CASE("the BS.2051 layouts are there by name, channels as the recommendation
     CHECK(top == 1);
 }
 
-TEST_CASE("every BS.2051 layout but the stereo pair designs a decoder at orders 1 to 3") {
-    //  Catches: a built-in layout the hull or the ring refuses -- the pair is the one that leaves half a turn open.
+TEST_CASE("every BS.2051 layout designs a decoder at orders 1 to 3, the pair as virtual microphones") {
+    //  Catches: a built-in layout the hull or the ring refuses, or the pair put through the ring, which leaves half
+    //  a turn open.
     for (std::string_view name : bs2051Names()) {
         const Layout* l = bs2051Layout(name);
         REQUIRE(l != nullptr);
@@ -45,13 +46,10 @@ TEST_CASE("every BS.2051 layout but the stereo pair designs a decoder at orders 
             SpeakerDesign d;
             std::string error;
             const bool ok = designAllrad(*l, order, Weighting::Basic, d, &error);
-            if (name == "0+2+0") {
-                CHECK_FALSE(ok);
-            } else {
-                CHECK_MESSAGE(ok, std::string(name) << " at order " << order << ": " << error);
-                CHECK(d.outputs == static_cast<int>(l->speakers.back().channel));
-                CHECK(d.ring == (name.substr(0, 2) == "0+"));  // 5.1 and 7.1: nothing above or below
-            }
+            CHECK_MESSAGE(ok, std::string(name) << " at order " << order << ": " << error);
+            CHECK(d.outputs == static_cast<int>(l->speakers.back().channel));
+            //  5.1 and 7.1: nothing above or below, so on the ring; the pair is microphones, not a ring
+            CHECK(d.ring == (name.substr(0, 2) == "0+" && name != "0+2+0"));
         }
     }
 }

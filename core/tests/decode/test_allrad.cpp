@@ -41,6 +41,12 @@ Layout itu470() {
     return l;
 }
 
+/// ITU-R BS.2051 0+2+0: the pair at plus and minus 30 degrees.
+Layout pair() {
+    Layout l;
+    l.speakers = {at(30, 0, 1), at(-30, 0, 2)};
+    return l;
+}
 /// The loudspeaker gains a plane wave from t gets.
 std::vector<double> gainsAt(const SpeakerDesign& d, Vec3 t) {
     const int C = numChannels(d.order);
@@ -201,7 +207,7 @@ TEST_CASE("every decoder is energy-preserving, whatever the weighting or the lay
     std::vector<Vec3> same, other;
     fibonacciSphere(4000, same);
     fibonacciSphere(3000, other);
-    for (const Layout& l : {array16(), itu470()})
+    for (const Layout& l : {array16(), itu470(), pair()})
         for (Weighting w : {Weighting::Basic, Weighting::MaxRe}) {
             const SpeakerDesign d = design(l, 3, w);
             CHECK(meanEnergy(d, same) == doctest::Approx(1.0).epsilon(1e-9));
@@ -314,4 +320,34 @@ TEST_CASE("a coplanar group of loudspeakers pans evenly: 7.1.4 is left-right sym
     CHECK(worst <
           0.01);  // the design grid itself is not mirror-symmetric, which leaves about 1e-3; a diagonal, 0.1 and more
     (void)C;
+}
+
+TEST_CASE("two loudspeakers are a pair of virtual cardioids: nothing vanishes, nothing inverts") {
+    //  Catches: a pair put through the ring design, which would drop everything off the ring; a pattern with a
+    //  rear lobe of the other sign; the microphones pointed at the wrong loudspeaker.
+    const SpeakerDesign d = design(pair(), 3, Weighting::Basic);
+    REQUIRE(d.outputs == 2);
+    const auto front = gainsAt(d, fromAzEl(0, 0)), left = gainsAt(d, fromAzEl(30 * kDeg2Rad, 0)),
+               behind = gainsAt(d, fromAzEl(kPi, 0)), above = gainsAt(d, fromAzEl(0, kPi / 2));
+    CHECK(front[0] == doctest::Approx(front[1]).epsilon(1e-9));
+    CHECK(left[0] > 1.25 * left[1]);  // on its axis 1 + cos 0 against 1 + cos 60: four to three
+    CHECK(left[1] > 0.0);
+    CHECK(behind[0] == doctest::Approx(behind[1]).epsilon(1e-9));
+    CHECK(behind[0] > 0.0);  // in phase, and there
+    CHECK(20 * std::log10(behind[0] / front[0]) > -30.0);
+    CHECK(above[0] == doctest::Approx(above[1]).epsilon(1e-9));
+    //  a plane wave from anywhere gives the omni's share at least: no direction is silent
+    std::vector<Vec3> grid;
+    fibonacciSphere(500, grid);
+    for (const Vec3& t : grid) {
+        const auto g = gainsAt(d, t);
+        CHECK(g[0] + g[1] > 0.05);
+    }
+    //  one loudspeaker is an omni: every direction the same
+    Layout one;
+    one.speakers = {at(0, 0, 1)};
+    const SpeakerDesign mono = design(one, 3, Weighting::MaxRe);
+    REQUIRE(mono.outputs == 1);
+    CHECK(gainsAt(mono, fromAzEl(0, 0))[0] == doctest::Approx(gainsAt(mono, fromAzEl(2.0, -0.7))[0]).epsilon(1e-9));
+    CHECK(gainsAt(mono, fromAzEl(0, 0))[0] == doctest::Approx(1.0).epsilon(1e-9));
 }

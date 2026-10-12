@@ -152,6 +152,14 @@ int main() {
               "headphones on 1-2 stop the layout and say so: " + proc.notice());
     }
 
+    //  The stereo pair: a layout of two plays on channels 1-2 as virtual cardioids, so nothing in the field vanishes.
+    {
+        const PluginState s = withLayout("0+2+0", true, false);
+        const Channels y = render(busIn(16, 4), 128, 0.25, {}, &s);
+        check(!y.empty() && channelEnergy(y, 0) > 1e-4 && channelEnergy(y, 1) > 1e-4 && channelEnergy(y, 2) == 0.0,
+              "a stereo pair plays on channels 1 and 2 and nowhere else");
+    }
+
     //  Determinism: the same render twice, and however the host cuts its blocks.
     {
         const PluginState s = withLayout("4+7+0", true, true, 13);

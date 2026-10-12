@@ -41,8 +41,10 @@ struct SpeakerDesign {
     std::vector<std::array<int, 3>> triangles;  ///< the hull's faces as point indices (3D only)
 };
 
-/// Designs the decoder; `order` 1..7. False, with `error` set, when the layout does not surround the listener
-/// (the origin outside the hull), repeats a channel, or holds no real loudspeaker.
+/// Designs the decoder; `order` 1..7. One or two real loudspeakers are virtual microphones -- an omni, or a pair of
+/// cardioids pointed at them -- the downmix in which nothing vanishes. False, with `error` set, when a layout of
+/// three or more does not surround the listener (the origin outside the hull), repeats a channel, or holds no real
+/// loudspeaker.
 bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerDesign& out,
                   std::string* error = nullptr);
 

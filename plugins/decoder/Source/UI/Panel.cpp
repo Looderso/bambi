@@ -373,7 +373,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
                 });
                 ituOpen_ = false;
             },
-            {}, 0, 5);  // the stereo pair is first in the list and not a layout this decoder plays yet
+            {}, -1, 5);
         ituCells_ = picked.cells;
         y = picked.bottom + static_cast<float>(space::grid) / 2.0f;
     }

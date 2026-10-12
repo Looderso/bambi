@@ -181,7 +181,28 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
     std::vector<double> y(sz(C));
     std::vector<Vec3> grid;
 
-    if (ring) {
+    if (realCount <= 2) {
+        /*  One or two loudspeakers give the panning nothing to span, and are not meant to: they are the downmix a
+            listener makes of the mix. Each real loudspeaker is a virtual cardioid microphone pointed at it, the
+            field's zeroth and first order only -- one loudspeaker an omni -- so nothing in the field vanishes, a
+            source behind folds in quietly and in phase. The level is set as for every decoder: a plane wave gives,
+            averaged over all directions, the energy of one loudspeaker. */
+        const int total = static_cast<int>(out.points.size());
+        std::vector<double> d(sz(total) * sz(C), 0.0);
+        std::vector<double> first(4);
+        for (int s = 0; s < total; ++s) {
+            if (out.imaginary[sz(s)]) continue;
+            d[sz(s) * sz(C)] = 1.0;  // the omni
+            if (realCount == 2 && order >= 1) {
+                shSN3D(out.points[sz(s)], 1, first);  // plus the figure-of-eights toward it: 1 + cos(angle)
+                for (int c = 1; c < 4; ++c) d[sz(s) * sz(C) + sz(c)] = first[sz(c)];
+            }
+        }
+        std::vector<Vec3> level;
+        fibonacciSphere(kLevelGrid, level);
+        normaliseEnergy(d, total, out.imaginary, order, level);
+        out.matrix.swap(d);
+    } else if (ring) {
         // Virtual loudspeakers on the ring, panned between neighbours in azimuth.
         const int n = static_cast<int>(out.points.size());
         std::vector<int> byAzimuth(sz(n));

@@ -92,7 +92,11 @@ holds no direction.
   of vanishing. **A ring with nothing above or below** is designed from virtual loudspeakers on the ring only.
 - **The subwoofer channel** is skipped by the decoder; bass management is a question of its own.
 - **A stereo pair** is the smallest layout — a virtual-microphone downmix, which doubles as the check that the mix
-  survives stereo.
+  survives stereo. **Built** ([0191](../DECISIONS.md)): a layout of two real loudspeakers is designed as two
+  virtual cardioids pointed at them, the field's zeroth and first order only, so nothing in the field vanishes and
+  a source behind folds in quietly and in phase (−23 dB at ±30°); one loudspeaker is an omni. The level is set as
+  for every decoder. Nothing to choose on the page: the microphones point where the loudspeakers are, from the
+  ITU pair, a file, typed in, or placed by looking later; the pattern's sharpness is a line to change if ears ask.
 - **Crosstalk cancellation** (3D from two speakers) is **not a feature**: a sweet spot of a head's width and a
   treated room. It stays a research question until a prototype says otherwise.
 
@@ -119,7 +123,7 @@ a layout request from the message thread to one worker and the design to the aud
 design playing when a layout is refused. Measured per 128-sample block at 48 kHz, one core: 0.8 % at order 3 on the
 array, 4.8 % at order 7 on 64 loudspeakers. Checked against the design applied directly however the audio is cut,
 the fade against each design played alone, a delay change for steps, and the decoder bit for bit against a direct
-publish. Still to come: typed layouts, the stereo pair and the colour correction.
+publish. Still to come: typed layouts and the colour correction.
 
 ### 3.1 Hear the array on headphones
 
