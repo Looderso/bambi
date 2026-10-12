@@ -231,17 +231,23 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
     const Vec3 gaze = state_.headFrame
                           ? Vec3{1, 0, 0}
                           : bambi::apply(head_, Vec3{1, 0, 0});  // bambi::, not std::apply through the array
-    const Vec3 up = state_.headFrame ? Vec3{0, 0, 1} : bambi::apply(head_, Vec3{0, 0, 1});
+    const Vec3 left = state_.headFrame ? Vec3{0, 1, 0} : bambi::apply(head_, Vec3{0, 1, 0});
     circleAround(gaze, kGazeRingDeg * kDeg2Rad, 48, arc_);
     segments_.clear();
     projectPolyline(projection_, state_.sphere.camera, vp, arc_, true, segments_);
     strokeSegments(g, segments_, skipped_, colour::text.withAlpha(alpha), stroke::regionEdge, false);
     const auto tip = toScreen(projection_, state_.sphere.camera, vp, gaze);
     if (projection_ == Projection::Globe) {
-        //  the head itself at the centre, its nose toward the gaze, a mark where its top is
-        const auto nose = toScreen(projection_, state_.sphere.camera, vp, gaze * 0.22);
-        const auto top = toScreen(projection_, state_.sphere.camera, vp, up * 0.10);
+        //  the head itself at the centre: a circle, its nose out of it toward the gaze, an ear each side. A
+        //  direction drawn at the head's radius is that vector scaled to the radius before projection, so the
+        //  nose and the ears foreshorten as the head turns toward or away from the viewer.
         const float r = shape::sourceDot + 4.0f;
+        const double unit = static_cast<double>(r) / vp.rx;
+        const auto at = [&](Vec3 direction, double times) {
+            return toScreen(projection_, state_.sphere.camera, vp, direction * (times * unit));
+        };
+        const auto noseFrom = at(gaze, 1.0), noseTo = at(gaze, 2.6);
+        const auto leftEar = at(left, 1.0), rightEar = at(left * -1.0, 1.0);
         g.setColour(colour::text.withAlpha(alpha));
         juce::Path line;
         line.startNewSubPath(static_cast<float>(vp.cx), static_cast<float>(vp.cy));
@@ -253,9 +259,11 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
         g.fillEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r);
         g.setColour(colour::text.withAlpha(alpha));
         g.drawEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r, stroke::toggle);
-        g.drawLine(static_cast<float>(vp.cx), static_cast<float>(vp.cy), static_cast<float>(nose.x),
-                   static_cast<float>(nose.y), stroke::toggle);
-        g.fillRect(static_cast<float>(top.x) - 1.5f, static_cast<float>(top.y) - 1.5f, 3.0f, 3.0f);
+        g.drawLine(static_cast<float>(noseFrom.x), static_cast<float>(noseFrom.y), static_cast<float>(noseTo.x),
+                   static_cast<float>(noseTo.y), stroke::toggle);
+        const float ear = 2.0f;
+        for (const auto& e : {leftEar, rightEar})
+            g.fillEllipse(static_cast<float>(e.x) - ear, static_cast<float>(e.y) - ear, 2.0f * ear, 2.0f * ear);
     } else {
         g.setColour(colour::text.withAlpha(alpha * (tip.depth < 0.0 ? sc::backAlpha : 1.0f)));
         const float c = shape::sourceDot;

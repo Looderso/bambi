@@ -564,8 +564,8 @@ library when the second plugin needs it, not before.
   of the field every output hears, all of it as arrived since a monitor adds nothing ([0204](../DECISIONS.md)).
   What plays decides what is full ink — the head while headphones play, the loudspeakers while a layout plays or
   headphones listen through it — not what is drawn. A *head frame* toggle turns the view with the gaze; the
-  head's nose points where the tracker says, and with no tracker it points front, since the sliders turn the
-  scene and not the head.
+  head is a circle with its nose out toward the gaze and an ear each side ([0205](../DECISIONS.md)), and with no
+  tracker it faces front, since the sliders turn the scene and not the head.
 - **The outputs are tabs in the header** ([0178](../DECISIONS.md)), where the effects keep their instances:
   headphones · speakers (the lens tab retired, [0193](../DECISIONS.md)). **The name opens an output's page; a square in the tab plays it**, so opening the
   speakers' page while listening on headphones changes nothing heard. **A second decoder in a session gets a small
