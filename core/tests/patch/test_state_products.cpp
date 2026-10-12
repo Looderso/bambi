@@ -242,6 +242,7 @@ TEST_CASE("the decoder's listening situation saves and loads whole, and is left 
     s.decoder.flip = {false, true, false};
     s.decoder.pairSlice = true;
     s.decoder.speakerFirstChannel = 5;
+    s.decoder.layoutTyped = true;
     s.decoder.trackerTurnsScene = true;
     s.decoder.sceneStatic = true;
     s.decoder.oscAddresses = {"/zig/quat", "", ""};

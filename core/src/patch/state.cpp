@@ -279,6 +279,7 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         }
         jd.set("layout", speakers);
         jd.set("speaker_first_channel", Json{d.speakerFirstChannel});
+        jd.set("layout_typed", Json{d.layoutTyped});
         jd.set("tracker", Json{d.trackerSource});
         jd.set("tracker_scene", Json{d.trackerTurnsScene});
         jd.set("scene_static", Json{d.sceneStatic});
@@ -552,6 +553,7 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
             }
         }
         d.speakerFirstChannel = std::max(1, intOf("speaker_first_channel", d.speakerFirstChannel));
+        d.layoutTyped = boolOf("layout_typed", d.layoutTyped);
         d.trackerSource = intOf("tracker", d.trackerSource);
         d.trackerTurnsScene = boolOf("tracker_scene", d.trackerTurnsScene);
         d.sceneStatic = boolOf("scene_static", d.sceneStatic);

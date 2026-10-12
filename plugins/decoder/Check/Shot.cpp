@@ -10,13 +10,14 @@
 #include "bambi/host/TestPlayHead.h"
 #include "bambi/math/sh.hpp"
 
-/*  bambi-decoder-shot [out.png] [--speakers]
+/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers]
  *  The default shows the headphones page with the array's 7.1.4 layout loaded and a source moving; --speakers
- *  opens the speakers page, which draws the hull, and plays the layout. */
+ *  opens the speakers page, which draws the hull, and plays the layout; --loudspeakers opens its table too. */
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/decoder.png";
-    const bool speakers = argc > 2 && juce::String(argv[2]) == "--speakers";
+    const bool table = argc > 2 && juce::String(argv[2]) == "--loudspeakers";
+    const bool speakers = table || (argc > 2 && juce::String(argv[2]) == "--speakers");
     BambiDecoderProcessor proc;
     juce::AudioProcessor::BusesLayout l;
     l.inputBuses.add(juce::AudioChannelSet::ambisonic(3));
@@ -52,6 +53,7 @@ int main(int argc, char** argv) {
     auto* dec = dynamic_cast<BambiDecoderEditor*>(editor.get());
     if (dec == nullptr) return 1;
     if (speakers) dec->showOutput(1);
+    if (table) dec->openTemp(bambi::ui::TempTab::Loudspeakers);
     dec->tick();
     dec->paintNow();
     juce::Image image(juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);

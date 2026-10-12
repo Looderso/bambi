@@ -261,6 +261,35 @@ int main() {
         check(proc.testing() == 0, "and it is over after half a second");
     }
 
+    //  A typed layout: three loudspeakers ahead do not surround the listener and are refused; a fourth behind, added
+    //  as the table adds one, makes a layout that plays on its channels. Catches: the design not rebuilt on an
+    //  edit of the layout, the hull check gone, a new row's channel not the next free one.
+    {
+        PluginState s{decodeParams()};
+        s.decoder.layoutTyped = true;
+        s.decoder.layoutName = "typed";
+        s.decoder.speakersPlay = true;
+        s.decoder.headphonesPlay = false;
+        for (double az : {-30.0, 0.0, 30.0}) {
+            Loudspeaker l;
+            l.azimuthDeg = az;
+            l.channel = static_cast<int>(s.decoder.layout.size()) + 1;
+            s.decoder.layout.push_back(l);
+        }
+        BambiDecoderProcessor proc;
+        proc.setBusesLayout(busIn(16, 8));
+        proc.prepareToPlay(kCheckRate, 128);
+        loadState(proc, s);
+        check(!proc.designError().isEmpty(), "three loudspeakers ahead are refused: " + proc.designError());
+        Loudspeaker behind;
+        behind.azimuthDeg = 180.0;
+        behind.channel = 4;
+        s.decoder.layout.push_back(behind);
+        const Channels y = render(busIn(16, 8), 128, 0.25, {}, &s);
+        check(!y.empty() && channelEnergy(y, 3) > 1e-4 && channelEnergy(y, 0) > 1e-4 && channelEnergy(y, 4) == 0.0,
+              "with a fourth behind, the typed layout plays on channels 1-4");
+    }
+
     //  Determinism: the same render twice, and however the host cuts its blocks.
     {
         const PluginState s = withLayout("4+7+0", true, true, 13);

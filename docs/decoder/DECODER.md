@@ -117,7 +117,7 @@ its pole. Four or more loudspeakers on one plane — 7.1.4's height square — a
 gain they share, instead of along whichever diagonal the hull picked ([0179](../DECISIONS.md)). A layout whose hull
 does not hold the listener is refused with the reason. Layouts come from the IEM reader and from the built-in
 ITU-R BS.2051 table (`layouts.hpp`: the ten systems by name, channels in the recommendation's order, the LFE a
-gap) and from the AmbDec reader; typed-in layouts are still to come. Checked against the IEM plug-in's own matrix for the array
+gap) and from the AmbDec reader; typed in the table, or a loaded one edited there ([0201](../DECISIONS.md)). Checked against the IEM plug-in's own matrix for the array
 (0.02 %), against the prototype's order 1–3 decoders tap for tap, against §3.2's table, and for symmetry on 7.1.4.
 Designing a 64-loudspeaker layout takes 2 ms wall at order 1 and 6 ms at order 7 in Release; it runs on a worker.
 
@@ -128,7 +128,7 @@ a layout request from the message thread to one worker and the design to the aud
 design playing when a layout is refused. Measured per 128-sample block at 48 kHz, one core: 0.8 % at order 3 on the
 array, 4.8 % at order 7 on 64 loudspeakers. Checked against the design applied directly however the audio is cut,
 the fade against each design played alone, a delay change for steps, and the decoder bit for bit against a direct
-publish. Still to come: typed layouts and the colour correction.
+publish. Still to come: the colour correction.
 
 ### 3.1 Hear the array on headphones
 
@@ -591,8 +591,9 @@ library when the second plugin needs it, not before.
   the outputs are the header's tabs with a square each (its one new option); the panel holds the open output's page
   and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
   bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read
-  off the column and the channel map on the page says whose channel it is. Grey where it is *later*: typed
-  layouts, headphone correction, placing by looking; a test burst per loudspeaker is in the table (§3.2b). `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
+  off the column and the channel map on the page says whose channel it is. Grey where it is *later*: headphone
+  correction, placing by looking; a test burst per loudspeaker is in the table (§3.2b), and the table is where a
+  layout is typed or edited. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the
   encoders' sources ([0176](../DECISIONS.md), [VISUALISATION §5](../suite/VISUALISATION.md)). Its link record

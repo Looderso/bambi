@@ -37,8 +37,10 @@ public:
     ~BambiDecoderEditor() override;
 
     //  ---- for tools ------------------------------------------------------------------------
-    /// Open an output's page: 0 headphones, 1 speakers, 2 lens.
+    /// Open an output's page: 0 headphones, 1 speakers.
     void showOutput(int index);
+    /// Open one of the panel's temporary tabs, as its button would.
+    void openTemp(bambi::ui::TempTab tab) { controls.openTemp(tab); }
     /// Click the square in an output's tab, as the mouse would.
     bool clickOutputSquare(int index);
     int shownOutput() const { return static_cast<int>(controls.page); }

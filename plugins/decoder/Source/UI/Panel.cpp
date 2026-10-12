@@ -352,6 +352,7 @@ void DecoderPanel::chooseLayoutFile() {
                               model().applyEdit("load layout", [layout, name](PluginState& s) {
                                   s.decoder.layout = layout.speakers;
                                   s.decoder.layoutName = name;
+                                  s.decoder.layoutTyped = false;
                                   s.decoder.matrixFile.clear();
                                   s.decoder.matrixOutputs = 0;
                               });
@@ -370,20 +371,21 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         y += lineH;
     };
 
-    //  what the loudspeakers are: one of the ITU's, a file, typed in later
+    //  what the loudspeakers are: one of the ITU's, a file, or typed -- typed in, or a loaded one edited
     const bool matrix = !d.matrixFile.empty();
-    const bool ituLayout = !matrix && !d.layout.empty() && bs2051Layout(d.layoutName) != nullptr;
-    const bool fileLayout = matrix || (!d.layout.empty() && !ituLayout);
-    const int kind = shownKind_ >= 0 ? shownKind_ : fileLayout ? 1 : 0;
+    const bool typedLayout = !matrix && d.layoutTyped;
+    const bool ituLayout = !matrix && !typedLayout && !d.layout.empty() && bs2051Layout(d.layoutName) != nullptr;
+    const bool fileLayout = matrix || (!d.layout.empty() && !ituLayout && !typedLayout);
+    const int kind = shownKind_ >= 0 ? shownKind_ : typedLayout ? 2 : fileLayout ? 1 : 0;
     const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), ctl::segmentHeight};
-    paintSegments(
-        g, row, {"itu", "file", "typed"}, kind, mine,
-        [this](int which) {
-            shownKind_ = which;
-            repaint();
-        },
-        2);
+    paintSegments(g, row, {"itu", "file", "typed"}, kind, mine, [this](int which) {
+        shownKind_ = which;
+        repaint();
+    });
     y = row.getBottom() + ctl::segmentGap;
+    int real = 0;
+    for (const Loudspeaker& s : d.layout)
+        if (!s.imaginary) ++real;
     if (kind == 0) {
         //  the ten systems, the loaded one black
         std::vector<juce::String> names;
@@ -402,6 +404,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
                     model().applyEdit("layout", [speakers, name](PluginState& s) {
                         s.decoder.layout = speakers;
                         s.decoder.layoutName = name;
+                        s.decoder.layoutTyped = false;
                         s.decoder.matrixFile.clear();
                         s.decoder.matrixOutputs = 0;
                     });
@@ -410,7 +413,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
                 {}, -1, 5)
                 .bottom +
             ctl::segmentGap;
-    } else {
+    } else if (kind == 1) {
         //  the file: what is loaded, and what can be
         if (matrix) {
             const juce::String note = state_.processor.matrixNote();
@@ -426,9 +429,6 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
             y = norm.getBottom() + ctl::segmentGap;
             line("what the filters expect on their input; converted as n3d, unconfirmed by the maker", colour::label);
         } else if (fileLayout) {
-            int real = 0;
-            for (const Loudspeaker& s : d.layout)
-                if (!s.imaginary) ++real;
             line(juce::String(d.layoutName) + " " + kDot + " " + juce::String(real) + " loudspeakers", colour::text);
         } else {
             line("no file loaded", colour::label);
@@ -437,6 +437,30 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         paintButton(g, load, juce::String::fromUTF8("load\xe2\x80\xa6"), mine, [this] { chooseLayoutFile(); });
         text(g, "iem allradecoder json " + kDot + " ambdec " + kDot + " sofa fir-e filter matrix", labelFont(),
              colour::label, {load.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
+             juce::Justification::centredLeft);
+        y += buttonH + ctl::segmentGap;
+    } else {
+        //  typed: the table is the source. Any loaded layout becomes typed the moment it is edited there; a new one
+        //  starts empty.
+        if (typedLayout)
+            line(juce::String(d.layoutName) + " " + kDot + " " + juce::String(real) + " loudspeakers, typed",
+                 colour::text);
+        else
+            line("nothing typed yet: edit the loaded layout in the table, or start empty", colour::label);
+        const juce::Rectangle<float> fresh{content.getX(), y, framedButtonWidth("start empty"), buttonH};
+        paintButton(g, fresh, "start empty", mine, [this] {
+            model().applyEdit("new layout", [](PluginState& s) {
+                s.decoder.layout.clear();
+                s.decoder.layoutName = "typed";
+                s.decoder.layoutTyped = true;
+                s.decoder.matrixFile.clear();
+                s.decoder.matrixOutputs = 0;
+            });
+            shownKind_ = -1;
+            state_.openTemp(TempTab::Loudspeakers);
+        });
+        text(g, "then add loudspeakers in the table", labelFont(), colour::label,
+             {fresh.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
              juce::Justification::centredLeft);
         y += buttonH + ctl::segmentGap;
     }
@@ -514,8 +538,8 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
     const int testing = state_.processor.testing();
     const float testW = framedButtonWidth("test");
     //  a burst on that channel alone, so the loudspeaker and its channel are checked by ear; black while it plays
-    const auto testButton = [&](int busChannel, float top) {
-        const juce::Rectangle<float> button{content.getRight() - testW, top + (rowH - ctl::buttonHeight) / 2.0f, testW,
+    const auto testButton = [&](int busChannel, float top, float right) {
+        const juce::Rectangle<float> button{right - testW, top + (rowH - ctl::buttonHeight) / 2.0f, testW,
                                             ctl::buttonHeight};
         if (busChannel == testing) {
             g.setColour(colour::chosen);
@@ -538,19 +562,26 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
             text(g, "output " + juce::String(o + 1) + " " + kDot + " channel " + juce::String(first + o),
                  font(type::matrix), colour::text, {content.getX(), y, content.getWidth() - testW, rowH},
                  juce::Justification::centredLeft);
-            testButton(first + o, y);
+            testButton(first + o, y, content.getRight());
             y += rowH;
             ruleH(g, content.getX(), content.getRight(), y, colour::rowDivider);
         }
     } else {
-        //  the loudspeakers, one row each, with what distance compensation does to them, and a test each
-        const float colW[6] = {26.0f, 42.0f, 42.0f, 48.0f, 50.0f, 54.0f};
+        //  The loudspeakers, one row each. Every number is dragged like a tile's: azimuth, elevation and distance
+        //  are the loudspeaker's, the channel its feed; the box at the left makes it imaginary, the cross at the
+        //  right removes it. Any edit makes the layout a typed one. Gain and delay are what distance
+        //  compensation gives it, read only.
+        const float boxW = sc::toggleBox + static_cast<float>(space::grid) / 2.0f;
+        const float colW[6] = {24.0f, 40.0f, 40.0f, 40.0f, 40.0f, 44.0f};
         const char* heads[6] = {"ch", "az", "el", "dist m", "gain db", "delay ms"};
-        float cx = content.getX();
-        for (int c = 0; c < 6; ++c) {
-            text(g, heads[c], labelFont(), colour::label, {cx, y, colW[c], rowH},
-                 c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight);
-            cx += colW[c];
+        const float crossW = ctl::closeGlyph + static_cast<float>(space::grid) / 2.0f;
+        const float tableRight = content.getRight() - crossW;
+        float cx = content.getX() + boxW;
+        text(g, "imag", labelFont(), colour::label, {content.getX(), y, boxW + colW[0], rowH},
+             juce::Justification::centredLeft);
+        for (int c = 1; c < 6; ++c) {
+            cx += colW[c - 1];
+            text(g, heads[c], labelFont(), colour::label, {cx, y, colW[c], rowH}, juce::Justification::centredRight);
         }
         y += rowH;
         ruleH(g, content.getX(), content.getRight(), y, colour::text);
@@ -558,35 +589,129 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
         double farthest = 0.0;
         for (const Loudspeaker& s : d.layout)
             if (!s.imaginary) farthest = std::max(farthest, s.radiusM);
-        for (const Loudspeaker& s : d.layout) {
+        const int shift = std::max(1, d.speakerFirstChannel) - 1;
+        //  one drag per cell, as an undo step named for what it moves
+        const auto cellDrag = [&](juce::Rectangle<float> area, const char* what, std::size_t i, double from,
+                                  double span, double step, double low, double high, bool wraps,
+                                  std::function<void(Loudspeaker&, double)> put, double resetTo) {
+            if (!mine) return;
+            addStateDrag(
+                area, what, "decoder.layout." + std::to_string(i) + "." + what, from, span, step,
+                [i, put](PluginState& s, double v) {
+                    if (i >= s.decoder.layout.size()) return;
+                    put(s.decoder.layout[i], v);
+                    s.decoder.layoutTyped = true;
+                },
+                [i, put, resetTo](PluginState& s) {
+                    if (i >= s.decoder.layout.size()) return;
+                    put(s.decoder.layout[i], resetTo);
+                    s.decoder.layoutTyped = true;
+                },
+                {}, low, high, wraps);
+        };
+        for (std::size_t i = 0; i < d.layout.size(); ++i) {
+            const Loudspeaker& s = d.layout[i];
             const juce::Colour ink = s.imaginary ? colour::label : colour::text;
             const double gainDb = !d.distanceCompensation || s.imaginary || farthest <= 0.0
                                       ? 0.0
                                       : 20.0 * std::log10(s.radiusM / farthest);
             const double delayMs =
                 !d.distanceCompensation || s.imaginary ? 0.0 : (farthest - s.radiusM) / 343.0 * 1000.0;
+            //  imaginary: in the hull, never fed
+            const juce::Rectangle<float> boxRow{content.getX(), y, boxW, rowH};
+            const auto imag = paintSceneToggle(g, boxRow, content.getX() + sc::toggleBox, "", s.imaginary, mine);
+            if (mine)
+                addClickArea(imag.hit, [this, i] {
+                    model().applyEdit("imaginary", [i](PluginState& st) {
+                        if (i >= st.decoder.layout.size()) return;
+                        st.decoder.layout[i].imaginary = !st.decoder.layout[i].imaginary;
+                        st.decoder.layoutTyped = true;
+                    });
+                });
             const juce::String cells[6] = {
-                s.imaginary ? juce::String("imag") : juce::String(s.channel + std::max(1, d.speakerFirstChannel) - 1),
+                s.imaginary ? juce::String::fromUTF8("\xe2\x80\x93") : juce::String(s.channel + shift),
                 juce::String(s.azimuthDeg, 1),
                 juce::String(s.elevationDeg, 1),
                 juce::String(s.radiusM, 2),
                 s.imaginary ? juce::String::fromUTF8("\xe2\x80\x93") : juce::String(gainDb, 1),
                 s.imaginary ? juce::String::fromUTF8("\xe2\x80\x93") : juce::String(delayMs, 2)};
-            cx = content.getX();
+            cx = content.getX() + boxW;
             for (int c = 0; c < 6; ++c) {
-                text(g, cells[c], font(type::matrix), ink, {cx, y, colW[c], rowH},
+                const juce::Rectangle<float> cell{cx, y, colW[c], rowH};
+                text(g, cells[c], font(type::matrix), ink, cell,
                      c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight);
                 cx += colW[c];
+                switch (c) {
+                    case 0:
+                        if (!s.imaginary)
+                            cellDrag(
+                                cell, "channel", i, s.channel, 32.0, 1.0, 1.0, 128.0, false,
+                                [](Loudspeaker& l, double v) { l.channel = static_cast<int>(std::lround(v)); },
+                                static_cast<double>(i + 1));
+                        break;
+                    case 1:
+                        cellDrag(
+                            cell, "azimuth", i, s.azimuthDeg, 360.0, 1.0, -180.0, 180.0, true,
+                            [](Loudspeaker& l, double v) { l.azimuthDeg = v; }, 0.0);
+                        break;
+                    case 2:
+                        cellDrag(
+                            cell, "elevation", i, s.elevationDeg, 180.0, 1.0, -90.0, 90.0, false,
+                            [](Loudspeaker& l, double v) { l.elevationDeg = v; }, 0.0);
+                        break;
+                    case 3:
+                        cellDrag(
+                            cell, "distance", i, s.radiusM, 10.0, 0.05, 0.2, 50.0, false,
+                            [](Loudspeaker& l, double v) { l.radiusM = v; }, farthest > 0.0 ? farthest : 2.0);
+                        break;
+                    default: break;
+                }
             }
-            if (!s.imaginary) testButton(s.channel + std::max(1, d.speakerFirstChannel) - 1, y);
+            if (!s.imaginary) testButton(s.channel + shift, y, tableRight);
+            //  the cross removes the row
+            const juce::Rectangle<float> crossBox{tableRight + static_cast<float>(space::grid) / 2.0f,
+                                                  y + (rowH - ctl::closeGlyph) / 2.0f, ctl::closeGlyph,
+                                                  ctl::closeGlyph};
+            const juce::Rectangle<float> crossHit = drawCloseCross(g, crossBox);
+            if (mine)
+                addClickArea(crossHit, [this, i] {
+                    model().applyEdit("remove loudspeaker", [i](PluginState& st) {
+                        if (i >= st.decoder.layout.size()) return;
+                        st.decoder.layout.erase(st.decoder.layout.begin() + static_cast<std::ptrdiff_t>(i));
+                        st.decoder.layoutTyped = true;
+                    });
+                });
             y += rowH;
             ruleH(g, content.getX(), content.getRight(), y, colour::rowDivider);
         }
         if (d.layout.empty()) {
-            text(g, "no layout", labelFont(), colour::label, {content.getX(), y, content.getWidth(), rowH},
+            text(g, "no loudspeakers yet", labelFont(), colour::label, {content.getX(), y, content.getWidth(), rowH},
                  juce::Justification::centredLeft);
             y += rowH;
         }
+        y += ctl::segmentGap;
+        //  one more, ahead at the farthest distance on the next free channel
+        const juce::Rectangle<float> add{content.getX(), y, framedButtonWidth("add a loudspeaker"), ctl::buttonHeight};
+        paintButton(g, add, "add a loudspeaker", mine, [this] {
+            model().applyEdit("add loudspeaker", [](PluginState& st) {
+                Loudspeaker l;
+                int top = 0;
+                double far = 0.0;
+                for (const Loudspeaker& s : st.decoder.layout) {
+                    if (!s.imaginary) top = std::max(top, s.channel);
+                    far = std::max(far, s.radiusM);
+                }
+                l.channel = top + 1;
+                l.radiusM = far > 0.0 ? far : 2.0;
+                st.decoder.layout.push_back(l);
+                st.decoder.layoutTyped = true;
+                if (st.decoder.layoutName.empty()) st.decoder.layoutName = "typed";
+            });
+        });
+        text(g, "drag a number to set it " + kDot + " double-click resets it", labelFont(), colour::label,
+             {add.getRight() + static_cast<float>(space::grid), y, content.getWidth(), ctl::buttonHeight},
+             juce::Justification::centredLeft);
+        y += ctl::buttonHeight;
     }
     y += static_cast<float>(space::grid);
     text(g, "place by looking " + kDot + " colour correction " + kDot + " bass management " + kDot + " later",
