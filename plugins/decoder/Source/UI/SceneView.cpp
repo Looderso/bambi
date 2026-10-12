@@ -19,9 +19,8 @@ namespace sc = theme::scene;
 
 namespace {
 constexpr int kArcSteps = 16;
-constexpr double kGazeRingDeg = 9.0;
-constexpr double kEyeAngleRad =
-    0.45;  ///< each eye this far off the gaze, on the head's rim  ///< the angular radius of the ring round where the head looks
+constexpr double kGazeRingDeg = 9.0;   ///< the angular radius of the ring round where the head looks
+constexpr double kEyeAngleRad = 0.45;  ///< each eye this far off the gaze, on the head's rim
 
 /// `count` points of the small circle of angular radius `radiusRad` about `centre`.
 void circleAround(Vec3 centre, double radiusRad, int count, std::vector<Vec3>& out) {
