@@ -41,6 +41,16 @@ public:
     void showOutput(int index);
     /// Open one of the panel's temporary tabs, as its button would.
     void openTemp(bambi::ui::TempTab tab) { controls.openTemp(tab); }
+    //  the session's decoders, as the header's switch lists them after a frame
+    int sessionDecoders() const { return static_cast<int>(controls.decoders.size()); }
+    void showDecoder(int index) {
+        if (index >= 0 && index < sessionDecoders())
+            controls.shownDecoder = controls.decoders[static_cast<std::size_t>(index)].first;
+        tick();
+    }
+    bool showingAnother() const { return controls.remote; }
+    juce::String shownLayoutName() const { return controls.decoder().layoutName; }
+    juce::Rectangle<float> instanceSwitchArea(int index) { return header().instanceSwitchArea(index); }
     /// Click the square in an output's tab, as the mouse would.
     bool clickOutputSquare(int index);
     int shownOutput() const { return static_cast<int>(controls.page); }

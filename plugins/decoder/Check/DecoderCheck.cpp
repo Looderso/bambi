@@ -4,9 +4,12 @@
 #include <cstdio>
 #include <vector>
 
+#include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "bambi/decode/layouts.hpp"
 #include "bambi/editor/CheckKit.h"
+#include "bambi/host/LinkNode.h"
+#include "bambi/link/link.hpp"
 
 /*  The decoder's host contract, headless: an ambisonic input at the order that fits, an output as wide as the host
  *  gives, every output a set of channels on it, silence where nothing plays; the state round trip; renders that
@@ -467,6 +470,64 @@ int main() {
         check(!proc.loadSofaFile(juce::File(std::string(BAMBI_CORE_DIR) + "/data/decode/head.json"), &error) &&
                   error.isNotEmpty(),
               "a file that is not SOFA is refused with a reason: " + error);
+    }
+
+    //  Two decoders in one session: each sees the other; the window's switch lists both; choosing the other follows
+    //  it, with the output squares still the other's own to play; and back. The other's decoder state does not
+    //  travel the bus yet -- the link's patch record carries the effects' patch -- so what its page shows is not
+    //  checked here. Catches: the switch not fed from the scene, the follow never taken, the squares playing a
+    //  remote output, the shown instance not returning to this one.
+    {
+        std::printf("\ntwo decoders\n");
+        //  A private session directory: the machine's real one may belong to a running DAW session.
+        bambi::host::setLinkDirectoryNameForTests("bambi-decoder-check-" +
+                                                  bambi::Uuid::generate().toString().substr(0, 8));
+        BambiDecoderProcessor one, two;
+        for (auto* p : {&one, &two}) {
+            p->setBusesLayout(busIn(16, 18));
+            p->prepareToPlay(kCheckRate, 128);
+        }
+        //  Ticked by hand: a headless check has no message loop to run the timer.
+        const auto tick = [&](int ticks) {
+            for (int i = 0; i < ticks; ++i)
+                for (auto* p : {&one, &two}) p->linkTick();
+        };
+        tick(bambi::host::LinkNode::kTickHz / 10 + 4);
+        check(one.linkStatus().open && two.linkStatus().open, "two decoders join the bus");
+        check(one.identity().session == two.identity().session && !(one.identity().instance == two.identity().instance),
+              "in one session, with ids of their own");
+        two.renameInstance("other");
+        loadState(two, withLayout("4+5+0", true, false));
+        loadState(one, withLayout("4+7+0", true, false));
+        tick(4);
+        std::unique_ptr<juce::AudioProcessorEditor> editor(one.createEditor());
+        auto* window = dynamic_cast<BambiDecoderEditor*>(editor.get());
+        check(window != nullptr, "the first opens its window");
+        if (window != nullptr) {
+            window->tick();
+            window->paintNow();
+            check(window->sessionDecoders() == 2,
+                  "whose switch lists two decoders: " + juce::String(window->sessionDecoders()));
+            check(!window->instanceSwitchArea(1).isEmpty(), "drawn in the header, since there are two");
+            check(!window->showingAnother() && window->shownLayoutName() == "4+7+0", "showing its own at first");
+            window->showDecoder(1);
+            for (int i = 0; i < 6; ++i) {
+                tick(2);
+                window->tick();
+            }
+            window->paintNow();
+            check(window->showingAnother(), "choosing the other follows it");
+            const bool played = two.decoderState().speakersPlay;
+            window->clickOutputSquare(1);
+            window->tick();
+            check(two.decoderState().speakersPlay == played, "its square is not this window's to play");
+            window->showDecoder(0);
+            window->tick();
+            window->paintNow();
+            check(!window->showingAnother() && window->shownLayoutName() == "4+7+0", "and back to its own");
+        }
+        editor.reset();
+        bambi::LinkBus::unlinkSession(one.identity().session);
     }
 
     return checkVerdict();
