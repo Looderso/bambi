@@ -42,12 +42,13 @@ std::vector<int> DecoderPanel::channelsOf(OutputPage output) const {
     const DecoderState& d = state_.decoder();
     if (output == OutputPage::Headphones) return {d.headphoneChannel, d.headphoneChannel + 1};
     std::vector<int> out;
+    const int shift = std::max(1, d.speakerFirstChannel) - 1;  // the layout moved as a block along the bus
     if (!d.matrixFile.empty()) {
-        for (int c = 1; c <= d.matrixOutputs; ++c) out.push_back(c);
+        for (int c = 1; c <= d.matrixOutputs; ++c) out.push_back(c + shift);
         return out;
     }
     for (const Loudspeaker& s : d.layout)
-        if (!s.imaginary) out.push_back(s.channel);
+        if (!s.imaginary) out.push_back(s.channel + shift);
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -127,7 +128,19 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
                         })
                 .bottom;
     } else {
-        //  the layout's channels are no choice: the bus's channels, marked with what each output writes
+        //  where the layout starts on the bus: its channels move as a block, so a pair of headphone channels or an
+        //  interface's own outputs can sit before them
+        int span = 0;
+        for (int c : mine) span = std::max(span, c - (std::max(1, d.speakerFirstChannel) - 1));
+        const int lastStart = std::max(1, shownBus - span + 1);
+        paintStateTile(
+            g, tileCell(content, y, 0), "from channel", juce::String(d.speakerFirstChannel), d.speakerFirstChannel, 1.0,
+            static_cast<double>(std::max(lastStart, d.speakerFirstChannel)), 1.0, "decoder.speaker_first_channel",
+            !model().showingAnother() && !mine.empty(),
+            [](DecoderState& s, double v) { s.speakerFirstChannel = std::max(1, static_cast<int>(std::lround(v))); },
+            [](DecoderState& s) { s.speakerFirstChannel = 1; });
+        y = tilesBottom(y, 1) + ctl::sectionGap;
+        //  the bus's channels, marked with what each output writes
         const float cell = static_cast<float>(space::grid * 2), gap = 1.0f;
         const int perRow = std::max(1, static_cast<int>((content.getWidth() + gap) / (cell + gap)));
         for (int ch = 1; ch <= shownBus; ++ch) {
@@ -153,21 +166,20 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
     //  same channels and would stop
     juce::String status;
     const int needs = mine.empty() ? 0 : *std::max_element(mine.begin(), mine.end());
-    if (needs > bus) {
+    const std::vector<int>& other = output == OutputPage::Headphones ? sp : hp;
+    const bool otherOn = output == OutputPage::Headphones ? d.speakersPlay : d.headphonesPlay;
+    bool collide = false;
+    for (int c : mine) collide = collide || std::find(other.begin(), other.end(), c) != other.end();
+    const juce::String otherName = output == OutputPage::Headphones ? "speakers" : "headphones";
+    if (needs > bus)
         status = juce::String(needs) + " channels needed; the host gives " + juce::String(bus);
-    } else if (!playing && !mine.empty()) {
-        const std::vector<int>& other = output == OutputPage::Headphones ? sp : hp;
-        const bool otherOn = output == OutputPage::Headphones ? d.speakersPlay : d.headphonesPlay;
-        bool collide = false;
-        for (int c : mine) collide = collide || std::find(other.begin(), other.end(), c) != other.end();
-        if (otherOn && collide)
-            status = juce::String("playing would stop ") +
-                     (output == OutputPage::Headphones ? "speakers" : "headphones") + ": the same channels";
-    }
+    else if (otherOn && collide && !mine.empty())
+        status = playing ? "on the same channels as the " + otherName + ": both are heard there"
+                         : "playing would stop " + otherName + ": the same channels";
     if (!status.isEmpty()) {
         y += ctl::segmentGap;
         const float lineH = type::label * ctl::noticeLineHeight;
-        text(g, status, labelFont(), needs > bus ? colour::text : colour::label,
+        text(g, status, labelFont(), needs > bus || (playing && collide) ? colour::text : colour::label,
              {content.getX(), y, content.getWidth(), lineH}, juce::Justification::centredLeft);
         y += lineH;
     }
@@ -486,9 +498,10 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
     float y = content.getY();
     const float rowH = static_cast<float>(space::grid * 2) + 4.0f;
     if (!d.matrixFile.empty()) {
+        const int first = std::max(1, d.speakerFirstChannel);
         text(g,
-             juce::String(d.matrixOutputs) + " outputs on channels 1 to " + juce::String(d.matrixOutputs) +
-                 "; the file carries no positions",
+             juce::String(d.matrixOutputs) + " outputs on channels " + juce::String(first) + " to " +
+                 juce::String(first + d.matrixOutputs - 1) + "; the file carries no positions",
              labelFont(), colour::label, {content.getX(), y, content.getWidth(), rowH},
              juce::Justification::centredLeft);
         y += rowH;
@@ -516,7 +529,7 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
             const double delayMs =
                 !d.distanceCompensation || s.imaginary ? 0.0 : (farthest - s.radiusM) / 343.0 * 1000.0;
             const juce::String cells[6] = {
-                s.imaginary ? juce::String("imag") : juce::String(s.channel),
+                s.imaginary ? juce::String("imag") : juce::String(s.channel + std::max(1, d.speakerFirstChannel) - 1),
                 juce::String(s.azimuthDeg, 1),
                 juce::String(s.elevationDeg, 1),
                 juce::String(s.radiusM, 2),

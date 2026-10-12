@@ -231,6 +231,7 @@ namespace scene
     inline constexpr float toggleBox      = 9.0f;    ///< the square itself
     inline constexpr float toggleGap      = 9.0f;    ///< between the square and its label
     inline constexpr float toggleHitPad   = 4.0f;    ///< the hit area reaches past both, so the label clicks
+    inline constexpr float toggleWell     = 2.0f;    ///< a header tab's play square: the black square's inset in its well
     //  between two toggles in the same strip: wider than `toggleGap` so the pairs read as two
     //  controls and not one row of four things
     inline constexpr float toggleGroupGap = 14.0f;

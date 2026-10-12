@@ -304,18 +304,22 @@ void Header::paint(juce::Graphics& g) {
                 g.setColour(colour::chosen);
                 g.fillRect(block);
             }
-            //  a plugin whose tabs play something draws a square in each: filled while it plays
+            //  a plugin whose tabs play something draws a square in each: a white well, with a black square in it
+            //  while that output plays, so the mark reads the same on the open tab as on the others
             const int mark = tabMark_ ? tabMark_(index) : -1;
             auto label = block.reduced(hdr::tabPadX, 0.0f);
             tab.mark = {};
             if (mark >= 0) {
                 const float side = theme::scene::toggleBox;
                 tab.mark = {label.getX(), cy - side / 2.0f, side, side};
+                g.setColour(colour::textInverse);
+                g.fillRect(tab.mark);
                 g.setColour(on ? colour::textInverse : colour::text);
-                if (mark > 0)
-                    g.fillRect(tab.mark);
-                else
-                    g.drawRect(tab.mark, theme::stroke::toggle);
+                g.drawRect(tab.mark, theme::stroke::toggle);
+                if (mark > 0) {
+                    g.setColour(colour::text);
+                    g.fillRect(tab.mark.reduced(theme::scene::toggleWell));
+                }
                 label = label.withTrimmedLeft(side + theme::scene::toggleGap);
             }
             text(g, tab.label, labelFont(), on ? colour::textInverse : colour::text, label,

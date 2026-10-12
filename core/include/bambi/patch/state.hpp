@@ -122,6 +122,7 @@ struct DecoderState {
     /// the head turning the field, so only what the head points at plays between them (allrad.hpp)
     bool pairSlice{false};
     bool distanceCompensation{true};
+    int speakerFirstChannel{1};       ///< the bus channel the layout's channel 1 plays on: the layout moved as a block
     std::string layoutName;           ///< a built-in's name, or the file's, for the page
     std::vector<Loudspeaker> layout;  ///< the loudspeakers themselves, so a session opens without the file
     /// A decoder as filters instead: a SOFA FIR-E file's path. Too large to travel with the session, it is read

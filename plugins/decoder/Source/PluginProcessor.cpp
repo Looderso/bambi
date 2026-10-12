@@ -27,15 +27,17 @@ bambi::Layout layoutFor(const bambi::DecoderState& d) {
     return l;
 }
 
-/// The channels a layout's real loudspeakers play on, counted from 1; a filter matrix plays on 1 to its outputs.
+/// The bus channels a layout's real loudspeakers play on, the layout moved as a block to start on its first
+/// channel; a filter matrix plays on its outputs from there.
 std::vector<int> layoutChannels(const bambi::DecoderState& d) {
     std::vector<int> out;
+    const int shift = std::max(1, d.speakerFirstChannel) - 1;
     if (!d.matrixFile.empty()) {
-        for (int c = 1; c <= d.matrixOutputs; ++c) out.push_back(c);
+        for (int c = 1; c <= d.matrixOutputs; ++c) out.push_back(c + shift);
         return out;
     }
     for (const bambi::Loudspeaker& s : d.layout)
-        if (!s.imaginary) out.push_back(s.channel);
+        if (!s.imaginary) out.push_back(s.channel + shift);
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -700,7 +702,7 @@ void BambiDecoderProcessor::describe(bambi::LinkStatic& st) const {
         bambi::LinkSpeaker& out = st.speakers[st.speakerCount++];
         out.azimuthDeg = static_cast<float>(s.azimuthDeg);
         out.elevationDeg = static_cast<float>(s.elevationDeg);
-        out.channel = static_cast<std::uint8_t>(std::clamp(s.channel, 0, 255));
+        out.channel = static_cast<std::uint8_t>(std::clamp(s.channel + d.speakerFirstChannel - 1, 0, 255));
         out.imaginary = s.imaginary ? 1 : 0;
     }
 }
@@ -836,7 +838,8 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         }
         hpHeard = true;
     }
-    if (d.speakersPlay && speakerOutputs > 0 && speakerOutputs <= outChannels) {
+    const int firstOut = std::max(1, d.speakerFirstChannel) - 1;  // the layout's channel 1 counted from 0 on the bus
+    if (d.speakersPlay && speakerOutputs > 0 && firstOut + speakerOutputs <= outChannels) {
         if (matrix) {
             matrix_.process(sceneField_.data(), speakersOut_.data(), n);
         } else if (pairFollows_.load(std::memory_order_relaxed)) {
@@ -846,7 +849,7 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
             speakers_.process(sceneField_.data(), C, speakersOut_.data(), speakerOutputs, n);
         }
         for (int o = 0; o < speakerOutputs; ++o) {
-            float* y = out.getWritePointer(o);
+            float* y = out.getWritePointer(firstOut + o);
             for (int i = 0; i < n; ++i)
                 y[i] += speakersOut_[static_cast<std::size_t>(i) * static_cast<std::size_t>(speakerOutputs) +
                                      static_cast<std::size_t>(o)] *

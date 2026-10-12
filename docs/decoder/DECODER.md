@@ -30,7 +30,9 @@ One ambisonic input (order 1–3, AmbiX), three things it can produce:
 **Every output is a set of channels on the bus the host gives** ([0178](../DECISIONS.md)). The bus is as wide
 as the host makes it — a REAPER track's channel count, say 18 — and is never renegotiated: hosts fix a plugin's
 channel count when it is inserted. Headphones play on a pair, 1–2 by default and movable; a layout on its own
-channel numbers, from its file. **The Lens plays on the loudspeakers** — they are all there is to play it on — on the
+channel numbers, from its file, moved as a block to start on any channel ([0198](../DECISIONS.md)) — so an
+interface's headphone outputs or an aggregate device carries both at once, and the two play together whenever
+their channels differ. **The Lens plays on the loudspeakers** — they are all there is to play it on — on the
 layout's own channels, with the tracker turning what they play; so the Lens and the speakers play one at a time.
 Switching an output changes which channels the plugin writes.
 
@@ -559,7 +561,8 @@ library when the second plugin needs it, not before.
   ([0194](../DECISIONS.md)): it opens with **what the output is** — the head as *model · ku100 · sofa file* with
   the two sliders under it; the loudspeakers as *itu · file · typed* with the chosen kind's own things under it,
   the ten ITU systems as one grid, or the file's name, its `load…` and the formats it takes — then **channels**,
-  the bus's channels and what plays on each, the headphones' pair picked there, then **options**: the listening
+  the headphones' pair picked there, or the layout's first channel and the bus's channels with what plays on
+  each, then **options**: the listening
   situation and distance compensation, or the layout heard through on headphones. A two-loudspeaker layout gets
   its *fold · slice* switch (§6) between the layout and the channels. The loudspeaker table, with what distance
   compensation does to each, is a temporary tab opened by `loudspeakers…`, so no page scrolls at the window's

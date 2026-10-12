@@ -195,6 +195,25 @@ int main() {
               "a yaw rate turns the scene over time, and not while static");
     }
 
+    //  The layout moved as a block: from channel 3, a pair plays on 3-4, and headphones on 1-2 play beside it.
+    //  Catches: the shift not reaching the audio thread or the page; the bus edge checked unshifted.
+    {
+        PluginState s = withLayout("0+2+0", true, true);
+        s.decoder.speakerFirstChannel = 3;
+        const Channels y = render(busIn(16, 4), 128, 0.25, {}, &s);
+        check(!y.empty() && channelEnergy(y, 0) > 1e-4 && channelEnergy(y, 1) > 1e-4 && channelEnergy(y, 2) > 1e-4 &&
+                  channelEnergy(y, 3) > 1e-4,
+              "headphones on 1-2 and a pair from channel 3 play together on four channels");
+        s.decoder.headphonesPlay = false;
+        const Channels pairOnly = render(busIn(16, 4), 128, 0.25, {}, &s);
+        check(!pairOnly.empty() && channelEnergy(pairOnly, 0) == 0.0 && channelEnergy(pairOnly, 1) == 0.0 &&
+                  channelEnergy(pairOnly, 2) > 1e-4,
+              "the pair from channel 3 leaves 1-2 silent");
+        s.decoder.speakerFirstChannel = 4;  // 4-5 do not fit a bus of 4
+        const Channels over = render(busIn(16, 4), 128, 0.25, {}, &s);
+        check(!over.empty() && channelEnergy(over, 3) == 0.0, "a layout past the bus edge plays nothing");
+    }
+
     //  Determinism: the same render twice, and however the host cuts its blocks.
     {
         const PluginState s = withLayout("4+7+0", true, true, 13);
