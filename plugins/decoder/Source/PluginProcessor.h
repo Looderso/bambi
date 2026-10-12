@@ -199,6 +199,8 @@ private:
     int engineOrder_{-1};  ///< what prepareToPlay built for; -1 until it has run
     int maxBlock_{0};
     double builtShift_{0.0}, builtSize_{1.0};
+    bambi::Microphones builtMicrophones_;
+    std::atomic<bool> pairFollows_{false};  ///< the layout is a pair that follows the head: the turned field feeds it
     bool headBuilt_{false};
     std::vector<bambi::Loudspeaker> builtLayout_;
     int builtWeighting_{-1}, builtOrder_{-1};

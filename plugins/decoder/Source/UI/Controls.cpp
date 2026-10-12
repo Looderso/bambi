@@ -6,7 +6,7 @@
 namespace bambi::ui {
 
 namespace {
-constexpr std::array<const char*, DecoderControlState::kOutputs> kOutputNames{"headphones", "speakers", "lens"};
+constexpr std::array<const char*, DecoderControlState::kOutputs> kOutputNames{"headphones", "speakers"};
 }  // namespace
 
 DecoderControlState::DecoderControlState(BambiDecoderProcessor& p)
@@ -37,7 +37,6 @@ int DecoderControlState::outputMark(int index) const {
     switch (static_cast<OutputPage>(index)) {
         case OutputPage::Headphones: return decoder().headphonesPlay ? 1 : 0;
         case OutputPage::Speakers: return decoder().speakersPlay ? 1 : 0;
-        case OutputPage::Lens: return -1;  // not built yet: no square to light
     }
     return -1;
 }
@@ -51,7 +50,6 @@ void DecoderControlState::toggleOutput(int index) {
         case OutputPage::Speakers:
             processor.playOutput(BambiDecoderProcessor::Output::Speakers, !decoder().speakersPlay);
             break;
-        case OutputPage::Lens: break;
     }
     refresh();
     notify();

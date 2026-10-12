@@ -263,17 +263,25 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
         if (leaving) builtOrder_ = -1;  // the layout's design decides the outputs again
     }
     //  The layout's decoder, and the same layout heard on headphones.
-    if (d.matrixFile.empty() && (builtOrder_ != engineOrder_ || builtLayout_ != d.layout ||
-                                 builtWeighting_ != d.weighting || builtDistance_ != d.distanceCompensation)) {
+    const bambi::Microphones microphones{d.pairMicrophones == 1, d.pairPattern};
+    int realCount = 0;
+    for (const bambi::Loudspeaker& s : d.layout)
+        if (!s.imaginary) ++realCount;
+    pairFollows_.store(d.matrixFile.empty() && realCount == 2 && d.pairFollowsHead, std::memory_order_relaxed);
+    if (d.matrixFile.empty() &&
+        (builtOrder_ != engineOrder_ || builtLayout_ != d.layout || builtWeighting_ != d.weighting ||
+         builtDistance_ != d.distanceCompensation || builtMicrophones_.atLoudspeakers != microphones.atLoudspeakers ||
+         builtMicrophones_.pattern != microphones.pattern)) {
         builtOrder_ = engineOrder_;
         builtLayout_ = d.layout;
         builtWeighting_ = d.weighting;
         builtDistance_ = d.distanceCompensation;
+        builtMicrophones_ = microphones;
         if (d.layout.empty()) {
             diag_.speakerOutputs.store(0, std::memory_order_relaxed);
         } else {
             speakers_.request(layoutFor(d), engineOrder_,
-                              d.weighting == 1 ? bambi::Weighting::MaxRe : bambi::Weighting::Basic);
+                              d.weighting == 1 ? bambi::Weighting::MaxRe : bambi::Weighting::Basic, microphones);
             if (speakers_.work()) {
                 diag_.speakerOutputs.store(speakers_.design().outputs, std::memory_order_relaxed);
                 virtual_.publishLayout(speakers_.design());
@@ -777,13 +785,20 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     const auto ramp = [&](int i) { return gainRamp_[static_cast<std::size_t>(i)]; };
     const int speakerOutputs = diag_.speakerOutputs.load(std::memory_order_relaxed);
     const bool matrix = matrixPlays_.load(std::memory_order_acquire);
+    //  The field turned by the head, once a block, for whoever needs it: the binaural decode, and a pair of
+    //  loudspeakers that follows the head.
+    bool turned = false;
+    const auto turnOnce = [&] {
+        if (!turned) turn_.process(field_.data(), turned_.data(), n);
+        turned = true;
+    };
 
     bool hpHeard = false, spHeard = false;
     if (d.headphonesPlay && d.headphoneChannel >= 1 && d.headphoneChannel + 1 <= outChannels) {
         if (d.throughLayout && speakerOutputs > 0 && !matrix) {
             virtual_.process(field_.data(), C, stereo_.data(), n);
         } else {
-            turn_.process(field_.data(), turned_.data(), n);
+            turnOnce();
             binaural_.process(turned_.data(), stereo_.data(), n);
         }
         float* left = out.getWritePointer(d.headphoneChannel - 1);
@@ -796,10 +811,14 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         hpHeard = true;
     }
     if (d.speakersPlay && speakerOutputs > 0 && speakerOutputs <= outChannels) {
-        if (matrix)
+        if (matrix) {
             matrix_.process(field_.data(), speakersOut_.data(), n);
-        else
+        } else if (pairFollows_.load(std::memory_order_relaxed)) {
+            turnOnce();
+            speakers_.process(turned_.data(), C, speakersOut_.data(), speakerOutputs, n);
+        } else {
             speakers_.process(field_.data(), C, speakersOut_.data(), speakerOutputs, n);
+        }
         for (int o = 0; o < speakerOutputs; ++o) {
             float* y = out.getWritePointer(o);
             for (int i = 0; i < n; ++i)

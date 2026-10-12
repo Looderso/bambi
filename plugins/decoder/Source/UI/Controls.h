@@ -19,7 +19,7 @@ namespace bambi::ui {
  *  an entry of the instance model with a fixed id, so the shared header lists them unchanged; the square in a tab
  *  that plays an output is the header's one option for this plugin.
  */
-enum class OutputPage { Headphones = 0, Speakers = 1, Lens = 2 };
+enum class OutputPage { Headphones = 0, Speakers = 1 };
 enum class TempTab { Tracking, Personalise };
 
 struct DecoderControlState final : public editor::PatchControls, public InstanceModel {
@@ -27,7 +27,7 @@ struct DecoderControlState final : public editor::PatchControls, public Instance
     BambiDecoderProcessor& processor;
 
     //  ---- the outputs as tabs -------------------------------------------------------------------
-    static constexpr int kOutputs = 3;
+    static constexpr int kOutputs = 2;
     static Uuid outputId(int index);
     int instanceCount() const final { return kOutputs; }
     Uuid instanceAt(int index) const final { return outputId(index); }

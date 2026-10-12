@@ -25,7 +25,7 @@ One ambisonic input (order 1–3, AmbiX), three things it can produce:
 |---|---|---|
 | **Headphones** | listening to the scene as a listener | binaural decode, head-tracked (§4, §5) |
 | **Speakers** | a stereo pair, a 5.1/7.1.4 room, a dome | AllRAD decode of a loaded layout (§3) |
-| **Lens** | inspecting one slice of the scene on a stereo pair | the field turned by the head, then a stereo layout's decode (§6) |
+| **Lens** | *retired into the pair* (§6): a narrow pair at the loudspeakers, following the head | the speakers output, configured |
 
 **Every output is a set of channels on the bus the host gives** ([0178](../DECISIONS.md)). The bus is as wide
 as the host makes it — a REAPER track's channel count, say 18 — and is never renegotiated: hosts fix a plugin's
@@ -398,28 +398,18 @@ worker without allocating, checked against the page's own numbers — and design
 the decoder's settings, the OSC configuration. A session reopened on another machine renders as it did. A
 per-user profile may *seed* a new instance; it never silently changes an existing one.
 
-## 6. Lens — a stereo pair as a probe
+## 6. Lens — retired into the pair
 
-**Headphones experience the scene; the Lens inspects it.** Binaural elevation is ambiguous for many listeners,
-and a dense scene makes it hard to tell a spatial problem in the mix from one in the HRTF. The Lens plays one
-slice of the sphere on the physical stereo pair: a second, physically grounded view of the same field,
-independent of any HRTF.
-
-**It plays on the loudspeakers, never on a pair of its own** ([0178](../DECISIONS.md)): it is a way of playing the
-speakers, so it shares their channels and replaces them while it plays.
-
-**The loudspeakers stay where they are; the head chooses the slice.** The field is turned by the head's
-orientation before a stereo layout's decode, so whatever the head points at lands in front, between the two
-loudspeakers. On headphones the same turn keeps the scene still; here it moves the scene past loudspeakers that
-do not move — look up, and what is above plays on the pair.
-
-**There is no Lens engine.** It is the rotation of §7 and a speaker decode (§3), as any layout is: what lies in a
-loudspeaker's region plays on that loudspeaker. A stereo layout alone would fold everything behind and above onto
-the pair; the rest of the sphere is filled with **imaginary loudspeakers**, whose signals are dropped, so only the
-slice in front reaches it. How wide the slice is, is where that imaginary ring sits.
-
-- **Steered by hand** when no tracker is present: the slice is dragged on the sphere view.
-- It is **diagnostic, not a simulation** of the headphone render, and the UI never presents it as one.
+The Lens was to be a third output: one slice of the sphere, chosen by the head, played on the stereo pair as a
+second, physically grounded view of the field. **It is the pair, configured** ([0193](../DECISIONS.md)): a layout
+of two loudspeakers is a pair of virtual microphones (§3), and three settings on the speakers page make the slice —
+the microphones *at the loudspeakers* rather than to the sides, a *narrow* pattern (the cardioid to a power, up to
+the field's order, without a rear lobe of the other sign), and *follow the head*, which turns the field by the
+head's orientation as the headphones do, so whatever the head points at lands between the loudspeakers and the
+rest is quiet. Wide, to the sides, not following: the fold of §3. The lens tab left the header; the outputs are
+headphones and speakers. What the Lens was for still holds: a dense scene makes it hard to tell a spatial problem
+in the mix from one in the HRTF, and the pair heard on the loudspeakers, or through the layout on headphones, is
+the view that owes nothing to a head model.
 
 ## 7. Head tracking and OSC orientation
 
@@ -559,7 +549,7 @@ library when the second plugin needs it, not before.
   the loudspeakers while a layout plays or headphones listen through it — not what is drawn. A *head frame* toggle
   turns the view with the gaze.
 - **The outputs are tabs in the header** ([0178](../DECISIONS.md)), where the effects keep their instances:
-  headphones · speakers · lens. **The name opens an output's page; a square in the tab plays it**, so opening the
+  headphones · speakers (the lens tab retired, [0193](../DECISIONS.md)). **The name opens an output's page; a square in the tab plays it**, so opening the
   speakers' page while listening on headphones changes nothing heard. A second decoder in a session gets a small
   instance switch, only then.
 - **The right panel shows the open output's page only**, each with its channel map: the bus's channels, what plays
@@ -606,7 +596,7 @@ All in the browser, under `prototypes/decoder/`:
 4. **Personalisation against a real loudspeaker** (§5.0, §5.1) — *built*, `match/`: head size and ear size on the
    KU100, the loudspeaker located by looking at it, real and virtual bursts alternated, one audio context per output
    device. The renderer and the audio path check against the Python chain exactly. *Waiting on ears.*
-5. **The Lens** (§6), on the stereo pair.
+5. **The Lens** (§6) — *retired into the pair's settings*, [0193](../DECISIONS.md).
 6. **Placing loudspeakers by looking** (§3.3): how far head pointing scatters, and how far yaw drifts over a
    calibration.
 7. **AirPods read by a bundled helper** (§7.1) — *built and ported*, `airpods-helper/`, a throwaway VST3 with the

@@ -258,6 +258,9 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         jd.set("ear_shift", Json{static_cast<double>(d.earShift)});
         jd.set("through_layout", Json{d.throughLayout});
         jd.set("weighting", Json{d.weighting});
+        jd.set("pair_microphones", Json{d.pairMicrophones});
+        jd.set("pair_pattern", Json{d.pairPattern});
+        jd.set("pair_follows_head", Json{d.pairFollowsHead});
         jd.set("distance_compensation", Json{d.distanceCompensation});
         jd.set("layout_name", Json{d.layoutName});
         if (!d.matrixFile.empty()) {
@@ -529,6 +532,9 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
         d.earShift = static_cast<float>(numOf("ear_shift", d.earShift));
         d.throughLayout = boolOf("through_layout", d.throughLayout);
         d.weighting = intOf("weighting", d.weighting);
+        d.pairMicrophones = intOf("pair_microphones", d.pairMicrophones);
+        d.pairPattern = intOf("pair_pattern", d.pairPattern);
+        d.pairFollowsHead = boolOf("pair_follows_head", d.pairFollowsHead);
         d.distanceCompensation = boolOf("distance_compensation", d.distanceCompensation);
         if (const Json* v = dec->find("layout_name")) d.layoutName = std::string(v->stringOr(""));
         if (const Json* v = dec->find("matrix_file")) d.matrixFile = std::string(v->stringOr(""));

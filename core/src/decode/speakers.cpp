@@ -151,12 +151,13 @@ bool SpeakerDecoder::prepare(int maxOrder, int maxOutputs, double sampleRate, do
     return renderer_.prepare(maxOrder, maxOutputs, sampleRate, maxDelaySeconds);
 }
 
-void SpeakerDecoder::request(const Layout& layout, int order, Weighting weighting) {
+void SpeakerDecoder::request(const Layout& layout, int order, Weighting weighting, const Microphones& microphones) {
     {
         const std::lock_guard<std::mutex> lock(mutex_);
         layout_ = layout;
         order_ = order;
         weighting_ = weighting;
+        microphones_ = microphones;
     }
     requested_.fetch_add(1, std::memory_order_release);
 }
@@ -169,16 +170,18 @@ bool SpeakerDecoder::work() {
     Layout layout;
     int order;
     Weighting weighting;
+    Microphones microphones;
     {
         const std::lock_guard<std::mutex> lock(mutex_);
         layout = layout_;
         order = order_;
         weighting = weighting_;
+        microphones = microphones_;
     }
     SpeakerDesign design;
     std::string error;
     bool published = false;
-    if (!designAllrad(layout, order, weighting, design, &error)) {
+    if (!designAllrad(layout, order, weighting, design, &error, microphones)) {
     } else if (!renderer_.publish(design)) {
         error = "the design does not fit what the renderer was prepared for";
     } else {

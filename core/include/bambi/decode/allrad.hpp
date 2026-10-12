@@ -41,11 +41,20 @@ struct SpeakerDesign {
     std::vector<std::array<int, 3>> triangles;  ///< the hull's faces as point indices (3D only)
 };
 
-/// Designs the decoder; `order` 1..7. One or two real loudspeakers are virtual microphones -- an omni, or a pair of
-/// cardioids pointed at them -- the downmix in which nothing vanishes. False, with `error` set, when a layout of
-/// three or more does not surround the listener (the origin outside the hull), repeats a channel, or holds no real
+/*  A pair's virtual microphones. `pattern` 1 is the cardioid, 1 + cos; n is the cardioid to the n-th power, narrower
+ *  with every step and never of the other sign behind, held to the field's order. Pointed a quarter turn to either
+ *  side of the pair's middle, the classic stereo fold, or at the loudspeakers, so a narrow pattern hears the slice
+ *  between them. */
+struct Microphones {
+    bool atLoudspeakers{false};
+    int pattern{1};
+};
+
+/// Designs the decoder; `order` 1..7. One or two real loudspeakers are virtual microphones -- an omni, or a pair as
+/// `microphones` says -- the downmix in which nothing vanishes. False, with `error` set, when a layout of three or
+/// more does not surround the listener (the origin outside the hull), repeats a channel, or holds no real
 /// loudspeaker.
 bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerDesign& out,
-                  std::string* error = nullptr);
+                  std::string* error = nullptr, const Microphones& microphones = {});
 
 }  // namespace bambi

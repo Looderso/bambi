@@ -79,7 +79,7 @@ public:
     bool prepare(int maxOrder, int maxOutputs, double sampleRate, double maxDelaySeconds = 0.1);
 
     /// Message thread, never the audio thread: it copies the layout.
-    void request(const Layout& layout, int order, Weighting weighting);
+    void request(const Layout& layout, int order, Weighting weighting, const Microphones& microphones = {});
     bool stale() const noexcept {
         return requested_.load(std::memory_order_acquire) != built_.load(std::memory_order_acquire);
     }
@@ -103,6 +103,7 @@ private:
     Layout layout_;
     int order_{1};
     Weighting weighting_{Weighting::Basic};
+    Microphones microphones_;
     std::string error_;
     std::atomic<int> requested_{0}, built_{0};
 };

@@ -143,7 +143,25 @@ void normaliseEnergy(std::vector<double>& d, int speakers, const std::vector<boo
 }
 }  // namespace
 
-bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerDesign& out, std::string* error) {
+/// The cardioid to the n-th power, (1 + x)^n / 2^n, as Legendre coefficients a_0..a_n: a_l = (2l + 1) / 2 times its
+/// integral against P_l over -1..1, by Simpson's rule on a fine grid, exact enough for a polynomial of degree n.
+std::vector<double> cardioidPowerCoefficients(int n) {
+    const int steps = 4000;
+    std::vector<double> a(sz(n + 1), 0.0);
+    for (int l = 0; l <= n; ++l) {
+        double sum = 0;
+        for (int i = 0; i <= steps; ++i) {
+            const double x = -1.0 + 2.0 * i / steps;
+            const double w = (i == 0 || i == steps) ? 1.0 : (i % 2 == 1 ? 4.0 : 2.0);
+            sum += w * std::pow((1.0 + x) / 2.0, n) * legendreP(l, x);
+        }
+        a[sz(l)] = (2.0 * l + 1.0) / 2.0 * sum * (2.0 / steps) / 3.0;
+    }
+    return a;
+}
+
+bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerDesign& out, std::string* error,
+                  const Microphones& microphones) {
     out = SpeakerDesign{};
     if (order < 1 || order > kMaxOrder) return fail(error, "order out of range");
 
@@ -183,16 +201,19 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
 
     if (realCount <= 2) {
         /*  One or two loudspeakers give the panning nothing to span, and are not meant to: they are the downmix a
-            listener makes of the mix. Each real loudspeaker is a virtual cardioid microphone, the field's zeroth
-            and first order only -- one loudspeaker an omni -- so nothing in the field vanishes and a source behind
-            folds in in phase. The two microphones point a quarter turn to either side of the pair's middle, in the
-            pair's own plane, as the classic stereo decode does: a source on a loudspeaker's axis lands three to
-            one on its side, one in the middle lands in both alike, and so does one behind. The level is set as for
-            every decoder: a plane wave gives, averaged over all directions, the energy of one loudspeaker. */
+            listener makes of the mix. Each real loudspeaker is a virtual microphone -- one loudspeaker an omni -- so
+            nothing in the field vanishes and a source behind folds in in phase. A pair's microphones are the
+            cardioid, or the cardioid to a power for a narrower pattern, pointed a quarter turn to either side of the
+            pair's middle in the pair's own plane -- the classic stereo decode: a source on a loudspeaker's axis lands
+            three to one on its side, one in the middle in both alike, and so does one behind -- or at the
+            loudspeakers, where a narrow pattern hears the slice between them. The level is set as for every decoder:
+            a plane wave gives, averaged over all directions, the energy of one loudspeaker. */
         out.ring = false;  // microphones, not a ring of virtual loudspeakers
         const int total = static_cast<int>(out.points.size());
         std::vector<double> d(sz(total) * sz(C), 0.0);
-        std::vector<double> first(4);
+        const int pattern = std::clamp(microphones.pattern, 1, order);
+        const std::vector<double> coefficient = cardioidPowerCoefficients(pattern);
+        std::vector<double> basis(sz(numChannels(pattern)));
         Vec3 middle{0, 0, 0};
         for (int s = 0; s < total; ++s)
             if (!out.imaginary[sz(s)]) middle = middle + out.points[sz(s)];
@@ -200,12 +221,13 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         for (int s = 0; s < total; ++s) {
             if (out.imaginary[sz(s)]) continue;
             d[sz(s) * sz(C)] = 1.0;  // the omni
-            if (realCount == 2 && order >= 1) {
+            if (realCount == 2) {
                 const Vec3 p = out.points[sz(s)];
                 const Vec3 b = unit(middle);
-                const Vec3 axis = apart ? unit(p - b * dot(p, b)) : p;
-                shSN3D(axis, 1, first);  // plus the figure-of-eights toward the side: 1 + cos(angle)
-                for (int c = 1; c < 4; ++c) d[sz(s) * sz(C) + sz(c)] = first[sz(c)];
+                const Vec3 axis = microphones.atLoudspeakers || !apart ? p : unit(p - b * dot(p, b));
+                shSN3D(axis, pattern, basis);
+                for (int c = 0; c < numChannels(pattern); ++c)
+                    d[sz(s) * sz(C) + sz(c)] = coefficient[sz(acnOrder(c))] * basis[sz(c)];
             }
         }
         std::vector<Vec3> level;

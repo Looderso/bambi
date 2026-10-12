@@ -362,3 +362,42 @@ TEST_CASE("two loudspeakers are a pair of virtual cardioids a quarter turn to ea
     CHECK(gainsAt(mono, fromAzEl(0, 0))[0] == doctest::Approx(gainsAt(mono, fromAzEl(2.0, -0.7))[0]).epsilon(1e-9));
     CHECK(gainsAt(mono, fromAzEl(0, 0))[0] == doctest::Approx(1.0).epsilon(1e-9));
 }
+
+TEST_CASE("a narrow pair at the loudspeakers hears the slice between them and little else") {
+    //  Catches: a pattern power expanded with the wrong Legendre coefficients (a rear lobe, or a pattern no
+    //  narrower than the cardioid), the microphones left at the sides when asked for the loudspeakers, the power
+    //  not held to the field's order.
+    Microphones narrow;
+    narrow.atLoudspeakers = true;
+    narrow.pattern = 3;
+    SpeakerDesign d;
+    std::string error;
+    REQUIRE(designAllrad(pair(), 3, Weighting::Basic, d, &error, narrow));
+    const auto left = gainsAt(d, fromAzEl(30 * kDeg2Rad, 0)), front = gainsAt(d, fromAzEl(0, 0)),
+               side = gainsAt(d, fromAzEl(kPi / 2, 0)), behind = gainsAt(d, fromAzEl(kPi, 0));
+    CHECK(left[0] > 2.2 * left[1]);  // on the left loudspeaker's axis: 1 against (1 + cos 60)^3 / 8 = 0.42
+    CHECK(front[0] == doctest::Approx(front[1]).epsilon(1e-9));
+    CHECK(20 * std::log10(side[0] / left[0]) < -7.0);     // a third of a turn off the axis
+    CHECK(20 * std::log10(behind[0] / left[0]) < -30.0);  // behind: gone, and not of the other sign
+    CHECK(behind[0] >= 0.0);
+    //  the cardioid to the first power is the cardioid of before: the same design
+    Microphones wide;
+    wide.pattern = 1;
+    SpeakerDesign w1, w0;
+    REQUIRE(designAllrad(pair(), 3, Weighting::Basic, w1, &error, wide));
+    REQUIRE(designAllrad(pair(), 3, Weighting::Basic, w0, &error));
+    for (std::size_t i = 0; i < w1.matrix.size(); ++i)
+        CHECK(w1.matrix[i] == doctest::Approx(w0.matrix[i]).epsilon(1e-9));
+    //  a power past the field's order is held to it: at order 1 the narrow pair is the cardioid pair
+    SpeakerDesign held, first;
+    REQUIRE(designAllrad(pair(), 1, Weighting::Basic, held, &error, narrow));
+    Microphones one = narrow;
+    one.pattern = 1;
+    REQUIRE(designAllrad(pair(), 1, Weighting::Basic, first, &error, one));
+    for (std::size_t i = 0; i < held.matrix.size(); ++i)
+        CHECK(held.matrix[i] == doctest::Approx(first.matrix[i]).epsilon(1e-9));
+    //  and it is energy-preserving like every decoder
+    std::vector<Vec3> grid;
+    fibonacciSphere(4000, grid);
+    CHECK(meanEnergy(d, grid) == doctest::Approx(1.0).epsilon(1e-9));
+}

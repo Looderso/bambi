@@ -9,7 +9,7 @@
 
 namespace bambi::ui {
 
-/*  The decoder's right panel: the open output's page -- headphones, speakers, lens -- and the temporary tabs the
+/*  The decoder's right panel: the open output's page -- headphones, speakers -- and the temporary tabs the
  *  head strip and the headphones page open, tracking and personalisation. Every output's page carries its channel
  *  map: the bus's channels, what plays on each, this output's own outlined. The frame is the shared one.
  */
@@ -32,7 +32,6 @@ private:
     float paintChannels(juce::Graphics& g, juce::Rectangle<float> content, float y, OutputPage output);
     void paintHeadphones(juce::Graphics& g, juce::Rectangle<float> content);
     void paintSpeakers(juce::Graphics& g, juce::Rectangle<float> content);
-    void paintLens(juce::Graphics& g, juce::Rectangle<float> content);
     void paintTracking(juce::Graphics& g, juce::Rectangle<float> content);
     float paintPhone(juce::Graphics& g, juce::Rectangle<float> content, float y);  ///< the QR code and the steps
     float paintLearn(juce::Graphics& g, juce::Rectangle<float> content, float y);  ///< learn mode: the port's list
