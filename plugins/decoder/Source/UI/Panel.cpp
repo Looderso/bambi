@@ -159,7 +159,19 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
             text(g, juce::String(ch), font(type::small - 1.0f), byHp || bySp ? colour::textInverse : colour::label, box,
                  juce::Justification::centred);
         }
-        y += static_cast<float>((shownBus + perRow - 1) / perRow) * (cell + gap);
+        y += static_cast<float>((shownBus + perRow - 1) / perRow) * (cell + gap) + ctl::segmentGap;
+        //  the key: which ink is whose
+        const float lineH = type::label * ctl::noticeLineHeight;
+        float kx = content.getX();
+        for (const auto& [ink, who] : {std::pair{colour::text, "headphones"}, std::pair{colour::label, "speakers"}}) {
+            g.setColour(ink);
+            g.fillRect(kx, y + (lineH - sc::toggleBox) / 2.0f, sc::toggleBox, sc::toggleBox);
+            kx += sc::toggleBox + sc::toggleGap;
+            text(g, who, labelFont(), colour::label, {kx, y, content.getWidth(), lineH},
+                 juce::Justification::centredLeft);
+            kx += textWidth(labelFont(), who) + sc::toggleGroupGap;
+        }
+        y += lineH;
     }
 
     //  one line only when the picture cannot say it: the host's bus is too narrow, or the other output has the

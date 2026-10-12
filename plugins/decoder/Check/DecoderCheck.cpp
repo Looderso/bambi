@@ -80,6 +80,12 @@ PluginState withLayout(const char* name, bool speakers, bool headphones, int hpC
 }
 }  // namespace
 
+/// A state loaded as a session is: the editor starts from it too, so an edit that follows builds on it.
+void loadState(BambiDecoderProcessor& proc, const PluginState& s) {
+    proc.document().adopt(s);
+    proc.commitDocument(s, true);
+}
+
 /// A yaw alone as the known /ypr address carries it: yaw, pitch and roll in degrees.
 std::vector<float> yprValues(float yawDeg) { return {yawDeg, 0.0f, 0.0f}; }
 
@@ -145,14 +151,32 @@ int main() {
         const Channels y = render(busIn(16, 18), 128, 0.5, {}, &s);
         check(!y.empty() && channelEnergy(y, 12) > 1e-3 && channelEnergy(y, 13) > 1e-3 && channelEnergy(y, 0) > 1e-4,
               "headphones on 13-14 play beside the layout on 1-12");
-        //  Lighting headphones on 1-2 beside the layout stops the layout: the same channels.
+        //  Lighting headphones on 1-2 beside the layout moves them to 13-14 while the bus has room, and stops the
+        //  layout when it has not. Catches: the move landing on an even pair, the room checked against the wrong
+        //  width, the other output stopped although there was room.
         BambiDecoderProcessor proc;
         proc.setBusesLayout(busIn(16, 18));
-        proc.commitDocument(withLayout("4+7+0", true, false, 1), true);
+        loadState(proc, withLayout("4+7+0", true, false, 1));
         proc.playOutput(BambiDecoderProcessor::Output::Headphones, true);
         const DecoderState after = proc.decoderState();
-        check(after.headphonesPlay && !after.speakersPlay && proc.notice().contains("speakers stopped"),
-              "headphones on 1-2 stop the layout and say so: " + proc.notice());
+        check(after.headphonesPlay && after.speakersPlay && after.headphoneChannel == 13 &&
+                  proc.notice().contains("moved to 13"),
+              "headphones lit on the layout's channels move past it and both play: " + proc.notice());
+        BambiDecoderProcessor narrow;
+        narrow.setBusesLayout(busIn(16, 12));
+        loadState(narrow, withLayout("4+7+0", true, false, 1));
+        narrow.playOutput(BambiDecoderProcessor::Output::Headphones, true);
+        const DecoderState stopped = narrow.decoderState();
+        check(stopped.headphonesPlay && !stopped.speakersPlay && narrow.notice().contains("speakers stopped"),
+              "and on a bus with no room the layout stops and says so: " + narrow.notice());
+        PluginState hpFirst = withLayout("4+7+0", false, true, 1);
+        BambiDecoderProcessor movedLayout;
+        movedLayout.setBusesLayout(busIn(16, 18));
+        loadState(movedLayout, hpFirst);
+        movedLayout.playOutput(BambiDecoderProcessor::Output::Speakers, true);
+        const DecoderState shifted = movedLayout.decoderState();
+        check(shifted.speakersPlay && shifted.headphonesPlay && shifted.speakerFirstChannel == 3,
+              "a layout lit on the headphones' channels moves to start after them");
     }
 
     //  The stereo pair: a layout of two plays on channels 1-2 as virtual cardioids, so nothing in the field vanishes.
@@ -328,6 +352,7 @@ int main() {
             proc.loadMatrixFile(juce::File(std::string(BAMBI_CORE_DIR) + "/tests/decode/made-matrix.sofa"), &error);
         check(loaded && proc.decoderState().matrixOutputs == 3 && proc.decoderState().layout.empty(),
               "a filter matrix loads into the state: " + error + proc.matrixNote());
+        proc.playOutput(BambiDecoderProcessor::Output::Headphones, false);
         proc.playOutput(BambiDecoderProcessor::Output::Speakers, true);
         PluginState s{decodeParams()};
         s.decoder = proc.decoderState();

@@ -32,7 +32,9 @@ as the host makes it — a REAPER track's channel count, say 18 — and is never
 channel count when it is inserted. Headphones play on a pair, 1–2 by default and movable; a layout on its own
 channel numbers, from its file, moved as a block to start on any channel ([0198](../DECISIONS.md)) — so an
 interface's headphone outputs or an aggregate device carries both at once, and the two play together whenever
-their channels differ. **The Lens plays on the loudspeakers** — they are all there is to play it on — on the
+their channels differ. Lit on the other output's channels, an output moves to the first free channels after it
+while the bus has room, and the other stops when it has not ([0199](../DECISIONS.md)); the page's channel map
+carries a key for its two inks. **The Lens plays on the loudspeakers** — they are all there is to play it on — on the
 layout's own channels, with the tracker turning what they play; so the Lens and the speakers play one at a time.
 Switching an output changes which channels the plugin writes.
 

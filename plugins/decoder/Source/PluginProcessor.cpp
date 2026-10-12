@@ -672,11 +672,22 @@ void BambiDecoderProcessor::playOutput(Output which, bool on) {
     for (int c : mine) collide = collide || std::find(theirs.begin(), theirs.end(), c) != theirs.end();
     const bambi::DecoderState d = decoderState();
     const bool otherOn = other == Output::Headphones ? d.headphonesPlay : d.speakersPlay;
-    if (on && collide && otherOn)
+    //  Lit on the other output's channels: this one moves to the first free channels after it when the bus has
+    //  room, and the other stops when it has not. Headphones take an odd pair, as the page picks them.
+    const int afterTheirs = theirs.empty() ? 1 : *std::max_element(theirs.begin(), theirs.end()) + 1;
+    const int span = needs - (which == Output::Headphones ? d.headphoneChannel : d.speakerFirstChannel) + 1;
+    const int movedTo = which == Output::Headphones ? afterTheirs + (afterTheirs % 2 == 0 ? 1 : 0) : afterTheirs;
+    const bool moves = on && collide && otherOn && movedTo + span - 1 <= bus;
+    const bool stops = on && collide && otherOn && !moves;
+    if (moves)
+        notice_ = juce::String(which == Output::Headphones ? "headphones" : "speakers") + " moved to " +
+                  juce::String(movedTo) + juce::String::fromUTF8("\xe2\x80\x93") + juce::String(movedTo + span - 1);
+    else if (stops)
         notice_ = juce::String(other == Output::Headphones ? "headphones" : "speakers") + " stopped: the same channels";
-    editDecoder(on ? "play output" : "stop output", [which, on, collide, other](bambi::DecoderState& s) {
+    editDecoder(on ? "play output" : "stop output", [which, on, moves, stops, movedTo, other](bambi::DecoderState& s) {
         (which == Output::Headphones ? s.headphonesPlay : s.speakersPlay) = on;
-        if (on && collide) (other == Output::Headphones ? s.headphonesPlay : s.speakersPlay) = false;
+        if (moves) (which == Output::Headphones ? s.headphoneChannel : s.speakerFirstChannel) = movedTo;
+        if (stops) (other == Output::Headphones ? s.headphonesPlay : s.speakersPlay) = false;
     });
 }
 
