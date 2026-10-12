@@ -41,13 +41,9 @@ namespace palette
 
     inline const juce::Colour blue      { 0xff5e8bae };
     inline const juce::Colour blueDeep  { 0xff3f6a8c };
-    inline const juce::Colour blueSteel { 0xff4a7ba0 };
     inline const juce::Colour orange    { 0xffd4873a };
     inline const juce::Colour sage      { 0xff6f9a74 };
-    inline const juce::Colour teal      { 0xff5f927f };
     inline const juce::Colour violet    { 0xff967bb2 };
-    inline const juce::Colour violetGrey{ 0xff7f6fa6 };
-    inline const juce::Colour mauve     { 0xffa2708a };
 } // namespace palette
 
 // ---- colour roles ---------------------------------------------------------------------------
@@ -106,11 +102,10 @@ namespace colour
     inline const juce::Colour regionWash    = palette::ink;     ///< the side that passes
     inline const juce::Colour regionLabel   = palette::ink;
 
-    /// What a plugin ANSWERS when the probe is pointed, in as many colours as it has things to
-    /// answer with. They step AROUND the added-blue rather than away from it: all one family, none
-    /// of them the wash's own colour at full strength.
-    inline const std::array<juce::Colour, 4> answerFamily{
-        palette::violetGrey, palette::blueSteel, palette::teal, palette::mauve};
+    /// What a plugin answers when the probe is pointed is its own parts -- Echo's taps, Reverb's
+    /// reflections -- so the selected part is in the plugin's own colour (`answer()`, below) and the rest
+    /// in this grey.
+    inline const juce::Colour answerOther   = palette::grey7;
 
     // modulation: its colour is the plugin's own, below
     inline const juce::Colour elsewhere   = palette::grey7;      ///< "has depth on another matrix tab"
@@ -159,6 +154,7 @@ namespace colour
     inline juce::Colour modulation() { return identitySlot(); }  ///< cell depth, source amount, modulated range
     inline juce::Colour output()     { return identitySlot(); }  ///< a source's live output, its level and its curve
     inline juce::Colour selected()   { return identitySlot(); }  ///< a selected row's bar, the open source's column
+    inline juce::Colour answer()     { return identitySlot(); }  ///< the probe's answer: the selected tap, every reflection
 } // namespace colour
 
 // ---- type ----------------------------------------------------------------------------------

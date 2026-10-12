@@ -24,12 +24,10 @@ struct Anchor {
 constexpr std::array<Anchor, 4> kAnchors{{{0.0, "f"}, {90.0, "l"}, {180.0, "b"}, {270.0, "r"}}};
 constexpr std::array<const char*, 5> kEquirectLetters{"b", "l", "f", "r", "b"};
 
-//  The number that labels a spiral is the number in the strip and in the selector. An answer that is not
-//  numbered is one thing the plugin adds, and takes the added colour
-juce::Colour answerInk(const ProbeReply& reply, int group) {
-    if (!reply.numbered) return colour::added;
-    const auto& family = colour::answerFamily;
-    return family[static_cast<std::size_t>(std::clamp(group, 0, static_cast<int>(family.size()) - 1))];
+//  The selected group wears the plugin's own colour, as its row in the strip does, and the rest are grey. An
+//  answer that is not numbered is one thing, all of it the plugin's own.
+juce::Colour answerInk(const ProbeReply& reply, bool lead) {
+    return !reply.numbered || lead ? colour::answer() : colour::answerOther;
 }
 }  // namespace
 
@@ -159,7 +157,7 @@ void ProbeView::strokeFaded(juce::Graphics& g, const Viewport& vp, const ProbeTr
     }
     for (int band = 0; band < kBands; ++band) {
         if (bands[static_cast<std::size_t>(band)].isEmpty()) continue;
-        g.setColour(answerInk(reply_, trace.group).withAlpha((static_cast<float>(band) + 0.5f) / kBands));
+        g.setColour(answerInk(reply_, trace.lead).withAlpha((static_cast<float>(band) + 0.5f) / kBands));
         g.strokePath(
             bands[static_cast<std::size_t>(band)],
             juce::PathStrokeType(theme::stroke::rule, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
@@ -183,7 +181,7 @@ void ProbeView::paintBead(juce::Graphics& g, const Viewport& vp, const ProbeMark
         std::clamp(mark.spreadRad * kRad2Deg, static_cast<double>(sc::beadMinDeg), static_cast<double>(sc::beadMaxDeg));
     const auto radius = static_cast<float>(projection_ == Projection::Globe ? vp.rx * std::sin(spreadDeg * kDeg2Rad)
                                                                             : vp.rx * spreadDeg / 180.0);
-    const auto ink = answerInk(reply_, mark.group);
+    const auto ink = answerInk(reply_, mark.lead);
 
     //  the wash, dimmed as it widens
     const auto soft = alpha * dim / static_cast<float>(1.0 + spreadDeg / sc::beadSpreadDim);
