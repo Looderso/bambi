@@ -110,8 +110,12 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
     const DecoderState& d = state_.decoder();
     const int bus = state_.processor.diagnostics().outputChannels.load(std::memory_order_relaxed);
     const int shownBus = std::max(bus, 2);
+    const std::vector<int> mine = channelsOf(output);
+    const std::vector<int> hp = channelsOf(OutputPage::Headphones), sp = channelsOf(OutputPage::Speakers);
+    const bool playing = output == OutputPage::Headphones ? d.headphonesPlay : d.speakersPlay;
+
     if (output == OutputPage::Headphones) {
-        //  which pair of the bus's channels
+        //  which pair of the bus's channels: the one choice, shown once
         std::vector<juce::String> pairs;
         for (int c = 1; c + 1 <= shownBus; c += 2)
             pairs.push_back(juce::String(c) + juce::String::fromUTF8("\xe2\x80\x93") + juce::String(c + 1));
@@ -121,56 +125,53 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
                             model().applyEdit("headphone channels",
                                               [which](PluginState& s) { s.decoder.headphoneChannel = 1 + 2 * which; });
                         })
-                .bottom +
-            static_cast<float>(space::grid) / 2.0f;
-    }
-    const std::vector<int> mine = channelsOf(output);
-    const std::vector<int> hp = channelsOf(OutputPage::Headphones), sp = channelsOf(OutputPage::Speakers);
-    const bool playing = output == OutputPage::Headphones ? d.headphonesPlay : d.speakersPlay;
-
-    //  the bus's channels, marked with what each output writes; this output's own outlined when it is not playing
-    const float cell = static_cast<float>(space::grid * 2), gap = 1.0f;
-    const int perRow = std::max(1, static_cast<int>((content.getWidth() + gap) / (cell + gap)));
-    for (int ch = 1; ch <= shownBus; ++ch) {
-        const int i = ch - 1;
-        const juce::Rectangle<float> box{content.getX() + static_cast<float>(i % perRow) * (cell + gap),
-                                         y + static_cast<float>(i / perRow) * (cell + gap), cell, cell};
-        const bool byHp = d.headphonesPlay && std::find(hp.begin(), hp.end(), ch) != hp.end();
-        const bool bySp = d.speakersPlay && std::find(sp.begin(), sp.end(), ch) != sp.end();
-        const bool own = std::find(mine.begin(), mine.end(), ch) != mine.end();
-        g.setColour(byHp ? colour::text : bySp ? colour::label : colour::panel);
-        g.fillRect(box);
-        if (own && !playing) {
-            g.setColour(colour::text);
-            g.drawRect(box, stroke::toggle);
+                .bottom;
+    } else {
+        //  the layout's channels are no choice: the bus's channels, marked with what each output writes
+        const float cell = static_cast<float>(space::grid * 2), gap = 1.0f;
+        const int perRow = std::max(1, static_cast<int>((content.getWidth() + gap) / (cell + gap)));
+        for (int ch = 1; ch <= shownBus; ++ch) {
+            const int i = ch - 1;
+            const juce::Rectangle<float> box{content.getX() + static_cast<float>(i % perRow) * (cell + gap),
+                                             y + static_cast<float>(i / perRow) * (cell + gap), cell, cell};
+            const bool byHp = d.headphonesPlay && std::find(hp.begin(), hp.end(), ch) != hp.end();
+            const bool bySp = d.speakersPlay && std::find(sp.begin(), sp.end(), ch) != sp.end();
+            const bool own = std::find(mine.begin(), mine.end(), ch) != mine.end();
+            g.setColour(byHp ? colour::text : bySp ? colour::label : colour::panel);
+            g.fillRect(box);
+            if (own && !playing) {
+                g.setColour(colour::text);
+                g.drawRect(box, stroke::toggle);
+            }
+            text(g, juce::String(ch), font(type::small - 1.0f), byHp || bySp ? colour::textInverse : colour::label, box,
+                 juce::Justification::centred);
         }
-        text(g, juce::String(ch), font(type::small - 1.0f), byHp || bySp ? colour::textInverse : colour::label, box,
-             juce::Justification::centred);
+        y += static_cast<float>((shownBus + perRow - 1) / perRow) * (cell + gap);
     }
-    y += static_cast<float>((shownBus + perRow - 1) / perRow) * (cell + gap) + static_cast<float>(space::grid) / 2.0f;
 
+    //  one line only when the picture cannot say it: the host's bus is too narrow, or the other output has the
+    //  same channels and would stop
     juce::String status;
     const int needs = mine.empty() ? 0 : *std::max_element(mine.begin(), mine.end());
-    if (mine.empty())
-        status = "no layout loaded";
-    else if (needs > bus)
+    if (needs > bus) {
         status = juce::String(needs) + " channels needed; the host gives " + juce::String(bus);
-    else if (playing)
-        status = "playing on " + rangesOf(mine);
-    else {
+    } else if (!playing && !mine.empty()) {
         const std::vector<int>& other = output == OutputPage::Headphones ? sp : hp;
         const bool otherOn = output == OutputPage::Headphones ? d.speakersPlay : d.headphonesPlay;
         bool collide = false;
         for (int c : mine) collide = collide || std::find(other.begin(), other.end(), c) != other.end();
-        status = otherOn && collide
-                     ? juce::String("would stop ") + (output == OutputPage::Headphones ? "speakers" : "headphones") +
-                           ": the same channels"
-                     : "free to play";
+        if (otherOn && collide)
+            status = juce::String("playing would stop ") +
+                     (output == OutputPage::Headphones ? "speakers" : "headphones") + ": the same channels";
     }
-    text(g, status, labelFont(), needs > bus ? colour::text : colour::label,
-         {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-         juce::Justification::centredLeft);
-    return y + static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
+    if (!status.isEmpty()) {
+        y += ctl::segmentGap;
+        const float lineH = type::label * ctl::noticeLineHeight;
+        text(g, status, labelFont(), needs > bus ? colour::text : colour::label,
+             {content.getX(), y, content.getWidth(), lineH}, juce::Justification::centredLeft);
+        y += lineH;
+    }
+    return y + static_cast<float>(space::groupGap);
 }
 
 float DecoderPanel::paintStateTile(juce::Graphics& g, juce::Rectangle<float> tile, const juce::String& name,
@@ -210,7 +211,7 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
         }
         model().applyEdit("hrtf", [which](PluginState& s) { s.decoder.hrtf = which; });
     });
-    y = row.getBottom() + ctl::segmentGap;
+    y = row.getBottom() + ctl::sectionGap;
     //  the two sliders make the model the listener's; a measured head keeps its ears and scales its time
     //  difference with the head
     paintStateTile(
@@ -222,7 +223,7 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
         g, tileCell(content, y, 1), "ears", juce::String(d.earShift, 2) + " erb", d.earShift, -2.0, 2.0, 0.01,
         "decoder.ear_shift", mine && head == 0, [](DecoderState& s, double v) { s.earShift = static_cast<float>(v); },
         [](DecoderState& s) { s.earShift = 0.0f; });
-    y = tilesBottom(y, 2) + 2.0f;
+    y = tilesBottom(y, 2) + ctl::sectionGap;
     juce::String about;
     if (sofaError_.isNotEmpty())
         about = "not read: " + sofaError_;
@@ -243,11 +244,11 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
              {load.getRight() + static_cast<float>(space::grid), y,
               content.getRight() - load.getRight() - static_cast<float>(space::grid), buttonH},
              juce::Justification::centredLeft);
-        y += buttonH + static_cast<float>(space::groupGap) / 2.0f;
+        y += buttonH + static_cast<float>(space::groupGap);
     } else {
         text(g, about, labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
              juce::Justification::centredLeft);
-        y += lineH + static_cast<float>(space::groupGap) / 2.0f;
+        y += lineH + static_cast<float>(space::groupGap);
     }
 
     y = paintChannels(g, content, y, OutputPage::Headphones);
@@ -271,10 +272,10 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
          {toggle.hit.getRight() + static_cast<float>(space::grid), y,
           content.getRight() - toggle.hit.getRight() - static_cast<float>(space::grid), lineH},
          juce::Justification::centredLeft);
-    y += lineH + 2.0f;
+    y += lineH + ctl::segmentGap;
     text(g, "headphone correction " + kDot + " later", labelFont(), colour::inactive,
          {content.getX(), y, content.getWidth(), lineH}, juce::Justification::centredLeft);
-    y += lineH + static_cast<float>(space::groupGap) / 2.0f;
+    y += lineH + static_cast<float>(space::groupGap);
 
     //  the deep part, a tab of its own
     const juce::Rectangle<float> personalise{content.getX(), y, framedButtonWidth("personalise\xe2\x80\xa6"), buttonH};
@@ -384,7 +385,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
                 },
                 {}, -1, 5)
                 .bottom +
-            2.0f;
+            ctl::segmentGap;
     } else {
         //  the file: what is loaded, and what can be
         if (matrix) {
@@ -413,11 +414,11 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         text(g, "iem allradecoder json " + kDot + " ambdec " + kDot + " sofa fir-e filter matrix", labelFont(),
              colour::label, {load.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
              juce::Justification::centredLeft);
-        y += buttonH + 2.0f;
+        y += buttonH + ctl::segmentGap;
     }
     const juce::String error = layoutError_.isNotEmpty() ? layoutError_ : state_.processor.designError();
     if (!error.isEmpty()) line("refused: " + error, colour::text);
-    y += static_cast<float>(space::groupGap) / 2.0f;
+    y += static_cast<float>(space::groupGap);
 
     //  two loudspeakers: the fold, or the slice the head points at
     int realCount = 0;
@@ -433,7 +434,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         line(d.pairSlice ? "only what the head points at plays, between the loudspeakers"
                          : "the whole field on the pair, as a stereo listener hears the mix",
              colour::label);
-        y += static_cast<float>(space::groupGap) / 2.0f;
+        y += static_cast<float>(space::groupGap);
     }
 
     y = paintChannels(g, content, y, OutputPage::Speakers);
@@ -462,9 +463,9 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
                     s.decoder.distanceCompensation = !s.decoder.distanceCompensation;
                 });
             });
-        y += lineH + 2.0f;
+        y += lineH + ctl::segmentGap;
     }
-    y += static_cast<float>(space::groupGap) / 2.0f;
+    y += static_cast<float>(space::groupGap);
 
     //  the table, a tab of its own
     const juce::Rectangle<float> table{content.getX(), y, framedButtonWidth("loudspeakers\xe2\x80\xa6"), buttonH};
@@ -568,7 +569,7 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
             addClickArea(network.hit, [this] {
                 model().applyEdit("osc network", [](PluginState& s) { s.decoder.oscNetwork = !s.decoder.oscNetwork; });
             });
-        y += lineH + 2.0f;
+        y += lineH + ctl::segmentGap;
         y = paintLearn(g, content, y);
     } else if (d.trackerSource == 2) {
         y = paintGroupTitle(g, content, y, "airpods");
@@ -580,7 +581,7 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
                  : juce::String("the helper is not in this bundle; macOS only"),
              labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
              juce::Justification::centredLeft);
-        y += lineH + 2.0f;
+        y += lineH + ctl::segmentGap;
         if (state_.processor.helperAvailable()) {
             //  look and nod: how the AirPods sit on the head, since earbuds sit as they sit. One button pressed
             //  twice: the second press comes while looking down, where nobody sees a second button.
@@ -605,7 +606,7 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
                 state_.processor.forgetCalibration();
                 calibrationNote_ = "back to apple's frame";
             });
-            y += buttonH + 2.0f;
+            y += buttonH + ctl::segmentGap;
             const juce::String standing = d.airpodsCalibrated
                                               ? juce::String("calibrated: look and nod found how they sit")
                                               : juce::String("not calibrated: the airpods' own frame, worn upright");
@@ -622,7 +623,7 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
              juce::Justification::centredLeft);
         y += lineH;
     }
-    y += static_cast<float>(space::groupGap) / 2.0f;
+    y += static_cast<float>(space::groupGap);
 
     //  the signs, for any source
     y = paintGroupTitle(g, content, y, "signs");
@@ -683,7 +684,7 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
         text(g, "back to the known addresses", labelFont(), colour::label,
              {forget.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
              juce::Justification::centredLeft);
-        y += buttonH + 2.0f;
+        y += buttonH + ctl::segmentGap;
     }
     if (d.trackerSource != 1) {
         line("choose osc in the head strip, and what arrives on the port is listed here to learn from", colour::label);
