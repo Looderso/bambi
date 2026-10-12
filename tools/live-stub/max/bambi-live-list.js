@@ -9,8 +9,8 @@
 //
 //  A press on a row with a warning sends `warning <text>` out, for the device to show in full.
 //
-//  Drawn in dark text on the device's own background, which suits Live's light themes; a dark theme is not
-//  yet asked for its colours.
+//  Its colours are Live's, asked of the theme at every paint -- which Max calls again when the theme changes -- so
+//  the list reads in a light theme and a dark one. Only the pair's blue is the suite's, a nod to what bambi owns.
 
 outlets = 1;
 mgraphics.init();
@@ -18,11 +18,21 @@ mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
 
 const ROW = 15, HEAD = 18;
-const INK = [0.106, 0.102, 0.090, 1.0];       // bambi's black
-const DIM = [0.35, 0.35, 0.35, 1.0];
-const WARN = [0.62, 0.40, 0.05, 1.0];
 const PAIR = [0.369, 0.545, 0.682, 1.0];      // the encoder's blue: what bambi owns
-const RULE = [0.0, 0.0, 0.0, 0.18];
+let INK, DIM, WARN, RULE;
+
+//  A Live theme colour by name, or `fallback` when the theme does not have it.
+function themed(name, fallback) {
+    const c = max.getcolor(name);
+    return Array.isArray(c) && c.length >= 3 ? [c[0], c[1], c[2], c.length > 3 ? c[3] : 1] : fallback;
+}
+
+function colours() {
+    INK = themed("live_control_fg", [0.106, 0.102, 0.090, 1.0]);
+    DIM = themed("live_control_fg_zombie", [0.35, 0.35, 0.35, 1.0]);
+    WARN = themed("live_alert", [0.62, 0.40, 0.05, 1.0]);
+    RULE = themed("live_surface_frame", [0.0, 0.0, 0.0, 0.18]);
+}
 
 let data = {head: "", sub: "", rows: []};
 let scroll = 0;   // pixels the rows are scrolled up
@@ -68,6 +78,7 @@ function fit(str, width) {
 }
 
 function paint() {
+    colours();
     const [w, h] = size();
     mgraphics.select_font_face("Arial");
     mgraphics.set_font_size(10);
