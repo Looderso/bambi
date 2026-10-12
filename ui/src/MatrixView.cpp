@@ -301,8 +301,8 @@ void MatrixView::paint(juce::Graphics& g) {
          "provisional row " + juce::String::fromUTF8("\xe2\x80\x94") +
              " clicking another parameter replaces it. any depth keeps it.",
          labelFont(), colour::label.withMultipliedAlpha(ghost ? 1.0f : ctl::hintAlpha),
-         {inset, y + ctl::hintGap, width - 2.0f * inset, theme::type::label * ctl::noticeLineHeight});
-    noteContentBottom(y + ctl::hintGap + theme::type::label * ctl::noticeLineHeight + scroll());
+         {inset, y + ctl::hintGap, width - 2.0f * inset, noteLineHeight()});
+    noteContentBottom(y + ctl::hintGap + noteLineHeight() + scroll());
     clip.reset();  // the footer is pinned, like the heads
 
     paintFooter(g);

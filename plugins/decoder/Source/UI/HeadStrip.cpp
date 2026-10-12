@@ -18,11 +18,11 @@ HeadStrip::HeadStrip(DecoderControlState& state) : ParameterPage(state), state_(
 bool HeadStrip::liveValue(ParamId id, double& out) const {
     //  the scene's turn in force: the slider, its rate integrated, and the tracker when it turns the scene
     const auto& diag = state_.processor.diagnostics();
-    if (id == state_.param("head.yaw"))
+    if (id == decoderParam("head.yaw"))
         out = diag.sceneYaw.load(std::memory_order_relaxed);
-    else if (id == state_.param("head.pitch"))
+    else if (id == decoderParam("head.pitch"))
         out = diag.scenePitch.load(std::memory_order_relaxed);
-    else if (id == state_.param("head.roll"))
+    else if (id == decoderParam("head.roll"))
         out = diag.sceneRoll.load(std::memory_order_relaxed);
     else
         return false;
@@ -82,7 +82,6 @@ void HeadStrip::paint(juce::Graphics& g) {
                  juce::Justification::centredLeft);
             return x;
         });
-    sourceCells_.clear();
     const juce::Rectangle<float> content = frame.content;
     if (content.isEmpty()) return;
     float y = content.getY();
@@ -97,7 +96,6 @@ void HeadStrip::paint(juce::Graphics& g) {
     });
     const juce::Rectangle<float> row{turns.getRight(), y, content.getRight() - turns.getRight(), ctl::segmentHeight};
     const auto still = paintSceneToggle(g, row, content.getRight(), "static", d.sceneStatic, mine);
-    static_ = still.hit;
     if (mine)
         addClickArea(still.hit, [this] {
             model().applyEdit("static", [](PluginState& s) { s.decoder.sceneStatic = !s.decoder.sceneStatic; });
@@ -124,7 +122,7 @@ void HeadStrip::paint(juce::Graphics& g) {
     int column = 0;
     for (const char* key : {"head.yaw", "head.pitch", "head.roll"}) {
         const juce::Rectangle<float> tile = cell(column, y);
-        addParameterTile(g, tile, state_.param(key), {}, mine && !d.sceneStatic);
+        addParameterTile(g, tile, decoderParam(key), {}, mine && !d.sceneStatic);
         const juce::Rectangle<float> nameLine{tile.getX(), tile.getY(), tile.getWidth(), ctl::tileNameHeight};
         const int axis = column;
         const auto flip = paintSceneToggle(g, nameLine, tile.getRight(), "flip", d.flip[static_cast<std::size_t>(axis)],
@@ -140,7 +138,7 @@ void HeadStrip::paint(juce::Graphics& g) {
     y += tileH + ctl::tileRowGap;
     column = 0;
     for (const char* key : {"head.yaw_rate", "head.pitch_rate", "head.roll_rate"})
-        addParameterTile(g, cell(column++, y), state_.param(key), {}, mine && !d.sceneStatic);
+        addParameterTile(g, cell(column++, y), decoderParam(key), {}, mine && !d.sceneStatic);
 }
 
 }  // namespace bambi::ui

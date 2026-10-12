@@ -5,14 +5,12 @@
 
 #include "bambi/ui/SettingsPage.h"
 
-namespace {
-bambi::ParamId decoderParam(const char* key) { return static_cast<bambi::ParamId>(bambi::decodeParams().byKey(key)); }
-}  // namespace
+namespace {}  // namespace
 
 BambiDecoderEditor::BambiDecoderEditor(BambiDecoderProcessor& p)
     : bambi::ui::DecoderWindowParts(p),
       bambi::editor::PluginEditor(p, {controls, controls, panel, globe, equirect, controls.sphere, &strip}, "decoder",
-                                  {{decoderParam("output.level"), "level"}}, {}),
+                                  {{bambi::decoderParam("output.level"), "level"}}, {}),
       processor_(p) {
     //  the outputs' squares: the one option this plugin asks of the shared header
     header().setTabMarks([this](int index) { return controls.outputMark(index); },

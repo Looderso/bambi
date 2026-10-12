@@ -50,6 +50,8 @@ inline constexpr int kNumDecoderParams = DecoderParam::kCount;
 
 /// The decoder's manifest: its descriptors and the side tables beside them.
 const ParamManifest& decodeParams();
+/// A parameter by its key, for the plugin's own code.
+inline ParamId decoderParam(const char* key) { return static_cast<ParamId>(decodeParams().byKey(key)); }
 /// What the shared modulation engine reads in the decoder: generators, source amounts, base targets.
 const ModManifest& decodeMod();
 

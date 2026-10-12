@@ -104,7 +104,6 @@ void DecoderSceneView::paint(juce::Graphics& g) {
         const float back = sc::backAlpha;
         const float headAlpha = d.headphonesPlay ? 1.0f : back;
         const float speakerAlpha = d.speakersPlay || (d.headphonesPlay && d.throughLayout) ? 1.0f : back;
-        hullDrawn_ = false;
         if (state_.page == OutputPage::Speakers) paintHull(g, vp, 1.0f);
         if (state_.showSources) paintSources(g, vp);
         paintSpeakers(g, vp, speakerAlpha);
@@ -183,11 +182,9 @@ void DecoderSceneView::paintHull(juce::Graphics& g, const Viewport& vp, float al
         strokeArc(g, vp, design_.points[static_cast<std::size_t>(i)], design_.points[static_cast<std::size_t>(j)],
                   colour::sphere.withAlpha(alpha * 0.5f), stroke::graticule, imaginary);
     }
-    hullDrawn_ = true;
 }
 
 void DecoderSceneView::paintSpeakers(juce::Graphics& g, const Viewport& vp, float alpha) {
-    speakersDrawn_ = 0;
     const float side = sc::toggleBox;
     for (const Loudspeaker& s : state_.decoder().layout) {
         const auto p = toScreen(projection_, state_.sphere.camera, vp,
@@ -208,7 +205,6 @@ void DecoderSceneView::paintSpeakers(juce::Graphics& g, const Viewport& vp, floa
         if (!s.imaginary)
             text(g, juce::String(s.channel), smallFont(), colour::label.withAlpha(a),
                  {box.getRight() + 2.0f, box.getY() - side, 3.0f * side, side}, juce::Justification::centredLeft);
-        ++speakersDrawn_;
     }
 }
 

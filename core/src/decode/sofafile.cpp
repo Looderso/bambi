@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "bambi/dsp/resample.hpp"
+#include "bambi/math/sh.hpp"
 #include "mysofa.h"
 
 namespace bambi {
@@ -114,6 +116,28 @@ bool readSofaMatrix(const std::string& path, FirMatrix& out, std::string* error)
     out.title = attribute(h, "Title");
     mysofa_free(h);
     return out.sampleRate > 0 ? true : fail(error, "no sample rate");
+}
+
+int resampledFilters(const FirMatrix& m, int fieldChannels, double toHz, bool n3d, std::vector<float>& out, int& taps) {
+    const int inputs = std::min(fieldChannels, m.inputs);
+    std::vector<float> one, scaled;
+    resampleSinc(m.filter(0, 0), m.sampleRate, toHz, one);
+    taps = static_cast<int>(one.size());
+    out.assign(
+        static_cast<std::size_t>(fieldChannels) * static_cast<std::size_t>(m.outputs) * static_cast<std::size_t>(taps),
+        0.0f);
+    for (int i = 0; i < inputs; ++i) {
+        const float factor = n3d ? static_cast<float>(std::sqrt(2.0 * acnOrder(i) + 1.0)) : 1.0f;
+        for (int o = 0; o < m.outputs; ++o) {
+            resampleSinc(m.filter(i, o), m.sampleRate, toHz, scaled);
+            float* dst = out.data() + (static_cast<std::size_t>(i) * static_cast<std::size_t>(m.outputs) +
+                                       static_cast<std::size_t>(o)) *
+                                          static_cast<std::size_t>(taps);
+            for (std::size_t t = 0; t < scaled.size() && t < static_cast<std::size_t>(taps); ++t)
+                dst[t] = scaled[t] * factor;
+        }
+    }
+    return inputs;
 }
 
 }  // namespace bambi

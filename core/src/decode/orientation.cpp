@@ -113,4 +113,14 @@ bool knownForm(std::string_view address, OrientationForm& out) {
     return true;
 }
 
+OrientationForm formFromIndex(int index) {
+    switch (index) {
+        case 1: return OrientationForm::QuaternionWxyz;
+        case 2: return OrientationForm::QuaternionXyzw;
+        case 4: return OrientationForm::YprDegreesPitchDown;
+        case 5: return OrientationForm::YprRadians;
+        default: return OrientationForm::YprDegrees;
+    }
+}
+
 }  // namespace bambi

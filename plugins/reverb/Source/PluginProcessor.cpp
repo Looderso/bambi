@@ -26,9 +26,7 @@ double BambiReverbProcessor::getTailLengthSeconds() const {
     return longest + delay;
 }
 
-bambi::RenderQuality BambiReverbProcessor::renderQuality() const {
-    return const_cast<BambiReverbProcessor*>(this)->document().committed().renderQuality;
-}
+bambi::RenderQuality BambiReverbProcessor::renderQuality() const { return document().committed().renderQuality; }
 
 void BambiReverbProcessor::setRenderQuality(bambi::RenderQuality q) {
     /*  An undoable document edit, so it reaches the audio thread the way every other patch change

@@ -15,6 +15,5 @@ namespace bambi {
 const Layout* bs2051Layout(std::string_view name);  ///< null for a name that is not one of them
 std::vector<std::string_view> bs2051Names();
 /// The recommendation's label of a channel, "M+030" and the like, or empty.
-std::string_view bs2051ChannelName(std::string_view layout, int channel);
 
 }  // namespace bambi

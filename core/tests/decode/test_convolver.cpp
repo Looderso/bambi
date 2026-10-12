@@ -50,8 +50,7 @@ std::vector<double> direct(const BinauralFilterBuilder& b, const std::vector<flo
 }
 
 /// Runs `in` through the convolver in pieces of the given sizes, cycling.
-std::vector<float> run(BinauralConvolver& conv, const std::vector<float>& in, int frames,
-                       const std::vector<int>& cuts) {
+std::vector<float> run(MatrixConvolver& conv, const std::vector<float>& in, int frames, const std::vector<int>& cuts) {
     std::vector<float> out(static_cast<std::size_t>(frames) * 2, 0.0f);
     std::size_t cut = 0;
     for (int done = 0; done < frames;) {
@@ -72,7 +71,7 @@ TEST_CASE("the convolution is the direct one, one partition late, however the au
     const std::vector<float> in = noise(C, frames, 7);
     const std::vector<double> want = direct(built.builder, in, frames);
     for (int partition : {32, 64, 128}) {
-        BinauralConvolver conv;
+        MatrixConvolver conv;
         REQUIRE(conv.prepare(1, built.builder.taps(), partition));
         CHECK(conv.latency() == partition);
         REQUIRE(conv.publish(built.builder));
@@ -90,7 +89,7 @@ TEST_CASE("the convolution is the direct one, one partition late, however the au
 
 TEST_CASE("silence until a set is published, and a size that does not hold is refused") {
     //  Catches: a convolver that plays an unprepared slot, or accepts a partition the FFT cannot take.
-    BinauralConvolver conv;
+    MatrixConvolver conv;
     CHECK_FALSE(conv.prepare(1, 256, 48));  // not a power of two
     CHECK_FALSE(conv.prepare(1, 256, 16));  // too small for the FFT
     REQUIRE(conv.prepare(1, 256, 64));
@@ -107,8 +106,8 @@ TEST_CASE("a new set fades in over one partition and then plays alone") {
     const Built a(1, 0.0, 1.0), b(1, 1.5, 1.3);
     const int C = 4, P = 64, frames = 64 * 8;
     const std::vector<float> in = noise(C, frames, 11);
-    BinauralConvolver onlyA, onlyB, swapped;
-    for (BinauralConvolver* c : {&onlyA, &onlyB, &swapped}) REQUIRE(c->prepare(1, 256, P));
+    MatrixConvolver onlyA, onlyB, swapped;
+    for (MatrixConvolver* c : {&onlyA, &onlyB, &swapped}) REQUIRE(c->prepare(1, 256, P));
     REQUIRE(onlyA.publish(a.builder));
     REQUIRE(onlyB.publish(b.builder));
     REQUIRE(swapped.publish(a.builder));
@@ -156,7 +155,7 @@ TEST_CASE("the decoder builds what was requested, once, and the audio hears exac
     CHECK_FALSE(decoder.work());
 
     const Built same(1, 0.4, 1.1);
-    BinauralConvolver conv;
+    MatrixConvolver conv;
     REQUIRE(conv.prepare(1, 256, 64));
     REQUIRE(conv.publish(same.builder));
     const int frames = 700;

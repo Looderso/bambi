@@ -236,3 +236,14 @@ TEST_CASE("look and nod find how a device sits on the head, whichever way it sit
     CHECK_FALSE(axesFromLookAndNod(kIdentity3, kIdentity3, axes));                                 // no nod
     CHECK_FALSE(axesFromLookAndNod(kIdentity3, rotationAbout({0, 0, 1}, 30.0 * kDeg2Rad), axes));  // a turn, not a nod
 }
+
+TEST_CASE("a learned form's index names the form the receiver reads") {
+    //  Catches: two cases swapped, or an index past the list read as a quaternion.
+    CHECK(formFromIndex(1) == OrientationForm::QuaternionWxyz);
+    CHECK(formFromIndex(2) == OrientationForm::QuaternionXyzw);
+    CHECK(formFromIndex(3) == OrientationForm::YprDegrees);
+    CHECK(formFromIndex(4) == OrientationForm::YprDegreesPitchDown);
+    CHECK(formFromIndex(5) == OrientationForm::YprRadians);
+    CHECK(formFromIndex(0) == OrientationForm::YprDegrees);
+    CHECK(formFromIndex(9) == OrientationForm::YprDegrees);
+}

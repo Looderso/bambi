@@ -341,7 +341,7 @@ float paintRegionEditor(ParameterPage& page, juce::Graphics& g, juce::Rectangle<
         page.noteNamedArea("region convert", convert, canConvert);
         y = convert.getBottom() + ctl::segmentGap;
         if (hasCustom) {
-            const auto line = theme::type::label * ctl::noticeLineHeight;
+            const auto line = noteLineHeight();
             text(g, "replaces the custom weights you have", labelFont(), colour::label,
                  {content.getX(), y, content.getWidth(), line});
             y += line;
@@ -396,7 +396,7 @@ float paintRegionEditor(ParameterPage& page, juce::Graphics& g, juce::Rectangle<
     y = copyArea.getBottom() + ctl::segmentGap;
 
     //  what a paste would bring, so that it is not a blind trust-fall
-    const auto line = theme::type::label * ctl::noticeLineHeight;
+    const auto line = noteLineHeight();
     text(g,
          !held.has_value() ? juce::String("the clipboard holds no region")
          : !own            ? juce::String("paste is for this window's own instance")

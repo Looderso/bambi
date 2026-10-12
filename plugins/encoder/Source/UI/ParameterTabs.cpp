@@ -132,7 +132,7 @@ void ParameterTabs::paintSource(juce::Graphics& g, juce::Rectangle<float> conten
     noteControl(bambi::EncoderParam::InputMode, modes, !mono);
     y = modes.getBottom() + ctl::segmentGap;
     if (mono) {
-        const auto line = theme::type::label * ctl::noticeLineHeight;
+        const auto line = noteLineHeight();
         text(g, "a mono track has no side: it is one point", labelFont(), colour::label,
              {content.getX(), y, content.getWidth(), line});
         y += line;
@@ -254,7 +254,7 @@ void ParameterTabs::paintTrajectory(juce::Graphics& g, juce::Rectangle<float> co
     const auto rows = static_cast<float>((info.size() + 1) / 2);
     y += rows * (height + ctl::tileRowGap) - ctl::tileRowGap + ctl::sectionGap;
 
-    const auto line = theme::type::label * ctl::noticeLineHeight;
+    const auto line = noteLineHeight();
     //  The one way to a chain: this shape as it is now, converted, and it always replaces the chain there was.
     const bool replaces = trajectory.nodes.size() >= 2;
     paintButton(g, {content.getX(), y, content.getWidth(), ctl::buttonHeight}, "convert to custom", true, [this] {
@@ -278,7 +278,7 @@ void ParameterTabs::paintTrajectory(juce::Graphics& g, juce::Rectangle<float> co
     never automated or modulated, so they have no numbers here. What is left is what has no gesture. */
 float ParameterTabs::paintNode(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     const auto& chain = state_.patch.trajectory;
-    const auto line = theme::type::label * ctl::noticeLineHeight;
+    const auto line = noteLineHeight();
     const int index = scene_.selectedNode;
     const bool has = index >= 0 && static_cast<std::size_t>(index) < chain.nodes.size();
 

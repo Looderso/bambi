@@ -79,7 +79,4 @@ private:
     int pos_{0};                  // frames of the current block gathered so far
 };
 
-/// The two-ear case.
-using BinauralConvolver = MatrixConvolver;
-
 }  // namespace bambi

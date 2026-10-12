@@ -21,6 +21,13 @@ bool readSofaData(std::span<const char> bytes, MeasuredHead& out, std::string* e
 /*  A decoder as filters: a SOFA GeneralFIR-E file with one measurement, the field's channels as its emitters and
  *  the loudspeaker feeds as its receivers -- what tools/matrix/jconvolver-to-sofa.py writes from a jconvolver set.
  *  Its global attributes say the order, channel order and normalisation the filters expect on their input. */
+struct FirMatrix;
+/*  A matrix's filters at `toHz`, laid out for the convolver: `fieldChannels` x outputs x taps, the taps of one
+    filter contiguous. A file with fewer inputs leaves the higher channels' filters silent; one with more drops its
+    extra inputs. With `n3d`, each input's filter is scaled by sqrt(2n + 1) for its degree, so an N3D-designed
+    decoder reads the SN3D field. Returns how many inputs were taken; `taps` is the resampled length. Allocates. */
+int resampledFilters(const FirMatrix& m, int fieldChannels, double toHz, bool n3d, std::vector<float>& out, int& taps);
+
 struct FirMatrix {
     double sampleRate{48000.0};
     int inputs{0}, outputs{0}, taps{0};

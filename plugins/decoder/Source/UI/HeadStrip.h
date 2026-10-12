@@ -21,19 +21,10 @@ public:
     /// The rate the strip shows, in messages a second; computed by the editor's frame.
     void setTrackerRate(float hz) { rateHz_ = hz; }
 
-    juce::Rectangle<float> recentreArea() const { return recentre_; }
-    juce::Rectangle<float> setupArea() const { return setup_; }
-    juce::Rectangle<float> sourceCell(int index) const {
-        return index >= 0 && index < static_cast<int>(sourceCells_.size())
-                   ? sourceCells_[static_cast<std::size_t>(index)]
-                   : juce::Rectangle<float>{};
-    }
-
 private:
     DecoderControlState& state_;
     float rateHz_{0.0f};
-    juce::Rectangle<float> recentre_, setup_, static_;
-    std::vector<juce::Rectangle<float>> sourceCells_;
+    juce::Rectangle<float> recentre_, setup_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HeadStrip)
 };

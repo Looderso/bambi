@@ -73,6 +73,4 @@ void DecoderControlState::closeTemp(TempTab t) {
     notify();
 }
 
-ParamId DecoderControlState::param(const char* key) const { return static_cast<ParamId>(decodeParams().byKey(key)); }
-
 }  // namespace bambi::ui

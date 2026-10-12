@@ -30,8 +30,6 @@ public:
     }
     juce::Rectangle<float> headFrameToggle() const { return headFrameToggle_; }
     juce::Rectangle<float> sourcesToggle() const { return sourcesToggle_; }
-    int speakersDrawn() const { return speakersDrawn_; }
-    bool hullDrawn() const { return hullDrawn_; }
 
 private:
     Viewport viewport() const { return sceneViewport(projection_, getWidth(), getHeight()); }
@@ -57,8 +55,6 @@ private:
     Mat3 scene_{kIdentity3};             ///< the scene's turn, which the sources follow
     std::vector<Loudspeaker> designOf_;  ///< the layout `design_` was built for
     SpeakerDesign design_;
-    int speakersDrawn_{0};
-    bool hullDrawn_{false};
     juce::Point<float> dragLast_{};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DecoderSceneView)

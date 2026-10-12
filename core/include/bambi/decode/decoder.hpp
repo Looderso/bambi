@@ -41,7 +41,7 @@ public:
     /// True when it built. Allocates nothing.
     bool work() noexcept;
 
-    /// Audio thread: see BinauralConvolver::process.
+    /// Audio thread: see MatrixConvolver::process.
     void process(const float* in, float* out, int frames) noexcept { convolver_.process(in, out, frames); }
     void reset() noexcept { convolver_.reset(); }
 
@@ -52,7 +52,7 @@ public:
 
 private:
     BinauralFilterBuilder builder_;
-    BinauralConvolver convolver_;
+    MatrixConvolver convolver_;
     std::atomic<double> shift_{0.0}, size_{1.0};
     std::atomic<int> requested_{1}, built_{0};  // a fresh decoder has one request pending: its defaults
 };

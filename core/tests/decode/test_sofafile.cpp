@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "bambi/decode/sofafile.hpp"
+#include "bambi/math/sh.hpp"
 #include "doctest.h"
 #include "fixtures.hpp"
 
@@ -86,4 +87,36 @@ TEST_CASE("a FIR-E file is read as a decoder matrix: inputs as emitters, outputs
     FirMatrix notOne;
     CHECK_FALSE(readSofaMatrix(std::string(BAMBI_CORE_DIR) + "/tests/decode/made.sofa", notOne, &error));
     CHECK(error.find("FIR-E") != std::string::npos);
+}
+
+TEST_CASE("a matrix's filters are laid out for the field, each input scaled for N3D by its degree") {
+    //  Catches: the factor on the wrong index (an output's instead of an input's), a file's extra inputs not
+    //  dropped, a missing input's filter not silent, the field's channel count not the row count.
+    FirMatrix m;
+    m.sampleRate = 48000.0;
+    m.inputs = 5;  // one more than a first-order field has
+    m.outputs = 2;
+    m.taps = 8;
+    m.filters.resize(static_cast<std::size_t>(m.inputs * m.outputs * m.taps));
+    for (std::size_t k = 0; k < m.filters.size(); ++k) m.filters[k] = 0.01f * static_cast<float>(k % 17) - 0.05f;
+    std::vector<float> asN3d, plain;
+    int taps = 0, tapsPlain = 0;
+    CHECK(resampledFilters(m, 4, 48000.0, true, asN3d, taps) == 4);
+    FirMatrix scaled = m;
+    for (int i = 0; i < m.inputs; ++i)
+        for (int o = 0; o < m.outputs; ++o)
+            for (int t = 0; t < m.taps; ++t)
+                scaled.filters[static_cast<std::size_t>((i * m.outputs + o) * m.taps + t)] *=
+                    static_cast<float>(std::sqrt(2.0 * acnOrder(i) + 1.0));
+    CHECK(resampledFilters(scaled, 4, 48000.0, false, plain, tapsPlain) == 4);
+    REQUIRE(taps == tapsPlain);
+    REQUIRE(asN3d.size() == static_cast<std::size_t>(4 * m.outputs * taps));
+    CHECK(asN3d == plain);
+    //  a wider field than the file: the extra channels' filters are silent
+    std::vector<float> wide;
+    CHECK(resampledFilters(m, 9, 48000.0, false, wide, taps) == 5);
+    bool silent = true;
+    for (std::size_t k = static_cast<std::size_t>(5 * m.outputs * taps); k < wide.size(); ++k)
+        silent = silent && wide[k] == 0.0f;
+    CHECK(silent);
 }

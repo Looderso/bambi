@@ -15,6 +15,8 @@ inline juce::Font font(float size, float trackingEm = 0.0f) {
 }
 
 inline juce::Font labelFont() { return font(theme::type::label, theme::type::trackingLabel); }
+/// The height of one line of a note or hint in the label face.
+inline float noteLineHeight() { return theme::type::label * theme::controls::noticeLineHeight; }
 
 inline juce::Font smallFont() { return font(theme::type::small, theme::type::trackingLabel); }
 

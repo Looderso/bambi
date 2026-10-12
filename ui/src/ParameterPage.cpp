@@ -96,7 +96,7 @@ float ParameterPage::paintRetrigger(juce::Graphics& g, juce::Rectangle<float> co
     noteControl(retrigger, area, enabled);  // it has no tile, but it is where a click changes it
     y += ctl::segmentHeight + ctl::sectionGap;
     if (continues && enabled) {
-        const auto line = theme::type::label * ctl::noticeLineHeight;
+        const auto line = noteLineHeight();
         text(g, "runs on through play and locate: a bounce will differ", labelFont(), colour::label,
              {content.getX(), y, content.getWidth(), line});
         y += line + ctl::sectionGap;
@@ -106,7 +106,7 @@ float ParameterPage::paintRetrigger(juce::Graphics& g, juce::Rectangle<float> co
 }
 
 float ParameterPage::paintHint(juce::Graphics& g, juce::Rectangle<float> content, const juce::String& hint) {
-    const auto line = theme::type::label * ctl::noticeLineHeight;
+    const auto line = noteLineHeight();
     const auto f = labelFont();
     if (textWidth(f, hint) <= content.getWidth()) {
         text(g, hint, f, colour::label, content.withHeight(line));
@@ -179,6 +179,17 @@ ParameterPage::PickerLayout ParameterPage::paintPicker(juce::Graphics& g, float 
     const auto bottom = y + segmentLinesHeight(static_cast<int>(names.size()), columns);
     noteContentBottom(bottom + scroll());
     return {cells, bottom};
+}
+
+float ParameterPage::paintButtonNote(juce::Graphics& g, juce::Rectangle<float> content, float y,
+                                     const juce::String& label, bool enabled, std::function<void()> click,
+                                     const juce::String& note, juce::Colour noteInk) {
+    const juce::Rectangle<float> button{content.getX(), y, framedButtonWidth(label), ctl::buttonHeight};
+    paintButton(g, button, label, enabled, std::move(click));
+    const float x = button.getRight() + static_cast<float>(theme::space::grid);
+    text(g, note, labelFont(), noteInk, {x, y, content.getRight() - x, ctl::buttonHeight},
+         juce::Justification::centredLeft);
+    return y + ctl::buttonHeight;
 }
 
 void ParameterPage::paintButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled,

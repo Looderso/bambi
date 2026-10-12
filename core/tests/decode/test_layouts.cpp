@@ -19,8 +19,6 @@ TEST_CASE("the BS.2051 layouts are there by name, channels as the recommendation
     CHECK(five->speakers[2].azimuthDeg == 0.0);    // C
     CHECK(five->speakers[3].channel == 5);         // Ls, after the LFE's gap
     CHECK(five->speakers[3].azimuthDeg == 110.0);
-    CHECK(bs2051ChannelName("0+5+0", 4) == "LFE1");
-    CHECK(bs2051ChannelName("4+7+0", 9) == "U+045");
     const Layout* j = bs2051Layout("4+7+0");
     REQUIRE(j != nullptr);
     CHECK(j->speakers.size() == 11);

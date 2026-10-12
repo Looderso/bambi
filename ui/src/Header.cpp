@@ -334,7 +334,7 @@ void Header::paint(juce::Graphics& g) {
                 g.drawRect(tab.mark, theme::stroke::toggle);
                 if (mark > 0) {
                     g.setColour(colour::text);
-                    g.fillRect(tab.mark.reduced(theme::scene::toggleWell));
+                    g.fillRect(tab.mark.reduced(hdr::toggleWell));
                 }
                 label = label.withTrimmedLeft(side + theme::scene::toggleGap);
             }

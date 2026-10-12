@@ -16,7 +16,6 @@
 #include "bambi/math/sh.hpp"
 
 namespace {
-bambi::ParamId decoderParam(const char* key) { return static_cast<bambi::ParamId>(bambi::decodeParams().byKey(key)); }
 
 /// The layout as the design should see it: with the distances levelled when compensation is off.
 bambi::Layout layoutFor(const bambi::DecoderState& d) {
@@ -28,10 +27,6 @@ bambi::Layout layoutFor(const bambi::DecoderState& d) {
 }
 
 /// What a bus's description says: the same line the layout log keeps.
-juce::String busLine(const juce::AudioProcessor::BusesLayout& layouts) {
-    return "in " + juce::String(layouts.getMainInputChannelSet().size()) + "  |  out " +
-           juce::String(layouts.getMainOutputChannelSet().size());
-}
 }  // namespace
 
 BambiDecoderProcessor::BambiDecoderProcessor()
@@ -71,7 +66,6 @@ bool BambiDecoderProcessor::isBusesLayoutSupported(const BusesLayout& layouts) c
     const bool ok = bambi::host::orderThatFits(layouts.getMainInputChannelSet().size()) >= 0 &&
                     layouts.getMainOutputChannelSet().size() >= 2 &&
                     layouts.getMainOutputChannelSet().size() <= kMaxOutputs;
-    appendLayoutLog(busLine(layouts) + (ok ? "   -> accepted" : "   -> refused"));
     return ok;
 }
 
@@ -110,17 +104,6 @@ bool BambiDecoderProcessor::clapAudioPortsConfigSelect(clap_id configId) {
     return setBusesLayout(layout);
 }
 
-void BambiDecoderProcessor::appendLayoutLog(const juce::String& entry) const {
-    const std::lock_guard<std::mutex> lock(logMutex_);
-    layoutLog_.add(entry);
-    while (layoutLog_.size() > 64) layoutLog_.remove(0);
-}
-
-juce::StringArray BambiDecoderProcessor::layoutLog() const {
-    const std::lock_guard<std::mutex> lock(logMutex_);
-    return layoutLog_;
-}
-
 // ---- lifecycle -----------------------------------------------------------------------------
 
 void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) {
@@ -132,7 +115,6 @@ void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpected
     maxBlock_ = std::max(1, maximumExpectedSamplesPerBlock);
     engineOrder_ = bambi::host::orderThatFits(getChannelCountOfBus(true, 0));
     diag_.sampleRate.store(sampleRate_, std::memory_order_relaxed);
-    diag_.blockSize.store(maxBlock_, std::memory_order_relaxed);
     modulation().prepare(sampleRate_);
     setLoadRate(sampleRate_);
     setLatencySamples(kPartition);
@@ -319,24 +301,10 @@ void BambiDecoderProcessor::buildMatrix(const bambi::DecoderState& d) {
     //  The filters at the host's rate, the field's channels as its inputs: a file with fewer inputs leaves the higher
     //  channels unheard, one with more drops its extra inputs. The input's normalisation as the file says, or as chosen.
     const int C = bambi::numChannels(engineOrder_);
-    const int inputs = std::min(C, m.inputs);
     const bool n3d = d.matrixNormalization == 2 || (d.matrixNormalization == 0 && m.normalization != "SN3D");
-    std::vector<float> one, scaled;
-    bambi::resampleSinc(m.filter(0, 0), m.sampleRate, sampleRate_, one);
-    const int taps = static_cast<int>(one.size());
-    std::vector<float> filters(
-        static_cast<std::size_t>(C) * static_cast<std::size_t>(m.outputs) * static_cast<std::size_t>(taps), 0.0f);
-    for (int i = 0; i < inputs; ++i) {
-        const float factor = n3d ? static_cast<float>(std::sqrt(2.0 * bambi::acnOrder(i) + 1.0)) : 1.0f;
-        for (int o = 0; o < m.outputs; ++o) {
-            bambi::resampleSinc(m.filter(i, o), m.sampleRate, sampleRate_, scaled);
-            float* dst = filters.data() + (static_cast<std::size_t>(i) * static_cast<std::size_t>(m.outputs) +
-                                           static_cast<std::size_t>(o)) *
-                                              static_cast<std::size_t>(taps);
-            for (std::size_t t = 0; t < scaled.size() && t < static_cast<std::size_t>(taps); ++t)
-                dst[t] = scaled[t] * factor;
-        }
-    }
+    std::vector<float> filters;
+    int taps = 0;
+    const int inputs = bambi::resampledFilters(m, C, sampleRate_, n3d, filters, taps);
     stop();
     const bool ready =
         matrix_.prepareMatrix(C, m.outputs, taps, kPartition) && matrix_.publish(filters, C, m.outputs, taps);
@@ -389,7 +357,7 @@ bool BambiDecoderProcessor::loadMatrixFile(const juce::File& file, juce::String*
 }
 
 juce::String BambiDecoderProcessor::matrixNote() const {
-    const std::lock_guard<std::mutex> work(const_cast<std::mutex&>(workMutex_));
+    const std::lock_guard<std::mutex> work(workMutex_);
     return matrixNote_;
 }
 
@@ -541,19 +509,6 @@ void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) 
     takeOrientation(address, std::span<const float>(values.data(), count));
 }
 
-namespace {
-/// The state's learned form as the receiver's.
-bambi::OrientationForm formOf(int learned) {
-    switch (learned) {
-        case 1: return bambi::OrientationForm::QuaternionWxyz;
-        case 2: return bambi::OrientationForm::QuaternionXyzw;
-        case 4: return bambi::OrientationForm::YprDegreesPitchDown;
-        case 5: return bambi::OrientationForm::YprRadians;
-        default: return bambi::OrientationForm::YprDegrees;
-    }
-}
-}  // namespace
-
 void BambiDecoderProcessor::takeOrientation(const juce::String& address, std::span<const float> values) {
     bambi::OrientationRead read;
     int source = 0, form = 0;
@@ -598,11 +553,11 @@ void BambiDecoderProcessor::takeOrientation(const juce::String& address, std::sp
     const bool learnedWhole = source == 1 && form != 0 && !learned[0].empty() && !gatheredAll && learned[1].empty();
     if (gatheredAll) {
         //  three numbers cannot be a quaternion: a quaternion form chosen for split addresses reads as degrees
-        read.form = form == 1 || form == 2 ? bambi::OrientationForm::YprDegrees : formOf(form);
+        read.form = form == 1 || form == 2 ? bambi::OrientationForm::YprDegrees : bambi::formFromIndex(form);
         values = std::span<const float>(gathered.data(), 3);
     } else if (learnedWhole) {
         if (address.toStdString() != learned[0]) return;
-        read.form = formOf(form);
+        read.form = bambi::formFromIndex(form);
     } else {
         if (!bambi::knownForm(address.toStdString(), read.form)) return;
         //  The helper's own sources arrive by their own address; another form on the port is not theirs to turn the head.
@@ -634,9 +589,7 @@ void BambiDecoderProcessor::editDecoder(std::string_view name,
     document().edit(name, [&change](bambi::PluginState& s) { change(s.decoder); });
 }
 
-bambi::DecoderState BambiDecoderProcessor::decoderState() const {
-    return const_cast<BambiDecoderProcessor&>(*this).document().committed().decoder;
-}
+bambi::DecoderState BambiDecoderProcessor::decoderState() const { return document().committed().decoder; }
 
 void BambiDecoderProcessor::playOutput(Output which, bool on) {
     const int bus = getChannelCountOfBus(false, 0);
@@ -667,12 +620,12 @@ void BambiDecoderProcessor::playOutput(Output which, bool on) {
 juce::String BambiDecoderProcessor::notice() const { return notice_; }
 
 juce::String BambiDecoderProcessor::designError() const {
-    const std::lock_guard<std::mutex> work(const_cast<std::mutex&>(workMutex_));
+    const std::lock_guard<std::mutex> work(workMutex_);
     return matrixError_.isNotEmpty() ? matrixError_ : juce::String(speakers_.lastError());
 }
 
 bambi::SpeakerDesign BambiDecoderProcessor::speakerDesign() const {
-    const std::lock_guard<std::mutex> work(const_cast<std::mutex&>(workMutex_));
+    const std::lock_guard<std::mutex> work(workMutex_);
     return speakers_.design();
 }
 
@@ -753,7 +706,7 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     if (!d.sceneStatic) {
         const auto& p = parameterValues();
         const auto at = [&](const char* key) {
-            return static_cast<double>(p[static_cast<std::size_t>(decoderParam(key))]);
+            return static_cast<double>(p[static_cast<std::size_t>(bambi::decoderParam(key))]);
         };
         const bool runs =
             diag_.playing.load(std::memory_order_relaxed) || !diag_.transportKnown.load(std::memory_order_relaxed);
@@ -787,7 +740,7 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     for (int c = 0; c < outChannels; ++c) out.clear(c, 0, n);
     //  The level glides per sample toward the parameter, a one-pole with a fixed coefficient, so the same block of
     //  audio comes out the same however the host cuts it.
-    const float levelDb = parameterValues()[static_cast<std::size_t>(decoderParam("output.level"))];
+    const float levelDb = parameterValues()[static_cast<std::size_t>(bambi::decoderParam("output.level"))];
     const float gain = levelDb <= -60.0f ? 0.0f : juce::Decibels::decibelsToGain(levelDb);
     for (int i = 0; i < n; ++i) {
         gainNow_ += (gain - gainNow_) * gainCoefficient_;

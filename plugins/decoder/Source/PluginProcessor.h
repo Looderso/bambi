@@ -99,7 +99,6 @@ public:
 
     //  ---- what the window reads -----------------------------------------------------------------
     struct Diagnostics : bambi::host::PluginProcessor::Diagnostics {
-        std::atomic<int> blockSize{0};
         std::atomic<int> speakerOutputs{0};  ///< channels the layout's design spans; 0 without a layout
         /// The block's peak on each output channel, linear, the first kMaxChannels of the bus; 0 where nothing plays.
         std::array<std::atomic<float>, bambi::kMaxChannels> channelPeak{};
@@ -147,7 +146,6 @@ public:
     bool captureNod();
     bool levelCaptured() const { return levelCaptured_; }
     void forgetCalibration();  ///< back to Apple's documented frame
-    juce::StringArray layoutLog() const;
 
     /// The sliders the binaural filters were last built with, for a check.
     std::pair<double, double> builtSliders() const { return {builtShift_, builtSize_}; }
@@ -181,7 +179,6 @@ private:
     int headIndex(const bambi::DecoderState& d);
     void connectTracker(const bambi::DecoderState& d);
     void oscMessageReceived(const juce::OSCMessage& message) override;
-    void appendLayoutLog(const juce::String& entry) const;
 
     std::array<bambi::HeadModel, 2> models_;  ///< the model, and the KU100 as measured
     bool modelLoaded_{false};
@@ -208,7 +205,7 @@ private:
     bambi::HeadRotation scene_;        ///< the scene's turn, heard by every output
     bambi::HeadRotation turn_;         ///< the head undone, for the binaural decode and the slice
     bambi::RotationClock sceneClock_;  ///< the rates integrated; audio thread
-    std::mutex workMutex_;             ///< prepare and build: never the audio thread
+    mutable std::mutex workMutex_;     ///< prepare and build: never the audio thread
     double sampleRate_{48000.0};
     int engineOrder_{-1};  ///< what prepareToPlay built for; -1 until it has run
     int maxBlock_{0};
@@ -257,7 +254,5 @@ private:
     std::uint32_t testNoise_{1};       ///< the burst's noise generator, reseeded at each start; audio thread
 
     Diagnostics diag_;
-    mutable std::mutex logMutex_;
-    mutable juce::StringArray layoutLog_;  ///< isBusesLayoutSupported is const and writes it
     juce::String notice_;
 };

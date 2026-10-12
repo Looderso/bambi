@@ -37,6 +37,10 @@ enum class Mounting {
 };
 
 /// One way of reading what a sender sends, as learn mode or a preset settles it.
+/// A learned form as a page lists it: 0 yaw, pitch and roll in degrees, up positive; 1 a quaternion w first; 2 w
+/// last; 3 the degrees again; 4 pitch down; 5 radians. Anything else reads as degrees.
+OrientationForm formFromIndex(int index);
+
 struct OrientationRead {
     OrientationForm form{OrientationForm::QuaternionWxyz};
     Mounting mounting{Mounting::AsSent};

@@ -142,6 +142,10 @@ public:
     /// An action, not a value: framed, and inert while disabled.
     void paintButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled,
                      std::function<void()> click);
+    /// A button at its label's width with a note beside it, one row at the button's height; returns the row's bottom.
+    float paintButtonNote(juce::Graphics& g, juce::Rectangle<float> content, float y, const juce::String& label,
+                          bool enabled, std::function<void()> click, const juce::String& note,
+                          juce::Colour noteInk = theme::colour::label);
 
     /*  One parameter as a tile, drawn and made draggable. `name` overrides the manifest's, for a
      *  page that calls something by a shorter name than the host does. */

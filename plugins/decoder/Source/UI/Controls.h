@@ -60,7 +60,6 @@ struct DecoderControlState final : public editor::PatchControls, public Instance
 
     const DecoderState& decoder() const { return patch.decoder; }
     int renderedOrder() const final { return std::clamp(processor.engineOrder(), 1, kRegionWeightsOrder); }
-    ParamId param(const char* key) const;
 };
 
 }  // namespace bambi::ui

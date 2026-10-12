@@ -52,11 +52,6 @@ public:
     juce::Rectangle<float> instanceSwitchArea(int index) { return header().instanceSwitchArea(index); }
     /// Click the square in an output's tab, as the mouse would.
     bool clickOutputSquare(int index);
-    int shownOutput() const { return static_cast<int>(controls.page); }
-    bool hullDrawn() const { return globe.hullDrawn(); }
-    int speakersDrawnInScene() const { return equirect.speakersDrawn(); }
-    bambi::ui::DecoderPanel& decoderPanel() { return panel; }
-    bambi::ui::HeadStrip& headStrip() { return strip; }
 
 private:
     void frame(bambi::ui::EditorFrame& parts) override;

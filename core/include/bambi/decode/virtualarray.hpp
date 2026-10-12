@@ -18,7 +18,7 @@
  *
  *  The two steps collapse into one matrix from the bus to the high-order field, which a
  *  SpeakerRenderer plays and swaps as it would a layout; the head's turn against the room goes on
- *  that field, and a BinauralConvolver takes it from there.
+ *  that field, and a MatrixConvolver takes it from there.
  */
 namespace bambi {
 
@@ -57,7 +57,7 @@ private:
     SpeakerRenderer renderer_;
     HeadRotation turn_;
     BinauralFilterBuilder builder_;
-    BinauralConvolver convolver_;
+    MatrixConvolver convolver_;
     std::vector<float> field_, turned_;  // kChunk x fieldChannels each
 };
 

@@ -148,7 +148,7 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
         }
         y += static_cast<float>((shownBus + perRow - 1) / perRow) * (cell + gap) + ctl::segmentGap;
         //  the key: which ink is whose
-        const float lineH = type::label * ctl::noticeLineHeight;
+        const float lineH = noteLineHeight();
         float kx = content.getX();
         for (const auto& [ink, who] : {std::pair{colour::text, "headphones"}, std::pair{colour::label, "speakers"}}) {
             g.setColour(ink);
@@ -176,7 +176,7 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
                            : "playing would stop " + otherName + ": the same channels";
     if (!status.isEmpty()) {
         y += ctl::segmentGap;
-        const float lineH = type::label * ctl::noticeLineHeight;
+        const float lineH = noteLineHeight();
         text(g, status, labelFont(), !p.fits || (playing && collide) ? colour::text : colour::label,
              {content.getX(), y, content.getWidth(), lineH}, juce::Justification::centredLeft);
         y += lineH;
@@ -208,7 +208,7 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
     float y = content.getY();
-    const float lineH = type::label * ctl::noticeLineHeight;
+    const float lineH = noteLineHeight();
     const float buttonH = ctl::buttonHeight;
 
     //  what the head is: the model, the KU100 as measured, or a SOFA file fitted on load
@@ -248,13 +248,9 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
                 (note.isEmpty() ? juce::String() : " " + kDot + " " + note);
     }
     if (head == 2) {
-        const juce::Rectangle<float> load{content.getX(), y, framedButtonWidth("load\xe2\x80\xa6"), buttonH};
-        paintButton(g, load, juce::String::fromUTF8("load\xe2\x80\xa6"), mine, [this] { chooseSofaFile(); });
-        text(g, about, labelFont(), colour::label,
-             {load.getRight() + static_cast<float>(space::grid), y,
-              content.getRight() - load.getRight() - static_cast<float>(space::grid), buttonH},
-             juce::Justification::centredLeft);
-        y += buttonH + static_cast<float>(space::groupGap);
+        y = paintButtonNote(
+                g, content, y, juce::String::fromUTF8("load\xe2\x80\xa6"), mine, [this] { chooseSofaFile(); }, about) +
+            static_cast<float>(space::groupGap);
     } else {
         text(g, about, labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
              juce::Justification::centredLeft);
@@ -288,14 +284,11 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
     y += lineH + static_cast<float>(space::groupGap);
 
     //  the deep part, a tab of its own
-    const juce::Rectangle<float> personalise{content.getX(), y, framedButtonWidth("personalise\xe2\x80\xa6"), buttonH};
-    paintButton(g, personalise, juce::String::fromUTF8("personalise\xe2\x80\xa6"), true,
-                [this] { state_.openTemp(TempTab::Personalise); });
-    text(g, "against a loudspeaker " + kDot + " later", labelFont(), colour::inactive,
-         {personalise.getRight() + static_cast<float>(space::grid), y,
-          content.getRight() - personalise.getRight() - static_cast<float>(space::grid), buttonH},
-         juce::Justification::centredLeft);
-    noteContentBottom(y + buttonH + static_cast<float>(space::grid));
+    y = paintButtonNote(
+        g, content, y, juce::String::fromUTF8("personalise\xe2\x80\xa6"), true,
+        [this] { state_.openTemp(TempTab::Personalise); }, "against a loudspeaker " + kDot + " later",
+        colour::inactive);
+    noteContentBottom(y + static_cast<float>(space::grid));
 }
 
 void DecoderPanel::chooseSofaFile() {
@@ -349,7 +342,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
     float y = content.getY();
-    const float lineH = type::label * ctl::noticeLineHeight;
+    const float lineH = noteLineHeight();
     const float buttonH = ctl::buttonHeight;
     const auto line = [&](const juce::String& what, juce::Colour ink) {
         text(g, what, labelFont(), ink, {content.getX(), y, content.getWidth(), lineH},
@@ -417,12 +410,10 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         } else {
             line("no file loaded", colour::label);
         }
-        const juce::Rectangle<float> load{content.getX(), y, framedButtonWidth("load\xe2\x80\xa6"), buttonH};
-        paintButton(g, load, juce::String::fromUTF8("load\xe2\x80\xa6"), mine, [this] { chooseLayoutFile(); });
-        text(g, "iem allradecoder json " + kDot + " ambdec " + kDot + " sofa fir-e filter matrix", labelFont(),
-             colour::label, {load.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
-             juce::Justification::centredLeft);
-        y += buttonH + ctl::segmentGap;
+        y = paintButtonNote(
+                g, content, y, juce::String::fromUTF8("load\xe2\x80\xa6"), mine, [this] { chooseLayoutFile(); },
+                "iem allradecoder json " + kDot + " ambdec " + kDot + " sofa fir-e filter matrix") +
+            ctl::segmentGap;
     } else {
         //  typed: the table is the source. Any loaded layout becomes typed the moment it is edited there; a new one
         //  starts empty.
@@ -498,16 +489,13 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
     y += static_cast<float>(space::groupGap);
 
     //  the table, a tab of its own
-    const juce::Rectangle<float> table{content.getX(), y, framedButtonWidth("loudspeakers\xe2\x80\xa6"), buttonH};
-    paintButton(g, table, juce::String::fromUTF8("loudspeakers\xe2\x80\xa6"), !d.layout.empty() || matrix,
-                [this] { state_.openTemp(TempTab::Loudspeakers); });
     const int order = state_.processor.engineOrder();
-    text(g,
-         matrix ? juce::String("the outputs, one row each")
-                : "order " + juce::String(std::max(order, 0)) + " " + kDot + " the hull is on the scene",
-         labelFont(), colour::label,
-         {table.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
-         juce::Justification::centredLeft);
+    y = paintButtonNote(
+        g, content, y, juce::String::fromUTF8("loudspeakers\xe2\x80\xa6"), !d.layout.empty() || matrix,
+        [this] { state_.openTemp(TempTab::Loudspeakers); },
+        matrix ? juce::String("the outputs, one row each")
+               : "order " + juce::String(std::max(order, 0)) + " " + kDot + " the hull is on the scene");
+    noteContentBottom(y + static_cast<float>(space::grid));
     noteContentBottom(y + buttonH + static_cast<float>(space::grid));
 }
 
@@ -705,7 +693,7 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
     float y = content.getY();
-    const float lineH = type::label * ctl::noticeLineHeight;
+    const float lineH = noteLineHeight();
     const float buttonH = ctl::buttonHeight;
 
     //  the chosen source's own setup first; the source itself is chosen in the orientation strip
@@ -784,7 +772,7 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
 float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
-    const float lineH = type::label * ctl::noticeLineHeight;
+    const float lineH = noteLineHeight();
     const auto line = [&](const juce::String& what, juce::Colour ink) {
         text(g, what, labelFont(), ink, {content.getX(), y, content.getWidth(), lineH},
              juce::Justification::centredLeft);
@@ -823,7 +811,8 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
         y += buttonH + ctl::segmentGap;
     }
     if (d.trackerSource != 1) {
-        line("choose osc in the head strip, and what arrives on the port is listed here to learn from", colour::label);
+        line("choose osc in the orientation strip, and what arrives on the port is listed here to learn from",
+             colour::label);
         return y;
     }
     const std::vector<BambiDecoderProcessor::SeenAddress> seen = state_.processor.seenAddresses();
@@ -876,7 +865,7 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
 
 float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     const DecoderState& d = state_.decoder();
-    const float lineH = type::label * ctl::noticeLineHeight;
+    const float lineH = noteLineHeight();
     const auto line = [&](const juce::String& what, juce::Colour ink, float x, float width) {
         text(g, what, labelFont(), ink, {x, y, width, lineH}, juce::Justification::centredLeft);
         y += lineH;
@@ -887,7 +876,8 @@ float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content
     }
     if (d.trackerSource != 3) {
         line(
-            "choose phone in the head strip: the helper serves a page on this computer's address, and its code appears "
+            "choose phone in the orientation strip: the helper serves a page on this computer's address, and its code "
+            "appears "
             "here",
             colour::label, content.getX(), content.getWidth());
         return y;
@@ -927,8 +917,8 @@ float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content
 void DecoderPanel::paintPersonalise(juce::Graphics& g, juce::Rectangle<float> content) {
     float y = content.getY();
     text(g,
-         "a temporary tab, entered on purpose, closed when done. a real loudspeaker and a virtual one alternate; turn "
-         "and nod; move each slider until the two sit in one place.",
+         "a real loudspeaker and a virtual one alternate; turn and nod; move each slider until the two sit in one "
+         "place.",
          labelFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 5)},
          juce::Justification::topLeft);
     y += static_cast<float>(space::grid * 6);

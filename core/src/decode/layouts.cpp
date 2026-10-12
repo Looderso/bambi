@@ -180,11 +180,4 @@ std::vector<std::string_view> bs2051Names() {
     return names;
 }
 
-std::string_view bs2051ChannelName(std::string_view layout, int channel) {
-    for (const System& sys : systems())
-        if (sys.name == layout && channel >= 1 && channel <= static_cast<int>(sys.channels.size()))
-            return sys.channels[static_cast<std::size_t>(channel - 1)].name;
-    return {};
-}
-
 }  // namespace bambi

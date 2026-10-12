@@ -81,6 +81,7 @@ public:
 
     //  ---- the patch, its history, and this instance on the bus -----------------------------
     Document& document() override { return document_; }
+    const Document& document() const { return document_; }
     /// The lock `committing` runs under, for a plugin that reads what it set there.
     std::mutex& committedMutex() const { return document_.committedMutex(); }
     LinkNode& link() { return link_; }
