@@ -474,9 +474,9 @@ int main() {
 
     //  Two decoders in one session: each sees the other; the window's switch lists both; choosing the other follows
     //  it, with the output squares still the other's own to play; and back. The other's decoder state does not
-    //  travel the bus yet -- the link's patch record carries the effects' patch -- so what its page shows is not
-    //  checked here. Catches: the switch not fed from the scene, the follow never taken, the squares playing a
-    //  remote output, the shown instance not returning to this one.
+    //  travel the bus (the link's patch record carries the effects' patch), so what its page shows is not checked
+    //  here. Catches: the switch not fed from the scene, the follow never taken, the squares playing a remote
+    //  output, the shown instance not returning to this one.
     {
         std::printf("\ntwo decoders\n");
         //  A private session directory: the machine's real one may belong to a running DAW session.

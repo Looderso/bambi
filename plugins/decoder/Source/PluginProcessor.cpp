@@ -219,7 +219,7 @@ bool BambiDecoderProcessor::loadSofaFile(const juce::File& file, juce::String* e
         if (error) *error = juce::String(why);
         return false;
     }
-    const bambi::HeadFit fit;  // the shipped KU100's: order 20 on the 0.2-ERB axis
+    const bambi::HeadFit fit;  // the default fit: order 20 on the 0.2 ERB axis
     bambi::HeadModel head;
     if (!bambi::fitHeadModel(measured, fit, head, &why)) {
         if (error) *error = juce::String(why);
@@ -247,7 +247,8 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
         virtual_.setModel(headModel());
         headBuilt_ = false;
     }
-    //  The listener's two sliders: the binaural filters, and the array on headphones' at the field's order.
+    //  The listener's two sliders: the binaural filters, and the layout's array heard on headphones at the field's
+    //  order.
     const auto differs = [](double a, double b) { return std::abs(a - b) > 1e-9; };
     if (!headBuilt_ || differs(builtShift_, d.earShift) || differs(builtSize_, d.headSize)) {
         binaural_.request(d.earShift, d.headSize);
@@ -267,8 +268,8 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
         buildMatrix(d);
         if (leaving) builtOrder_ = -1;  // the layout's design decides the outputs again
     }
-    //  The layout's decoder, and the same layout heard on headphones.
-    //  a slice is narrow microphones at the loudspeakers, as narrow as the field's order allows, following the head
+    //  The layout's decoder, and the same layout heard on headphones. A pair's slice is narrow microphones at the
+    //  loudspeakers, as narrow as the field's order allows, and follows the head.
     const bambi::Microphones microphones{d.pairSlice, d.pairSlice ? std::max(1, engineOrder_) : 1};
     int realCount = 0;
     for (const bambi::Loudspeaker& s : d.layout)
@@ -437,7 +438,7 @@ void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
     const bool want = d.trackerSource == 1 || airpods || phone;
     if (want && (!oscConnected_ || oscPort_ != d.oscPort)) {
         if (oscConnected_) osc_.disconnect();
-        //  Bound to this computer until asked: a port open on the network is open to the whole network.
+        //  JUCE's receiver binds the port on every interface, whichever way the state's network flag is set.
         oscConnected_ = d.oscNetwork ? osc_.connect(d.oscPort) : osc_.connect(d.oscPort);
         oscPort_ = d.oscPort;
     } else if (!want && oscConnected_) {

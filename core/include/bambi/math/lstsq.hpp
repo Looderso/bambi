@@ -24,7 +24,7 @@ inline void invertSpd(std::vector<double>& g, int n) {
             l[sz(i) * sz(n) + sz(j)] = i == j ? std::sqrt(std::max(s, 1e-300)) : s / l[sz(j) * sz(n) + sz(j)];
         }
     }
-    // G^-1 = L^-T L^-1: solve L X = I column by column, then L^T G^-1 = X.
+    //  G^-1 = L^-T L^-1: solve L X = I column by column, then L^T G^-1 = X.
     std::vector<double> x(g.size(), 0.0);
     for (int col = 0; col < n; ++col) {
         for (int i = 0; i < n; ++i) {

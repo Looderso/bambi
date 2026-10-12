@@ -99,7 +99,7 @@ void Head::prepare(const HeadModel& model, std::span<const Vec3> directions, std
     }
     numPoints_ = static_cast<int>(erb_.size());
 
-    // One basis per direction at the highest order any map needs; a lower order is its prefix (ACN).
+    //  One basis per direction at the highest order any map needs; a lower order is its prefix (ACN).
     const int order = std::max({model.smooth.order, model.ild.order, model.itd.order, model.notches.order});
     const int stride = numChannels(order);
     std::vector<double> basis(sz(numDirections_) * sz(stride));
@@ -136,7 +136,7 @@ void Head::prepare(const HeadModel& model, std::span<const Vec3> directions, std
         for (int n = 0; n < numNotches_; ++n) {
             const HeadModel::Notch& notch = N.list[sz(n)];
             const std::size_t i = sz(d) * sz(numNotches_) + sz(n);
-            // Presence fades the notch in with a smoothstep; the depth is floored at -60 dB.
+            //  Presence fades the notch in with a smoothstep; the depth is floored at -60 dB.
             const double t = std::clamp((dot(y, notch.presence) - N.fadeIn) / (N.fadeOut - N.fadeIn), 0.0, 1.0);
             const double fade = t * t * (3 - 2 * t);
             centre_[i] = dot(y, notch.centre);
@@ -161,7 +161,7 @@ void Head::synthesise(double earShiftErb, double headSize) {
         double* left = left_.data() + cell;
         double* right = right_.data() + cell;
         for (int k = 0; k < numPoints_; ++k) {
-            // Each notch is a peaking filter's dip in dB: depth / (1 + u^2), u the distance from the centre in widths.
+            //  Each notch is a peaking filter's dip in dB: depth / (1 + u^2), u the distance from the centre in widths.
             double cll = smooth[k];
             for (int n = 0; n < numNotches_; ++n) {
                 const double a = depth_[at + sz(n)];
@@ -169,8 +169,8 @@ void Head::synthesise(double earShiftErb, double headSize) {
                 const double u = (erb_[sz(k)] - shifted_[sz(n)]) * width_[at + sz(n)];
                 cll += a / (1.0 + u * u);
             }
-            // The two ears share the summed level cll and differ by ild: left = cll + 10 log10(r / (1 + r)),
-            // right = cll - 10 log10(1 + r) with r = 10^(ild / 10).
+            //  The two ears share the summed level cll and differ by ild: left = cll + 10 log10(r / (1 + r)),
+            //  right = cll - 10 log10(1 + r) with r = 10^(ild / 10).
             const double ild = base[k] + grow * slope[k];
             const double both = 4.342944819032518 * std::log1p(std::exp(ild * 0.23025850929940458));  // 10 log10(1 + r)
             left[k] = cll + ild - both;

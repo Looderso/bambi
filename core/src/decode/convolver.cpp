@@ -55,7 +55,7 @@ float* MatrixConvolver::historySlot(int channel, int part) noexcept {
 
 void MatrixConvolver::stage(Set& set, int input, int output, std::span<const float> taps) noexcept {
     for (int j = 0; j < parts_; ++j) {
-        // A partition's taps in the first half, zeros in the second: the shape overlap-save needs.
+        //  A partition's taps in the first half, zeros in the second: the shape overlap-save needs.
         float* piece = piece_.data();
         for (int i = 0; i < partition_; ++i) {
             const std::size_t t = sz(j * partition_ + i);
@@ -98,7 +98,7 @@ void MatrixConvolver::convolveBlock(const Set& set, float* out) noexcept {
                 audioFft_.convolveAccumulate(historySlot(c, slot), spectrumOf(set, c, o, j), acc_.data(), scale);
             }
         audioFft_.signal(acc_.data(), signal_.data());
-        // Overlap-save: the second half of the circular result is the linear one.
+        //  Overlap-save: the second half of the circular result is the linear one.
         std::copy(signal_.data() + partition_, signal_.data() + fft_, out + sz(o) * sz(partition_));
     }
 }
@@ -127,7 +127,7 @@ void MatrixConvolver::runBlock() noexcept {
                 v = leaving_[sz(o) * sz(partition_) + sz(i)] * (1.0f - t) + v * t;
             }
 
-    // This block becomes the previous one.
+    //  This block becomes the previous one.
     for (int c = 0; c < channels_; ++c) {
         float* x = input_.data() + sz(c) * sz(fft_);
         std::copy(x + partition_, x + fft_, x);

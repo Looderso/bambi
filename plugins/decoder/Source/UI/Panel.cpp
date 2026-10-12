@@ -727,7 +727,7 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
     const float lineH = type::label * ctl::noticeLineHeight;
     const float buttonH = ctl::buttonHeight;
 
-    //  the chosen source's own setup first; the source itself is chosen in the head strip
+    //  the chosen source's own setup first; the source itself is chosen in the orientation strip
     if (d.trackerSource == 1) {
         y = paintGroupTitle(g, content, y, "osc");
         paintStateTile(

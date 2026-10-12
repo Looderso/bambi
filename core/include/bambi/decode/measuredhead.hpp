@@ -34,8 +34,7 @@ struct HeadFit {
     int itdOrder{10};         ///< the time difference's
     double roughness{1e-3};   ///< the penalty on order n is roughness * n (n + 1), relative to the fit's own scale
     double ildLimitDb{40.0};  ///< the far ear's notches held to this
-    /// The shipped KU100's: about 300 Hz to 20 kHz at 0.2 ERB, which costs 0.02 dB against the model's 0.1 and
-    /// halves the file.
+    /// About 300 Hz to 20 kHz at 0.2 ERB: half the points, so half the file, of an axis at 0.1.
     HeadModel::Axis axis{7.7853, 0.2, 170};
 };
 

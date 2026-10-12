@@ -19,7 +19,7 @@ namespace sc = theme::scene;
 
 namespace {
 constexpr int kArcSteps = 16;
-constexpr double kGazeRingDeg = 9.0;  ///< the ring round where the head looks, as the draft draws it
+constexpr double kGazeRingDeg = 9.0;  ///< the angular radius of the ring round where the head looks
 
 /// `count` points of the small circle of angular radius `radiusRad` about `centre`.
 void circleAround(Vec3 centre, double radiusRad, int count, std::vector<Vec3>& out) {
@@ -129,8 +129,7 @@ void DecoderSceneView::paint(juce::Graphics& g) {
         }
     }
 
-    //  A drag orbits the globe; the strip's clicks were registered first and lie on top of nothing, so this goes last
-    //  and under them.
+    //  A drag orbits the globe. Regions added later lie on top, so this one, added last, takes any press it overlaps.
     if (globe) {
         addDragArea(
             frame, [this](juce::Point<float> at) { dragLast_ = at; },

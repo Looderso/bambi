@@ -45,8 +45,8 @@ public:
     bool prepare(const HeadModel& model, const FilterDesign& design, std::span<const Vec3> directions,
                  std::span<const double> weights);
 
-    /// Another head on the same grid and design: the measured KU100 for the model, a file's. Allocates the head's
-    /// tables; never while build() may run, so on the worker, between builds.
+    /// Another head model on the same grid and design. Allocates the head's tables; never while build() may run,
+    /// so on the worker, between builds.
     void setModel(const HeadModel& model);
     /// Synthesises the head for the two sliders and designs every filter. Allocates nothing.
     void build(double earShiftErb, double headSize);

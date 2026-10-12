@@ -92,7 +92,7 @@ void fanCoplanar(std::vector<std::array<int, 3>>& faces, std::vector<Vec3>& poin
         Vec3 centre{0, 0, 0};
         for (int v : corners) centre = centre + points[sz(v)];
         centre = centre * (1.0 / std::sqrt(dot(centre, centre)));
-        // The corners in order around the centre, in the plane.
+        //  The corners in order around the centre, in the plane.
         Vec3 u = points[sz(corners[0])] - centre * dot(points[sz(corners[0])], centre);
         u = u * (1.0 / std::sqrt(dot(u, u)));
         const Vec3 w = cross(centre, u);
@@ -165,7 +165,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
     out = SpeakerDesign{};
     if (order < 1 || order > kMaxOrder) return fail(error, "order out of range");
 
-    // The loudspeakers by channel, so that a layout listed in another order designs the same decoder.
+    //  The loudspeakers by channel, so that a layout listed in another order designs the same decoder.
     std::vector<Loudspeaker> speakers = layout.speakers;
     std::stable_sort(speakers.begin(), speakers.end(),
                      [](const Loudspeaker& a, const Loudspeaker& b) { return a.channel < b.channel; });
@@ -235,7 +235,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         normaliseEnergy(d, total, out.imaginary, order, level);
         out.matrix.swap(d);
     } else if (ring) {
-        // Virtual loudspeakers on the ring, panned between neighbours in azimuth.
+        //  Virtual loudspeakers on the ring, panned between neighbours in azimuth.
         const int n = static_cast<int>(out.points.size());
         std::vector<int> byAzimuth(sz(n));
         std::vector<double> az(sz(n));
@@ -255,7 +255,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         for (int k = 0; k < kRingGrid; ++k) {
             const double phi = 2.0 * kPi * k / kRingGrid;
             grid[sz(k)] = {std::cos(phi), std::sin(phi), 0.0};
-            // The neighbours around phi, and the pair's gains: sines of the angles to the far neighbour.
+            //  The neighbours around phi, and the pair's gains: sines of the angles to the far neighbour.
             int i = n - 1;
             for (int j = 0; j < n; ++j)
                 if (az[sz(byAzimuth[sz(j)])] <= phi) i = j;
@@ -277,7 +277,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         normaliseEnergy(d, n, out.imaginary, order, grid);
         out.matrix.swap(d);
     } else {
-        // Nothing below or above the listener: an imaginary point there, so a source there pans to the nearest ring.
+        //  Nothing below or above the listener: an imaginary point there, so a source there pans to the nearest ring.
         if (!below) {
             out.points.push_back({0.0, 0.0, -1.0});
             out.imaginary.push_back(true);
@@ -327,8 +327,8 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         for (const std::array<int, 3>& t : triangles) faces.push_back(faceOf(t, out.points));
         const int total = static_cast<int>(out.points.size());
 
-        // Every grid direction panned to the triangle that holds it, a centre's gain shared by its polygon's
-        // corners, the gains at unit energy.
+        //  Every grid direction panned to the triangle that holds it, a centre's gain shared by its polygon's
+        //  corners, the gains at unit energy.
         fibonacciSphere(kDesignGrid, grid);
         std::vector<double> d(sz(total) * sz(C), 0.0), gains(sz(total));
         std::vector<int> touched;
@@ -377,7 +377,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         out.matrix.swap(d);
     }
 
-    // The real loudspeakers' rows on their channels; imaginary points and empty channels stay silent.
+    //  The real loudspeakers' rows on their channels; imaginary points and empty channels stay silent.
     std::vector<double> perPoint;
     perPoint.swap(out.matrix);
     double farthest = 0;

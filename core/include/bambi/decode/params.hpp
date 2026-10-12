@@ -12,10 +12,9 @@
  *  rates turn the scene -- the whole field, for every output, and what an offline render turns it by;
  *  a tracker's orientation is an offset on top of them, never a parameter. The level is the output's.
  *  Everything else about the decoder -- what plays and where, the layout, the listener's two sliders,
- *  the weighting, the tracker's setup -- is state: it describes
- *  the listening situation and is never automated, so a bounce hears it whole and so does the
- *  worker that builds the filters from it (`patch/state.hpp`, `DecoderState`). The shared blocks are
- *  every plugin's.
+ *  the weighting, the tracker's setup -- is state (DecoderState): it describes the listening situation
+ *  and is never automated, so a bounce hears it whole and so does the worker that builds the filters
+ *  from it. The shared blocks are every plugin's.
  */
 namespace bambi {
 
@@ -29,8 +28,7 @@ namespace bambi {
                                                                                                     \
   X(Render, OutputLevel,  "output.level", "level", "dB", Float, -60, 12, 0, nullptr)              \
                                                                                                     \
-  /*  The one region slot every plugin carries. The decoder reads nothing from it yet; the Lens's  \
-   *  window, a slice of the scene, is what it will be.                                            */ \
+  /*  The one region slot every plugin carries; the decoder reads nothing from it.               */ \
   BAMBI_REGION_BLOCK(X, Region1, "region1", "lens")                                                 \
   X(Modulation, ModAmountRegion1, "mod.amount.region1", "lens amount", "", Float, 0, 1, 1, nullptr) \
                                                                                                     \

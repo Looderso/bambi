@@ -55,8 +55,8 @@ Mat3 headFromYpr(double yawDeg, double pitchDeg, double rollDeg) {
 }
 
 void yprOf(const Mat3& head, double& yawDeg, double& pitchDeg, double& rollDeg) {
-    // The front vector is the first column: yaw from its heading, pitch from its height; the roll is what is left
-    // once yaw and pitch are taken off.
+    //  The front vector is the first column: yaw from its heading, pitch from its height; the roll is what is left
+    //  once yaw and pitch are taken off.
     yawDeg = std::atan2(head[3], head[0]) * kRad2Deg;
     pitchDeg = std::asin(std::clamp(head[6], -1.0, 1.0)) * kRad2Deg;
     const Mat3 rest = multiply(transposed(headFromYpr(yawDeg, pitchDeg, 0.0)), head);  // Rx(roll)

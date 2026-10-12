@@ -29,7 +29,7 @@
 #include "bambi/link/latest.hpp"
 #include "bambi/mod/modulation.hpp"
 
-/*  bambi Decoder: the suite's fourth plugin, a monitor rather than an effect.
+/*  bambi Decoder: a monitor rather than an effect.
  *
  *  An ambisonic field comes in at the order that fits the input bus; the output bus is as wide as
  *  the host gives and is never renegotiated, and every output is a set of channels on it: headphones
@@ -40,9 +40,9 @@
  *
  *  Everything that is not a host parameter -- what plays and where, the layout, the listener's two
  *  sliders, the weighting, the tracker's setup -- is state (`DecoderState`), edited as a document and
- *  adopted whole. The filters and the decoder are designed on commit, here on the message thread, as
- *  Reverb builds its room, so a state load is heard whole and a bounce hears the state, never a
- *  worker's timing. The audio thread swaps finished sets in whole (`core/decode`).
+ *  adopted whole. The filters and the decoder are designed on commit, here on the message thread, so a
+ *  state load is heard whole and a bounce hears the state, never a worker's timing. The audio thread
+ *  swaps finished sets in whole.
  *
  *  Verified headless by `bambi-decoder-check`.
  */

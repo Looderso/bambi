@@ -63,7 +63,7 @@ bool SpeakerRenderer::publish(const SpeakerDesign& design) noexcept {
     set.channels = C;
     std::fill(set.matrix.begin(), set.matrix.end(), 0.0f);
     std::fill(set.delay.begin(), set.delay.end(), 0);
-    // The rows as designed; then each loudspeaker's distance gain into its row, and its delay in whole samples.
+    //  The rows as designed; then each loudspeaker's distance gain into its row, and its delay in whole samples.
     for (int o = 0; o < design.outputs; ++o)
         for (int c = 0; c < C; ++c)
             set.matrix[sz(c) * sz(maxOutputs_) + sz(o)] = static_cast<float>(design.matrix[sz(o) * sz(C) + sz(c)]);
@@ -91,8 +91,8 @@ void SpeakerRenderer::mix(const Set& set, const float* x, int inChannels, float*
 
 void SpeakerRenderer::process(const float* in, int inChannels, float* out, int outChannels, int frames) noexcept {
     if (ringLive_.empty()) return;
-    // A new design is taken up between blocks, and only when no fade is running: the old one is copied first, since
-    // its slot goes back to the worker with latest().
+    //  A new design is taken up between blocks, and only when no fade is running: the old one is copied first, since
+    //  its slot goes back to the worker with latest().
     if (!fading_ && settle_ == 0 && sets_.hasFresh()) {
         const bool had = live_ != nullptr;
         if (had) {
@@ -163,8 +163,8 @@ void SpeakerDecoder::request(const Layout& layout, int order, Weighting weightin
 }
 
 bool SpeakerDecoder::work() {
-    // The count is read before the request: one that lands in between leaves the count ahead of what was built, so
-    // the next work() designs again.
+    //  The count is read before the request: one that lands in between leaves the count ahead of what was built, so
+    //  the next work() designs again.
     const int seen = requested_.load(std::memory_order_acquire);
     if (seen == built_.load(std::memory_order_relaxed)) return false;
     Layout layout;

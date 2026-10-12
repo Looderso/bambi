@@ -18,7 +18,7 @@ SpeakerDesign fieldDesign(const SpeakerDesign& array, int fieldOrder) {
     const int C = numChannels(array.order), F = field.outputs;
     field.matrix.assign(sz(F) * sz(C), 0.0);
     std::vector<double> y(sz(F));
-    // Each real loudspeaker's row, encoded at its direction: field[f][c] += Y_f(direction) * array[output][c].
+    //  Each real loudspeaker's row, encoded at its direction: field[f][c] += Y_f(direction) * array[output][c].
     std::size_t real = 0;
     for (std::size_t p = 0; p < array.points.size(); ++p) {
         if (array.imaginary[p]) continue;

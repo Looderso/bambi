@@ -10,7 +10,7 @@
 namespace bambi::ui {
 
 /*  The decoder's right panel: the open output's page -- headphones, speakers -- and the temporary tabs: tracking
- *  from the head strip, personalisation from the headphones page, the loudspeaker table from the speakers page.
+ *  from the orientation strip, personalisation from the headphones page, the loudspeaker table from the speakers page.
  *  Every page opens with what the output is, its own settings under that, then its channel map -- the bus's
  *  channels, what plays on each, this output's own outlined -- then its options. The frame is the shared one.
  */

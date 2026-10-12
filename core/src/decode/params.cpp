@@ -84,7 +84,7 @@ const ParamManifest& decodeParams() {
 }
 
 const ModManifest& decodeMod() {
-    // One row always shown, to show what a row is: yaw, the one thing a monitor's modulation would move.
+    //  One row always shown, to show what a row is: yaw, the one thing a monitor's modulation would move.
     static const char* const kBase[] = {"head.yaw"};
     static const ModManifestOwner built(decodeParams(), kBase);
     return built.get();

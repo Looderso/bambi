@@ -45,7 +45,7 @@ bool HeadRotation::prepare(int order, double sampleRate) {
 }
 
 void HeadRotation::turnTo(const Mat3& head) noexcept {
-    // The field turns by the inverse of the head: what the head turns toward comes to the front.
+    //  The field turns by the inverse of the head: what the head turns toward comes to the front.
     shRotation(transposed(head), order_, blocks_);
     fieldBlocks(blocks_, order_, forward_, inverseScratch_);
 }
@@ -53,8 +53,8 @@ void HeadRotation::turnTo(const Mat3& head) noexcept {
 void HeadRotation::process(const float* in, float* out, int frames) noexcept {
     if (blocks_.empty()) return;
     for (int done = 0; done < frames;) {
-        // Hops are counted along the stream, not per call, so a glide step lands on the same frame however the
-        // frames are cut.
+        //  Hops are counted along the stream, not per call, so a glide step lands on the same frame however the
+        //  frames are cut.
         const int n = std::min(kRotationHop - pos_, frames - done);
         const float* x = in + sz(done) * sz(channels_);
         float* y = out + sz(done) * sz(channels_);
@@ -81,7 +81,7 @@ void HeadRotation::process(const float* in, float* out, int frames) noexcept {
             }
         }
         if (moving_) {
-            // Both turns over the hop, mixed with a ramp, so a step in orientation never steps in sound.
+            //  Both turns over the hop, mixed with a ramp, so a step in orientation never steps in sound.
             rotateField(previous_, order_, x, a_.data(), n);
             rotateField(forward_, order_, x, b_.data(), n);
             for (int f = 0; f < n; ++f) {

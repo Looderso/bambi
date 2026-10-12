@@ -24,8 +24,8 @@ void BinauralDecoder::request(double earShiftErb, double headSize) noexcept {
 }
 
 bool BinauralDecoder::work() noexcept {
-    // The count is read before the sliders: a request that lands in between leaves the count ahead of what was
-    // built, so the next work() builds again. Over-building is harmless; under-building would lose a slider move.
+    //  The count is read before the sliders: a request that lands in between leaves the count ahead of what was
+    //  built, so the next work() builds again. Over-building is harmless; under-building would lose a slider move.
     const int seen = requested_.load(std::memory_order_acquire);
     if (seen == built_.load(std::memory_order_relaxed)) return false;
     builder_.build(shift_.load(std::memory_order_relaxed), size_.load(std::memory_order_relaxed));

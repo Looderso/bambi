@@ -9,10 +9,9 @@
 #include "bambi/editor/PluginEditor.h"
 
 /*  The decoder's window: every plugin's window (`editor::PluginEditor`) with a different centre. One scene in
- *  the room's frame -- sources, loudspeakers, a head -- where the effects have their probes; the head strip where
- *  they have their matrix; the outputs as the header's tabs, where they keep their instances, the name opening an
- *  output's page and a square in the tab playing it; the open output's page in the right panel. The sketch is
- *  prototypes/ui/decoder/.
+ *  the room's frame -- sources, loudspeakers, a head -- where the effects have their probes; the orientation strip
+ *  where they have their matrix; the outputs as the header's tabs, where they keep their instances, the name
+ *  opening an output's page and a square in the tab playing it; the open output's page in the right panel.
  */
 namespace bambi::ui {
 /*  Built BEFORE the shared window, which is handed the parts: a base is constructed before the base that

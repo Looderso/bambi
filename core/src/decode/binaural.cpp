@@ -66,7 +66,7 @@ bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& 
     cutoff_ = design.order * kSpeedOfSound / (2.0 * kPi * design.headRadius);
     weight_.assign(weights.begin(), weights.end());
 
-    // The head on the design's bins: the ERB number of each bin's frequency.
+    //  The head on the design's bins: the ERB number of each bin's frequency.
     grid_.assign(directions.begin(), directions.end());
     binErbs_.resize(sz(bins()));
     for (int k = 0; k < bins(); ++k) binErbs_[sz(k)] = 21.4 * std::log10(1.0 + 0.00437 * binHz(k));
@@ -77,7 +77,7 @@ bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& 
         shSN3D(directions[sz(d)], design.order,
                std::span<double>(basis_.data() + sz(d) * sz(channels_), sz(channels_)));
 
-    // The weighted pseudo-inverse (Y^T W Y)^-1 Y^T W, channels x directions.
+    //  The weighted pseudo-inverse (Y^T W Y)^-1 Y^T W, channels x directions.
     std::vector<double> gram;
     gramMatrix(basis_, weight_, channels_, gram);
     invertSpd(gram, channels_);
@@ -90,7 +90,7 @@ bool BinauralFilterBuilder::prepare(const HeadModel& model, const FilterDesign& 
             pinv_[sz(c) * sz(directions_) + sz(d)] = s * weight_[sz(d)];
         }
 
-    // A diffuse field of unit power carries 1 / (2n + 1) per SN3D channel of order n.
+    //  A diffuse field of unit power carries 1 / (2n + 1) per SN3D channel of order n.
     diffuse_.resize(sz(channels_));
     for (int c = 0; c < channels_; ++c) diffuse_[sz(c)] = 1.0 / (2.0 * acnOrder(c) + 1.0);
 
@@ -132,10 +132,10 @@ void BinauralFilterBuilder::build(double earShiftErb, double headSize) {
     head_.synthesise(earShiftErb, headSize);
     const int D = directions_, C = channels_, K = bins();
 
-    // The head as complex HRTFs: the synthesised magnitudes with a pure interaural delay, half the ITD on each ear,
-    // the left later when the ITD is positive. The fit takes that phase up to the cutoff; above it only the
-    // magnitudes are the head's and the phase is the previous bin's decode, so the filters stay smooth and the
-    // order is not asked to hold phase it cannot.
+    //  The head as complex HRTFs: the synthesised magnitudes with a pure interaural delay, half the ITD on each ear,
+    //  the left later when the ITD is positive. The fit takes that phase up to the cutoff; above it only the
+    //  magnitudes are the head's and the phase is the previous bin's decode, so the filters stay smooth and the
+    //  order is not asked to hold phase it cannot.
     for (int k = 0; k < K; ++k) {
         const double omega = 2.0 * kPi * binHz(k);
         const bool phaseFit = k == 0 || binHz(k) <= cutoff_;
@@ -150,7 +150,7 @@ void BinauralFilterBuilder::build(double earShiftErb, double headSize) {
                 target_[sz(d) * 2] = left * lag;
                 target_[sz(d) * 2 + 1] = right * std::conj(lag);
             } else {
-                // The carried phase as a unit phasor, without the angle itself.
+                //  The carried phase as a unit phasor, without the angle itself.
                 const Cx cl = carried_[sz(d) * 2], cr = carried_[sz(d) * 2 + 1];
                 target_[sz(d) * 2] = left * (cl / (std::abs(cl) + 1e-300));
                 target_[sz(d) * 2 + 1] = right * (cr / (std::abs(cr) + 1e-300));
@@ -170,8 +170,8 @@ void BinauralFilterBuilder::build(double earShiftErb, double headSize) {
         if (k + 1 < K && binHz(k + 1) > cutoff_) decodedEars(k, carried_);
     }
 
-    // The covariance constraint: at every bin the decode's diffuse-field ear covariance is made the head's, with
-    // the mix that changes the signals least.
+    //  The covariance constraint: at every bin the decode's diffuse-field ear covariance is made the head's, with
+    //  the mix that changes the signals least.
     for (int k = 0; k < K; ++k) {
         const double omega = 2.0 * kPi * binHz(k);
         const double* amp = amplitude_.data() + sz(k) * sz(D) * 2;
@@ -201,8 +201,8 @@ void BinauralFilterBuilder::build(double earShiftErb, double headSize) {
         }
     }
 
-    // Back to time: each spectrum inverted, turned by the bulk delay (a whole number of samples, so a circular
-    // shift), cut to the taps and faded out.
+    //  Back to time: each spectrum inverted, turned by the bulk delay (a whole number of samples, so a circular
+    //  shift), cut to the taps and faded out.
     const int N = design_.fftSize;
     for (int c = 0; c < C; ++c)
         for (int e = 0; e < 2; ++e) {

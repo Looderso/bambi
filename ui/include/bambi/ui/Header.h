@@ -30,7 +30,7 @@ public:
     void setStatus(Link status);
     /*  A mark in each tab, for a plugin whose tabs are things that play rather than instances: `mark(index)` is
         -1 for none, 0 for a hollow square, 1 for a filled one; a click on the square calls `toggle(index)` instead
-        of selecting the tab. Both empty by default, which draws the tabs as they always were. */
+        of selecting the tab. Both are empty by default: the tabs are then drawn without marks. */
     void setTabMarks(std::function<int(int)> mark, std::function<void(int)> toggle) {
         tabMark_ = std::move(mark);
         tabToggle_ = std::move(toggle);
