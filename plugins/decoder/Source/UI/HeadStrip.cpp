@@ -12,6 +12,7 @@ namespace bambi::ui {
 
 using namespace theme;
 namespace ctl = theme::controls;
+namespace hdr = theme::header;
 
 HeadStrip::HeadStrip(DecoderControlState& state) : ParameterPage(state), state_(state) { setOpaque(true); }
 
@@ -78,8 +79,9 @@ void HeadStrip::paint(juce::Graphics& g) {
     const float wordWidth = std::min(textWidth(labelFont(), live) + 2.0f, width - inset - wordLeft);
     const float wordX = width - inset - wordWidth;
     text(g, live, labelFont(), colour::label, {wordX, tabTop, wordWidth, tabHeight}, juce::Justification::centredRight);
-    g.setColour(source == 0 ? colour::inactive : alive ? colour::text : colour::rule);
-    g.fillRect(wordX - 12.0f, tabTop + tabHeight / 2.0f - 3.5f, 7.0f, 7.0f);
+    g.setColour(source == 0 ? colour::inactive : alive ? colour::ok : colour::rule);
+    g.fillRect(wordX - hdr::gap / 2.0f - hdr::statusSquare, tabTop + (tabHeight - hdr::statusSquare) / 2.0f,
+               hdr::statusSquare, hdr::statusSquare);
     const juce::Rectangle<float> content{inset, ctl::tabBarHeight + ctl::segmentGap, width - 2.0f * inset,
                                          static_cast<float>(getHeight()) - ctl::tabBarHeight - ctl::segmentGap};
     float y = content.getY();

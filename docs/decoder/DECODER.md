@@ -604,9 +604,10 @@ library when the second plugin needs it, not before.
   the outputs are the header's tabs with a square each (its one new option); the panel holds the open output's page
   and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
   bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read
-  off the column and the channel map on the page says whose channel it is. Grey where it is *later*: headphone
-  correction, placing by looking; a test burst per loudspeaker is in the table (§3.2b), and the table is where a
-  layout is typed or edited. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
+  off the column and the channel map on the page says whose channel it is. Nothing in the window says *later*:
+  what is not built is not shown; a test burst per loudspeaker is in the table (§3.2b), and the table is where a
+  layout is typed or edited. The temporary tabs each carry a cross that closes them, as the suite's source tab
+  does. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the
   encoders' sources ([0176](../DECISIONS.md), [VISUALISATION §5](../suite/VISUALISATION.md)). Its link record
