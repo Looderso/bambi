@@ -134,6 +134,8 @@ void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpected
     field_.prepare(maxBlock_, engineOrder_);
     const auto channels = static_cast<std::size_t>(bambi::numChannels(engineOrder_));
     sceneField_.assign(static_cast<std::size_t>(maxBlock_) * channels, 0.0f);
+    silence_.assign(static_cast<std::size_t>(maxBlock_) * channels, 0.0f);
+    prepareEnergy(engineOrder_, sampleRate_, true);
     turned_.assign(static_cast<std::size_t>(maxBlock_) * channels, 0.0f);
     stereo_.assign(static_cast<std::size_t>(maxBlock_) * 2, 0.0f);
     speakersOut_.assign(static_cast<std::size_t>(maxBlock_) * static_cast<std::size_t>(kMaxOutputs), 0.0f);
@@ -752,6 +754,13 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     //  The scene turned, once a block, for every output; then the head undone, once a block, for whoever needs
     //  it: the binaural decode, and a pair of loudspeakers whose slice follows the head.
     scene_.process(field_.data(), sceneField_.data(), n);
+    //  The energy picture, while a window asks for it: the field as every output hears it, turned, is what
+    //  arrived; nothing is added, so the picture is all of what came in.
+    if (gatheringEnergy()) {
+        gatherArrived(sceneField_.data(), n);
+        gatherLeaving(silence_.data(), n);
+        publishEnergy();
+    }
     bool turned = false;
     const auto turnOnce = [&] {
         if (!turned) turn_.process(sceneField_.data(), turned_.data(), n);

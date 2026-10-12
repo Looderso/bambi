@@ -219,7 +219,8 @@ private:
 
     bambi::host::FieldBuffer field_;                                 ///< the input, interleaved
     std::vector<float> sceneField_, turned_, stereo_, speakersOut_;  ///< scratch, sized in prepareToPlay
-    std::vector<float> gainRamp_;                                    ///< the level per sample of the block
+    std::vector<float> silence_;   ///< one block of nothing added, for the energy picture: a monitor adds nothing
+    std::vector<float> gainRamp_;  ///< the level per sample of the block
     float gainNow_{1.0f}, gainCoefficient_{1.0f};
 
     //  The tracker. The OSC callback runs on the message thread and is the handoff's one writer; the audio

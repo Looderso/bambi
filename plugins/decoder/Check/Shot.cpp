@@ -10,13 +10,15 @@
 #include "bambi/host/TestPlayHead.h"
 #include "bambi/math/sh.hpp"
 
-/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers]
+/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers | --energy]
  *  The default shows the headphones page with the array's 7.1.4 layout loaded and a source moving; --speakers
- *  opens the speakers page, which draws the hull, and plays the layout; --loudspeakers opens its table too. */
+ *  opens the speakers page, which draws the hull, and plays the layout; --loudspeakers opens its table too;
+ *  --energy switches the energy picture on. */
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/decoder.png";
     const bool table = argc > 2 && juce::String(argv[2]) == "--loudspeakers";
+    const bool energy = argc > 2 && juce::String(argv[2]) == "--energy";
     const bool speakers = table || (argc > 2 && juce::String(argv[2]) == "--speakers");
     BambiDecoderProcessor proc;
     juce::AudioProcessor::BusesLayout l;
@@ -32,6 +34,13 @@ int main(int argc, char** argv) {
         d.speakersPlay = speakers;
         d.headphonesPlay = !speakers;
     });
+    std::unique_ptr<juce::AudioProcessorEditor> editor(proc.createEditor());
+    auto* dec = dynamic_cast<BambiDecoderEditor*>(editor.get());
+    if (dec == nullptr) return 1;
+    if (energy) {
+        dec->showEnergy();
+        dec->tick();  // the window asks for the picture before the field runs
+    }
     juce::MemoryBlock none;
     //  A field with a source in it, so the meters and the readouts have something to show.
     std::vector<double> y(16, 0.0);
@@ -49,9 +58,6 @@ int main(int argc, char** argv) {
         }
         proc.processBlock(buffer, midi);
     }
-    std::unique_ptr<juce::AudioProcessorEditor> editor(proc.createEditor());
-    auto* dec = dynamic_cast<BambiDecoderEditor*>(editor.get());
-    if (dec == nullptr) return 1;
     if (speakers) dec->showOutput(1);
     if (table) dec->openTemp(bambi::ui::TempTab::Loudspeakers);
     dec->tick();

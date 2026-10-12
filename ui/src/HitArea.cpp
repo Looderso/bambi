@@ -2,6 +2,9 @@
 #include "bambi/ui/HitArea.h"
 
 #include "bambi/scene/view.hpp"  // kClickSlopPixels: what counts as a drag rather than a click
+#include "bambi/ui/Draw.h"
+#include "bambi/ui/Theme.h"
+#include "bambi/ui/Widgets.h"
 
 namespace bambi::ui {
 
@@ -118,6 +121,29 @@ void HitArea::moveTo(juce::Point<float> to, bool fine) {
 void HitArea::releaseDrag() {
     mouseUp(eventAt(*this, movedTo_.value_or(pressedAt_), pressedAt_, false));
     movedTo_.reset();
+}
+
+}  // namespace bambi::ui
+
+namespace bambi::ui {
+
+std::vector<juce::Rectangle<float>> HitArea::paintTabRow(juce::Graphics& g, float x,
+                                                         std::span<const juce::String> names, int selected,
+                                                         std::function<void(int)> select) {
+    namespace ctl = theme::controls;
+    const auto tabFont = font(theme::type::body, theme::type::trackingTab);
+    const float height = ctl::tabBarHeight - ctl::matrixTabsTop;
+    std::vector<juce::Rectangle<float>> boxes;
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        const juce::Rectangle<float> box{x - ctl::tabPadX, ctl::matrixTabsTop,
+                                         textWidth(tabFont, names[i]) + 2.0f * ctl::tabPadX, height};
+        drawChoice(g, box, names[i], tabFont, static_cast<int>(i) == selected);
+        const int index = static_cast<int>(i);
+        addRegion({box, {}, {}, {}, [select, index] { select(index); }, {}});
+        boxes.push_back(box);
+        x = box.getRight() + ctl::tabGap + ctl::tabPadX;
+    }
+    return boxes;
 }
 
 }  // namespace bambi::ui

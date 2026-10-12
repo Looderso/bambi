@@ -65,25 +65,23 @@ void HeadStrip::paint(juce::Graphics& g) {
         live = word.isEmpty() ? "phone " + dot + " starting the helper" : "phone " + dot + " " + word;
     } else
         live = "osc " + dot + " port " + juce::String(d.oscPort) + ", nothing yet";
-    const auto frame = paintFrame(
-        g, {"none", "osc", "airpods", "phone"}, source,
-        [this, helper](int which) {
-            if (which >= 2 && !helper) return;  // nothing to read them with: the setup tab says so
-            model().applyEdit("tracker", [which](PluginState& s) { s.decoder.trackerSource = which; });
-        },
-        [&](juce::Graphics& gg, float x) {
-            const float dotX = x + static_cast<float>(space::grid);
-            gg.setColour(source == 0 ? colour::inactive : alive ? colour::text : colour::rule);
-            gg.fillRect(dotX, ctl::tabBarHeight / 2.0f - 3.5f, 7.0f, 7.0f);
-            const float textX = dotX + 12.0f;
-            text(gg, live, labelFont(), colour::label,
-                 {textX, 0.0f, static_cast<float>(getWidth()) - static_cast<float>(space::inset) - textX,
-                  ctl::tabBarHeight},
-                 juce::Justification::centredLeft);
-            return x;
-        });
-    const juce::Rectangle<float> content = frame.content;
-    if (content.isEmpty()) return;
+    g.fillAll(colour::ground);
+    const float width = static_cast<float>(getWidth()), inset = static_cast<float>(space::inset);
+    const std::vector<juce::String> names{"none", "osc", "airpods", "phone"};
+    const auto boxes = paintTabRow(g, inset, names, source, [this, helper](int which) {
+        if (which >= 2 && !helper) return;  // nothing to read them with: the setup tab says so
+        model().applyEdit("tracker", [which](PluginState& s) { s.decoder.trackerSource = which; });
+    });
+    //  the tracker's word at the right of the row, where the matrix has its count, the dot before it
+    const float tabTop = ctl::matrixTabsTop, tabHeight = ctl::tabBarHeight - ctl::matrixTabsTop;
+    const float wordLeft = (boxes.empty() ? inset : boxes.back().getRight()) + ctl::tabGap;
+    const float wordWidth = std::min(textWidth(labelFont(), live) + 2.0f, width - inset - wordLeft);
+    const float wordX = width - inset - wordWidth;
+    text(g, live, labelFont(), colour::label, {wordX, tabTop, wordWidth, tabHeight}, juce::Justification::centredRight);
+    g.setColour(source == 0 ? colour::inactive : alive ? colour::text : colour::rule);
+    g.fillRect(wordX - 12.0f, tabTop + tabHeight / 2.0f - 3.5f, 7.0f, 7.0f);
+    const juce::Rectangle<float> content{inset, ctl::tabBarHeight + ctl::segmentGap, width - 2.0f * inset,
+                                         static_cast<float>(getHeight()) - ctl::tabBarHeight - ctl::segmentGap};
     float y = content.getY();
     const bool tracked = source != 0;
 

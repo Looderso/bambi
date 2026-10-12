@@ -40,6 +40,8 @@ public:
     void showOutput(int index);
     /// Open one of the panel's temporary tabs, as its button would.
     void openTemp(bambi::ui::TempTab tab) { controls.openTemp(tab); }
+    /// Switch the energy picture on, as the equirect's toggle would.
+    void showEnergy() { controls.sphere.energyOn = true; }
     //  the session's decoders, as the header's switch lists them after a frame
     int sessionDecoders() const { return static_cast<int>(controls.decoders.size()); }
     void showDecoder(int index) {

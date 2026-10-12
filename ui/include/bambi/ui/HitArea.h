@@ -5,6 +5,7 @@
 #include <functional>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace bambi::ui {
@@ -136,6 +137,11 @@ protected:
     };
 
     void clearRegions() { regions_.clear(); }
+    /*  The tab row a slot draws where it has no frame of its own -- the matrix's, the decoder's orientation strip:
+     *  the names from `x`, in the tab face, standing `ctl::matrixTabsTop` below the slot's top edge, the chosen one
+     *  a block, a click choosing. Returns each tab's box, in order. */
+    std::vector<juce::Rectangle<float>> paintTabRow(juce::Graphics& g, float x, std::span<const juce::String> names,
+                                                    int selected, std::function<void(int)> select);
     void addRegion(Region region) {
         //  what the viewport hides takes no press: a tile scrolled under the tab bar is not there
         if (hitClip_.has_value()) region.area = region.area.getIntersection(*hitClip_);

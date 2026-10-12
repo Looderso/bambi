@@ -97,6 +97,9 @@ void DecoderSceneView::paint(juce::Graphics& g) {
             g.fillEllipse(frame);
         else
             g.fillRect(frame);
+        //  the energy of what every output hears, in the room's frame, under everything drawn in ink
+        if (state_.sphere.energyOn && state_.sphere.energyAvailable)
+            energyLayer_.paint(g, projection_, state_.sphere.camera, vp, state_.sphere.energy, 1.0f);
         paintGraticule(g, vp);
 
         //  What plays decides what is full ink.

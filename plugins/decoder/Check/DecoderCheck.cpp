@@ -10,6 +10,7 @@
 #include "bambi/editor/CheckKit.h"
 #include "bambi/host/LinkNode.h"
 #include "bambi/link/link.hpp"
+#include "bambi/math/sh.hpp"
 
 /*  The decoder's host contract, headless: an ambisonic input at the order that fits, an output as wide as the host
  *  gives, every output a set of channels on it, silence where nothing plays; the state round trip; renders that
@@ -291,6 +292,42 @@ int main() {
         const Channels y = render(busIn(16, 8), 128, 0.25, {}, &s);
         check(!y.empty() && channelEnergy(y, 3) > 1e-4 && channelEnergy(y, 0) > 1e-4 && channelEnergy(y, 4) == 0.0,
               "with a fourth behind, the typed layout plays on channels 1-4");
+    }
+
+    //  The energy picture: a window that asks gets the field as it arrived, and nothing added -- a monitor adds
+    //  nothing. Catches: the field never gathered, the picture published without a window asking, the field
+    //  gathered as what was added.
+    {
+        BambiDecoderProcessor proc;
+        proc.setBusesLayout(busIn(16, 2));
+        proc.prepareToPlay(kCheckRate, 128);
+        juce::AudioBuffer<float> buffer(16, 128);
+        juce::MidiBuffer midi;
+        std::vector<double> y(16, 0.0);
+        bambi::shSN3D(bambi::fromAzEl(0.5, 0.2), 3, y);
+        std::vector<float> added, arrived;
+        const auto run = [&](int blocks) {
+            bool landed = false;
+            for (int b = 0; b < blocks; ++b) {
+                for (int c = 0; c < 16; ++c) {
+                    auto* x = buffer.getWritePointer(c);
+                    for (int i = 0; i < 128; ++i)
+                        x[i] = static_cast<float>(y[static_cast<std::size_t>(c)] * 0.5 *
+                                                  std::sin(6.2831853 * 220.0 * (b * 128 + i) / kCheckRate));
+                }
+                proc.processBlock(buffer, midi);
+                landed = proc.takeCovariances(added, arrived) || landed;
+            }
+            return landed;
+        };
+        check(!run(40), "nothing is published while no window asks for the picture");
+        proc.wantEnergy(true);
+        const bool landed = run(40);
+        double arrivedEnergy = 0.0, addedEnergy = 0.0;
+        for (float v : arrived) arrivedEnergy += std::abs(v);
+        for (float v : added) addedEnergy += std::abs(v);
+        check(landed && arrivedEnergy > 1e-6 && addedEnergy == 0.0,
+              "asked for, the picture is the field as it arrived and nothing added");
     }
 
     //  Determinism: the same render twice, and however the host cuts its blocks.

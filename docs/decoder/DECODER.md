@@ -559,10 +559,13 @@ library when the second plugin needs it, not before.
 
 **Not the effects' layout.** The same shell, theme, controls and sphere view; a different centre:
 
-- **One scene in the room's frame** shows the session's sources, the layout's loudspeakers, a head turned by the
-  tracker and the Lens's window. What plays decides what is full ink — the head while headphones or the Lens play,
-  the loudspeakers while a layout plays or headphones listen through it — not what is drawn. A *head frame* toggle
-  turns the view with the gaze.
+- **One scene in the room's frame** shows the session's sources turned with the scene, the layout's loudspeakers,
+  a head turned by the tracker, and — switched on at the equirect's corner as in every plugin — the energy picture
+  of the field every output hears, all of it as arrived since a monitor adds nothing ([0204](../DECISIONS.md)).
+  What plays decides what is full ink — the head while headphones play, the loudspeakers while a layout plays or
+  headphones listen through it — not what is drawn. A *head frame* toggle turns the view with the gaze; the
+  head's nose points where the tracker says, and with no tracker it points front, since the sliders turn the
+  scene and not the head.
 - **The outputs are tabs in the header** ([0178](../DECISIONS.md)), where the effects keep their instances:
   headphones · speakers (the lens tab retired, [0193](../DECISIONS.md)). **The name opens an output's page; a square in the tab plays it**, so opening the
   speakers' page while listening on headphones changes nothing heard. **A second decoder in a session gets a small
@@ -584,8 +587,10 @@ library when the second plugin needs it, not before.
   compensation does to each, is a temporary tab opened by `loudspeakers…`, so no page scrolls at the window's
   size. **The hull the layout pans across is drawn on the scene while the speakers' page is open.**
 - **The orientation strip sits where the effects have their matrix** ([0196](../DECISIONS.md),
-  [0197](../DECISIONS.md)): its tabs are what tracks the head (none · OSC · AirPods · phone), the tracker's word
-  beside them in the bar (whether it speaks and how often — or the one warning that the input has no direction);
+  [0197](../DECISIONS.md), [0204](../DECISIONS.md)): its tabs are what tracks the head (none · OSC · AirPods ·
+  phone), drawn by the one tab-row painter the matrix uses, the tracker's word at the right of the row where the
+  matrix has its target count (whether it speaks and how often — or the one warning that the input has no
+  direction);
   under them whether the tracker's orientation is undone as a `head` or turns the `scene`, recentre, the setup tab,
   and `static`, everything a tracker needs greyed under *none*; then the scene's turn as parameters, yaw, pitch
   and roll with the tracker's sign on each axis as a `flip` in the name line, their rates stacked under them, the

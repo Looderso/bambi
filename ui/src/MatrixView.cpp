@@ -89,9 +89,7 @@ void MatrixView::paint(juce::Graphics& g) {
     const auto& patch = model_.state();
 
     //  the tabs, and how many targets the matrix has
-    const auto tabFont = font(theme::type::body, theme::type::trackingTab);
     const auto tabHeight = ctl::tabBarHeight - ctl::matrixTabsTop;
-    auto x = inset;
     tabAreas_.fill({});
     const auto offered = tabsOffered();
     //  a tab this plugin does not offer cannot be the current one: `setCurrentTab` is unguarded in
@@ -100,24 +98,20 @@ void MatrixView::paint(juce::Graphics& g) {
     //  first tab is what the bar already says is there
     if (std::find(offered.begin(), offered.end(), model_.currentTab()) == offered.end())
         model_.setCurrentTab(bambi::MatrixTab::Features);
-    for (const auto tab : offered) {
-        const auto i =
-            static_cast<std::size_t>(std::distance(kTabs.begin(), std::find(kTabs.begin(), kTabs.end(), tab)));
-        const juce::Rectangle<float> box{x - ctl::tabPadX, ctl::matrixTabsTop,
-                                         textWidth(tabFont, kTabNames[i]) + 2.0f * ctl::tabPadX, tabHeight};
-        drawChoice(g, box, kTabNames[i], tabFont, tab == model_.currentTab());
-        tabAreas_[static_cast<std::size_t>(tab)] = box;
-        addRegion({box,
-                   {},
-                   {},
-                   {},
-                   [this, tab] {
-                       model_.setCurrentTab(tab);
-                       model_.notifyChanged();
-                   },
-                   {}});
-        x = box.getRight() + ctl::tabGap + ctl::tabPadX;
+    std::vector<juce::String> names;
+    int selected = 0;
+    for (std::size_t i = 0; i < offered.size(); ++i) {
+        const auto at =
+            static_cast<std::size_t>(std::distance(kTabs.begin(), std::find(kTabs.begin(), kTabs.end(), offered[i])));
+        names.emplace_back(kTabNames[at]);
+        if (offered[i] == model_.currentTab()) selected = static_cast<int>(i);
     }
+    const auto boxes = paintTabRow(g, inset, names, selected, [this, offered](int index) {
+        model_.setCurrentTab(offered[static_cast<std::size_t>(index)]);
+        model_.notifyChanged();
+    });
+    for (std::size_t i = 0; i < offered.size() && i < boxes.size(); ++i)
+        tabAreas_[static_cast<std::size_t>(offered[i])] = boxes[i];
     const auto rows = bambi::matrixTargets(model_.modManifest(), patch);
     //  Rows are offered; targets are routed. The base three have a row from the start and no depth yet.
     const auto routed = static_cast<int>(
