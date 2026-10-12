@@ -430,7 +430,7 @@ There is one standard and two formats that became standards by use; everything e
 | **ADM-OSC** — the industry standard, understood by L-ISA, Spat Revolution, Holophonix and others | `/adm/lis/ypr` | degrees; yaw right negative, pitch down negative — the suite's own convention, no remapping |
 | **SPARTA** | `/ypr`, `/quaternion` | degrees, **pitch down-positive**; quaternion w, x, y, z |
 | **IEM SceneRotator** | `/SceneRotator/ypr`, `/SceneRotator/quaternions` | the same two forms, the same pitch |
-| **Learn** — anything else | whatever arrives | the plugin shows each incoming address; the user picks quaternion (w first or last) or yaw-pitch-roll, degrees or radians, and which axes flip. Saved as a preset |
+| **Learn** — anything else | whatever arrives | **built** ([0190](../DECISIONS.md)): the tracking tab lists what arrives on the port, each address with its numbers; a message is taken whole with its form — quaternion w first or last, yaw-pitch-roll in degrees, degrees with pitch down, or radians — or three addresses are taken as yaw, pitch and roll sent apart, each its message's first number, applied once all three have spoken. The flips apply on top. State, so a preset keeps it; *forget* returns to the table |
 
 Headitude (AirPods), the bridge apps of hardware trackers and most existing setups send one of the first three.
 Phone apps — Sensors2OSC on Android (`/rotationvector`, w last), ZIG SIM, GyrOSC — go through learn.
@@ -569,8 +569,7 @@ library when the second plugin needs it, not before.
   and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
   bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read
   off the column and the channel map on the page says whose channel it is. Grey where the sketch says *later*: the lens,
-  headphone correction, learn mode, placing by
-  looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
+  headphone correction, placing by looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the
   encoders' sources ([0176](../DECISIONS.md), [VISUALISATION §5](../suite/VISUALISATION.md)). Its link record

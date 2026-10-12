@@ -131,6 +131,12 @@ struct DecoderState {
     int oscPort{9000};
     bool oscNetwork{false};                         ///< bound to this computer until asked
     std::array<bool, 3> flip{false, false, false};  ///< learn mode's signs
+    /*  Learn mode: what the port's orientation arrives as when it is none of the known families. One address with
+        the form its message carries, or three addresses for yaw, pitch and roll sent apart, each taking its
+        message's first number. The first empty: the known table. */
+    std::array<std::string, 3> oscAddresses;  ///< [0] the message, or yaw; [1] pitch; [2] roll
+    int oscForm{
+        0};  ///< 1 quaternion w first; 2 w last; 3 yaw, pitch, roll in degrees, up positive; 4 pitch down; 5 radians
     /// How the AirPods sit on the head, as look-and-nod found it: rows the head's front, left and up in the
     /// sensor's frame. The frame they report worn upright (x right, y forward, z up) until a calibration replaces it.
     std::array<double, 9> airpodsAxes{0, 1, 0, -1, 0, 0, 0, 0, 1};

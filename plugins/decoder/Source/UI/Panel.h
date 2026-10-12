@@ -35,6 +35,7 @@ private:
     void paintLens(juce::Graphics& g, juce::Rectangle<float> content);
     void paintTracking(juce::Graphics& g, juce::Rectangle<float> content);
     float paintPhone(juce::Graphics& g, juce::Rectangle<float> content, float y);  ///< the QR code and the steps
+    float paintLearn(juce::Graphics& g, juce::Rectangle<float> content, float y);  ///< learn mode: the port's list
     void paintPersonalise(juce::Graphics& g, juce::Rectangle<float> content);
     float paintStateTile(juce::Graphics& g, juce::Rectangle<float> tile, const juce::String& name,
                          const juce::String& value, double shown, double low, double high, double step, const char* key,

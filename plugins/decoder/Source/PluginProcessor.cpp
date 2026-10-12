@@ -407,6 +407,12 @@ void BambiDecoderProcessor::connectTracker(const bambi::DecoderState& d) {
         trackerRead_.mounting = airpods ? bambi::Mounting::Axes : bambi::Mounting::AsSent;
         for (std::size_t i = 0; i < 9; ++i) trackerRead_.axes[i] = d.airpodsAxes[i];
         trackerSource_ = d.trackerSource;
+        if (learnedAddresses_ != d.oscAddresses || learnedForm_ != d.oscForm) {
+            learnedAddresses_ = d.oscAddresses;
+            learnedForm_ = d.oscForm;
+            splitSeen_ = {false, false, false};
+        }
+        if (d.trackerSource != 1) seen_.clear();
         if (!airpods && !phone) helperStatus_.clear();
         if (!phone) {
             phoneUrl_.clear();
@@ -473,6 +479,15 @@ void BambiDecoderProcessor::forgetCalibration() {
     });
 }
 
+std::vector<BambiDecoderProcessor::SeenAddress> BambiDecoderProcessor::seenAddresses() const {
+    const std::lock_guard<std::mutex> lock(trackerMutex_);
+    const std::int64_t now = juce::Time::currentTimeMillis();
+    std::vector<SeenAddress> out;
+    for (const SeenAddress& s : seen_)
+        if (now - s.lastMs < 3000) out.push_back(s);
+    return out;
+}
+
 juce::String BambiDecoderProcessor::phoneUrl() const {
     const std::lock_guard<std::mutex> lock(trackerMutex_);
     return phoneUrl_;
@@ -512,10 +527,6 @@ void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) 
         }
         return;
     }
-    if (!bambi::knownForm(address.toStdString(), read.form)) return;  // learn mode reads the rest, later
-    //  The helper's own sources arrive by their own address; another form on the port is not theirs to turn the head.
-    if (source == 2 && address != "/quaternion") return;
-    if (source == 3 && address != "/bambi/phone/ypr") return;
     std::array<float, 4> values{};
     std::size_t count = 0;
     for (const juce::OSCArgument& a : message) {
@@ -525,15 +536,86 @@ void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) 
         else if (a.isInt32())
             values[count++] = static_cast<float>(a.getInt32());
     }
+    takeOrientation(address, std::span<const float>(values.data(), count));
+}
+
+namespace {
+/// The state's learned form as the receiver's.
+bambi::OrientationForm formOf(int learned) {
+    switch (learned) {
+        case 1: return bambi::OrientationForm::QuaternionWxyz;
+        case 2: return bambi::OrientationForm::QuaternionXyzw;
+        case 4: return bambi::OrientationForm::YprDegreesPitchDown;
+        case 5: return bambi::OrientationForm::YprRadians;
+        default: return bambi::OrientationForm::YprDegrees;
+    }
+}
+}  // namespace
+
+void BambiDecoderProcessor::takeOrientation(const juce::String& address, std::span<const float> values) {
+    bambi::OrientationRead read;
+    int source = 0, form = 0;
+    std::array<std::string, 3> learned;
+    std::array<float, 3> gathered{};
+    bool gatheredAll = false;
+    {
+        const std::lock_guard<std::mutex> lock(trackerMutex_);
+        read = trackerRead_;
+        source = trackerSource_;
+        learned = learnedAddresses_;
+        form = learnedForm_;
+        if (source == 1) {
+            //  the list learn mode shows: this address, its count and its first numbers
+            const std::int64_t now = juce::Time::currentTimeMillis();
+            auto it =
+                std::find_if(seen_.begin(), seen_.end(), [&](const SeenAddress& s) { return s.address == address; });
+            if (it == seen_.end() && seen_.size() < 16)
+                it = seen_.insert(seen_.end(), SeenAddress{address, 0, {}, now});
+            if (it != seen_.end()) {
+                it->arguments = static_cast<int>(values.size());
+                for (std::size_t i = 0; i < it->values.size(); ++i)
+                    it->values[i] = i < values.size() ? values[i] : 0.0f;
+                it->lastMs = now;
+            }
+        }
+        //  split addresses: this message's first number into its slot, the triple once every slot has spoken
+        const bool split =
+            source == 1 && form != 0 && !learned[0].empty() && !learned[1].empty() && !learned[2].empty();
+        if (split) {
+            int slot = -1;
+            for (int i = 0; i < 3; ++i)
+                if (address.toStdString() == learned[static_cast<std::size_t>(i)]) slot = i;
+            if (slot < 0 || values.empty()) return;
+            splitValues_[static_cast<std::size_t>(slot)] = values[0];
+            splitSeen_[static_cast<std::size_t>(slot)] = true;
+            if (!(splitSeen_[0] && splitSeen_[1] && splitSeen_[2])) return;
+            gathered = splitValues_;
+            gatheredAll = true;
+        }
+    }
+    const bool learnedWhole = source == 1 && form != 0 && !learned[0].empty() && !gatheredAll && learned[1].empty();
+    if (gatheredAll) {
+        //  three numbers cannot be a quaternion: a quaternion form chosen for split addresses reads as degrees
+        read.form = form == 1 || form == 2 ? bambi::OrientationForm::YprDegrees : formOf(form);
+        values = std::span<const float>(gathered.data(), 3);
+    } else if (learnedWhole) {
+        if (address.toStdString() != learned[0]) return;
+        read.form = formOf(form);
+    } else {
+        if (!bambi::knownForm(address.toStdString(), read.form)) return;
+        //  The helper's own sources arrive by their own address; another form on the port is not theirs to turn the head.
+        if (source == 2 && address != "/quaternion") return;
+        if (source == 3 && address != "/bambi/phone/ypr") return;
+    }
     bambi::Mat3 head;
-    if (!bambi::headFromValues(read, std::span<const float>(values.data(), count), head)) return;
+    if (!bambi::headFromValues(read, values, head)) return;
     tracker_.write(head);
     {
         //  the device's own orientation too, for the calibration: the same values read as sent
         bambi::OrientationRead raw = read;
         raw.mounting = bambi::Mounting::AsSent;
         bambi::Mat3 device;
-        if (bambi::headFromValues(raw, std::span<const float>(values.data(), count), device)) {
+        if (bambi::headFromValues(raw, values, device)) {
             const std::lock_guard<std::mutex> lock(trackerMutex_);
             rawNow_ = device;
             rawSeen_ = true;

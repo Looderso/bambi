@@ -53,6 +53,13 @@ void BambiDecoderEditor::frame(bambi::ui::EditorFrame& parts) {
         peaks[static_cast<std::size_t>(c)] =
             diag.channelPeak[static_cast<std::size_t>(c)].load(std::memory_order_relaxed);
 
+    //  learn mode's list lives: the tracking tab is repainted twice a second while it is open on an OSC source
+    const bool trackingOpen =
+        controls.shownTab > 0 && controls.shownTab <= static_cast<int>(controls.temps.size()) &&
+        controls.temps[static_cast<std::size_t>(controls.shownTab - 1)] == bambi::ui::TempTab::Tracking;
+    if (trackingOpen && controls.decoder().trackerSource == 1 && ++listFrames_ % (bambi::ui::kFrameHz / 2) == 0)
+        panel.repaint();
+
     const auto link = processor_.linkStatus();
     const bool moved = parts.refresh({{link.open, link.session, link.peers},
                                       controls.target().canUndo(),

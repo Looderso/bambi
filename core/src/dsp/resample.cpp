@@ -8,7 +8,7 @@ namespace bambi {
 void resampleSinc(std::span<const float> in, double fromHz, double toHz, std::vector<float>& out, int halfWidth) {
     out.clear();
     if (in.empty() || !(fromHz > 0) || !(toHz > 0) || halfWidth < 1) return;
-    const double step = fromHz / toHz;  // input samples per output sample
+    const double step = fromHz / toHz;                    // input samples per output sample
     const double cutoff = step > 1.0 ? 1.0 / step : 1.0;  // of the input's Nyquist: the lower of the two
     const auto count = static_cast<std::size_t>(std::llround(static_cast<double>(in.size()) / step));
     out.resize(count);

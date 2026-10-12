@@ -541,12 +541,8 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
             model().applyEdit("osc network", [](PluginState& s) { s.decoder.oscNetwork = !s.decoder.oscNetwork; });
         });
     y += row.getHeight() + 2.0f;
-    text(g,
-         "format: auto " + kDot + " adm-osc, sparta and iem, by their addresses " + kDot +
-             " learn and a phone's page later",
-         smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-         juce::Justification::centredLeft);
-    y += static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
+    y = paintLearn(g, content, y);
+    y += static_cast<float>(space::groupGap) / 2.0f;
 
     y = paintGroupTitle(g, content, y, "signs");
     float x = content.getX();
@@ -616,6 +612,99 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
     y = paintGroupTitle(g, content, y, "phone");
     y = paintPhone(g, content, y);
     noteContentBottom(y + static_cast<float>(space::grid));
+}
+
+float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content, float y) {
+    const DecoderState& d = state_.decoder();
+    const bool mine = !model().showingAnother();
+    const float lineH = static_cast<float>(space::grid * 2);
+    const auto line = [&](const juce::String& what, juce::Colour ink) {
+        text(g, what, smallFont(), ink, {content.getX(), y, content.getWidth(), lineH},
+             juce::Justification::centredLeft);
+        y += lineH;
+    };
+    const bool learned = d.oscForm != 0 && !d.oscAddresses[0].empty();
+    const bool split = learned && !d.oscAddresses[1].empty() && !d.oscAddresses[2].empty();
+    if (!learned)
+        line("format: by address " + kDot + " adm-osc, sparta and iem; anything else is learned from the list below",
+             colour::label);
+    else if (split)
+        line("format: learned " + kDot + " yaw " + d.oscAddresses[0] + ", pitch " + d.oscAddresses[1] + ", roll " +
+                 d.oscAddresses[2],
+             colour::text);
+    else
+        line("format: learned " + kDot + " " + d.oscAddresses[0], colour::text);
+    if (learned) {
+        //  what the learned message carries; for split addresses a quaternion makes no sense and reads as degrees
+        const juce::Rectangle<float> forms{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)};
+        paintSegments(g, forms, {"quat w first", "quat w last", "degrees", "deg, pitch down", "radians"},
+                      std::clamp(d.oscForm, 1, 5) - 1, mine, [this](int which) {
+                          model().applyEdit("osc form", [which](PluginState& s) { s.decoder.oscForm = which + 1; });
+                      });
+        y = forms.getBottom() + 2.0f;
+        const float buttonH = static_cast<float>(space::grid * 2) + 2.0f;
+        const juce::Rectangle<float> forget{content.getX(), y, framedButtonWidth("forget"), buttonH};
+        paintButton(g, forget, "forget", mine, [this] {
+            model().applyEdit("forget learned osc", [](PluginState& s) {
+                s.decoder.oscAddresses = {};
+                s.decoder.oscForm = 0;
+            });
+        });
+        text(g, "back to the known addresses", smallFont(), colour::label,
+             {forget.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
+             juce::Justification::centredLeft);
+        y += buttonH + 2.0f;
+    }
+    if (d.trackerSource != 1) {
+        line("choose osc in the head strip, and what arrives on the port is listed here to learn from", colour::label);
+        return y;
+    }
+    const std::vector<BambiDecoderProcessor::SeenAddress> seen = state_.processor.seenAddresses();
+    if (seen.empty()) {
+        line("nothing on port " + juce::String(d.oscPort) + " yet", colour::label);
+        return y;
+    }
+    line("on the port now " + kDot + " take a message whole, or one number as yaw, pitch or roll:", colour::label);
+    const char* slots[4] = {"message", "yaw", "pitch", "roll"};
+    const float slotW = 44.0f;
+    int shown = 0;
+    for (const BambiDecoderProcessor::SeenAddress& s : seen) {
+        if (shown++ >= 6) break;
+        const float wordsX = content.getRight() - 4.0f * slotW;
+        text(g, s.address, font(type::matrix), colour::text, {content.getX(), y, wordsX - content.getX() - 4.0f, lineH},
+             juce::Justification::centredLeft);
+        for (int k = 0; k < 4; ++k) {
+            const juce::Rectangle<float> word{wordsX + static_cast<float>(k) * slotW, y, slotW, lineH};
+            const bool chosen =
+                k == 0 ? (!split && learned && d.oscAddresses[0] == s.address.toStdString())
+                       : (split && d.oscAddresses[static_cast<std::size_t>(k - 1)] == s.address.toStdString());
+            text(g, slots[k], smallFont(), chosen ? colour::text : colour::label, word,
+                 juce::Justification::centredRight);
+            if (!mine) continue;
+            const std::string address = s.address.toStdString();
+            const int numbers = s.arguments;
+            addClickArea(word, [this, k, address, numbers] {
+                model().applyEdit("learn osc", [k, address, numbers](PluginState& st) {
+                    DecoderState& dd = st.decoder;
+                    if (k == 0) {
+                        dd.oscAddresses = {address, "", ""};
+                        if (dd.oscForm == 0 || dd.oscForm == 3) dd.oscForm = numbers >= 4 ? 1 : 3;
+                    } else {
+                        if (dd.oscAddresses[1].empty() && dd.oscAddresses[2].empty() && k != 1)
+                            dd.oscAddresses[0].clear();
+                        dd.oscAddresses[static_cast<std::size_t>(k - 1)] = address;
+                        if (dd.oscForm == 0 || dd.oscForm == 1 || dd.oscForm == 2) dd.oscForm = 3;
+                    }
+                });
+            });
+        }
+        y += lineH;
+        juce::String preview = juce::String(s.arguments) + (s.arguments == 1 ? " number" : " numbers");
+        for (int i = 0; i < std::min(s.arguments, 4); ++i)
+            preview += (i == 0 ? ": " : "  ") + juce::String(s.values[static_cast<std::size_t>(i)], 2);
+        line(preview, colour::label);
+    }
+    return y;
 }
 
 float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content, float y) {

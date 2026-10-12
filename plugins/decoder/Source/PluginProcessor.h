@@ -111,6 +111,18 @@ public:
     juce::String notice() const;
     /// The helper's last word about itself: the permission, the headphones, the count. Empty before it speaks.
     juce::String helperStatus() const;
+    /// What arrives on the port while OSC is the source, for learn mode's list: each address, with the count and
+    /// the first numbers of its last message. Those silent for three seconds drop out. Message thread.
+    struct SeenAddress {
+        juce::String address;
+        int arguments{0};
+        std::array<float, 4> values{};
+        std::int64_t lastMs{0};
+    };
+    std::vector<SeenAddress> seenAddresses() const;
+    /*  One orientation message, as the receiver reads it: by the known table, or by learn mode's addresses and form
+        while they are set, with split addresses gathered into one triple. Message thread; the check feeds it. */
+    void takeOrientation(const juce::String& address, std::span<const float> values);
     /// The phone page's address and the helper's word on it, while a phone is the source. Empty before it speaks.
     juce::String phoneUrl() const;
     juce::String phoneStatus() const;
@@ -202,10 +214,15 @@ private:
     juce::OSCReceiver osc_;
     int oscPort_{0};
     bool oscConnected_{false};
-    HelperLink helper_;                    ///< the AirPods helper, launched while the tracker source is AirPods
-    juce::String helperStatus_;            ///< under trackerMutex_
-    juce::String phoneUrl_, phoneStatus_;  ///< under trackerMutex_
-    bool helperPhone_{false};              ///< the mode the helper was last launched in
+    HelperLink helper_;                            ///< the AirPods helper, launched while the tracker source is AirPods
+    juce::String helperStatus_;                    ///< under trackerMutex_
+    std::vector<SeenAddress> seen_;                ///< under trackerMutex_
+    std::array<std::string, 3> learnedAddresses_;  ///< under trackerMutex_: the state's, as last connected
+    int learnedForm_{0};                           ///< under trackerMutex_
+    std::array<float, 3> splitValues_{};           ///< under trackerMutex_: yaw, pitch, roll gathered apart
+    std::array<bool, 3> splitSeen_{};              ///< under trackerMutex_
+    juce::String phoneUrl_, phoneStatus_;          ///< under trackerMutex_
+    bool helperPhone_{false};                      ///< the mode the helper was last launched in
     mutable std::mutex trackerMutex_;
     bambi::OrientationRead trackerRead_;
     int trackerSource_{0};  ///< under trackerMutex_: which form the port is read for

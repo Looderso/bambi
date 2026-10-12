@@ -213,6 +213,51 @@ int main() {
         check(other.decoderState().hrtf == 1, "the choice survives a save and a load");
     }
 
+    //  Learn mode: the known table serves without learning; a learned address with its form turns the head and an
+    //  address not learned is then ignored; three split addresses gather into one triple.
+    {
+        BambiDecoderProcessor proc;
+        proc.setBusesLayout(busIn(16, 2));
+        proc.prepareToPlay(kCheckRate, 128);
+        proc.editDecoder("osc", [](DecoderState& d) {
+            d.trackerSource = 1;
+            d.trackerOverrides = true;
+        });
+        const auto headAfter = [&proc](const char* address, std::vector<float> values) {
+            proc.takeOrientation(address, values);
+            juce::AudioBuffer<float> buffer(16, 128);
+            buffer.clear();
+            juce::MidiBuffer midi;
+            proc.processBlock(buffer, midi);
+            return std::pair<float, float>{proc.diagnostics().headYaw.load(), proc.diagnostics().headPitch.load()};
+        };
+        check(std::abs(headAfter("/ypr", {30.0f, 0.0f, 0.0f}).first - 30.0f) < 1e-3f,
+              "the known table turns the head without learning");
+        //  Catches: a learned form not applied, the quaternion's w read at the wrong end, the known table still read.
+        proc.editDecoder("learn", [](DecoderState& d) {
+            d.oscAddresses = {"/zig/quat", "", ""};
+            d.oscForm = 2;  // w last
+        });
+        const float h = 22.5f * 3.14159265f / 180.0f;  // a yaw of 45 degrees about z
+        const auto learned = headAfter("/zig/quat", {0.0f, 0.0f, std::sin(h), std::cos(h)});
+        check(std::abs(learned.first - 45.0f) < 1e-2f, "a learned quaternion with w last turns the head by 45");
+        check(std::abs(headAfter("/ypr", {30.0f, 0.0f, 0.0f}).first - 45.0f) < 1e-2f,
+              "and a known address is ignored while one is learned");
+        //  Catches: a split slot applied before the others arrived, slots mixed up, the first number not taken.
+        proc.editDecoder("split", [](DecoderState& d) {
+            d.oscAddresses = {"/y", "/p", "/r"};
+            d.oscForm = 3;
+        });
+        check(std::abs(headAfter("/y", {20.0f}).first - 45.0f) < 1e-2f,
+              "one of three split values alone changes nothing");
+        headAfter("/p", {-10.0f, 99.0f});
+        const auto triple = headAfter("/r", {0.0f});
+        check(std::abs(triple.first - 20.0f) < 1e-2f && std::abs(triple.second + 10.0f) < 1e-2f,
+              "yaw, pitch and roll gathered from three addresses turn the head");
+        const auto seen = proc.seenAddresses();
+        check(seen.size() == 5, "learn mode lists what arrived: " + juce::String(seen.size()) + " addresses");
+    }
+
     //  A decoder as filters: a FIR-E matrix loaded, its outputs on the first channels, the rest silent, the input's
     //  normalisation switch heard, the path kept through the host, and a missing file said so.
     {

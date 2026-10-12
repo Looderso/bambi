@@ -55,6 +55,7 @@ private:
     int renderedOrder() const override { return controls.renderedOrder(); }
 
     BambiDecoderProcessor& processor_;
+    int listFrames_{0};  ///< frames since the window opened, for learn mode's list
     int trackerMessagesSeen_{0};
     double trackerRateAt_{0.0};
     float trackerRate_{0.0f};

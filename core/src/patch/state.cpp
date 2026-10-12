@@ -284,6 +284,12 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         Json flips = Json::array();
         for (bool f : d.flip) flips.push(Json{f});
         jd.set("flip", flips);
+        if (!d.oscAddresses[0].empty() || d.oscForm != 0) {
+            Json learned = Json::array();
+            for (const std::string& a : d.oscAddresses) learned.push(Json{a});
+            jd.set("osc_addresses", learned);
+            jd.set("osc_form", Json{d.oscForm});
+        }
         if (d.airpodsCalibrated) {
             Json axes = Json::array();
             for (double v : d.airpodsAxes) axes.push(Json{v});
@@ -547,6 +553,10 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
         d.oscNetwork = boolOf("osc_network", d.oscNetwork);
         if (const Json* fl = dec->find("flip"); fl != nullptr && fl->isArray())
             for (std::size_t i = 0; i < 3 && i < fl->items().size(); ++i) d.flip[i] = fl->items()[i].boolOr(false);
+        if (const Json* la = dec->find("osc_addresses"); la != nullptr && la->isArray())
+            for (std::size_t i = 0; i < 3 && i < la->items().size(); ++i)
+                d.oscAddresses[i] = std::string(la->items()[i].stringOr(""));
+        d.oscForm = intOf("osc_form", d.oscForm);
         if (const Json* ax = dec->find("airpods_axes"); ax != nullptr && ax->isArray() && ax->items().size() == 9) {
             for (std::size_t i = 0; i < 9; ++i) d.airpodsAxes[i] = ax->items()[i].numberOr(0);
             d.airpodsCalibrated = true;
