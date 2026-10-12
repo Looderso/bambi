@@ -244,12 +244,13 @@ above it, the covariance constraint, 64 samples of bulk delay, 256 taps with a 3
 
 | order | 1–4 kHz | 8–16 kHz | diffuse field, worst | a slider move rebuilds in |
 |---|---|---|---|---|
-| 1 | 3.4 dB | 9.4 | 0.0 | 1.9 ms |
-| 3 | 1.8 | 6.6 | 0.0 | 3.2 |
-| 5 | 2.5 | 5.0 | 0.0 | 5.1 |
-| 7 | 2.1 | 3.5 | 0.0 | 7.8 |
+| 1 | 3.4 dB | 7.4 | 0.0 | 1.9 ms |
+| 3 | 1.7 | 5.1 | 0.0 | 3.2 |
+| 5 | 2.2 | 3.4 | 0.0 | 5.1 |
+| 7 | 1.8 | 2.8 | 0.0 | 7.8 |
 
-The model's notches are deeper than the KU100's, which is where the 8–16 kHz error above the KU100's comes from.
+The errors are for the notches at depth × 1.5 ([0188](../DECISIONS.md)); at × 2.5 the 8–16 kHz column was 9.3, 6.5,
+5.1 and 3.9 dB — the deeper a notch, the less of it a low order holds.
 
 **The convolution and the swap** (`convolver.hpp`, `decoder.hpp`): a finished set is cut into partitions and
 transformed on the worker, handed to the audio thread whole through the link bus's triple buffer in place, and
