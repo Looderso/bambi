@@ -69,7 +69,7 @@ TEST_CASE("the virtual array is the field renderer and the order-7 binaural path
     BinauralFilterBuilder builder;
     REQUIRE(builder.prepare(shipped(), fd, dirs, w));
     builder.build(0.2, 1.05);
-    BinauralConvolver convolver;
+    MatrixConvolver convolver;
     REQUIRE(convolver.prepare(7, fd.taps, 64));
     REQUIRE(convolver.publish(builder));
 
@@ -145,7 +145,7 @@ TEST_CASE("the virtual array turns its field against the head, between its two s
     BinauralFilterBuilder builder;
     REQUIRE(builder.prepare(shipped(), fd, dirs, w));
     builder.build(0.0, 1.0);
-    BinauralConvolver convolver;
+    MatrixConvolver convolver;
     REQUIRE(convolver.prepare(7, fd.taps, 64));
     REQUIRE(convolver.publish(builder));
 

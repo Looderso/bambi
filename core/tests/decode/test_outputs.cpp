@@ -33,7 +33,8 @@ TEST_CASE("an output's channels: the pair where it was put, the layout moved as 
     CHECK(outputChannels(d, Output::Speakers).empty());
 }
 
-TEST_CASE("lighting an output on the other's channels moves it past them while the bus has room, else stops the other") {
+TEST_CASE(
+    "lighting an output on the other's channels moves it past them while the bus has room, else stops the other") {
     //  Catches: the odd-pair snap dropped (headphones land on 12-13), the room checked against the wrong width,
     //  a collision reported where the other does not play, a layout past the bus reported as fitting.
     const DecoderState d = withLayout("4+7+0", true, false, 1);  // the layout on 1-12, headphones lit on 1-2

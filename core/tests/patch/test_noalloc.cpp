@@ -214,7 +214,7 @@ TEST_CASE("the head synthesiser allocates nothing once prepared") {
     CHECK(allocationsDuring([&] { builder.build(0.5, 1.1); }) == 0);
 
     //  Catches: a convolution that gathers its block into a fresh buffer, or a publish that transforms into one.
-    BinauralConvolver convolver;
+    MatrixConvolver convolver;
     REQUIRE(convolver.prepare(1, 32, 32));
     std::vector<float> in(4 * 100, 0.1f), out(2 * 100);
     CHECK(allocationsDuring([&] {
