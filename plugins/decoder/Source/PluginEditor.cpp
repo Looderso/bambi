@@ -26,11 +26,40 @@ BambiDecoderEditor::BambiDecoderEditor(BambiDecoderProcessor& p)
 BambiDecoderEditor::~BambiDecoderEditor() = default;
 
 void BambiDecoderEditor::frame(bambi::ui::EditorFrame& parts) {
-    //  the session's instances, for the sources the scene draws
+    //  the session's instances, for the sources the scene draws -- and its other decoders, which this window can
+    //  show and edit instead of its own: the header's switch, offered only while there is another
     processor_.updateScene(controls.scene);
     controls.liveScene = &controls.scene;
-    controls.shownInstance = processor_.identity().instance;
-    const bool changed = controls.refresh();
+    const bambi::Uuid self = processor_.identity().instance;
+    controls.decoders.clear();
+    controls.decoders.emplace_back(self, "this");
+    for (const auto& entry : controls.scene.entries())
+        if (entry.product == bambi::Product::Decoder && !(entry.instance == self))
+            controls.decoders.emplace_back(entry.instance, juce::String(entry.label()));
+    const bool other = !(controls.shownDecoder == self) && !(controls.shownDecoder == bambi::Uuid{});
+    const auto* peer = other ? controls.scene.find(controls.shownDecoder) : nullptr;
+    if (peer != nullptr && peer->product != bambi::Product::Decoder) peer = nullptr;
+    if (other && peer == nullptr) controls.shownDecoder = self;  // it left the session: back to this one
+    const bool remote = peer != nullptr;
+    const bool switched =
+        remote != controls.remote || (remote && !(peer->instance == controls.remoteTarget.instance()));
+    if (switched) controls.remoteTarget.release();
+    controls.remote = remote;
+    if (remote) controls.remoteTarget.follow(*peer, 1.0 / bambi::ui::kFrameHz);
+    controls.shownInstance = remote ? peer->instance : self;
+    controls.selectedLabel = remote ? juce::String(peer->label()) : juce::String();
+    std::vector<juce::String> labels;
+    int selected = 0;
+    for (std::size_t i = 0; i < controls.decoders.size(); ++i) {
+        labels.push_back(controls.decoders[i].second);
+        if (controls.decoders[i].first == controls.shownInstance) selected = static_cast<int>(i);
+    }
+    header().setInstanceSwitch(std::move(labels), selected, [this](int index) {
+        if (index < 0 || index >= static_cast<int>(controls.decoders.size())) return;
+        controls.shownDecoder = controls.decoders[static_cast<std::size_t>(index)].first;
+        controls.notify();
+    });
+    const bool changed = controls.refresh() || switched;
 
     //  the tracker's rate, from the messages counted since the last reading
     const auto& diag = processor_.diagnostics();

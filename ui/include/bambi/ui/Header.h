@@ -35,6 +35,15 @@ public:
         tabMark_ = std::move(mark);
         tabToggle_ = std::move(toggle);
     }
+    /*  A plugin whose tabs are not its instances -- the decoder's are its outputs -- switches between the
+     *  session's instances of its kind here instead: their labels left of the link line, the shown one as a
+     *  block, drawn only while there are two or more. `select` takes the index chosen. */
+    void setInstanceSwitch(std::vector<juce::String> labels, int selected, std::function<void(int)> select);
+    juce::Rectangle<float> instanceSwitchArea(int index) const {
+        return index >= 0 && index < static_cast<int>(switchAreas_.size())
+                   ? switchAreas_[static_cast<std::size_t>(index)]
+                   : juce::Rectangle<float>{};
+    }
     juce::Rectangle<float> tabMarkArea(int index) const;
     /*  The preset cluster, `< preset . name* >`: the name opens the browser, the chevrons step through
         the whole list. Greyed and inert while the window shows another instance -- a preset is this
@@ -92,6 +101,10 @@ private:
     };
     std::function<int(int)> tabMark_;
     std::function<void(int)> tabToggle_;
+    std::vector<juce::String> switchLabels_;
+    int switchSelected_{0};
+    std::function<void(int)> onSwitch_;
+    std::vector<juce::Rectangle<float>> switchAreas_;
     juce::Rectangle<float> settingsBounds() const;
     juce::Rectangle<float> iconBounds() const;
     /// The plugin's mark, in its reserved square before the wordmark.

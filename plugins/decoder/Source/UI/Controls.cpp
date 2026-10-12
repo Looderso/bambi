@@ -31,6 +31,12 @@ void DecoderControlState::selectInstance(const Uuid& id) {
             notify();
             return;
         }
+    if (id == processor.identity().instance) selectSelfInstance();  // the header's home: back to this instance
+}
+
+void DecoderControlState::selectSelfInstance() {
+    shownDecoder = processor.identity().instance;
+    notify();
 }
 
 int DecoderControlState::outputMark(int index) const {

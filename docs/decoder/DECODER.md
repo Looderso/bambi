@@ -564,8 +564,11 @@ library when the second plugin needs it, not before.
   turns the view with the gaze.
 - **The outputs are tabs in the header** ([0178](../DECISIONS.md)), where the effects keep their instances:
   headphones · speakers (the lens tab retired, [0193](../DECISIONS.md)). **The name opens an output's page; a square in the tab plays it**, so opening the
-  speakers' page while listening on headphones changes nothing heard. A second decoder in a session gets a small
-  instance switch, only then.
+  speakers' page while listening on headphones changes nothing heard. **A second decoder in a session gets a small
+  instance switch** ([0202](../DECISIONS.md)): the session's decoders by their track labels, left of the link
+  line in the header, drawn only while there are two or more; the chosen one's state is shown and edited through
+  the link bus as an effect's other instance is, its outputs' squares its own window's to play; the wordmark
+  brings the window home.
 - **The right panel shows the open output's page only**, and every page has the same shape
   ([0194](../DECISIONS.md)): it opens with **what the output is** — the head as *model · ku100 · sofa file* with
   the two sliders under it; the loudspeakers as *itu · file · typed* with the chosen kind's own things under it,

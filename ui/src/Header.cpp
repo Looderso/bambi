@@ -266,6 +266,22 @@ void Header::paint(juce::Graphics& g) {
     g.fillRect(right, cy - hdr::statusSquare / 2.0f, hdr::statusSquare, hdr::statusSquare);
     right -= hdr::gap;
 
+    //  the instance switch, when a plugin has one: the labels from the right, the shown one as a block
+    switchAreas_.assign(switchLabels_.size(), {});
+    if (switchLabels_.size() >= 2) {
+        for (int i = static_cast<int>(switchLabels_.size()) - 1; i >= 0; --i) {
+            const juce::String& label = switchLabels_[static_cast<std::size_t>(i)];
+            const auto w = textWidth(labelFont(), label) + 2.0f;
+            const juce::Rectangle<float> box{right - w, 0.0f, w, h};
+            const bool on = i == switchSelected_;
+            if (on) openBlock(box.getX(), box.getRight());
+            text(g, label, labelFont(), on ? colour::textInverse : colour::text, box);
+            switchAreas_[static_cast<std::size_t>(i)] = box.expanded(hdr::togglePadX, 0.0f);
+            right = box.getX() - hdr::gap;
+        }
+        right -= hdr::gap / 2.0f;
+    }
+
     //  `< preset . name* >`: the chevrons step, the name opens the browser
     const auto live = preset_.available;
     presetNext_ = {right - hdr::presetStep, cy - hdr::presetStep / 2.0f, hdr::presetStep, hdr::presetStep};
@@ -351,6 +367,14 @@ void Header::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDet
     }
 }
 
+void Header::setInstanceSwitch(std::vector<juce::String> labels, int selected, std::function<void(int)> select) {
+    const bool same = labels == switchLabels_ && selected == switchSelected_;
+    switchLabels_ = std::move(labels);
+    switchSelected_ = selected;
+    onSwitch_ = std::move(select);
+    if (!same) repaint();
+}
+
 void Header::setPreset(Preset preset) {
     if (preset == preset_) return;
     preset_ = std::move(preset);
@@ -392,6 +416,8 @@ void Header::mouseDown(const juce::MouseEvent& e) {
     }
 
     if (homeArea_.contains(e.position) && onHome_) return onHome_();
+    for (std::size_t i = 0; i < switchAreas_.size(); ++i)
+        if (switchAreas_[i].contains(e.position) && onSwitch_) return onSwitch_(static_cast<int>(i));
 
     if (tabArea_.contains(e.position)) {
         int index = 0;

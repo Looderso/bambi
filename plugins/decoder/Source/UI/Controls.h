@@ -38,6 +38,14 @@ struct DecoderControlState final : public editor::PatchControls, public Instance
     int outputMark(int index) const;
     void toggleOutput(int index);
 
+    //  ---- which decoder the window shows ---------------------------------------------------------
+    /// The session's decoders as the header's switch lists them: this one first, then the others by their label.
+    std::vector<std::pair<Uuid, juce::String>> decoders;
+    Uuid shownDecoder;  ///< the one followed; this instance's own id, or zero, for itself
+    juce::String selectedLabel;
+    juce::String anotherLabel() const final { return remote ? selectedLabel : juce::String(); }
+    void selectSelfInstance() final;
+
     OutputPage page{OutputPage::Headphones};
     std::vector<TempTab> temps;  ///< open temporary tabs, in the order they were opened
     int shownTab{0};             ///< 0 the page; 1.. a temporary tab
