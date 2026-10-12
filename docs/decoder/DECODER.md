@@ -571,7 +571,8 @@ library when the second plugin needs it, not before.
   an effect's other instance is, its outputs' squares its own window's to play; the wordmark brings the window
   home. **What travels is the effects' patch and the host parameters, not the decoder's state**: the link's patch
   record has no decoder section, so the other's pages show defaults, greyed, and only its orientation strip is
-  really its own. Open in §9.
+  really its own ([0203](../DECISIONS.md)); carrying the state is
+  [Looderso/bambi#8](https://github.com/Looderso/bambi/issues/8).
 - **The right panel shows the open output's page only**, and every page has the same shape
   ([0194](../DECISIONS.md)): it opens with **what the output is** — the head as *model · ku100 · sofa file* with
   the two sliders under it; the loudspeakers as *itu · file · typed* with the chosen kind's own things under it,
@@ -613,11 +614,6 @@ library when the second plugin needs it, not before.
 ## 9. Open questions
 
 - **Name.** "Decoder" is a working title. Does it keep the name *Lens*, or take another?
-- **Does the decoder's state travel the bus?** The instance switch (§8) follows another decoder, but the link's
-  patch record carries the effects' patch only, so the other's layout, head and tracker show as defaults. Carrying
-  the state means a bus layout change — a decoder section in the patch record, the head file's text left out and
-  kept by the receiver — or the switch stays a view of the other's orientation and parameters alone. A second
-  decoder in a session is the exception, so the cost is weighed against that.
 - **Orders**: 1–3 like the rest of the suite, or higher for arrays that can use it?
 - **Does stage one (§5.1) already give most of the thesis's gain?** Settled by listening, against the KU100 and
   against a deliberately poor set, as the thesis did.
