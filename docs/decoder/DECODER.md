@@ -128,7 +128,8 @@ a layout request from the message thread to one worker and the design to the aud
 design playing when a layout is refused. Measured per 128-sample block at 48 kHz, one core: 0.8 % at order 3 on the
 array, 4.8 % at order 7 on 64 loudspeakers. Checked against the design applied directly however the audio is cut,
 the fade against each design played alone, a delay change for steps, and the decoder bit for bit against a direct
-publish. Still to come: the colour correction.
+publish. Still to come: the colour correction, tracked with the headphone and loudspeaker corrections as
+[Looderso/bambi#7](https://github.com/Looderso/bambi/issues/7).
 
 ### 3.1 Hear the array on headphones
 
