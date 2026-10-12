@@ -6,8 +6,12 @@
 //  (with the host's own pair assignment), prints what the device observes, and measures how often Live
 //  reports the song position while playing.
 //
-//    bambi-live-stub [--port 9461] [--pairs 7]
+//    bambi-live-stub [--port 9461] [--pairs 7] [--quit-when-alone SECONDS]
 //    bambi-live-stub --names       sets test names on the loop device, reads them back, and exits
+//
+//  Its state -- the pair assignment -- goes to the device as `save` after every change and comes back as
+//  `restore`, so a reopened set finds its tracks on the pairs they had. A second device is answered `busy`.
+//  Started by the device, it quits SECONDS after its last device has gone.
 //
 //  Seven pairs by default: the loop device's channels 1-14, with 15/16 left for the binaural return. On macOS,
 //  with bambi's own loop device installed, every assignment also names the device's channels after the tracks.
@@ -144,6 +148,21 @@ void onTree(Session& s, const Json& m) {
     route.set("tracks", std::move(tracks));
     send(s, route);
     std::printf("route: %zu tracks on pairs, %zu left over\n", a.pairs.size(), a.unassigned.size());
+
+    //  the host's state, kept by the device so the set saves it
+    Json state = Json::object();
+    Json pairs = Json::array();
+    for (const TrackPair& p : a.pairs) {
+        Json t = Json::object();
+        t.set("id", Json(static_cast<double>(p.track)));
+        t.set("pair", Json(p.pair));
+        pairs.push(std::move(t));
+    }
+    state.set("pairs", std::move(pairs));
+    Json save = Json::object();
+    save.set("type", Json("save"));
+    save.set("state", std::move(state));
+    send(s, save);
 #ifdef __APPLE__
     std::vector<std::string> channels(static_cast<std::size_t>(2 * s.pairCount + 2));
     for (const TrackPair& p : a.pairs)
@@ -197,6 +216,13 @@ void handle(Session& s, const std::string& line) {
         w.set("protocol", Json(kProtocol));
         w.set("loop", Json(true));
         send(s, w);
+    } else if (type == "restore") {
+        s.pairs.clear();
+        if (const Json* st = m.find("state"))
+            if (const Json* pairs = st->find("pairs"))
+                for (const Json& p : pairs->items())
+                    s.pairs.push_back({static_cast<TrackId>(number(p, "id")), static_cast<int>(number(p, "pair"))});
+        std::printf("restore: %zu tracks' pairs from the set\n", s.pairs.size());
     } else if (type == "tree") {
         onTree(s, m);
     } else if (type == "transport") {
@@ -222,6 +248,7 @@ void handle(Session& s, const std::string& line) {
 
 int main(int argc, char** argv) {
     int port = 9461;
+    int quitAfter = -1;  // seconds alone before quitting; never by default
     Session s;
 #ifdef __APPLE__
     if (argc > 1 && std::string(argv[1]) == "--names") {
@@ -241,6 +268,8 @@ int main(int argc, char** argv) {
             port = std::stoi(argv[i + 1]);
         else if (key == "--pairs")
             s.pairCount = std::stoi(argv[i + 1]);
+        else if (key == "--quit-when-alone")
+            quitAfter = std::stoi(argv[i + 1]);
     }
     const int server = ::socket(AF_INET, SOCK_STREAM, 0);
     const int on = 1;
@@ -257,13 +286,14 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
 
     auto lastReport = Clock::now();
+    auto alone = Clock::now();  // since the last device went, or since the start
     for (;;) {
         pollfd fds[2] = {{server, POLLIN, 0}, {s.fd, POLLIN, 0}};
         ::poll(fds, s.fd >= 0 ? 2 : 1, 1000);
         if (fds[0].revents & POLLIN) {
             const int client = ::accept(server, nullptr, nullptr);
             if (s.fd >= 0) {  // one device at a time: the first is answered, a second is told so
-                const std::string busy = R"({"type":"status","text":"another device is connected"})"
+                const std::string busy = R"({"type":"busy"})"
                                          "\n";
                 (void)::write(client, busy.data(), busy.size());
                 ::close(client);
@@ -280,6 +310,7 @@ int main(int argc, char** argv) {
                 ::close(s.fd);
                 s.fd = -1;
                 std::printf("device gone\n");
+                alone = Clock::now();
             } else {
                 s.pending.append(buf, static_cast<std::size_t>(n));
                 for (std::size_t at; (at = s.pending.find('\n')) != std::string::npos;) {
@@ -288,6 +319,10 @@ int main(int argc, char** argv) {
                     if (!line.empty()) handle(s, line);
                 }
             }
+        }
+        if (s.fd < 0 && quitAfter >= 0 && Clock::now() - alone > std::chrono::seconds(quitAfter)) {
+            std::printf("alone for %d s: quitting\n", quitAfter);
+            return 0;
         }
         if (Clock::now() - lastReport > std::chrono::seconds(5)) {
             report(s);

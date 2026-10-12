@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Writes bambi-live.amxd, the Max for Live audio effect that talks to the host: one toggle, one line of
-# status, the track's audio passed through untouched. bambi-live.js holds the Live side, bambi-live-node.js
+# status, an unnamed dict parameter the set keeps the device's memory in, the track's audio passed through untouched. bambi-live.js holds the Live side, bambi-live-node.js
 # the connection. An .amxd is three chunks -- "ampf" with the device type, an empty "meta", and "ptch"
 # holding the patcher as JSON ending in a newline and a NUL. Needs Live 12 Suite installed, whose empty
 # audio effect it starts from: a patcher missing a key Max expects crashes Live while the device loads.
@@ -32,8 +32,14 @@ boxes = [
     obj("out", "plugout~", [20, 320, 60, 22], 2, 0),
     obj("device", "live.thisdevice", [120, 20, 90, 22], 1, 3, ["bang", "int", "int"]),
     obj("order", "t b b", [120, 50, 40, 22], 1, 2, ["bang", "bang"]),
-    #  the remembered routing, saved with the set; "---" makes the name this device's own
-    obj("store", "dict ---bambilive @embed 1", [200, 80, 150, 22], 2, 4, ["dictionary", "", "", ""]),
+    #  what the set keeps: an unnamed dict that is a parameter -- Live saves its contents with the set and gives
+    #  them back on load. Unnamed, because a name is either shared by every device in the set or, with "---",
+    #  new on every load, where Live cannot find the saved data again; not embedded, which saves into the patcher
+    box("store", "newobj", [200, 80, 150, 22], 2, 4, text="dict", outlettype=["dictionary", "", "", ""],
+        varname="bambistate", saved_object_attributes={"parameter_enable": 1, "embed": 0},
+        saved_attribute_attributes={"valueof": {
+            "parameter_longname": "bambi state", "parameter_shortname": "state", "parameter_type": 3,
+            "parameter_invisible": 1}}),
     #  a parameter, so it lights as Live's toggles do; hidden, so it is neither automated nor saved
     box("toggle", "live.text", [260, 20, 80, 20], 1, 2, outlettype=["", ""], mode=1, text="bambi", texton="bambi",
         parameter_enable=1, presentation=1, presentation_rect=[8, 8, 70, 20],
@@ -48,8 +54,10 @@ boxes = [
     obj("node", "node.script bambi-live-node.js @autostart 1", [120, 280, 240, 22], 1, 2),
     obj("fromnode", "deferlow", [380, 280, 60, 22], 1, 1),
     obj("setstatus", "prepend set", [240, 240, 80, 22], 1, 1),
-    box("status", "comment", [340, 200, 220, 20], 1, 0, text="bambi", presentation=1,
-        presentation_rect=[8, 34, 220, 60], linecount=1, presentation_linecount=4),
+    #  sized as Ableton's own devices size their text, with no line counts -- given those, Max fits the width to
+    #  them and the status wrapped after every letter or two
+    box("status", "comment", [340, 200, 224, 40], 1, 0, text="bambi", presentation=1,
+        presentation_rect=[8, 34, 224, 40], fontname="Arial", fontsize=10.0),
 ]
 lines = [
     line("in", 0, "out", 0),
@@ -78,6 +86,7 @@ patcher = json.loads(raw[raw.index(b"ptch") + 8:].rstrip(b"\0").decode())
 p = patcher["patcher"]
 p["boxes"] = boxes
 p["lines"] = lines
+p["parameters"] = {"store": ["bambi state", "state", 0], "toggle": ["bambi", "bambi", 0]}
 p["openinpresentation"] = 1
 p["devicewidth"] = 240.0
 
