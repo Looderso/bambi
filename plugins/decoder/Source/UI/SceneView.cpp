@@ -19,7 +19,9 @@ namespace sc = theme::scene;
 
 namespace {
 constexpr int kArcSteps = 16;
-constexpr double kGazeRingDeg = 9.0;  ///< the angular radius of the ring round where the head looks
+constexpr double kGazeRingDeg = 9.0;
+constexpr double kEyeAngleRad =
+    0.45;  ///< each eye this far off the gaze, on the head's rim  ///< the angular radius of the ring round where the head looks
 
 /// `count` points of the small circle of angular radius `radiusRad` about `centre`.
 void circleAround(Vec3 centre, double radiusRad, int count, std::vector<Vec3>& out) {
@@ -238,16 +240,16 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
     strokeSegments(g, segments_, skipped_, colour::text.withAlpha(alpha), stroke::regionEdge, false);
     const auto tip = toScreen(projection_, state_.sphere.camera, vp, gaze);
     if (projection_ == Projection::Globe) {
-        //  the head itself at the centre: a circle, its nose out of it toward the gaze, an ear each side. A
-        //  direction drawn at the head's radius is that vector scaled to the radius before projection, so the
-        //  nose and the ears foreshorten as the head turns toward or away from the viewer.
+        //  the head itself at the centre: a circle with two eyes on its rim, a quarter turn apart astride the gaze.
+        //  Each eye is a direction scaled to the head's radius before projection, so the pair foreshortens as the
+        //  head turns toward or away from the viewer, and tilts with roll.
         const float r = shape::sourceDot + 4.0f;
         const double unit = static_cast<double>(r) / vp.rx;
-        const auto at = [&](Vec3 direction, double times) {
-            return toScreen(projection_, state_.sphere.camera, vp, direction * (times * unit));
-        };
-        const auto noseFrom = at(gaze, 1.0), noseTo = at(gaze, 2.6);
-        const auto leftEar = at(left, 1.0), rightEar = at(left * -1.0, 1.0);
+        const double c = std::cos(kEyeAngleRad), sn = std::sin(kEyeAngleRad);
+        const Vec3 leftEye{gaze.x * c + left.x * sn, gaze.y * c + left.y * sn, gaze.z * c + left.z * sn};
+        const Vec3 rightEye{gaze.x * c - left.x * sn, gaze.y * c - left.y * sn, gaze.z * c - left.z * sn};
+        const auto eyeL = toScreen(projection_, state_.sphere.camera, vp, leftEye * unit);
+        const auto eyeR = toScreen(projection_, state_.sphere.camera, vp, rightEye * unit);
         g.setColour(colour::text.withAlpha(alpha));
         juce::Path line;
         line.startNewSubPath(static_cast<float>(vp.cx), static_cast<float>(vp.cy));
@@ -259,11 +261,9 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
         g.fillEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r);
         g.setColour(colour::text.withAlpha(alpha));
         g.drawEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r, stroke::toggle);
-        g.drawLine(static_cast<float>(noseFrom.x), static_cast<float>(noseFrom.y), static_cast<float>(noseTo.x),
-                   static_cast<float>(noseTo.y), stroke::toggle);
-        const float ear = 2.0f;
-        for (const auto& e : {leftEar, rightEar})
-            g.fillEllipse(static_cast<float>(e.x) - ear, static_cast<float>(e.y) - ear, 2.0f * ear, 2.0f * ear);
+        const float eye = 2.0f;
+        for (const auto& e : {eyeL, eyeR})
+            g.fillEllipse(static_cast<float>(e.x) - eye, static_cast<float>(e.y) - eye, 2.0f * eye, 2.0f * eye);
     } else {
         g.setColour(colour::text.withAlpha(alpha * (tip.depth < 0.0 ? sc::backAlpha : 1.0f)));
         const float c = shape::sourceDot;
