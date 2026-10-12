@@ -120,6 +120,7 @@ void onTree(Session& s, const Json& m) {
     if (nodes == nullptr) return;
     std::vector<TrackId> top;
     std::vector<std::pair<TrackId, std::string>> names;
+    std::vector<TrackId> sending;  // tracks with a send up: the test warning's subject
     std::printf("tree: %zu nodes\n", nodes->size());
     for (const Json& n : nodes->items()) {
         const std::string kind = text(n, "kind");
@@ -133,6 +134,12 @@ void onTree(Session& s, const Json& m) {
         if (topLevel && !elsewhere && kind != "return" && number(n, "audio", 1) != 0)
             top.push_back(static_cast<TrackId>(number(n, "id")));
         names.emplace_back(static_cast<TrackId>(number(n, "id")), text(n, "name"));
+        if (const Json* sends = n.find("sends"))
+            for (const Json& v : sends->items())
+                if (v.isNumber()) {
+                    sending.push_back(static_cast<TrackId>(number(n, "id")));
+                    break;
+                }
     }
     const bambi::live::PairAssignment a = bambi::live::assignPairs(s.pairs, top, s.pairCount);
     s.pairs = a.pairs;
@@ -163,6 +170,19 @@ void onTree(Session& s, const Json& m) {
     save.set("type", Json("save"));
     save.set("state", std::move(state));
     send(s, save);
+
+    //  what the host would say about the mix; the stub's are test values, a warning on every routed track
+    //  with a send up, so the device's list can be seen to mark it
+    Json info = Json::object();
+    info.set("type", Json("info"));
+    info.set("latency", Json(12.0));
+    info.set("rate", Json(48000.0));
+    Json warnings = Json::object();
+    for (const TrackPair& p : a.pairs)
+        if (std::find(sending.begin(), sending.end(), p.track) != sending.end())
+            warnings.set(std::to_string(p.track), Json("its sends go to Live's returns, which stay stereo here"));
+    info.set("warnings", std::move(warnings));
+    send(s, info);
 #ifdef __APPLE__
     std::vector<std::string> channels(static_cast<std::size_t>(2 * s.pairCount + 2));
     for (const TrackPair& p : a.pairs)
@@ -237,6 +257,8 @@ void handle(Session& s, const std::string& line) {
         const Json* v = m.find("value");
         std::printf("value: %-24s %-12s %s\n", text(m, "name").c_str(), text(m, "what").c_str(),
                     v != nullptr ? v->dump(0).c_str() : "");
+    } else if (type == "show") {
+        std::printf("show: the host's window would come to the front\n");
     } else if (type == "bambi") {
         std::printf("bambi %s\n", number(m, "on") != 0 ? "on" : "off");
     } else {
