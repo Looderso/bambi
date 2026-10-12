@@ -29,8 +29,8 @@ namespace bambi {
   X(Render, OutputLevel,  "output.level", "level", "dB", Float, -60, 12, 0, nullptr)              \
                                                                                                     \
   /*  The one region slot every plugin carries; the decoder reads nothing from it.               */ \
-  BAMBI_REGION_BLOCK(X, Region1, "region1", "lens")                                                 \
-  X(Modulation, ModAmountRegion1, "mod.amount.region1", "lens amount", "", Float, 0, 1, 1, nullptr) \
+  BAMBI_REGION_BLOCK(X, Region1, "region1", "region")                                               \
+  X(Modulation, ModAmountRegion1, "mod.amount.region1", "region amount", "", Float, 0, 1, 1, nullptr) \
                                                                                                     \
   BAMBI_GENERATOR_BLOCK(X)                                                                          \
   BAMBI_MOD_AMOUNT_BLOCK(X)                                                                         \
