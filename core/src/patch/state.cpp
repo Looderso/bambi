@@ -279,7 +279,8 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         }
         jd.set("layout", speakers);
         jd.set("tracker", Json{d.trackerSource});
-        jd.set("tracker_overrides", Json{d.trackerOverrides});
+        jd.set("tracker_scene", Json{d.trackerTurnsScene});
+        jd.set("scene_static", Json{d.sceneStatic});
         jd.set("osc_port", Json{d.oscPort});
         jd.set("osc_network", Json{d.oscNetwork});
         Json flips = Json::array();
@@ -550,7 +551,8 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
             }
         }
         d.trackerSource = intOf("tracker", d.trackerSource);
-        d.trackerOverrides = boolOf("tracker_overrides", d.trackerOverrides);
+        d.trackerTurnsScene = boolOf("tracker_scene", d.trackerTurnsScene);
+        d.sceneStatic = boolOf("scene_static", d.sceneStatic);
         d.oscPort = intOf("osc_port", d.oscPort);
         d.oscNetwork = boolOf("osc_network", d.oscNetwork);
         if (const Json* fl = dec->find("flip"); fl != nullptr && fl->isArray())

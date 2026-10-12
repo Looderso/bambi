@@ -512,21 +512,24 @@ readout, and learn mode's picking.
 
 ### 7.2 What it drives
 
-- **The scene before the binaural decode** — a rotation of (N+1)² × (N+1)² per block, negligible. *Ported*
-  (`core/include/bambi/decode/headrotation.hpp`, [0180](../DECISIONS.md)): the field turned by the inverse of the
-  head's orientation, which arrives from any thread; a 30 ms glide stepped per 64-frame hop and crossfaded within
-  it, so nothing snaps; the same bits however the frames are cut; 0.1 % of a core at order 3, 0.5 % at order 7
-  while turning. What converts a tracker's quaternion or yaw, pitch and roll into the orientation matrix is the
-  receiver's (§7.1), ported as `orientation.hpp`; the plugin's receiver is a `juce::OSCReceiver` on the message
-  thread, the known addresses only, with the sliders taking over while no tracker speaks.
-- **The Lens's window** (§6).
+- **Two turns of the field, one a block** ([0196](../DECISIONS.md)), each a rotation of (N+1)² × (N+1)², negligible
+  (`core/include/bambi/decode/headrotation.hpp`, [0180](../DECISIONS.md): a 30 ms glide stepped per 64-frame hop
+  and crossfaded within it, so nothing snaps; the same bits however the frames are cut; 0.1 % of a core at order 3,
+  0.5 % at order 7 while turning). **The scene's turn** first, heard by every output: yaw, pitch and roll as the
+  host has them plus their rates integrated while the transport runs, wrapping, the whole held at zero while
+  *static*. **Then the head undone**, for the binaural decode and the pair's slice only: the field turned by the
+  inverse of the tracker's orientation, so what the listener hears stays in the room. An array hears the scene's
+  turn and no head: the listener's head is really in the room. What converts a tracker's quaternion or yaw, pitch
+  and roll into the orientation matrix is the receiver's (§7.1), ported as `orientation.hpp`; the plugin's
+  receiver is a `juce::OSCReceiver` on the message thread.
+- **The tracker turns the head or the scene** — the strip's `head · scene`. As a head it is undone, above. As the
+  scene it is one more turn of the scene, heard by every output and undone by none: a performer wearing the
+  tracker turns the mix for the room, or for listeners on headphones.
+- **The pair's slice** (§6).
 - **Placing the loudspeakers** of an array (§3.3).
-- **Nothing on an array's output**: the listener's head is really in the room.
 - **Recentre** on a key.
-- **OSC on overrides; OSC off returns.** With OSC switched on, the orientation it sends replaces yaw, pitch and
-  roll — their automation and their sliders are ignored. Switched off, automation and sliders apply again.
-- **An offline render takes the automation.** No OSC arrives in an offline render, so it renders yaw, pitch and
-  roll as automated: a bounce never captures a head's movements.
+- **An offline render takes the automation.** No tracker speaks in an offline render, so it renders the scene's
+  turn as automated, sliders and rates: a bounce never captures a head's movements.
 
 ### 7.3 Not here: OSC into the encoder
 
@@ -561,13 +564,17 @@ library when the second plugin needs it, not before.
   its *fold · slice* switch (§6) between the layout and the channels. The loudspeaker table, with what distance
   compensation does to each, is a temporary tab opened by `loudspeakers…`, so no page scrolls at the window's
   size. **The hull the layout pans across is drawn on the scene while the speakers' page is open.**
-- **The head strip sits where the effects have their matrix**: what turns the head (none · OSC · AirPods · phone),
-  whether data arrives and how evenly, yaw, pitch and roll with the tracker's value as the live mark, recentre. Its
+- **The orientation strip sits where the effects have their matrix** ([0196](../DECISIONS.md)): its heading
+  carries the tracker's word (which source, whether it speaks and how often — or the one warning that the input
+  has no direction); under it what tracks the head (none · OSC · AirPods · phone), whether its orientation is
+  undone as a `head` or turns the `scene`, recentre, the setup tab, and `static`; then the scene's turn as
+  parameters, yaw, pitch and roll with their rates stacked under them, the turn in force as the live mark. The
   setup opens as a temporary tab, the chosen source's own setup first and the signs under it, as
   **personalisation** does from the headphones' page and the loudspeaker table from the speakers'.
 - The sketch is `prototypes/ui/decoder/`. **Built** (`plugins/decoder/`, [0182](../DECISIONS.md)) on the shared
   window: the scene views draw the room's frame, the loudspeakers, the hull while the speakers' page is open, the
-  head and the session's sources; the head strip stands in the matrix's place (the shared window's one new slot);
+  head and the session's sources turned with the scene; the orientation strip stands in the matrix's place (the
+  shared window's one new slot);
   the outputs are the header's tabs with a square each (its one new option); the panel holds the open output's page
   and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
   bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read

@@ -27,6 +27,7 @@
 #include "bambi/host/Layout.h"
 #include "bambi/host/PluginProcessor.h"
 #include "bambi/link/latest.hpp"
+#include "bambi/mod/modulation.hpp"
 
 /*  bambi Decoder: the suite's fourth plugin, a monitor rather than an effect.
  *
@@ -95,7 +96,8 @@ public:
         std::atomic<bool> headphonesHeard{false}, speakersHeard{false};
         std::atomic<int> trackerMessages{0};
         std::atomic<std::int64_t> trackerLastMs{0};  ///< when the last orientation arrived, juce::Time millis
-        std::atomic<float> headYaw{0.0f}, headPitch{0.0f}, headRoll{0.0f};  ///< what turns the field now, degrees
+        std::atomic<float> headYaw{0.0f}, headPitch{0.0f}, headRoll{0.0f};     ///< the head the decode undoes, degrees
+        std::atomic<float> sceneYaw{0.0f}, scenePitch{0.0f}, sceneRoll{0.0f};  ///< the scene's turn in force, degrees
     };
     const Diagnostics& diagnostics() const noexcept { return diag_; }
     int engineOrder() const noexcept override { return engineOrder_; }
@@ -193,8 +195,10 @@ private:
     int builtMatrixNormalization_{-1}, builtMatrixOrder_{-1};
     juce::String matrixNote_, matrixError_;  ///< what the page says of the matrix; under workMutex_
     bambi::VirtualArray virtual_;
-    bambi::HeadRotation turn_;
-    std::mutex workMutex_;  ///< prepare and build: never the audio thread
+    bambi::HeadRotation scene_;        ///< the scene's turn, heard by every output
+    bambi::HeadRotation turn_;         ///< the head undone, for the binaural decode and the slice
+    bambi::RotationClock sceneClock_;  ///< the rates integrated; audio thread
+    std::mutex workMutex_;             ///< prepare and build: never the audio thread
     double sampleRate_{48000.0};
     int engineOrder_{-1};  ///< what prepareToPlay built for; -1 until it has run
     int maxBlock_{0};
@@ -206,13 +210,13 @@ private:
     int builtWeighting_{-1}, builtOrder_{-1};
     bool builtDistance_{true};
 
-    bambi::host::FieldBuffer field_;                    ///< the input, interleaved
-    std::vector<float> turned_, stereo_, speakersOut_;  ///< scratch, sized in prepareToPlay
-    std::vector<float> gainRamp_;                       ///< the level per sample of the block
+    bambi::host::FieldBuffer field_;                                 ///< the input, interleaved
+    std::vector<float> sceneField_, turned_, stereo_, speakersOut_;  ///< scratch, sized in prepareToPlay
+    std::vector<float> gainRamp_;                                    ///< the level per sample of the block
     float gainNow_{1.0f}, gainCoefficient_{1.0f};
 
     //  The tracker. The OSC callback runs on the message thread and is the handoff's one writer; the audio
-    //  thread reads it and is the rotation stage's one writer, choosing between the tracker and the parameters.
+    //  thread reads it and is both rotation stages' one writer.
     juce::OSCReceiver osc_;
     int oscPort_{0};
     bool oscConnected_{false};

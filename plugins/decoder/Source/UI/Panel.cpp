@@ -618,7 +618,7 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
         y = paintGroupTitle(g, content, y, "phone");
         y = paintPhone(g, content, y);
     } else {
-        text(g, "no tracker: the sliders turn the head. choose osc, airpods or phone in the head strip to set it up",
+        text(g, "no tracker: the strip's sliders and rates turn the scene. choose osc, airpods or phone there",
              labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
              juce::Justification::centredLeft);
         y += lineH;

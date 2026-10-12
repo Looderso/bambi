@@ -82,6 +82,8 @@ void DecoderSceneView::paint(juce::Graphics& g) {
     const auto& diag = state_.processor.diagnostics();
     head_ = headFromYpr(diag.headYaw.load(std::memory_order_relaxed), diag.headPitch.load(std::memory_order_relaxed),
                         diag.headRoll.load(std::memory_order_relaxed));
+    scene_ = headFromYpr(diag.sceneYaw.load(std::memory_order_relaxed), diag.scenePitch.load(std::memory_order_relaxed),
+                         diag.sceneRoll.load(std::memory_order_relaxed));
     refreshDesign();
 
     const auto vp = viewport();
@@ -214,7 +216,9 @@ void DecoderSceneView::paintSpeakers(juce::Graphics& g, const Viewport& vp, floa
 void DecoderSceneView::paintSources(juce::Graphics& g, const Viewport& vp) {
     for (const auto& entry : state_.scene.entries()) {
         if (!entry.hasPosition || entry.product == Product::Decoder) continue;
-        const auto p = toScreen(projection_, state_.sphere.camera, vp, toView(entry.dyn.position()));
+        //  where the source is heard: turned with the scene
+        const auto p =
+            toScreen(projection_, state_.sphere.camera, vp, toView(bambi::apply(scene_, entry.dyn.position())));
         const float a = p.depth < 0.0 ? sc::backAlpha : 1.0f;
         const float r = shape::otherSourceDot;
         g.setColour(colour::otherInstance.withAlpha(a));

@@ -127,10 +127,11 @@ struct DecoderState {
     /// A decoder as filters instead: a SOFA FIR-E file's path. Too large to travel with the session, it is read
     /// again from here, and the page says when it is not there. Empty for a layout of positions.
     std::string matrixFile;
-    int matrixOutputs{0};         ///< the file's outputs, so the channel map knows them before the file is read
-    int matrixNormalization{0};   ///< what its filters expect on their input: 0 as the file says, 1 SN3D, 2 N3D
-    int trackerSource{0};         ///< 0 none, 1 OSC, 2 AirPods through the bundled helper, 3 a phone's page
-    bool trackerOverrides{true};  ///< the tracker replaces yaw, pitch and roll while it sends
+    int matrixOutputs{0};           ///< the file's outputs, so the channel map knows them before the file is read
+    int matrixNormalization{0};     ///< what its filters expect on their input: 0 as the file says, 1 SN3D, 2 N3D
+    int trackerSource{0};           ///< 0 none, 1 OSC, 2 AirPods through the bundled helper, 3 a phone's page
+    bool trackerTurnsScene{false};  ///< the tracker's orientation turns the scene, not the head: no compensation
+    bool sceneStatic{false};        ///< the scene's turn from the sliders and rates held at zero, the tracker kept
     int oscPort{9000};
     bool oscNetwork{false};                         ///< bound to this computer until asked
     std::array<bool, 3> flip{false, false, false};  ///< learn mode's signs

@@ -159,9 +159,12 @@ void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpected
     binaural_.prepare(headModel(), design, kPartition);
     speakers_.prepare(engineOrder_, kMaxOutputs, sampleRate_);
     virtual_.prepare(headModel(), engineOrder_, sampleRate_, kPartition);
+    scene_.prepare(engineOrder_, sampleRate_);
     turn_.prepare(engineOrder_, sampleRate_);
+    sceneClock_.reset();
     field_.prepare(maxBlock_, engineOrder_);
     const auto channels = static_cast<std::size_t>(bambi::numChannels(engineOrder_));
+    sceneField_.assign(static_cast<std::size_t>(maxBlock_) * channels, 0.0f);
     turned_.assign(static_cast<std::size_t>(maxBlock_) * channels, 0.0f);
     stereo_.assign(static_cast<std::size_t>(maxBlock_) * 2, 0.0f);
     speakersOut_.assign(static_cast<std::size_t>(maxBlock_) * static_cast<std::size_t>(kMaxOutputs), 0.0f);
@@ -744,25 +747,42 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     for (int c = 0; c < std::min(inChannels, C); ++c) inPeak = std::max(inPeak, in.getMagnitude(c, 0, n));
     diag_.inputPeak.store(inPeak, std::memory_order_relaxed);
 
-    //  The head: the tracker while it overrides and has spoken, else yaw, pitch and roll as the host has them.
-    //  This thread is the rotation stage's one writer, so the choice is made here.
+    //  The scene's turn: yaw, pitch and roll as the host has them, their rates integrated while the transport
+    //  runs (or is unknown, as in a tool), the whole held at zero while static. The tracker is an offset on top:
+    //  a head, which the binaural decode and the slice undo so the scene stays in the room, or one more turn of
+    //  the scene. This thread is both stages' one writer, so the choice is made here.
     const bambi::DecoderState& d = current().decoder;
     if (const bambi::Mat3* fresh = tracker_.latest()) {
         trackerNow_ = *fresh;
         trackerSeen_ = true;
     }
-    bambi::Mat3 head;
-    const bool tracked = d.trackerSource != 0 && d.trackerOverrides && trackerSeen_;
-    if (tracked) {
+    bambi::Mat3 tracker = bambi::kIdentity3;
+    if (d.trackerSource != 0 && trackerSeen_) {
         if (recentre_.exchange(false, std::memory_order_relaxed)) yaw0_ = bambi::yawDegOf(trackerNow_);
-        head = bambi::recentred(trackerNow_, yaw0_);
+        tracker = bambi::recentred(trackerNow_, yaw0_);
     } else {
         recentre_.store(false, std::memory_order_relaxed);
-        const auto& p = parameterValues();
-        head = bambi::headFromYpr(p[static_cast<std::size_t>(decoderParam("head.yaw"))],
-                                  p[static_cast<std::size_t>(decoderParam("head.pitch"))],
-                                  p[static_cast<std::size_t>(decoderParam("head.roll"))]);
     }
+    bambi::Mat3 scene = bambi::kIdentity3;
+    if (!d.sceneStatic) {
+        const auto& p = parameterValues();
+        const auto at = [&](const char* key) {
+            return static_cast<double>(p[static_cast<std::size_t>(decoderParam(key))]);
+        };
+        const bool runs =
+            diag_.playing.load(std::memory_order_relaxed) || !diag_.transportKnown.load(std::memory_order_relaxed);
+        sceneClock_.advance(at("head.yaw_rate"), at("head.pitch_rate"), at("head.roll_rate"),
+                            runs ? static_cast<double>(n) / sampleRate_ : 0.0);
+        scene = bambi::headFromYpr(at("head.yaw") + sceneClock_.yawRad() * bambi::kRad2Deg,
+                                   at("head.pitch") + sceneClock_.pitchRad() * bambi::kRad2Deg,
+                                   at("head.roll") + sceneClock_.rollRad() * bambi::kRad2Deg);
+    }
+    bambi::Mat3 head = tracker;
+    if (d.trackerTurnsScene) {
+        scene = bambi::multiply(tracker, scene);
+        head = bambi::kIdentity3;
+    }
+    scene_.setOrientation(bambi::transposed(scene));  // the stage turns the field against what it is given
     turn_.setOrientation(head);
     virtual_.setOrientation(head);
     {
@@ -771,6 +791,10 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         diag_.headYaw.store(static_cast<float>(y), std::memory_order_relaxed);
         diag_.headPitch.store(static_cast<float>(pt), std::memory_order_relaxed);
         diag_.headRoll.store(static_cast<float>(r), std::memory_order_relaxed);
+        bambi::yprOf(scene, y, pt, r);
+        diag_.sceneYaw.store(static_cast<float>(y), std::memory_order_relaxed);
+        diag_.scenePitch.store(static_cast<float>(pt), std::memory_order_relaxed);
+        diag_.sceneRoll.store(static_cast<float>(r), std::memory_order_relaxed);
     }
 
     //  The outputs, each a set of channels on the bus; what nothing writes is silent.
@@ -786,18 +810,19 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     const auto ramp = [&](int i) { return gainRamp_[static_cast<std::size_t>(i)]; };
     const int speakerOutputs = diag_.speakerOutputs.load(std::memory_order_relaxed);
     const bool matrix = matrixPlays_.load(std::memory_order_acquire);
-    //  The field turned by the head, once a block, for whoever needs it: the binaural decode, and a pair of
-    //  loudspeakers that follows the head.
+    //  The scene turned, once a block, for every output; then the head undone, once a block, for whoever needs
+    //  it: the binaural decode, and a pair of loudspeakers whose slice follows the head.
+    scene_.process(field_.data(), sceneField_.data(), n);
     bool turned = false;
     const auto turnOnce = [&] {
-        if (!turned) turn_.process(field_.data(), turned_.data(), n);
+        if (!turned) turn_.process(sceneField_.data(), turned_.data(), n);
         turned = true;
     };
 
     bool hpHeard = false, spHeard = false;
     if (d.headphonesPlay && d.headphoneChannel >= 1 && d.headphoneChannel + 1 <= outChannels) {
         if (d.throughLayout && speakerOutputs > 0 && !matrix) {
-            virtual_.process(field_.data(), C, stereo_.data(), n);
+            virtual_.process(sceneField_.data(), C, stereo_.data(), n);
         } else {
             turnOnce();
             binaural_.process(turned_.data(), stereo_.data(), n);
@@ -813,12 +838,12 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     }
     if (d.speakersPlay && speakerOutputs > 0 && speakerOutputs <= outChannels) {
         if (matrix) {
-            matrix_.process(field_.data(), speakersOut_.data(), n);
+            matrix_.process(sceneField_.data(), speakersOut_.data(), n);
         } else if (pairFollows_.load(std::memory_order_relaxed)) {
             turnOnce();
             speakers_.process(turned_.data(), C, speakersOut_.data(), speakerOutputs, n);
         } else {
-            speakers_.process(field_.data(), C, speakersOut_.data(), speakerOutputs, n);
+            speakers_.process(sceneField_.data(), C, speakersOut_.data(), speakerOutputs, n);
         }
         for (int o = 0; o < speakerOutputs; ++o) {
             float* y = out.getWritePointer(o);

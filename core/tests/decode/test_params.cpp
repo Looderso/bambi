@@ -19,6 +19,9 @@ TEST_CASE("the decoder's own parameter keys are frozen, and its manifest holds t
     CHECK(m.byKey("level.release") != kNoParam);
     CHECK(m.wrapsAt(m.byKey("head.yaw")));
     CHECK_FALSE(m.wrapsAt(m.byKey("head.pitch")));
+    //  Catches: the rates slipped in before the shared blocks, which would move every shared key's index.
+    CHECK(m.byKey("head.yaw_rate") > m.byKey("level.release"));
+    CHECK(m.byKey("head.roll_rate") == m.size() - 1);
     CHECK(decodeMod().complete());
     CHECK(decodeMod().baseTargets.size() == 1);
 }

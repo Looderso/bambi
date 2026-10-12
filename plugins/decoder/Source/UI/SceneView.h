@@ -53,7 +53,8 @@ private:
     std::vector<ScreenSegment> segments_, lineSegments_;
     std::vector<juce::Point<double>> skipped_;
     std::vector<Vec3> arc_;
-    Mat3 head_{kIdentity3};
+    Mat3 head_{kIdentity3};              ///< the head the decode undoes
+    Mat3 scene_{kIdentity3};             ///< the scene's turn, which the sources follow
     std::vector<Loudspeaker> designOf_;  ///< the layout `design_` was built for
     SpeakerDesign design_;
     int speakersDrawn_{0};

@@ -6,16 +6,17 @@
 
 namespace bambi::ui {
 
-/*  The head strip, where the effects have their matrix: what turns the head (none, OSC; AirPods and a phone later),
- *  whether data arrives and how evenly, yaw, pitch and roll as parameters with the tracker's value as the live mark,
- *  recentre, and the tracker's setup as a temporary tab. The head serves every output, so its strip is always
- *  on screen.
+/*  The orientation strip, where the effects have their matrix: what tracks the head (none, OSC, AirPods, a phone)
+ *  and whether it speaks, whether its orientation is undone as a head or turns the scene, recentre, the tracker's
+ *  setup as a temporary tab, static; then the scene's turn as parameters -- yaw, pitch and roll with their rates
+ *  under them -- the turn in force as the live mark. The scene's turn is heard by every output, so the strip is
+ *  always on screen.
  */
 class HeadStrip final : public ParameterPage {
 public:
     explicit HeadStrip(DecoderControlState& state);
     void paint(juce::Graphics& g) override;
-    /// Where the tracker's own value marks a tile while it overrides the parameters.
+    /// The scene's turn in force marks the three angle tiles: slider, rate and, when it turns the scene, tracker.
     bool liveValue(ParamId id, double& out) const override;
     /// The rate the strip shows, in messages a second; computed by the editor's frame.
     void setTrackerRate(float hz) { rateHz_ = hz; }
@@ -31,7 +32,7 @@ public:
 private:
     DecoderControlState& state_;
     float rateHz_{0.0f};
-    juce::Rectangle<float> recentre_, setup_, overrides_;
+    juce::Rectangle<float> recentre_, setup_, static_;
     std::vector<juce::Rectangle<float>> sourceCells_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HeadStrip)

@@ -80,6 +80,9 @@ PluginState withLayout(const char* name, bool speakers, bool headphones, int hpC
 }
 }  // namespace
 
+/// A yaw alone as the known /ypr address carries it: yaw, pitch and roll in degrees.
+std::vector<float> yprValues(float yawDeg) { return {yawDeg, 0.0f, 0.0f}; }
+
 int main() {
     juce::ScopedJuceInitialiser_GUI juceInit;
     std::printf("bambi Decoder: host contract and renders\n\n");
@@ -158,17 +161,38 @@ int main() {
         const Channels y = render(busIn(16, 4), 128, 0.25, {}, &s);
         check(!y.empty() && channelEnergy(y, 0) > 1e-4 && channelEnergy(y, 1) > 1e-4 && channelEnergy(y, 2) == 0.0,
               "a stereo pair plays on channels 1 and 2 and nowhere else");
-        //  Catches: the head reaching the loudspeakers when the pair does not follow it, or not reaching them when
-        //  it does; the microphones' settings not reaching the design.
-        const auto turned = [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw", 180.0f); };
-        const Channels still = render(busIn(16, 4), 128, 0.25, turned, &s);
-        check(!still.empty() && identical(y, still), "the head turns nothing for a pair that stays in the room");
-        PluginState slice = s;
+        //  Catches: the head reaching the loudspeakers when the pair is a fold, or not reaching them when it is a
+        //  slice; the microphones' settings not reaching the design; the scene's turn missing an output.
+        const auto headTurned = [](BambiDecoderProcessor& p) { p.takeOrientation("/ypr", yprValues(180.0f)); };
+        PluginState tracked = s;
+        tracked.decoder.trackerSource = 1;
+        const Channels still = render(busIn(16, 4), 128, 0.25, headTurned, &tracked);
+        check(!still.empty() && identical(y, still), "the head turns nothing for a fold: the pair stays in the room");
+        PluginState slice = tracked;
         slice.decoder.pairSlice = true;
         const Channels ahead = render(busIn(16, 4), 128, 0.25, {}, &slice),
-                       turnedAway = render(busIn(16, 4), 128, 0.25, turned, &slice);
+                       turnedAway = render(busIn(16, 4), 128, 0.25, headTurned, &slice);
         check(!ahead.empty() && !identical(ahead, y), "the slice is another design than the fold");
         check(!turnedAway.empty() && !identical(ahead, turnedAway), "and the head turns what the slice plays");
+        //  The scene's turn reaches every output: the fold hears yaw, and the tracker turning the scene is heard
+        //  where the head was not. Static holds the sliders at zero.
+        const auto sceneTurned = [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw", 180.0f); };
+        const Channels sceneOnFold = render(busIn(16, 4), 128, 0.25, sceneTurned, &s);
+        check(!sceneOnFold.empty() && !identical(y, sceneOnFold), "yaw turns the scene the fold plays");
+        PluginState trackerScene = tracked;
+        trackerScene.decoder.trackerTurnsScene = true;
+        const Channels byTracker = render(busIn(16, 4), 128, 0.25, headTurned, &trackerScene);
+        check(!byTracker.empty() && !identical(y, byTracker), "and the tracker turns the scene when told to");
+        PluginState held = s;
+        held.decoder.sceneStatic = true;
+        const Channels heldStill = render(busIn(16, 4), 128, 0.25, sceneTurned, &held);
+        check(!heldStill.empty() && identical(y, heldStill), "static holds the scene whatever the sliders say");
+        //  Catches: a rate not integrated, or integrated while the scene is static.
+        const auto spinning = [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw_rate", 90.0f); };
+        const Channels spun = render(busIn(16, 4), 128, 0.25, spinning, &s),
+                       spunHeld = render(busIn(16, 4), 128, 0.25, spinning, &held);
+        check(!spun.empty() && !identical(y, spun) && identical(y, spunHeld),
+              "a yaw rate turns the scene over time, and not while static");
     }
 
     //  Determinism: the same render twice, and however the host cuts its blocks.
@@ -238,10 +262,7 @@ int main() {
         BambiDecoderProcessor proc;
         proc.setBusesLayout(busIn(16, 2));
         proc.prepareToPlay(kCheckRate, 128);
-        proc.editDecoder("osc", [](DecoderState& d) {
-            d.trackerSource = 1;
-            d.trackerOverrides = true;
-        });
+        proc.editDecoder("osc", [](DecoderState& d) { d.trackerSource = 1; });
         const auto headAfter = [&proc](const char* address, std::vector<float> values) {
             proc.takeOrientation(address, values);
             juce::AudioBuffer<float> buffer(16, 128);
