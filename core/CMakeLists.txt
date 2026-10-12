@@ -7,9 +7,12 @@
 # own library beside them, so the encoder never links Reverb's feedback delay network and the
 # boundary is expressed in the build rather than in a folder convention.
 #
-#   bambi-core     math/ dsp/ path/ mod/ patch/ link/ scene/ io/   -- shared by every plugin
-#   bambi-encode   encode/                                         -- the encoder's engine
-#   (bambi-echo, bambi-reverb follow, as their engines are written)
+#   bambi-core     math/ dsp/ path/ region/ mod/ patch/ link/ scene/ io/  -- shared by every plugin
+#   bambi-encode   encode/                                                 -- the encoder's engine
+#   bambi-echo     echo/                                                   -- Echo's
+#   bambi-reverb   reverb/                                                 -- Reverb's
+#   bambi-decode   decode/                                                 -- the Decoder's
+#   bambi-live     live/        -- Live's tracks and transport, for the host that plays them; no plugin links it
 #
 # The headers are layered and the layering is acyclic: math and the header-only primitives depend
 # on nothing, and nothing in a lower layer includes a higher one.
@@ -121,6 +124,14 @@ add_library(bambi-decode STATIC
 target_link_libraries(bambi-decode PUBLIC bambi-core PRIVATE convhull_3d libmysofa)
 bambi_warnings(bambi-decode PEDANTIC)
 
+# ---- Live's tracks and transport, for the host --------------------------------------------------
+add_library(bambi-live STATIC
+  src/live/pairs.cpp
+  src/live/transport.cpp
+)
+target_include_directories(bambi-live PUBLIC include)
+bambi_warnings(bambi-live PEDANTIC)
+
 # ---- one test binary over all of them ----------------------------------------------------------
 add_executable(bambi-tests
   tests/main.cpp
@@ -206,8 +217,11 @@ add_executable(bambi-tests
   tests/decode/test_headrotation.cpp
   tests/decode/test_orientation.cpp
   tests/decode/test_params.cpp
+
+  tests/live/test_pairs.cpp
+  tests/live/test_transport.cpp
 )
-target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode)
+target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode bambi-live)
 # The tests read the shipped head model and its fixtures from the source tree.
 target_compile_definitions(bambi-tests PRIVATE BAMBI_CORE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bambi-tests PRIVATE tests)
