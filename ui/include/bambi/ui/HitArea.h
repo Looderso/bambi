@@ -141,7 +141,8 @@ protected:
      *  the names from `x`, in the tab face, standing `ctl::matrixTabsTop` below the slot's top edge, the chosen one
      *  a block, a click choosing. Returns each tab's box, in order. */
     std::vector<juce::Rectangle<float>> paintTabRow(juce::Graphics& g, float x, std::span<const juce::String> names,
-                                                    int selected, std::function<void(int)> select);
+                                                    int selected, std::function<void(int)> select,
+                                                    std::function<bool(int)> offered = {});
     void addRegion(Region region) {
         //  what the viewport hides takes no press: a tile scrolled under the tab bar is not there
         if (hitClip_.has_value()) region.area = region.area.getIntersection(*hitClip_);

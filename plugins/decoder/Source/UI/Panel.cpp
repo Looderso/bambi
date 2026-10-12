@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../HelperLink.h"
 #include "bambi/decode/layoutfile.hpp"
 #include "bambi/decode/layouts.hpp"
 #include "bambi/decode/outputs.hpp"
@@ -110,7 +111,7 @@ void DecoderPanel::paint(juce::Graphics& g) {
 float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> content, float y, OutputPage output) {
     y = paintGroupTitle(g, content, y, "channels");
     const DecoderState& d = state_.decoder();
-    const int bus = state_.processor.diagnostics().outputChannels.load(std::memory_order_relaxed);
+    const int bus = state_.processor.getChannelCountOfBus(false, 0);
     const int shownBus = std::max(bus, 2);
     const std::vector<int> mine =
         outputChannels(d, output == OutputPage::Headphones ? Output::Headphones : Output::Speakers);
@@ -740,13 +741,15 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
         y = paintLearn(g, content, y);
     } else if (d.trackerSource == 2) {
         const juce::String word = state_.processor.helperStatus();
-        text(g,
-             state_.processor.helperAvailable()
-                 ? (word.isEmpty() ? juce::String("the helper is starting; it asks once for the motion permission")
-                                   : word)
-                 : juce::String("the helper is not in this bundle; macOS only"),
-             labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
-             juce::Justification::centredLeft);
+        text(
+            g,
+            state_.processor.helperAvailable()
+                ? (word.isEmpty() ? juce::String("the helper is starting; it asks once for the motion permission")
+                                  : word)
+                : juce::String(HelperLink::available() ? "the helper is not in this bundle"
+                                                       : "airpods need macOS: the helper that reads them is a mac app"),
+            labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
+            juce::Justification::centredLeft);
         y += lineH + ctl::segmentGap;
         if (state_.processor.helperAvailable()) {
             //  look and nod: how the AirPods sit on the head, since earbuds sit as they sit. One button pressed
@@ -783,7 +786,11 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
     } else if (d.trackerSource == 3) {
         y = paintPhone(g, content, y);
     } else {
-        text(g, "no tracker: the strip's sliders and rates turn the scene. choose osc, airpods or phone there",
+        text(g,
+             HelperLink::available()
+                 ? "no tracker: the strip's sliders and rates turn the scene. choose osc, airpods or phone there"
+                 : "no tracker: the strip's sliders and rates turn the scene. choose osc there; airpods and the phone "
+                   "need macOS",
              labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
              juce::Justification::centredLeft);
         y += lineH;
@@ -888,7 +895,9 @@ float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content
         y += lineH;
     };
     if (!state_.processor.helperAvailable()) {
-        line("the helper is not in this bundle; macOS only", colour::label, content.getX(), content.getWidth());
+        line(HelperLink::available() ? "the helper is not in this bundle"
+                                     : "the phone's page needs macOS: the helper that serves it is a mac app",
+             colour::label, content.getX(), content.getWidth());
         return y;
     }
     const juce::String url = state_.processor.phoneUrl(), status = state_.processor.phoneStatus();

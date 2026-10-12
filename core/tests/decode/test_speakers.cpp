@@ -9,6 +9,7 @@
 
 #include "bambi/decode/allrad.hpp"
 #include "bambi/decode/layoutfile.hpp"
+#include "bambi/decode/layouts.hpp"
 #include "bambi/decode/speakers.hpp"
 #include "bambi/math/sh.hpp"
 #include "doctest.h"
@@ -251,4 +252,55 @@ TEST_CASE("the loudspeaker decoder designs what was requested and the audio hear
     dec.process(in.data(), 16, got.data(), 17, frames);
     r.process(in.data(), 16, want.data(), 17, frames);
     CHECK(got == want);
+}
+
+TEST_CASE("the renderer holds every output by its latency, on top of the loudspeaker's own delay") {
+    //  Catches: the latency not added to a delay, added to the ring but not the reads, or the ring not sized for it.
+    Layout l;
+    l.speakers = bs2051Layout("0+5+0")->speakers;
+    for (Loudspeaker& s : l.speakers) s.radiusM = 1.0;  // no distance compensation: delays of 0 before the latency
+    SpeakerDesign d;
+    REQUIRE(designAllrad(l, 1, Weighting::Basic, d));
+    const int latency = 64, frames = 512, C = numChannels(1);
+    SpeakerRenderer r;
+    REQUIRE(r.prepare(1, 8, 48000.0, 0.1, latency));
+    REQUIRE(r.publish(d));
+    std::vector<float> in(static_cast<std::size_t>(frames * C), 0.0f), out(static_cast<std::size_t>(frames * 8), 0.0f);
+    in[0] = 1.0f;  // an impulse in W at frame 0
+    r.process(in.data(), C, out.data(), 8, frames);
+    const std::vector<double> want = direct(d, in, frames, 48000.0);
+    for (int o = 0; o < d.outputs; ++o) {
+        int first = -1;
+        for (int f = 0; f < frames && first < 0; ++f)
+            if (std::abs(out[static_cast<std::size_t>(f * 8 + o)]) > 1e-9f) first = f;
+        if (std::abs(want[static_cast<std::size_t>(o)]) > 1e-9) CHECK(first == latency);
+        for (int f = latency; f < frames; ++f)
+            CHECK(out[static_cast<std::size_t>(f * 8 + o)] ==
+                  doctest::Approx(want[static_cast<std::size_t>((f - latency) * d.outputs + o)]).epsilon(1e-5));
+    }
+}
+
+TEST_CASE("a design with fewer outputs empties the lines it no longer feeds") {
+    //  Catches: the ring loop limited to the live outputs without clearing what a wider design left behind,
+    //  which a later wide design would then play as a ghost.
+    Layout wide, narrow;
+    wide.speakers = bs2051Layout("0+5+0")->speakers;
+    narrow.speakers = bs2051Layout("0+2+0")->speakers;
+    SpeakerDesign dw, dn;
+    REQUIRE(designAllrad(wide, 1, Weighting::Basic, dw));
+    REQUIRE(designAllrad(narrow, 1, Weighting::Basic, dn));
+    const int C = numChannels(1), frames = 256;
+    SpeakerRenderer r;
+    REQUIRE(r.prepare(1, 8, 48000.0, 0.01, 0));
+    REQUIRE(r.publish(dw));
+    std::vector<float> loud(static_cast<std::size_t>(frames * C), 0.5f), out(static_cast<std::size_t>(frames * 8));
+    r.process(loud.data(), C, out.data(), 8, frames);  // every line of the wide design holds signal now
+    REQUIRE(r.publish(dn));
+    std::vector<float> quiet(static_cast<std::size_t>(frames * C), 0.0f);
+    for (int i = 0; i < 8; ++i) r.process(quiet.data(), C, out.data(), 8, frames);  // the fade and the settle pass
+    REQUIRE(r.publish(dw));
+    r.process(quiet.data(), C, out.data(), 8, frames);
+    float ghost = 0.0f;
+    for (float v : out) ghost = std::max(ghost, std::abs(v));
+    CHECK(ghost == 0.0f);
 }

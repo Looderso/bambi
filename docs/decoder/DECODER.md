@@ -63,7 +63,10 @@ holds no direction.
   the level by construction, and so does changing layout.
 - *Later:* **a colour correction** per layout, order and weighting — one high shelf and one peak, after Frank et
   al. (DAGA 2023) — measured on the KU100 through §3.1.
-- **Per-speaker delay and gain from its distance**, so a room that is not a perfect sphere still images.
+- **Per-speaker delay and gain from its distance**, so a room that is not a perfect sphere still images; and one
+  latency for every path ([0206](../DECISIONS.md)): the array's feeds are held by the convolver's partition on top
+  of their own delays, so they land where the binaural and matrix outputs land and the one figure reported to the
+  host is true for all — a host is never told a latency that changes with what plays.
 - **A layout comes in every way it is commonly found**, and the decoder is always designed here, at the suite's
   order, from the positions alone:
   - **IEM JSON** — the AllRADecoder's configuration, and the same format SPARTA's plug-ins import and export, so
@@ -541,8 +544,12 @@ readout, and learn mode's picking.
 - **The pair's slice** (§6).
 - **Placing the loudspeakers** of an array (§3.3).
 - **Recentre** on a key.
-- **An offline render takes the automation.** No tracker speaks in an offline render, so it renders the scene's
-  turn as automated, sliders and rates: a bounce never captures a head's movements.
+- **An offline render takes the automation.** It renders the scene's turn as automated, sliders and rates, and
+  holds the pose the tracker had when the render began: what arrives mid-render is a live value no file should
+  bake in ([0206](../DECISIONS.md)). The rates run while the transport plays, or always when `rates.retrigger`
+  says continue; a start or a locate takes the integrated turn back to zero unless it says continue, as the
+  encoder's turns do. The turn's target is set per 64-frame rotation hop, counted from prepare, so a turning
+  scene renders the same at every block size.
 
 ### 7.3 Not here: OSC into the encoder
 

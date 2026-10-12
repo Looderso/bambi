@@ -43,6 +43,10 @@ public:
 
     /// `frames` interleaved frames. Real-time safe.
     void add(const float* interleaved, int frames) noexcept;
+    /// `frames` of silence: counted toward the window, nothing summed.
+    void advance(int frames) noexcept {
+        if (frames > 0 && channels_ > 0) filled_ += frames;
+    }
 
     /// A window is full and waiting to be taken.
     bool ready() const noexcept { return filled_ >= framesPerWindow_ && framesPerWindow_ > 0; }

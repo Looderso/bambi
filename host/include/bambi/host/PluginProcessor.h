@@ -325,6 +325,8 @@ protected:
     }
     void gatherArrived(const float* interleaved, int frames) noexcept { arrivedWindow_.add(interleaved, frames); }
     void gatherLeaving(const float* interleaved, int frames) noexcept { addedWindow_.add(interleaved, frames); }
+    /// A block in which nothing left: a monitor adds nothing, and the window still has to fill.
+    void gatherNothingLeaving(int frames) noexcept { addedWindow_.advance(frames); }
     /// A window's worth has been gathered: publish it. A few hundred floats copied; nothing allocates.
     void publishEnergy() noexcept;
     void publishTurn(int slot, const RotationClock& turn) noexcept;

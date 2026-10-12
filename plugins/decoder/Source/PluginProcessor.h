@@ -27,6 +27,7 @@
 #include "bambi/host/FieldBuffer.h"
 #include "bambi/host/Layout.h"
 #include "bambi/host/PluginProcessor.h"
+#include "bambi/host/Transport.h"
 #include "bambi/link/latest.hpp"
 #include "bambi/mod/modulation.hpp"
 
@@ -52,6 +53,8 @@ class BambiDecoderProcessor final : public bambi::host::PluginProcessor,
                                     private juce::OSCReceiver::Listener<juce::OSCReceiver::MessageLoopCallback> {
 public:
     static constexpr int kMaxOutputs = bambi::kMaxDecoderOutputs;
+    static constexpr std::int64_t kTimelineSlack =
+        64;                                ///< the timeline may sit this far off before it counts as a locate
     static constexpr int kPartition = 64;  ///< the binaural convolution's block, and the latency reported
     static constexpr int kMaxHostOrder = bambi::host::kMaxHostOrder;
 
@@ -197,15 +200,18 @@ private:
     bambi::FirMatrix matrixData_;  ///< the file as read, kept so a change of normalisation needs no second read
     std::string matrixDataFile_;   ///< which file matrixData_ holds
     std::atomic<bool> matrixPlays_{false};
-    std::atomic<std::uint64_t> blocksDone_{0};  ///< so a rebuild can wait for the audio thread to leave the convolver
+    std::atomic<bool> inConvolver_{false};  ///< the audio thread is inside the matrix convolver; a rebuild waits on it
+    int preparedInputs_{0}, preparedOutputs_{0}, preparedTaps_{0};  ///< the convolver's shape as last allocated
     std::string builtMatrixFile_;
     int builtMatrixNormalization_{-1}, builtMatrixOrder_{-1};
     juce::String matrixNote_, matrixError_;  ///< what the page says of the matrix; under workMutex_
     bambi::VirtualArray virtual_;
-    bambi::HeadRotation scene_;        ///< the scene's turn, heard by every output
-    bambi::HeadRotation turn_;         ///< the head undone, for the binaural decode and the slice
-    bambi::RotationClock sceneClock_;  ///< the rates integrated; audio thread
-    mutable std::mutex workMutex_;     ///< prepare and build: never the audio thread
+    bambi::HeadRotation scene_;              ///< the scene's turn, heard by every output
+    bambi::HeadRotation turn_;               ///< the head undone, for the binaural decode and the slice
+    bambi::RotationClock sceneClock_;        ///< the rates integrated; audio thread
+    bambi::host::TransportWatch transport_;  ///< a start or a locate restarts the turn when the rates are set to
+    std::int64_t hopPos_{0};        ///< frames since prepare, so the scene's turn is set per rotation hop; audio thread
+    mutable std::mutex workMutex_;  ///< prepare and build: never the audio thread
     double sampleRate_{48000.0};
     int engineOrder_{-1};  ///< what prepareToPlay built for; -1 until it has run
     int maxBlock_{0};

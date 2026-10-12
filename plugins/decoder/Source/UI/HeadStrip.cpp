@@ -69,10 +69,12 @@ void HeadStrip::paint(juce::Graphics& g) {
     g.fillAll(colour::ground);
     const float width = static_cast<float>(getWidth()), inset = static_cast<float>(space::inset);
     const std::vector<juce::String> names{"none", "osc", "airpods", "phone"};
-    const auto boxes = paintTabRow(g, inset, names, source, [this, helper](int which) {
-        if (which >= 2 && !helper) return;  // nothing to read them with: the setup tab says so
-        model().applyEdit("tracker", [which](PluginState& s) { s.decoder.trackerSource = which; });
-    });
+    const auto boxes = paintTabRow(
+        g, inset, names, source,
+        [this](int which) {
+            model().applyEdit("tracker", [which](PluginState& s) { s.decoder.trackerSource = which; });
+        },
+        [helper](int which) { return which < 2 || helper; });  // airpods and the phone need the bundled helper
     //  the tracker's word at the right of the row, where the matrix has its count, the dot before it
     const float tabTop = ctl::matrixTabsTop, tabHeight = ctl::tabBarHeight - ctl::matrixTabsTop;
     const float wordLeft = (boxes.empty() ? inset : boxes.back().getRight()) + ctl::tabGap;

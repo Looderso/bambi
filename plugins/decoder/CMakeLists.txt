@@ -46,8 +46,13 @@ bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bamb
         Source/UI/SceneView.cpp
         Source/UI/HeadStrip.cpp
         Source/UI/Panel.cpp)
-#  Automatic reference counting for the launcher: it keeps the helper's NSRunningApplication across calls.
-set_source_files_properties(Source/HelperLink.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+#  Automatic reference counting for the launcher: it keeps the helper's NSRunningApplication across calls. On the
+#  other platforms the file is its C++ stub, compiled as C++.
+if(APPLE)
+  set_source_files_properties(Source/HelperLink.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+  set_source_files_properties(Source/HelperLink.mm PROPERTIES LANGUAGE CXX)
+endif()
 
 #  The wrapper's entry point is the PLUGIN's, not the shared code's: a harness may link two
 #  plugins' sources at once, and two createPluginFilter definitions do not link.

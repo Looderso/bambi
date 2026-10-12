@@ -26,9 +26,11 @@ inline constexpr double kSpeakerFadeSeconds = 0.01;
 
 class SpeakerRenderer {
 public:
-    /// Allocates: room for maxOutputs rows of (maxOrder + 1)^2, and a delay line per output for maxDelaySeconds.
-    /// Never while publish() or process() may run.
-    bool prepare(int maxOrder, int maxOutputs, double sampleRate, double maxDelaySeconds = 0.1);
+    /// Allocates: room for maxOutputs rows of (maxOrder + 1)^2, and a delay line per output for maxDelaySeconds
+    /// plus `latencyFrames`, which every output is held by on top of its own delay -- so the array lands where the
+    /// convolved outputs land and one latency reported to the host is true for all. Never while publish() or
+    /// process() may run.
+    bool prepare(int maxOrder, int maxOutputs, double sampleRate, double maxDelaySeconds = 0.1, int latencyFrames = 0);
 
     /// Worker thread, one at a time: publishes a design. False, and nothing published, when it exceeds what prepare()
     /// made room for. Allocates nothing.
@@ -55,7 +57,8 @@ private:
     };
     void mix(const Set& set, const float* x, int inChannels, float* y) const noexcept;
 
-    int maxOutputs_{0}, maxChannels_{0}, ringLength_{0}, fade_{1}, maxDelay_{0};
+    int maxOutputs_{0}, maxChannels_{0}, ringLength_{0}, fade_{1}, maxDelay_{0}, latency_{0};
+    int activeOutputs_{0};  // the ring lines written so far; the rest are still zero
     double sampleRate_{48000.0};
     LatestValue<Set> sets_;
     const Set* live_{nullptr};
@@ -76,7 +79,7 @@ private:
  */
 class SpeakerDecoder {
 public:
-    bool prepare(int maxOrder, int maxOutputs, double sampleRate, double maxDelaySeconds = 0.1);
+    bool prepare(int maxOrder, int maxOutputs, double sampleRate, double maxDelaySeconds = 0.1, int latencyFrames = 0);
 
     /// Message thread, never the audio thread: it copies the layout.
     void request(const Layout& layout, int order, Weighting weighting, const Microphones& microphones = {});

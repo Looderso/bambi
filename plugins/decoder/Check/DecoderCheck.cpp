@@ -90,6 +90,22 @@ void loadState(BambiDecoderProcessor& proc, const PluginState& s) {
     proc.commitDocument(s, true);
 }
 
+/*  An impulse in W through a prepared processor: the first frame on which `channel` (counted from 0) is heard,
+    or -1 when it stays silent over `blocks` blocks of 128. */
+int firstHeard(BambiDecoderProcessor& proc, int width, int channel, int blocks) {
+    juce::AudioBuffer<float> buffer(width, 128);
+    juce::MidiBuffer midi;
+    for (int b = 0; b < blocks; ++b) {
+        buffer.clear();
+        if (b == 0) buffer.setSample(0, 0, 1.0f);
+        proc.processBlock(buffer, midi);
+        const float* y = buffer.getReadPointer(channel);
+        for (int i = 0; i < 128; ++i)
+            if (std::abs(y[i]) > 1e-7f) return b * 128 + i;
+    }
+    return -1;
+}
+
 /// A yaw alone as the known /ypr address carries it: yaw, pitch and roll in degrees.
 std::vector<float> yprValues(float yawDeg) { return {yawDeg, 0.0f, 0.0f}; }
 
@@ -330,6 +346,58 @@ int main() {
               "asked for, the picture is the field as it arrived and nothing added");
     }
 
+    //  One latency for every path: the array's feeds land exactly the reported latency late, and the convolved
+    //  paths -- headphones, through the layout, a filter matrix -- no earlier. Catches: the array path without the
+    //  partition's delay, a partition change without the report, a path early against the others.
+    {
+        const auto latencyOf = [&](const PluginState& s, int width, int channel) {
+            BambiDecoderProcessor proc;
+            proc.setBusesLayout(busIn(16, width));
+            proc.prepareToPlay(kCheckRate, 128);
+            loadState(proc, s);
+            return std::pair{firstHeard(proc, 16, channel, 8), proc.getLatencySamples()};
+        };
+        PluginState pair = withLayout("0+2+0", true, false);
+        pair.decoder.speakerFirstChannel = 3;
+        const auto array = latencyOf(pair, 4, 2);
+        check(array.first == array.second && array.second > 0,
+              "the array's feed is heard exactly the reported latency late: " + juce::String(array.first) + " of " +
+                  juce::String(array.second));
+        const auto headphones = latencyOf(withLayout("0+2+0", false, true), 2, 0);
+        check(headphones.first >= headphones.second,
+              "headphones no earlier than the latency: " + juce::String(headphones.first));
+        PluginState through = withLayout("0+5+0", false, true);
+        through.decoder.throughLayout = true;
+        const auto virtualArray = latencyOf(through, 2, 0);
+        check(virtualArray.first >= virtualArray.second,
+              "through the layout no earlier than the latency: " + juce::String(virtualArray.first));
+    }
+
+    //  The headphones' pair past the bus edge is silence with no mismatch counted; a stereo input, order 0, still
+    //  renders; a bus narrowed after prepare renders silence and counts a mismatch. Catches: the pair's edge guard
+    //  dropped, order 0 refused by the render, the ready guard dropped.
+    {
+        PluginState far = withLayout("0+2+0", false, true, 13);
+        BambiDecoderProcessor proc;
+        proc.setBusesLayout(busIn(16, 8));
+        proc.prepareToPlay(kCheckRate, 128);
+        loadState(proc, far);
+        check(firstHeard(proc, 16, 6, 4) < 0 && proc.diagnostics().layoutMismatches.load() == 0,
+              "headphones placed past an eight-channel bus play nothing and count no mismatch");
+        const Channels stereo = render(busIn(2, 2), 128, 0.1, {});
+        bool finite = !stereo.empty();
+        for (const auto& ch : stereo)
+            for (float v : ch) finite = finite && std::isfinite(v);
+        check(finite && !stereo.empty() && channelEnergy(stereo, 0) > 0.0,
+              "a stereo input, order 0, renders finite sound on the pair");
+        BambiDecoderProcessor narrowed;
+        narrowed.setBusesLayout(busIn(16, 2));
+        narrowed.prepareToPlay(kCheckRate, 128);
+        narrowed.setBusesLayout(busIn(4, 2));
+        check(firstHeard(narrowed, 16, 0, 4) < 0 && narrowed.diagnostics().layoutMismatches.load() > 0,
+              "a bus narrowed after prepare renders silence and counts the mismatch");
+    }
+
     //  Determinism: the same render twice, and however the host cuts its blocks.
     {
         const PluginState s = withLayout("4+7+0", true, true, 13);
@@ -338,6 +406,12 @@ int main() {
         check(identical(a, b), "two renders are bit-identical");
         const Channels c = render(busIn(16, 18), 64, seconds, {}, &s), d = render(busIn(16, 18), 512, seconds, {}, &s);
         check(identical(a, c) && identical(a, d), "the block size does not change a sample: " + firstDifference(a, c));
+        //  Catches: the scene's turn set once a block instead of per rotation hop, which a turning scene would show.
+        const auto spinning = [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw_rate", 90.0f); };
+        const Channels e = render(busIn(16, 18), 64, seconds, spinning, &s),
+                       f = render(busIn(16, 18), 512, seconds, spinning, &s);
+        check(!e.empty() && !identical(a, e) && identical(e, f),
+              "a turning scene renders the same at every block size: " + firstDifference(e, f));
     }
 
     //  The head turns the field for headphones: yaw 90 against 0 is a different render on the pair.
