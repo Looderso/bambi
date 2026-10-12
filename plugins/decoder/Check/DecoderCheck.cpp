@@ -164,14 +164,11 @@ int main() {
         const Channels still = render(busIn(16, 4), 128, 0.25, turned, &s);
         check(!still.empty() && identical(y, still), "the head turns nothing for a pair that stays in the room");
         PluginState slice = s;
-        slice.decoder.pairMicrophones = 1;
-        slice.decoder.pairPattern = 3;
-        slice.decoder.pairFollowsHead = true;
+        slice.decoder.pairSlice = true;
         const Channels ahead = render(busIn(16, 4), 128, 0.25, {}, &slice),
                        turnedAway = render(busIn(16, 4), 128, 0.25, turned, &slice);
-        check(!ahead.empty() && !identical(ahead, y), "a narrow pair at the loudspeakers is another design");
-        check(!turnedAway.empty() && !identical(ahead, turnedAway),
-              "and following the head, the head turns what it plays");
+        check(!ahead.empty() && !identical(ahead, y), "the slice is another design than the fold");
+        check(!turnedAway.empty() && !identical(ahead, turnedAway), "and the head turns what the slice plays");
     }
 
     //  Determinism: the same render twice, and however the host cuts its blocks.

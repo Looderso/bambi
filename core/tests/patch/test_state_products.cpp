@@ -240,9 +240,7 @@ TEST_CASE("the decoder's listening situation saves and loads whole, and is left 
     s.decoder.trackerSource = 1;
     s.decoder.oscPort = 9001;
     s.decoder.flip = {false, true, false};
-    s.decoder.pairMicrophones = 1;
-    s.decoder.pairPattern = 3;
-    s.decoder.pairFollowsHead = true;
+    s.decoder.pairSlice = true;
     s.decoder.oscAddresses = {"/zig/quat", "", ""};
     s.decoder.oscForm = 2;
     s.decoder.airpodsAxes = {0, 1, 0, -1, 0, 0, 0, 0, 1};

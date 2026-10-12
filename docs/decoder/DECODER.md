@@ -25,7 +25,7 @@ One ambisonic input (order 1–3, AmbiX), three things it can produce:
 |---|---|---|
 | **Headphones** | listening to the scene as a listener | binaural decode, head-tracked (§4, §5) |
 | **Speakers** | a stereo pair, a 5.1/7.1.4 room, a dome | AllRAD decode of a loaded layout (§3) |
-| **Lens** | *retired into the pair* (§6): a narrow pair at the loudspeakers, following the head | the speakers output, configured |
+| **Lens** | *retired into the pair* (§6): the pair's *slice* | the speakers output, configured |
 
 **Every output is a set of channels on the bus the host gives** ([0178](../DECISIONS.md)). The bus is as wide
 as the host makes it — a REAPER track's channel count, say 18 — and is never renegotiated: hosts fix a plugin's
@@ -402,12 +402,12 @@ per-user profile may *seed* a new instance; it never silently changes an existin
 
 The Lens was to be a third output: one slice of the sphere, chosen by the head, played on the stereo pair as a
 second, physically grounded view of the field. **It is the pair, configured** ([0193](../DECISIONS.md)): a layout
-of two loudspeakers is a pair of virtual microphones (§3), and three settings on the speakers page make the slice —
-the microphones *at the loudspeakers* rather than to the sides, a *narrow* pattern (the cardioid to a power, up to
-the field's order, without a rear lobe of the other sign), and *follow the head*, which turns the field by the
-head's orientation as the headphones do, so whatever the head points at lands between the loudspeakers and the
-rest is quiet. Wide, to the sides, not following: the fold of §3. The lens tab left the header; the outputs are
-headphones and speakers. What the Lens was for still holds: a dense scene makes it hard to tell a spatial problem
+of two loudspeakers is a pair of virtual microphones (§3), and one switch on the speakers page chooses between its
+two designs ([0194](../DECISIONS.md)). **Fold**: the microphones a quarter turn to each side, wide, the whole field
+on the pair as a stereo listener hears the mix. **Slice**: the microphones at the loudspeakers, as narrow as the
+field's order allows (the cardioid to that power, without a rear lobe of the other sign), and the field turned by
+the head's orientation as the headphones do, so whatever the head points at lands between the loudspeakers and
+the rest is quiet. The lens tab left the header; the outputs are headphones and speakers. What the Lens was for still holds: a dense scene makes it hard to tell a spatial problem
 in the mix from one in the HRTF, and the pair heard on the loudspeakers, or through the layout on headphones, is
 the view that owes nothing to a head model.
 
@@ -552,19 +552,27 @@ library when the second plugin needs it, not before.
   headphones · speakers (the lens tab retired, [0193](../DECISIONS.md)). **The name opens an output's page; a square in the tab plays it**, so opening the
   speakers' page while listening on headphones changes nothing heard. A second decoder in a session gets a small
   instance switch, only then.
-- **The right panel shows the open output's page only**, each with its channel map: the bus's channels, what plays
-  on each. **The hull the layout pans across is drawn on the scene while the speakers' page is open.**
+- **The right panel shows the open output's page only**, and every page has the same shape
+  ([0194](../DECISIONS.md)): it opens with **what the output is** — the head as *model · ku100 · sofa file* with
+  the two sliders under it; the loudspeakers as *itu · file · typed* with the chosen kind's own things under it,
+  the ten ITU systems as one grid, or the file's name, its `load…` and the formats it takes — then **channels**,
+  the bus's channels and what plays on each, the headphones' pair picked there, then **options**: the listening
+  situation and distance compensation, or the layout heard through on headphones. A two-loudspeaker layout gets
+  its *fold · slice* switch (§6) between the layout and the channels. The loudspeaker table, with what distance
+  compensation does to each, is a temporary tab opened by `loudspeakers…`, so no page scrolls at the window's
+  size. **The hull the layout pans across is drawn on the scene while the speakers' page is open.**
 - **The head strip sits where the effects have their matrix**: what turns the head (none · OSC · AirPods · phone),
   whether data arrives and how evenly, yaw, pitch and roll with the tracker's value as the live mark, recentre. Its
-  setup opens as a temporary tab, as **personalisation** does from the headphones' page.
+  setup opens as a temporary tab, the chosen source's own setup first and the signs under it, as
+  **personalisation** does from the headphones' page and the loudspeaker table from the speakers'.
 - The sketch is `prototypes/ui/decoder/`. **Built** (`plugins/decoder/`, [0182](../DECISIONS.md)) on the shared
   window: the scene views draw the room's frame, the loudspeakers, the hull while the speakers' page is open, the
   head and the session's sources; the head strip stands in the matrix's place (the shared window's one new slot);
   the outputs are the header's tabs with a square each (its one new option); the panel holds the open output's page
   and the temporary tabs for the tracker and personalisation. The shared level column at the right edge draws one
   bar per channel of the output bus in place of its one meter (its one option), so what each output writes is read
-  off the column and the channel map on the page says whose channel it is. Grey where the sketch says *later*: the lens,
-  headphone correction, placing by looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
+  off the column and the channel map on the page says whose channel it is. Grey where it is *later*: typed
+  layouts, headphone correction, placing by looking. `bambi-decoder-shot` draws it to a PNG; `bambi-decoder-check` is its headless contract.
 - **The layout goes out to the other plugins**: while it plays a layout, the decoder publishes its loudspeakers on
   the link bus, and every plugin's scene can draw them as an overlay; the decoder's own scene can show the
   encoders' sources ([0176](../DECISIONS.md), [VISUALISATION §5](../suite/VISUALISATION.md)). Its link record

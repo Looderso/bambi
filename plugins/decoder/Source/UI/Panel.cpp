@@ -16,6 +16,7 @@ namespace bambi::ui {
 
 using namespace theme;
 namespace sc = theme::scene;
+namespace ctl = theme::controls;
 
 namespace {
 constexpr const char* kPageNames[2] = {"headphones", "speakers"};
@@ -55,11 +56,16 @@ void DecoderPanel::paint(juce::Graphics& g) {
     clearRegions();
     liveRegion() = {};
     clearNameAreas();
-    layoutButtons_ = {};
-    ituCells_.clear();
 
     //  the tabs: the open output's page, then the temporary tabs in the order they were opened
-    const char* page = kPageNames[static_cast<int>(state_.page)];
+    const auto tabName = [](TempTab t) -> const char* {
+        switch (t) {
+            case TempTab::Tracking: return "tracking";
+            case TempTab::Personalise: return "personalise";
+            case TempTab::Loudspeakers: return "loudspeakers";
+        }
+        return "";
+    };
     const auto select = [this](int index) {
         if (index == state_.shownTab) {
             if (index > 0)
@@ -69,21 +75,16 @@ void DecoderPanel::paint(juce::Graphics& g) {
         state_.shownTab = index;
         state_.notify();
     };
+    const char* names[4] = {kPageNames[static_cast<int>(state_.page)], "", "", ""};
+    const int temps = std::min(3, static_cast<int>(state_.temps.size()));
+    for (int i = 0; i < temps; ++i) names[1 + i] = tabName(state_.temps[static_cast<std::size_t>(i)]);
+    const int shown = std::min(state_.shownTab, temps);
     FrameContent frame;
-    const bool tracking = std::find(state_.temps.begin(), state_.temps.end(), TempTab::Tracking) != state_.temps.end();
-    const bool personalise =
-        std::find(state_.temps.begin(), state_.temps.end(), TempTab::Personalise) != state_.temps.end();
-    const int shown = std::min(state_.shownTab, static_cast<int>(state_.temps.size()));
-    if (tracking && personalise) {
-        const bool trackingFirst = state_.temps.front() == TempTab::Tracking;
-        frame = trackingFirst ? paintFrame(g, {page, "tracking", "personalise"}, shown, select)
-                              : paintFrame(g, {page, "personalise", "tracking"}, shown, select);
-    } else if (tracking) {
-        frame = paintFrame(g, {page, "tracking"}, shown, select);
-    } else if (personalise) {
-        frame = paintFrame(g, {page, "personalise"}, shown, select);
-    } else {
-        frame = paintFrame(g, {page}, 0, select);
+    switch (temps) {
+        case 0: frame = paintFrame(g, {names[0]}, 0, select); break;
+        case 1: frame = paintFrame(g, {names[0], names[1]}, shown, select); break;
+        case 2: frame = paintFrame(g, {names[0], names[1], names[2]}, shown, select); break;
+        default: frame = paintFrame(g, {names[0], names[1], names[2], names[3]}, shown, select); break;
     }
     if (frame.content.isEmpty()) return;
 
@@ -93,10 +94,12 @@ void DecoderPanel::paint(juce::Graphics& g) {
             case OutputPage::Headphones: paintHeadphones(g, frame.content); break;
             case OutputPage::Speakers: paintSpeakers(g, frame.content); break;
         }
-    } else if (state_.temps[static_cast<std::size_t>(shown - 1)] == TempTab::Tracking) {
-        paintTracking(g, frame.content);
-    } else {
-        paintPersonalise(g, frame.content);
+        return;
+    }
+    switch (state_.temps[static_cast<std::size_t>(shown - 1)]) {
+        case TempTab::Tracking: paintTracking(g, frame.content); break;
+        case TempTab::Personalise: paintPersonalise(g, frame.content); break;
+        case TempTab::Loudspeakers: paintLoudspeakers(g, frame.content); break;
     }
 }
 
@@ -107,6 +110,20 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
     const DecoderState& d = state_.decoder();
     const int bus = state_.processor.diagnostics().outputChannels.load(std::memory_order_relaxed);
     const int shownBus = std::max(bus, 2);
+    if (output == OutputPage::Headphones) {
+        //  which pair of the bus's channels
+        std::vector<juce::String> pairs;
+        for (int c = 1; c + 1 <= shownBus; c += 2)
+            pairs.push_back(juce::String(c) + juce::String::fromUTF8("\xe2\x80\x93") + juce::String(c + 1));
+        const int selected = std::clamp((d.headphoneChannel - 1) / 2, 0, static_cast<int>(pairs.size()) - 1);
+        y = paintPicker(g, content.getX(), y, content.getWidth(), pairs, selected, !model().showingAnother(),
+                        [this](int which) {
+                            model().applyEdit("headphone channels",
+                                              [which](PluginState& s) { s.decoder.headphoneChannel = 1 + 2 * which; });
+                        })
+                .bottom +
+            static_cast<float>(space::grid) / 2.0f;
+    }
     const std::vector<int> mine = channelsOf(output);
     const std::vector<int> hp = channelsOf(OutputPage::Headphones), sp = channelsOf(OutputPage::Speakers);
     const bool playing = output == OutputPage::Headphones ? d.headphonesPlay : d.speakersPlay;
@@ -150,7 +167,7 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
                            ": the same channels"
                      : "free to play";
     }
-    text(g, status, smallFont(), needs > bus ? colour::text : colour::label,
+    text(g, status, labelFont(), needs > bus ? colour::text : colour::label,
          {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
          juce::Justification::centredLeft);
     return y + static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
@@ -180,98 +197,94 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
     float y = content.getY();
+    const float lineH = type::label * ctl::noticeLineHeight;
+    const float buttonH = ctl::buttonHeight;
 
-    //  the pair: which channels, among the bus's
-    const int bus = std::max(2, state_.processor.diagnostics().outputChannels.load(std::memory_order_relaxed));
-    std::vector<juce::String> pairs;
-    for (int c = 1; c + 1 <= bus; c += 2)
-        pairs.push_back(juce::String(c) + juce::String::fromUTF8("\xe2\x80\x93") + juce::String(c + 1));
-    const int selected = std::clamp((d.headphoneChannel - 1) / 2, 0, static_cast<int>(pairs.size()) - 1);
-    y = paintGroupTitle(g, content, y, "pair");
-    y = paintPicker(g, content.getX(), y, content.getWidth(), pairs, selected, mine,
-                    [this](int which) {
-                        model().applyEdit("headphone channels",
-                                          [which](PluginState& s) { s.decoder.headphoneChannel = 1 + 2 * which; });
-                    })
-            .bottom +
-        static_cast<float>(space::grid);
-    y = paintChannels(g, content, y, OutputPage::Headphones);
-
-    //  the HRTF: the model, the KU100 as measured, or a SOFA file fitted on load
-    y = paintGroupTitle(g, content, y, "hrtf");
-    const juce::Rectangle<float> hrtf{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)};
+    //  what the head is: the model, the KU100 as measured, or a SOFA file fitted on load
     const int head = std::clamp(d.hrtf, 0, 2);
-    paintSegments(g, hrtf, {"model", "ku100", "sofa file"}, head, mine, [this](int which) {
-        if (which == 2) {
-            chooseSofaFile();  // chosen again: another file
+    const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), ctl::segmentHeight};
+    paintSegments(g, row, {"model", "ku100", "sofa file"}, head, mine, [this](int which) {
+        if (which == 2 && state_.decoder().hrtfFile.empty()) {
+            chooseSofaFile();  // no file yet: the chooser, and the state follows the file
             return;
         }
         model().applyEdit("hrtf", [which](PluginState& s) { s.decoder.hrtf = which; });
     });
-    y = hrtf.getBottom() + static_cast<float>(space::grid) / 2.0f;
+    y = row.getBottom() + ctl::segmentGap;
+    //  the two sliders make the model the listener's; a measured head keeps its ears and scales its time
+    //  difference with the head
+    paintStateTile(
+        g, tileCell(content, y, 0), "head", juce::String(d.headSize, 2) + " " + juce::String::fromUTF8("\xc3\x97"),
+        d.headSize, 0.75, 1.3, 0.01, "decoder.head_size", mine,
+        [](DecoderState& s, double v) { s.headSize = static_cast<float>(v); },
+        [](DecoderState& s) { s.headSize = 1.0f; });
+    paintStateTile(
+        g, tileCell(content, y, 1), "ears", juce::String(d.earShift, 2) + " erb", d.earShift, -2.0, 2.0, 0.01,
+        "decoder.ear_shift", mine && head == 0, [](DecoderState& s, double v) { s.earShift = static_cast<float>(v); },
+        [](DecoderState& s) { s.earShift = 0.0f; });
+    y = tilesBottom(y, 2) + 2.0f;
     juce::String about;
-    if (head == 0)
-        about = "nobody's head, learned from measured heads; the sliders make it yours";
+    if (sofaError_.isNotEmpty())
+        about = "not read: " + sofaError_;
+    else if (head == 0)
+        about = "learned from measured heads; the sliders make it yours";
     else if (head == 1)
-        about = "the ku100 as measured; head size scales its time difference, the ears rest";
+        about = "as measured; head scales its timing, the ears rest";
     else {
         const juce::String name = juce::File(d.hrtfFile).getFileName();
         const juce::String note = state_.processor.sofaNote();
-        about = (name.isEmpty() ? juce::String("a sofa file") : name) + " as measured; the ears rest" +
+        about = (name.isEmpty() ? juce::String("a sofa file") : name) + " as measured; head scales its timing" +
                 (note.isEmpty() ? juce::String() : " " + kDot + " " + note);
     }
-    if (!sofaError_.isEmpty()) about = "not read: " + sofaError_;
-    text(g, about, smallFont(), colour::label,
-         {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-         juce::Justification::centredLeft);
-    y += static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
+    if (head == 2) {
+        const juce::Rectangle<float> load{content.getX(), y, framedButtonWidth("load\xe2\x80\xa6"), buttonH};
+        paintButton(g, load, juce::String::fromUTF8("load\xe2\x80\xa6"), mine, [this] { chooseSofaFile(); });
+        text(g, about, labelFont(), colour::label,
+             {load.getRight() + static_cast<float>(space::grid), y,
+              content.getRight() - load.getRight() - static_cast<float>(space::grid), buttonH},
+             juce::Justification::centredLeft);
+        y += buttonH + static_cast<float>(space::groupGap) / 2.0f;
+    } else {
+        text(g, about, labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
+             juce::Justification::centredLeft);
+        y += lineH + static_cast<float>(space::groupGap) / 2.0f;
+    }
 
-    //  the listener's two sliders
-    y = paintGroupTitle(g, content, y, "your head");
-    const auto headTile = tileCell(content, y, 0), earTile = tileCell(content, y, 1);
-    paintStateTile(
-        g, headTile, "head", juce::String(d.headSize, 2) + " " + juce::String::fromUTF8("\xc3\x97"), d.headSize, 0.75,
-        1.3, 0.01, "decoder.head_size", mine, [](DecoderState& s, double v) { s.headSize = static_cast<float>(v); },
-        [](DecoderState& s) { s.headSize = 1.0f; });
-    paintStateTile(
-        g, earTile, "ears", juce::String(d.earShift, 2) + " erb", d.earShift, -2.0, 2.0, 0.01, "decoder.ear_shift",
-        mine && head == 0, [](DecoderState& s, double v) { s.earShift = static_cast<float>(v); },
-        [](DecoderState& s) { s.earShift = 0.0f; });
-    y = tilesBottom(y, 2) + static_cast<float>(space::grid) / 2.0f;
-    const float buttonH = static_cast<float>(space::grid * 2) + 2.0f;
-    const juce::Rectangle<float> personalise{content.getX(), y, framedButtonWidth("personalise\xe2\x80\xa6"), buttonH};
-    paintButton(g, personalise, juce::String::fromUTF8("personalise\xe2\x80\xa6"), true,
-                [this] { state_.openTemp(TempTab::Personalise); });
-    text(g, "against a loudspeaker " + kDot + " later", smallFont(), colour::inactive,
-         {personalise.getRight() + static_cast<float>(space::grid), y, 200.0f, buttonH},
-         juce::Justification::centredLeft);
-    y += buttonH + static_cast<float>(space::groupGap) / 2.0f;
+    y = paintChannels(g, content, y, OutputPage::Headphones);
 
-    //  listen through the layout
-    y = paintGroupTitle(g, content, y, "listen");
-    const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)};
-    const auto through =
-        paintSceneToggle(g, row, content.getX() + sceneToggleWidth("through the layout") + 2.0f * sc::toggleBox,
-                         "through the layout", d.throughLayout, mine && !d.layout.empty());
-    if (mine && !d.layout.empty())
-        addClickArea(through.hit, [this] {
+    //  options: the layout heard on headphones, and the correction when it exists
+    y = paintGroupTitle(g, content, y, "options");
+    const juce::Rectangle<float> through{content.getX(), y, content.getWidth(), lineH};
+    const bool hasLayout = !d.layout.empty();
+    const auto toggle =
+        paintSceneToggle(g, through, content.getX() + sceneToggleWidth("through the layout") + 2.0f * sc::toggleBox,
+                         "through the layout", d.throughLayout, mine && hasLayout);
+    if (mine && hasLayout)
+        addClickArea(toggle.hit, [this] {
             model().applyEdit("through the layout",
                               [](PluginState& s) { s.decoder.throughLayout = !s.decoder.throughLayout; });
         });
-    text(g, d.layoutName.empty() ? juce::String("no layout loaded") : juce::String(d.layoutName), smallFont(),
-         colour::label, {through.hit.getRight() + static_cast<float>(space::grid), y, 150.0f, row.getHeight()},
+    text(g,
+         hasLayout ? "the speakers page's " + juce::String(d.layoutName)
+                   : juce::String("no layout on the speakers page"),
+         labelFont(), colour::label,
+         {toggle.hit.getRight() + static_cast<float>(space::grid), y,
+          content.getRight() - toggle.hit.getRight() - static_cast<float>(space::grid), lineH},
          juce::Justification::centredLeft);
-    y += row.getHeight() + 2.0f;
-    text(g, "the same layout the speakers page holds, heard on headphones as points", smallFont(), colour::label,
-         {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-         juce::Justification::centredLeft);
-    y += static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
+    y += lineH + 2.0f;
+    text(g, "headphone correction " + kDot + " later", labelFont(), colour::inactive,
+         {content.getX(), y, content.getWidth(), lineH}, juce::Justification::centredLeft);
+    y += lineH + static_cast<float>(space::groupGap) / 2.0f;
 
-    y = paintGroupTitle(g, content, y, "headphone correction");
-    text(g, "a list of headphones " + kDot + " later", smallFont(), colour::inactive,
-         {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
+    //  the deep part, a tab of its own
+    const juce::Rectangle<float> personalise{content.getX(), y, framedButtonWidth("personalise\xe2\x80\xa6"), buttonH};
+    paintButton(g, personalise, juce::String::fromUTF8("personalise\xe2\x80\xa6"), true,
+                [this] { state_.openTemp(TempTab::Personalise); });
+    text(g, "against a loudspeaker " + kDot + " later", labelFont(), colour::inactive,
+         {personalise.getRight() + static_cast<float>(space::grid), y,
+          content.getRight() - personalise.getRight() - static_cast<float>(space::grid), buttonH},
          juce::Justification::centredLeft);
-    noteContentBottom(y + static_cast<float>(space::grid * 3));
+    noteContentBottom(y + buttonH + static_cast<float>(space::grid));
 }
 
 void DecoderPanel::chooseSofaFile() {
@@ -298,6 +311,7 @@ void DecoderPanel::chooseLayoutFile() {
                               if (file.hasFileExtension("sofa")) {
                                   juce::String error;
                                   if (!state_.processor.loadMatrixFile(file, &error)) layoutError_ = error;
+                                  shownKind_ = -1;
                                   repaint();
                                   return;
                               }
@@ -309,6 +323,7 @@ void DecoderPanel::chooseLayoutFile() {
                                   return;
                               }
                               const std::string name = file.getFileNameWithoutExtension().toStdString();
+                              shownKind_ = -1;
                               model().applyEdit("load layout", [layout, name](PluginState& s) {
                                   s.decoder.layout = layout.speakers;
                                   s.decoder.layoutName = name;
@@ -322,266 +337,299 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
     float y = content.getY();
+    const float lineH = type::label * ctl::noticeLineHeight;
+    const float buttonH = ctl::buttonHeight;
+    const auto line = [&](const juce::String& what, juce::Colour ink) {
+        text(g, what, labelFont(), ink, {content.getX(), y, content.getWidth(), lineH},
+             juce::Justification::centredLeft);
+        y += lineH;
+    };
 
-    //  the layout: named, loaded from a file, one of the ITU's, typed in later
-    y = paintGroupTitle(g, content, y, "layout");
-    text(g, d.layoutName.empty() ? juce::String("none") : juce::String(d.layoutName), font(type::body), colour::text,
-         {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2) + 2.0f},
-         juce::Justification::centredLeft);
-    y += static_cast<float>(space::grid * 2) + 2.0f + static_cast<float>(space::grid) / 2.0f;
-    const float buttonH = static_cast<float>(space::grid * 2) + 2.0f;
-    float x = content.getX();
-    const char* labels[3] = {"load\xe2\x80\xa6", "itu \xe2\x96\xbe", "type\xe2\x80\xa6"};
-    for (int i = 0; i < 3; ++i) {
-        const juce::String label = juce::String::fromUTF8(labels[i]);
-        layoutButtons_[static_cast<std::size_t>(i)] = {x, y, framedButtonWidth(label), buttonH};
-        const bool enabled = mine && i < 2;
-        paintButton(g, layoutButtons_[static_cast<std::size_t>(i)], label, enabled, [this, i] {
-            if (i == 0) chooseLayoutFile();
-            if (i == 1) {
-                ituOpen_ = !ituOpen_;
-                repaint();
-            }
-        });
-        x += layoutButtons_[static_cast<std::size_t>(i)].getWidth() + static_cast<float>(space::grid) / 2.0f;
-    }
-    y += buttonH + static_cast<float>(space::grid) / 2.0f;
-    if (ituOpen_) {
+    //  what the loudspeakers are: one of the ITU's, a file, typed in later
+    const bool matrix = !d.matrixFile.empty();
+    const bool ituLayout = !matrix && !d.layout.empty() && bs2051Layout(d.layoutName) != nullptr;
+    const bool fileLayout = matrix || (!d.layout.empty() && !ituLayout);
+    const int kind = shownKind_ >= 0 ? shownKind_ : fileLayout ? 1 : 0;
+    const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), ctl::segmentHeight};
+    paintSegments(
+        g, row, {"itu", "file", "typed"}, kind, mine,
+        [this](int which) {
+            shownKind_ = which;
+            repaint();
+        },
+        2);
+    y = row.getBottom() + ctl::segmentGap;
+    if (kind == 0) {
+        //  the ten systems, the loaded one black
         std::vector<juce::String> names;
         int selected = -1;
         for (std::string_view n : bs2051Names()) {
-            if (n == d.layoutName) selected = static_cast<int>(names.size());
+            if (ituLayout && n == d.layoutName) selected = static_cast<int>(names.size());
             names.push_back(juce::String(std::string(n)));
         }
-        const auto picked = paintPicker(
-            g, content.getX(), y, content.getWidth(), names, selected, mine,
-            [this](int which) {
-                const std::string name(bs2051Names()[static_cast<std::size_t>(which)]);
-                const Layout* l = bs2051Layout(name);
-                if (l == nullptr) return;
-                const std::vector<Loudspeaker> speakers = l->speakers;
-                model().applyEdit("layout", [speakers, name](PluginState& s) {
-                    s.decoder.layout = speakers;
-                    s.decoder.layoutName = name;
-                    s.decoder.matrixFile.clear();
-                    s.decoder.matrixOutputs = 0;
-                });
-                ituOpen_ = false;
-            },
-            {}, -1, 5);
-        ituCells_ = picked.cells;
-        y = picked.bottom + static_cast<float>(space::grid) / 2.0f;
+        y = paintPicker(
+                g, content.getX(), y, content.getWidth(), names, selected, mine,
+                [this](int which) {
+                    const std::string name(bs2051Names()[static_cast<std::size_t>(which)]);
+                    const Layout* l = bs2051Layout(name);
+                    if (l == nullptr) return;
+                    const std::vector<Loudspeaker> speakers = l->speakers;
+                    model().applyEdit("layout", [speakers, name](PluginState& s) {
+                        s.decoder.layout = speakers;
+                        s.decoder.layoutName = name;
+                        s.decoder.matrixFile.clear();
+                        s.decoder.matrixOutputs = 0;
+                    });
+                    shownKind_ = -1;
+                },
+                {}, -1, 5)
+                .bottom +
+            2.0f;
+    } else {
+        //  the file: what is loaded, and what can be
+        if (matrix) {
+            const juce::String note = state_.processor.matrixNote();
+            line(juce::String(d.layoutName) + " " + kDot + " filter matrix" +
+                     (note.isEmpty() ? juce::String() : ", " + note),
+                 colour::text);
+            const juce::Rectangle<float> norm{content.getX(), y, content.getWidth(), ctl::segmentHeight};
+            paintSegments(g, norm, {"input as the file says", "sn3d", "n3d"}, std::clamp(d.matrixNormalization, 0, 2),
+                          mine, [this](int which) {
+                              model().applyEdit("matrix input",
+                                                [which](PluginState& s) { s.decoder.matrixNormalization = which; });
+                          });
+            y = norm.getBottom() + ctl::segmentGap;
+            line("what the filters expect on their input; converted as n3d, unconfirmed by the maker", colour::label);
+        } else if (fileLayout) {
+            int real = 0;
+            for (const Loudspeaker& s : d.layout)
+                if (!s.imaginary) ++real;
+            line(juce::String(d.layoutName) + " " + kDot + " " + juce::String(real) + " loudspeakers", colour::text);
+        } else {
+            line("no file loaded", colour::label);
+        }
+        const juce::Rectangle<float> load{content.getX(), y, framedButtonWidth("load\xe2\x80\xa6"), buttonH};
+        paintButton(g, load, juce::String::fromUTF8("load\xe2\x80\xa6"), mine, [this] { chooseLayoutFile(); });
+        text(g, "iem allradecoder json " + kDot + " ambdec " + kDot + " sofa fir-e filter matrix", labelFont(),
+             colour::label, {load.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
+             juce::Justification::centredLeft);
+        y += buttonH + 2.0f;
     }
     const juce::String error = layoutError_.isNotEmpty() ? layoutError_ : state_.processor.designError();
-    if (!error.isEmpty()) {
-        text(g, "refused: " + error, smallFont(), colour::text,
-             {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-             juce::Justification::centredLeft);
-        y += static_cast<float>(space::grid * 2);
-    }
-    const bool matrix = !d.matrixFile.empty();
-    if (matrix) {
-        //  a decoder as filters: the file's decoder plays, so nothing here designs one
-        const juce::String note = state_.processor.matrixNote();
-        text(g, "filter matrix " + kDot + " " + (note.isEmpty() ? juce::String("not built yet") : note), smallFont(),
-             colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-             juce::Justification::centredLeft);
-        y += static_cast<float>(space::grid * 2);
-        const juce::Rectangle<float> norm{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)};
-        paintSegments(g, norm, {"input as the file says", "sn3d", "n3d"}, std::clamp(d.matrixNormalization, 0, 2), mine,
-                      [this](int which) {
-                          model().applyEdit("matrix input",
-                                            [which](PluginState& s) { s.decoder.matrixNormalization = which; });
-                      });
-        y = norm.getBottom() + 2.0f;
-        text(g, "what the filters expect on their input; the file was converted as n3d, unconfirmed by its maker",
-             smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-             juce::Justification::centredLeft);
-        y += static_cast<float>(space::grid * 2);
-    } else {
-        text(g, "place by looking " + kDot + " later", smallFont(), colour::inactive,
-             {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-             juce::Justification::centredLeft);
-        y += static_cast<float>(space::grid * 2);
-    }
+    if (!error.isEmpty()) line("refused: " + error, colour::text);
     y += static_cast<float>(space::groupGap) / 2.0f;
 
-    y = paintChannels(g, content, y, OutputPage::Speakers);
-    if (matrix) {
-        y = paintGroupTitle(g, content, y, "listening");
-        text(g,
-             "the file's decoder as it is: no weighting, no distance compensation, no positions to hear it on "
-             "headphones",
-             smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)},
-             juce::Justification::topLeft);
-        y += static_cast<float>(space::grid * 3) + static_cast<float>(space::groupGap) / 2.0f;
-        y = paintGroupTitle(g, content, y, "later");
-        text(g, "the drivers' directions on the scene " + kDot + " test tone per output", smallFont(), colour::inactive,
-             {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-             juce::Justification::centredLeft);
-        noteContentBottom(y + static_cast<float>(space::grid * 3));
-        return;
-    }
-
+    //  two loudspeakers: the fold, or the slice the head points at
     int realCount = 0;
     for (const Loudspeaker& s : d.layout)
         if (!s.imaginary) ++realCount;
-    const bool pairLayout = realCount == 2;
+    const bool pairLayout = !matrix && realCount == 2;
     if (pairLayout) {
-        //  two loudspeakers are virtual microphones: where they point, how narrow, and whether the head turns the field
-        y = paintGroupTitle(g, content, y, "pair");
-        const juce::Rectangle<float> mics{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)};
-        paintSegments(g, mics, {"microphones to the sides", "at the loudspeakers"}, d.pairMicrophones == 1 ? 1 : 0,
-                      mine, [this](int which) {
-                          model().applyEdit("pair microphones",
-                                            [which](PluginState& s) { s.decoder.pairMicrophones = which; });
-                      });
-        y = mics.getBottom() + static_cast<float>(space::grid) / 2.0f;
-        const int order = std::max(1, state_.processor.engineOrder());
-        const int pattern = std::clamp(d.pairPattern, 1, 7);
-        const juce::String shown = pattern == 1       ? juce::String("wide")
-                                   : pattern >= order ? juce::String("narrow")
-                                                      : juce::String(pattern);
-        paintStateTile(
-            g, tileCell(content, y, 0), "pattern", shown, pattern, 1.0, 7.0, 1.0, "decoder.pair_pattern", mine,
-            [](DecoderState& s, double v) { s.pairPattern = static_cast<int>(std::lround(v)); },
-            [](DecoderState& s) { s.pairPattern = 1; });
-        y = tilesBottom(y, 1) + static_cast<float>(space::grid) / 2.0f;
-        const juce::Rectangle<float> followRow{content.getX(), y, content.getWidth(),
-                                               static_cast<float>(space::grid * 2)};
-        const auto follow =
-            paintSceneToggle(g, followRow, content.getX() + sceneToggleWidth("follow the head") + 2.0f * sc::toggleBox,
-                             "follow the head", d.pairFollowsHead, mine);
-        if (mine)
-            addClickArea(follow.hit, [this] {
-                model().applyEdit("pair follows head",
-                                  [](PluginState& s) { s.decoder.pairFollowsHead = !s.decoder.pairFollowsHead; });
-            });
-        y += followRow.getHeight() + 2.0f;
-        text(g,
-             "wide, to the sides: the whole field folded onto the pair " + kDot +
-                 " narrow, at the loudspeakers, following the head: the slice the head points at",
-             smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)},
-             juce::Justification::topLeft);
-        y += static_cast<float>(space::grid * 3) + static_cast<float>(space::groupGap) / 2.0f;
+        const juce::Rectangle<float> pair{content.getX(), y, content.getWidth(), ctl::segmentHeight};
+        paintSegments(g, pair, {"fold", "slice"}, d.pairSlice ? 1 : 0, mine, [this](int which) {
+            model().applyEdit("pair", [which](PluginState& s) { s.decoder.pairSlice = which == 1; });
+        });
+        y = pair.getBottom() + ctl::segmentGap;
+        line(d.pairSlice ? "only what the head points at plays, between the loudspeakers"
+                         : "the whole field on the pair, as a stereo listener hears the mix",
+             colour::label);
+        y += static_cast<float>(space::groupGap) / 2.0f;
     }
 
-    //  the listening situation
-    y = paintGroupTitle(g, content, y, "listening");
-    if (pairLayout) {
-        text(g, "microphones take no weighting", smallFont(), colour::label,
-             {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-             juce::Justification::centredLeft);
-        y += static_cast<float>(space::grid * 2) + 2.0f;
+    y = paintChannels(g, content, y, OutputPage::Speakers);
+
+    //  options
+    y = paintGroupTitle(g, content, y, "options");
+    if (matrix) {
+        line("the file's decoder as it is: no weighting, no distance compensation", colour::label);
     } else {
-        const juce::Rectangle<float> seg{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)};
-        paintSegments(g, seg, {"one listener", "audience"}, d.weighting == 1 ? 1 : 0, mine, [this](int which) {
-            model().applyEdit("weighting", [which](PluginState& s) { s.decoder.weighting = which; });
-        });
-        y = seg.getBottom() + static_cast<float>(space::grid);
+        if (pairLayout) {
+            line("microphones take no weighting", colour::label);
+        } else {
+            const juce::Rectangle<float> seg{content.getX(), y, content.getWidth(), ctl::segmentHeight};
+            paintSegments(g, seg, {"one listener", "audience"}, d.weighting == 1 ? 1 : 0, mine, [this](int which) {
+                model().applyEdit("weighting", [which](PluginState& s) { s.decoder.weighting = which; });
+            });
+            y = seg.getBottom() + ctl::segmentGap;
+        }
+        const juce::Rectangle<float> distanceRow{content.getX(), y, content.getWidth(), lineH};
+        const auto distance = paintSceneToggle(
+            g, distanceRow, content.getX() + sceneToggleWidth("distance compensation") + 2.0f * sc::toggleBox,
+            "distance compensation", d.distanceCompensation, mine);
+        if (mine)
+            addClickArea(distance.hit, [this] {
+                model().applyEdit("distance compensation", [](PluginState& s) {
+                    s.decoder.distanceCompensation = !s.decoder.distanceCompensation;
+                });
+            });
+        y += lineH + 2.0f;
     }
-    const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)};
-    const auto distance =
-        paintSceneToggle(g, row, content.getX() + sceneToggleWidth("distance compensation") + 2.0f * sc::toggleBox,
-                         "distance compensation", d.distanceCompensation, mine);
-    if (mine)
-        addClickArea(distance.hit, [this] {
-            model().applyEdit("distance compensation",
-                              [](PluginState& s) { s.decoder.distanceCompensation = !s.decoder.distanceCompensation; });
-        });
-    y += row.getHeight() + 2.0f;
+    y += static_cast<float>(space::groupGap) / 2.0f;
+
+    //  the table, a tab of its own
+    const juce::Rectangle<float> table{content.getX(), y, framedButtonWidth("loudspeakers\xe2\x80\xa6"), buttonH};
+    paintButton(g, table, juce::String::fromUTF8("loudspeakers\xe2\x80\xa6"), !d.layout.empty() || matrix,
+                [this] { state_.openTemp(TempTab::Loudspeakers); });
     const int order = state_.processor.engineOrder();
     text(g,
-         "order " + juce::String(std::max(order, 0)) + " " + kDot + " the hull is on the scene while this page is open",
-         smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
+         matrix ? juce::String("the outputs, one row each")
+                : "order " + juce::String(std::max(order, 0)) + " " + kDot + " the hull is on the scene",
+         labelFont(), colour::label,
+         {table.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
          juce::Justification::centredLeft);
-    y += static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
+    noteContentBottom(y + buttonH + static_cast<float>(space::grid));
+}
 
-    //  the loudspeakers, one row each
-    y = paintGroupTitle(g, content, y, "loudspeakers");
+void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> content) {
+    const DecoderState& d = state_.decoder();
+    float y = content.getY();
     const float rowH = static_cast<float>(space::grid * 2) + 4.0f;
-    const float colW[6] = {30.0f, 48.0f, 46.0f, 56.0f, 58.0f, 62.0f};
-    const char* heads[6] = {"ch", "az", "el", "dist m", "gain db", "delay ms"};
-    float cx = content.getX();
-    for (int c = 0; c < 6; ++c) {
-        text(g, heads[c], smallFont(), colour::label, {cx, y, colW[c], rowH},
-             c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight);
-        cx += colW[c];
-    }
-    y += rowH;
-    ruleH(g, content.getX(), content.getRight(), y, colour::text);
-    y += 2.0f;
-    double farthest = 0.0;
-    for (const Loudspeaker& s : d.layout)
-        if (!s.imaginary) farthest = std::max(farthest, s.radiusM);
-    for (const Loudspeaker& s : d.layout) {
-        const juce::Colour ink = s.imaginary ? colour::label : colour::text;
-        const double gainDb =
-            !d.distanceCompensation || s.imaginary || farthest <= 0.0 ? 0.0 : 20.0 * std::log10(s.radiusM / farthest);
-        const double delayMs = !d.distanceCompensation || s.imaginary ? 0.0 : (farthest - s.radiusM) / 343.0 * 1000.0;
-        const juce::String cells[6] = {s.imaginary ? juce::String("imag") : juce::String(s.channel),
-                                       juce::String(s.azimuthDeg, 1),
-                                       juce::String(s.elevationDeg, 1),
-                                       juce::String(s.radiusM, 2),
-                                       s.imaginary ? juce::String::fromUTF8("\xe2\x80\x93") : juce::String(gainDb, 1),
-                                       s.imaginary ? juce::String::fromUTF8("\xe2\x80\x93") : juce::String(delayMs, 2)};
-        cx = content.getX();
+    if (!d.matrixFile.empty()) {
+        text(g,
+             juce::String(d.matrixOutputs) + " outputs on channels 1 to " + juce::String(d.matrixOutputs) +
+                 "; the file carries no positions",
+             labelFont(), colour::label, {content.getX(), y, content.getWidth(), rowH},
+             juce::Justification::centredLeft);
+        y += rowH;
+    } else {
+        //  the loudspeakers, one row each, with what distance compensation does to them
+        const float colW[6] = {30.0f, 48.0f, 46.0f, 56.0f, 58.0f, 62.0f};
+        const char* heads[6] = {"ch", "az", "el", "dist m", "gain db", "delay ms"};
+        float cx = content.getX();
         for (int c = 0; c < 6; ++c) {
-            text(g, cells[c], font(type::matrix), ink, {cx, y, colW[c], rowH},
+            text(g, heads[c], labelFont(), colour::label, {cx, y, colW[c], rowH},
                  c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight);
             cx += colW[c];
         }
         y += rowH;
-        ruleH(g, content.getX(), content.getRight(), y, colour::rowDivider);
-    }
-    if (d.layout.empty())
-        text(g, "load a layout, or pick one of the itu's", smallFont(), colour::label,
-             {content.getX(), y, content.getWidth(), rowH}, juce::Justification::centredLeft),
+        ruleH(g, content.getX(), content.getRight(), y, colour::text);
+        y += 2.0f;
+        double farthest = 0.0;
+        for (const Loudspeaker& s : d.layout)
+            if (!s.imaginary) farthest = std::max(farthest, s.radiusM);
+        for (const Loudspeaker& s : d.layout) {
+            const juce::Colour ink = s.imaginary ? colour::label : colour::text;
+            const double gainDb = !d.distanceCompensation || s.imaginary || farthest <= 0.0
+                                      ? 0.0
+                                      : 20.0 * std::log10(s.radiusM / farthest);
+            const double delayMs =
+                !d.distanceCompensation || s.imaginary ? 0.0 : (farthest - s.radiusM) / 343.0 * 1000.0;
+            const juce::String cells[6] = {
+                s.imaginary ? juce::String("imag") : juce::String(s.channel),
+                juce::String(s.azimuthDeg, 1),
+                juce::String(s.elevationDeg, 1),
+                juce::String(s.radiusM, 2),
+                s.imaginary ? juce::String::fromUTF8("\xe2\x80\x93") : juce::String(gainDb, 1),
+                s.imaginary ? juce::String::fromUTF8("\xe2\x80\x93") : juce::String(delayMs, 2)};
+            cx = content.getX();
+            for (int c = 0; c < 6; ++c) {
+                text(g, cells[c], font(type::matrix), ink, {cx, y, colW[c], rowH},
+                     c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight);
+                cx += colW[c];
+            }
             y += rowH;
-    y += static_cast<float>(space::groupGap) / 2.0f;
-
-    y = paintGroupTitle(g, content, y, "later");
-    text(
-        g,
-        "colour correction " + kDot + " bass management " + kDot + " weak spots " + kDot + " test tone per loudspeaker",
-        smallFont(), colour::inactive, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-        juce::Justification::centredLeft);
-    noteContentBottom(y + static_cast<float>(space::grid * 3));
+            ruleH(g, content.getX(), content.getRight(), y, colour::rowDivider);
+        }
+        if (d.layout.empty()) {
+            text(g, "no layout", labelFont(), colour::label, {content.getX(), y, content.getWidth(), rowH},
+                 juce::Justification::centredLeft);
+            y += rowH;
+        }
+    }
+    y += static_cast<float>(space::grid);
+    text(g,
+         "place by looking " + kDot + " test tone per loudspeaker " + kDot + " colour correction " + kDot +
+             " bass management " + kDot + " later",
+         labelFont(), colour::inactive, {content.getX(), y, content.getWidth(), rowH},
+         juce::Justification::centredLeft);
+    noteContentBottom(y + rowH + static_cast<float>(space::grid));
 }
 
 void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> content) {
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
     float y = content.getY();
-    text(g, "the head serves every output: its setup is a temporary tab, opened from the head strip.", smallFont(),
-         colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-         juce::Justification::centredLeft);
-    y += static_cast<float>(space::grid * 3);
+    const float lineH = type::label * ctl::noticeLineHeight;
+    const float buttonH = ctl::buttonHeight;
 
-    y = paintGroupTitle(g, content, y, "osc");
-    const auto portTile = tileCell(content, y, 0);
-    paintStateTile(
-        g, portTile, "port", juce::String(d.oscPort), d.oscPort, 1024, 65535, 1.0, "decoder.osc_port", mine,
-        [](DecoderState& s, double v) { s.oscPort = static_cast<int>(std::lround(v)); },
-        [](DecoderState& s) { s.oscPort = 9000; });
-    y = tilesBottom(y, 1) + static_cast<float>(space::grid) / 2.0f;
-    const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)};
-    const auto network =
-        paintSceneToggle(g, row, content.getX() + sceneToggleWidth("open to the network") + 2.0f * sc::toggleBox,
-                         "open to the network", d.oscNetwork, mine);
-    if (mine)
-        addClickArea(network.hit, [this] {
-            model().applyEdit("osc network", [](PluginState& s) { s.decoder.oscNetwork = !s.decoder.oscNetwork; });
-        });
-    y += row.getHeight() + 2.0f;
-    y = paintLearn(g, content, y);
+    //  the chosen source's own setup first; the source itself is chosen in the head strip
+    if (d.trackerSource == 1) {
+        y = paintGroupTitle(g, content, y, "osc");
+        paintStateTile(
+            g, tileCell(content, y, 0), "port", juce::String(d.oscPort), d.oscPort, 1024, 65535, 1.0,
+            "decoder.osc_port", mine, [](DecoderState& s, double v) { s.oscPort = static_cast<int>(std::lround(v)); },
+            [](DecoderState& s) { s.oscPort = 9000; });
+        y = tilesBottom(y, 1) + static_cast<float>(space::grid) / 2.0f;
+        const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), lineH};
+        const auto network =
+            paintSceneToggle(g, row, content.getX() + sceneToggleWidth("open to the network") + 2.0f * sc::toggleBox,
+                             "open to the network", d.oscNetwork, mine);
+        if (mine)
+            addClickArea(network.hit, [this] {
+                model().applyEdit("osc network", [](PluginState& s) { s.decoder.oscNetwork = !s.decoder.oscNetwork; });
+            });
+        y += lineH + 2.0f;
+        y = paintLearn(g, content, y);
+    } else if (d.trackerSource == 2) {
+        y = paintGroupTitle(g, content, y, "airpods");
+        const juce::String word = state_.processor.helperStatus();
+        text(g,
+             state_.processor.helperAvailable()
+                 ? (word.isEmpty() ? juce::String("the helper is starting; it asks once for the motion permission")
+                                   : word)
+                 : juce::String("the helper is not in this bundle; macOS only"),
+             labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
+             juce::Justification::centredLeft);
+        y += lineH + 2.0f;
+        if (state_.processor.helperAvailable()) {
+            //  look and nod: how the AirPods sit on the head, since earbuds sit as they sit. One button pressed
+            //  twice: the second press comes while looking down, where nobody sees a second button.
+            const bool levelDone = state_.processor.levelCaptured();
+            const juce::String lookLabel = "calibrate: look ahead, level, press",
+                               nodLabel = "now look down, press again";
+            const juce::Rectangle<float> button{
+                content.getX(), y, std::max(framedButtonWidth(lookLabel), framedButtonWidth(nodLabel)), buttonH};
+            paintButton(g, button, levelDone ? nodLabel : lookLabel, mine, [this, levelDone] {
+                if (!levelDone)
+                    calibrationNote_ = state_.processor.captureLevel() ? "level kept: look down, press again"
+                                                                       : "nothing from the airpods yet";
+                else
+                    calibrationNote_ = state_.processor.captureNod()
+                                           ? "calibrated and recentred"
+                                           : "that was no nod: look ahead and press, look down and press again";
+                repaint();
+            });
+            const juce::Rectangle<float> forget{button.getRight() + static_cast<float>(space::grid) / 2.0f, y,
+                                                framedButtonWidth("forget"), buttonH};
+            paintButton(g, forget, "forget", mine && d.airpodsCalibrated, [this] {
+                state_.processor.forgetCalibration();
+                calibrationNote_ = "back to apple's frame";
+            });
+            y += buttonH + 2.0f;
+            const juce::String standing = d.airpodsCalibrated
+                                              ? juce::String("calibrated: look and nod found how they sit")
+                                              : juce::String("not calibrated: the airpods' own frame, worn upright");
+            text(g, calibrationNote_.isEmpty() ? standing : calibrationNote_, labelFont(), colour::label,
+                 {content.getX(), y, content.getWidth(), lineH}, juce::Justification::centredLeft);
+            y += lineH;
+        }
+    } else if (d.trackerSource == 3) {
+        y = paintGroupTitle(g, content, y, "phone");
+        y = paintPhone(g, content, y);
+    } else {
+        text(g, "no tracker: the sliders turn the head. choose osc, airpods or phone in the head strip to set it up",
+             labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
+             juce::Justification::centredLeft);
+        y += lineH;
+    }
     y += static_cast<float>(space::groupGap) / 2.0f;
 
+    //  the signs, for any source
     y = paintGroupTitle(g, content, y, "signs");
     float x = content.getX();
     const char* names[3] = {"flip yaw", "flip pitch", "flip roll"};
     for (int i = 0; i < 3; ++i) {
-        const juce::Rectangle<float> r{x, y, content.getRight() - x, static_cast<float>(space::grid * 2)};
+        const juce::Rectangle<float> r{x, y, content.getRight() - x, lineH};
         const auto flip = paintSceneToggle(g, r, x + sceneToggleWidth(names[i]) + 2.0f * sc::toggleBox, names[i],
                                            d.flip[static_cast<std::size_t>(i)], mine);
         if (mine)
@@ -592,67 +640,16 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
             });
         x = flip.hit.getRight() + static_cast<float>(space::grid);
     }
-    y += static_cast<float>(space::grid * 2) + static_cast<float>(space::groupGap) / 2.0f;
-
-    y = paintGroupTitle(g, content, y, "airpods");
-    const juce::String word = state_.processor.helperStatus();
-    text(g,
-         state_.processor.helperAvailable()
-             ? (d.trackerSource == 2
-                    ? (word.isEmpty() ? juce::String("the helper is starting") : word)
-                    : juce::String(
-                          "choose airpods in the head strip: the helper in this bundle reads them, and asks once"))
-             : juce::String("the helper is not in this bundle; macOS only"),
-         smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)},
-         juce::Justification::topLeft);
-    y += static_cast<float>(space::grid * 3) + static_cast<float>(space::grid) / 2.0f;
-    //  look and nod: how the AirPods sit on the head, since earbuds sit as they sit
-    if (state_.processor.helperAvailable()) {
-        const float buttonH = static_cast<float>(space::grid * 2) + 2.0f;
-        const bool live = d.trackerSource == 2 && mine;
-        const bool levelDone = state_.processor.levelCaptured();
-        //  one button, pressed twice: the second press comes while looking down, where nobody sees a second button
-        const juce::String lookLabel = "calibrate: look ahead, level, press", nodLabel = "now look down, press again";
-        const juce::Rectangle<float> button{
-            content.getX(), y, std::max(framedButtonWidth(lookLabel), framedButtonWidth(nodLabel)), buttonH};
-        paintButton(g, button, levelDone ? nodLabel : lookLabel, live, [this, levelDone] {
-            if (!levelDone)
-                calibrationNote_ = state_.processor.captureLevel() ? "level kept: look down, press again"
-                                                                   : "nothing from the airpods yet";
-            else
-                calibrationNote_ = state_.processor.captureNod()
-                                       ? "calibrated and recentred"
-                                       : "that was no nod: look ahead and press, look down and press again";
-            repaint();
-        });
-        const juce::String forgetLabel = "forget";
-        const juce::Rectangle<float> forget{button.getRight() + static_cast<float>(space::grid) / 2.0f, y,
-                                            framedButtonWidth(forgetLabel), buttonH};
-        paintButton(g, forget, forgetLabel, mine && d.airpodsCalibrated, [this] {
-            state_.processor.forgetCalibration();
-            calibrationNote_ = "back to apple's frame";
-        });
-        y += buttonH + 2.0f;
-        const juce::String standing = d.airpodsCalibrated
-                                          ? juce::String("calibrated: look and nod found how they sit")
-                                          : juce::String("not calibrated: the airpods' own frame, worn upright");
-        text(g, calibrationNote_.isEmpty() ? standing : calibrationNote_, smallFont(), colour::label,
-             {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},
-             juce::Justification::centredLeft);
-        y += static_cast<float>(space::grid * 2);
-    }
-    y += static_cast<float>(space::groupGap) / 2.0f;
-    y = paintGroupTitle(g, content, y, "phone");
-    y = paintPhone(g, content, y);
+    y += lineH;
     noteContentBottom(y + static_cast<float>(space::grid));
 }
 
 float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
-    const float lineH = static_cast<float>(space::grid * 2);
+    const float lineH = type::label * ctl::noticeLineHeight;
     const auto line = [&](const juce::String& what, juce::Colour ink) {
-        text(g, what, smallFont(), ink, {content.getX(), y, content.getWidth(), lineH},
+        text(g, what, labelFont(), ink, {content.getX(), y, content.getWidth(), lineH},
              juce::Justification::centredLeft);
         y += lineH;
     };
@@ -669,13 +666,13 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
         line("format: learned " + kDot + " " + d.oscAddresses[0], colour::text);
     if (learned) {
         //  what the learned message carries; for split addresses a quaternion makes no sense and reads as degrees
-        const juce::Rectangle<float> forms{content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)};
+        const juce::Rectangle<float> forms{content.getX(), y, content.getWidth(), ctl::segmentHeight};
         paintSegments(g, forms, {"quat w first", "quat w last", "degrees", "deg, pitch down", "radians"},
                       std::clamp(d.oscForm, 1, 5) - 1, mine, [this](int which) {
                           model().applyEdit("osc form", [which](PluginState& s) { s.decoder.oscForm = which + 1; });
                       });
-        y = forms.getBottom() + 2.0f;
-        const float buttonH = static_cast<float>(space::grid * 2) + 2.0f;
+        y = forms.getBottom() + ctl::segmentGap;
+        const float buttonH = ctl::buttonHeight;
         const juce::Rectangle<float> forget{content.getX(), y, framedButtonWidth("forget"), buttonH};
         paintButton(g, forget, "forget", mine, [this] {
             model().applyEdit("forget learned osc", [](PluginState& s) {
@@ -683,7 +680,7 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
                 s.decoder.oscForm = 0;
             });
         });
-        text(g, "back to the known addresses", smallFont(), colour::label,
+        text(g, "back to the known addresses", labelFont(), colour::label,
              {forget.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
              juce::Justification::centredLeft);
         y += buttonH + 2.0f;
@@ -711,7 +708,7 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
             const bool chosen =
                 k == 0 ? (!split && learned && d.oscAddresses[0] == s.address.toStdString())
                        : (split && d.oscAddresses[static_cast<std::size_t>(k - 1)] == s.address.toStdString());
-            text(g, slots[k], smallFont(), chosen ? colour::text : colour::label, word,
+            text(g, slots[k], labelFont(), chosen ? colour::text : colour::label, word,
                  juce::Justification::centredRight);
             if (!mine) continue;
             const std::string address = s.address.toStdString();
@@ -742,9 +739,9 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
 
 float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     const DecoderState& d = state_.decoder();
-    const float lineH = static_cast<float>(space::grid * 2);
+    const float lineH = type::label * ctl::noticeLineHeight;
     const auto line = [&](const juce::String& what, juce::Colour ink, float x, float width) {
-        text(g, what, smallFont(), ink, {x, y, width, lineH}, juce::Justification::centredLeft);
+        text(g, what, labelFont(), ink, {x, y, width, lineH}, juce::Justification::centredLeft);
         y += lineH;
     };
     if (!state_.processor.helperAvailable()) {
@@ -795,13 +792,13 @@ void DecoderPanel::paintPersonalise(juce::Graphics& g, juce::Rectangle<float> co
     text(g,
          "a temporary tab, entered on purpose, closed when done. a real loudspeaker and a virtual one alternate; turn "
          "and nod; move each slider until the two sit in one place.",
-         smallFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 5)},
+         labelFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 5)},
          juce::Justification::topLeft);
     y += static_cast<float>(space::grid * 6);
     text(g,
          "the procedure arrives with personalisation " + kDot +
              " later; until then the two sliders on the headphones page",
-         smallFont(), colour::inactive, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)},
+         labelFont(), colour::inactive, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 3)},
          juce::Justification::topLeft);
     noteContentBottom(y + static_cast<float>(space::grid * 4));
 }

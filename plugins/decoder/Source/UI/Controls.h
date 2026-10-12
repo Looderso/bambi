@@ -20,7 +20,7 @@ namespace bambi::ui {
  *  that plays an output is the header's one option for this plugin.
  */
 enum class OutputPage { Headphones = 0, Speakers = 1 };
-enum class TempTab { Tracking, Personalise };
+enum class TempTab { Tracking, Personalise, Loudspeakers };
 
 struct DecoderControlState final : public editor::PatchControls, public InstanceModel {
     explicit DecoderControlState(BambiDecoderProcessor& p);

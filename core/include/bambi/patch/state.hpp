@@ -118,10 +118,9 @@ struct DecoderState {
     float earShift{0.0f};       ///< the ear slider, ERB, -2..2
     bool throughLayout{false};  ///< headphones hear the layout's loudspeakers as points
     int weighting{0};           ///< 0 one listener (basic), 1 audience (max-rE)
-    /// A pair's microphones (allrad.hpp): where they point, how narrow, and whether the head turns the field for them
-    int pairMicrophones{0};  ///< 0 to the sides, the stereo fold; 1 at the loudspeakers
-    int pairPattern{1};      ///< 1 the cardioid, higher narrower, held to the field's order
-    bool pairFollowsHead{false};
+    /// Two loudspeakers: the fold, everything on the pair, or the slice -- microphones at the loudspeakers, narrow,
+    /// the head turning the field, so only what the head points at plays between them (allrad.hpp)
+    bool pairSlice{false};
     bool distanceCompensation{true};
     std::string layoutName;           ///< a built-in's name, or the file's, for the page
     std::vector<Loudspeaker> layout;  ///< the loudspeakers themselves, so a session opens without the file

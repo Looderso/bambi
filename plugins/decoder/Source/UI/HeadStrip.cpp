@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "HeadStrip.h"
 
+#include <algorithm>
+
 #include "bambi/ui/Draw.h"
 #include "bambi/ui/Theme.h"
 #include "bambi/ui/Tiles.h"
@@ -69,7 +71,7 @@ void HeadStrip::paint(juce::Graphics& g) {
                                                                         : d.trackerSource == 3 ? "phone"
                                                                                                : "osc";
     if (d.trackerSource == 0)
-        live = "no tracker " + dot + " sliders turn the head";
+        live = "no tracker";
     else if (alive)
         live = name + " " + dot + " " + juce::String(rateHz_, 0) + " hz";
     else if (lastMs > 0)
@@ -82,13 +84,15 @@ void HeadStrip::paint(juce::Graphics& g) {
         live = word.isEmpty() ? "phone " + dot + " starting the helper" : "phone " + dot + " " + word;
     } else
         live = "osc " + dot + " port " + juce::String(d.oscPort) + ", nothing yet";
-    text(g, live, smallFont(), colour::label, {dotX + 12.0f, y, 150.0f, rowH}, juce::Justification::centredLeft);
 
-    //  recentre, setup, overrides
+    //  recentre, setup, overrides; the live word takes the room up to the recentre button
     const float recentreW = framedButtonWidth("recentre"), setupW = framedButtonWidth("setup\xe2\x80\xa6");
     recentre_ = {content.getRight() - recentreW - setupW - 90.0f,
                  y + (rowH - static_cast<float>(space::grid * 2) - 2.0f) / 2.0f, recentreW,
                  static_cast<float>(space::grid * 2) + 2.0f};
+    text(g, live, smallFont(), colour::label,
+         {dotX + 12.0f, y, recentre_.getX() - static_cast<float>(space::grid) - (dotX + 12.0f), rowH},
+         juce::Justification::centredLeft);
     paintButton(g, recentre_, "recentre", d.trackerSource != 0 && mine, [this] { state_.processor.recentre(); });
     setup_ = recentre_.withX(recentre_.getRight() + static_cast<float>(space::grid) / 2.0f).withWidth(setupW);
     paintButton(g, setup_, juce::String::fromUTF8("setup\xe2\x80\xa6"), true,
@@ -118,9 +122,15 @@ void HeadStrip::paint(juce::Graphics& g) {
     else if (d.headphonesPlay)
         note = d.throughLayout ? "headphones: the head turns what you hear, through the layout"
                                : "headphones: the head turns what you hear";
-    if (d.speakersPlay)
+    if (d.speakersPlay) {
+        //  only a two-loudspeaker slice turns with the head; every other array stands in the room
+        const bool slice =
+            d.pairSlice && d.matrixFile.empty() &&
+            std::count_if(d.layout.begin(), d.layout.end(), [](const Loudspeaker& s) { return !s.imaginary; }) == 2;
         note += (note.isEmpty() ? "" : "  " + juce::String::fromUTF8("\xc2\xb7") + "  ") +
-                juce::String("speakers: the head turns nothing, you are in the room");
+                juce::String(slice ? "speakers: the head turns the slice the pair plays"
+                                   : "speakers: the head turns nothing, you are in the room");
+    }
     if (note.isEmpty()) note = "nothing plays: the head is shown, and turns nothing";
     text(g, note, smallFont(), colour::label,
          {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 2)},

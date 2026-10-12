@@ -263,11 +263,12 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
         if (leaving) builtOrder_ = -1;  // the layout's design decides the outputs again
     }
     //  The layout's decoder, and the same layout heard on headphones.
-    const bambi::Microphones microphones{d.pairMicrophones == 1, d.pairPattern};
+    //  a slice is narrow microphones at the loudspeakers, as narrow as the field's order allows, following the head
+    const bambi::Microphones microphones{d.pairSlice, d.pairSlice ? std::max(1, engineOrder_) : 1};
     int realCount = 0;
     for (const bambi::Loudspeaker& s : d.layout)
         if (!s.imaginary) ++realCount;
-    pairFollows_.store(d.matrixFile.empty() && realCount == 2 && d.pairFollowsHead, std::memory_order_relaxed);
+    pairFollows_.store(d.matrixFile.empty() && realCount == 2 && d.pairSlice, std::memory_order_relaxed);
     if (d.matrixFile.empty() &&
         (builtOrder_ != engineOrder_ || builtLayout_ != d.layout || builtWeighting_ != d.weighting ||
          builtDistance_ != d.distanceCompensation || builtMicrophones_.atLoudspeakers != microphones.atLoudspeakers ||
