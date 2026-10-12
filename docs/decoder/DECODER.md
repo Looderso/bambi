@@ -92,11 +92,12 @@ holds no direction.
   of vanishing. **A ring with nothing above or below** is designed from virtual loudspeakers on the ring only.
 - **The subwoofer channel** is skipped by the decoder; bass management is a question of its own.
 - **A stereo pair** is the smallest layout — a virtual-microphone downmix, which doubles as the check that the mix
-  survives stereo. **Built** ([0191](../DECISIONS.md)): a layout of two real loudspeakers is designed as two
-  virtual cardioids pointed at them, the field's zeroth and first order only, so nothing in the field vanishes and
-  a source behind folds in quietly and in phase (−23 dB at ±30°); one loudspeaker is an omni. The level is set as
-  for every decoder. Nothing to choose on the page: the microphones point where the loudspeakers are, from the
-  ITU pair, a file, typed in, or placed by looking later; the pattern's sharpness is a line to change if ears ask.
+  survives stereo. **Built** ([0191](../DECISIONS.md), [0192](../DECISIONS.md)): a layout of two real loudspeakers is
+  designed as two virtual cardioids, the field's zeroth and first order only, pointed a quarter turn to either
+  side of the pair's middle in the pair's own plane — the classic stereo decode — so a source on a loudspeaker's
+  axis lands three to one on its side, one in the middle in both alike, one behind in both at the front's level,
+  in phase; nothing vanishes. One loudspeaker is an omni. The level is set as for every decoder. Nothing to
+  choose on the page.
 - **Crosstalk cancellation** (3D from two speakers) is **not a feature**: a sweet spot of a head's width and a
   treated room. It stays a research question until a prototype says otherwise.
 

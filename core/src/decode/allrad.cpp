@@ -183,19 +183,28 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
 
     if (realCount <= 2) {
         /*  One or two loudspeakers give the panning nothing to span, and are not meant to: they are the downmix a
-            listener makes of the mix. Each real loudspeaker is a virtual cardioid microphone pointed at it, the
-            field's zeroth and first order only -- one loudspeaker an omni -- so nothing in the field vanishes, a
-            source behind folds in quietly and in phase. The level is set as for every decoder: a plane wave gives,
-            averaged over all directions, the energy of one loudspeaker. */
+            listener makes of the mix. Each real loudspeaker is a virtual cardioid microphone, the field's zeroth
+            and first order only -- one loudspeaker an omni -- so nothing in the field vanishes and a source behind
+            folds in in phase. The two microphones point a quarter turn to either side of the pair's middle, in the
+            pair's own plane, as the classic stereo decode does: a source on a loudspeaker's axis lands three to
+            one on its side, one in the middle lands in both alike, and so does one behind. The level is set as for
+            every decoder: a plane wave gives, averaged over all directions, the energy of one loudspeaker. */
         out.ring = false;  // microphones, not a ring of virtual loudspeakers
         const int total = static_cast<int>(out.points.size());
         std::vector<double> d(sz(total) * sz(C), 0.0);
         std::vector<double> first(4);
+        Vec3 middle{0, 0, 0};
+        for (int s = 0; s < total; ++s)
+            if (!out.imaginary[sz(s)]) middle = middle + out.points[sz(s)];
+        const bool apart = dot(middle, middle) > 1e-9;  // a pair facing each other has no middle: each points at itself
         for (int s = 0; s < total; ++s) {
             if (out.imaginary[sz(s)]) continue;
             d[sz(s) * sz(C)] = 1.0;  // the omni
             if (realCount == 2 && order >= 1) {
-                shSN3D(out.points[sz(s)], 1, first);  // plus the figure-of-eights toward it: 1 + cos(angle)
+                const Vec3 p = out.points[sz(s)];
+                const Vec3 b = unit(middle);
+                const Vec3 axis = apart ? unit(p - b * dot(p, b)) : p;
+                shSN3D(axis, 1, first);  // plus the figure-of-eights toward the side: 1 + cos(angle)
                 for (int c = 1; c < 4; ++c) d[sz(s) * sz(C) + sz(c)] = first[sz(c)];
             }
         }

@@ -322,20 +322,31 @@ TEST_CASE("a coplanar group of loudspeakers pans evenly: 7.1.4 is left-right sym
     (void)C;
 }
 
-TEST_CASE("two loudspeakers are a pair of virtual cardioids: nothing vanishes, nothing inverts") {
+TEST_CASE("two loudspeakers are a pair of virtual cardioids a quarter turn to each side: nothing vanishes") {
     //  Catches: a pair put through the ring design, which would drop everything off the ring; a pattern with a
-    //  rear lobe of the other sign; the microphones pointed at the wrong loudspeaker.
+    //  rear lobe of the other sign; the microphones pointed at the loudspeakers, which images only two to three;
+    //  a tilted pair's microphones laid on the horizon instead of in the pair's plane.
     const SpeakerDesign d = design(pair(), 3, Weighting::Basic);
     REQUIRE(d.outputs == 2);
     const auto front = gainsAt(d, fromAzEl(0, 0)), left = gainsAt(d, fromAzEl(30 * kDeg2Rad, 0)),
-               behind = gainsAt(d, fromAzEl(kPi, 0)), above = gainsAt(d, fromAzEl(0, kPi / 2));
+               side = gainsAt(d, fromAzEl(kPi / 2, 0)), behind = gainsAt(d, fromAzEl(kPi, 0)),
+               above = gainsAt(d, fromAzEl(0, kPi / 2));
     CHECK(front[0] == doctest::Approx(front[1]).epsilon(1e-9));
-    CHECK(left[0] > 1.25 * left[1]);  // on its axis 1 + cos 0 against 1 + cos 60: four to three
-    CHECK(left[1] > 0.0);
-    CHECK(behind[0] == doctest::Approx(behind[1]).epsilon(1e-9));
-    CHECK(behind[0] > 0.0);  // in phase, and there
-    CHECK(20 * std::log10(behind[0] / front[0]) > -30.0);
+    CHECK(left[0] == doctest::Approx(3.0 * left[1]).epsilon(1e-6));   // 1 + cos 60 against 1 + cos 120
+    CHECK(side[0] == doctest::Approx(2.0 * front[0]).epsilon(1e-6));  // the left microphone's axis
+    CHECK(side[1] < 1e-9);
+    CHECK(behind[0] == doctest::Approx(front[0]).epsilon(1e-9));  // behind folds in at the front's level
+    CHECK(behind[1] == doctest::Approx(front[1]).epsilon(1e-9));
     CHECK(above[0] == doctest::Approx(above[1]).epsilon(1e-9));
+    //  a tilted pair points its microphones in its own plane, not along the horizon
+    Layout tilted;
+    tilted.speakers = {at(45, 45, 1), at(-45, -45, 2)};
+    const SpeakerDesign r = design(tilted, 3, Weighting::Basic);
+    const Vec3 p1 = fromAzEl(45 * kDeg2Rad, 45 * kDeg2Rad), p2 = fromAzEl(-45 * kDeg2Rad, -45 * kDeg2Rad);
+    const Vec3 b = unit(p1 + p2), axisLeft = unit(p1 - b * dot(p1, b));
+    CHECK(gainsAt(r, axisLeft)[0] == doctest::Approx(2.0 * gainsAt(r, b)[0]).epsilon(1e-6));
+    CHECK(gainsAt(r, axisLeft)[1] < 1e-9);
+    CHECK(gainsAt(r, Vec3{0, 1, 0})[0] < 0.95 * gainsAt(r, axisLeft)[0]);
     //  a plane wave from anywhere gives the omni's share at least: no direction is silent
     std::vector<Vec3> grid;
     fibonacciSphere(500, grid);
