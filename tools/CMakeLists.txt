@@ -41,3 +41,10 @@ bambi_warnings(bambi-head)
 add_executable(bambi-nulltest nulltest/main.cpp)
 target_link_libraries(bambi-nulltest PRIVATE bambi-core)
 bambi_warnings(bambi-nulltest)
+
+# Stands in for the Live host, to prove the Max for Live device and the host can talk. POSIX sockets.
+if(APPLE OR UNIX)
+  add_executable(bambi-live-stub live-stub/main.cpp)
+  target_link_libraries(bambi-live-stub PRIVATE bambi-core bambi-live)
+  bambi_warnings(bambi-live-stub)
+endif()
