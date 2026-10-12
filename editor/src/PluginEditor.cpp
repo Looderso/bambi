@@ -68,8 +68,8 @@ PluginEditor::PluginEditor(host::PluginProcessor& processor, Parts parts, const 
     //  home: back to this window's own instance, from whichever it is showing
     header_.onHome([this, &instances = parts.instances] { instances.selectInstance(processor_.identity().instance); });
     //  which plugin this is: its own colour, on the header's rule and the footer's and on what modulates
-    colour::setAccent(processor_.linkHost().product());
-    header_.setIdentity(colour::identity(processor_.linkHost().product()));
+    colour::setIdentity(processor_.linkHost().product());
+    header_.setIdentity(colour::identitySlot());
     header_.onPreset([this] { openPresets(!browser_.isVisible()); },
                      [this](int delta) {
                          if (presets_.step(delta)) presetChanged();
@@ -141,7 +141,7 @@ void PluginEditor::paint(juce::Graphics& g) { g.fillAll(colour::ground); }
 
 void PluginEditor::Shell::paintOverChildren(juce::Graphics& g) {
     //  over the matrix's footer, the page's footer and the level column alike: one rule, the window's own
-    g.setColour(colour::identity(owner.processor_.linkHost().product()));
+    g.setColour(colour::identitySlot());
     g.fillRect(0.0f, static_cast<float>(m::windowHeight - m::footerHeight), static_cast<float>(m::windowWidth),
                ui::theme::stroke::identityRule);
 }

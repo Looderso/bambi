@@ -24,11 +24,8 @@ struct Anchor {
 constexpr std::array<Anchor, 4> kAnchors{{{0.0, "f"}, {90.0, "l"}, {180.0, "b"}, {270.0, "r"}}};
 constexpr std::array<const char*, 5> kEquirectLetters{"b", "l", "f", "r", "b"};
 
-//  four taps want four colours, and the palette already spends orange on what arrived and blue on
-//  what was added, so these step around that blue rather than away from it -- all one family, none
-//  of them the wash's own colour at full strength. The number that labels a spiral is the number in
-//  the strip and in the selector. An answer that is not numbered is one thing the plugin adds, and takes
-//  the added colour
+//  The number that labels a spiral is the number in the strip and in the selector. An answer that is not
+//  numbered is one thing the plugin adds, and takes the added colour
 juce::Colour answerInk(const ProbeReply& reply, int group) {
     if (!reply.numbered) return colour::added;
     const auto& family = colour::answerFamily;

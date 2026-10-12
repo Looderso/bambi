@@ -16,7 +16,7 @@
 namespace bambi::ui {
 
 /*  One view of the scene: the globe or the equirect. Every instance's path and source, the selected one
-    in blue and orange, the others in silver. On the globe a drag orbits the view and the presets snap it;
+    in ink and orange, the others in silver. On the globe a drag orbits the view and the presets snap it;
     a click on a dot or a path selects that instance. A source is never dragged. A custom chain's nodes are:
     while the shell has editing on, a handle bends, a node moves, a click on the curve inserts and
     shift+click deletes -- each an undoable edit of the selected instance, so it works on another instance too.

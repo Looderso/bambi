@@ -92,7 +92,7 @@ public:
     int repaintsAsked() const { return asked_; }
 
 private:
-    juce::Colour identity_ = theme::colour::identity(Product::Encoder);
+    juce::Colour identity_ = theme::colour::identity(Product::Unknown);
     struct Tab {
         bambi::Uuid id;
         juce::String label;

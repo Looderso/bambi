@@ -32,7 +32,7 @@ void EnergyLayer::buildEquirect(const EnergyField& field) {
     for (int y = 0; y < kEnergyHeight; ++y)
         for (int x = 0; x < kEnergyWidth; ++x) {
             const auto t = static_cast<std::size_t>(y * kEnergyWidth + x);
-            const auto ink = share[t] < 0.5f ? colour::sceneIn : colour::added;
+            const auto ink = share[t] < 0.5f ? colour::in : colour::added;
             pixels.setPixelColour(x, y, ink.withAlpha(alpha[t] * kEnergyTopAlpha));
         }
 }
@@ -93,7 +93,7 @@ void EnergyLayer::buildGlobe(const EnergyField& field, const Camera& camera) {
             const float a = bilinear(alpha, x0, x1, y0, y1, tx, ty);
             const float f = bilinear(share, x0, x1, y0, y1, tx, ty);
             //  the edge between the two is where the smoothed map crosses a half: a line, not a brown band
-            pixels.setPixelColour(px, py, (f < 0.5f ? colour::sceneIn : colour::added).withAlpha(a * kEnergyTopAlpha));
+            pixels.setPixelColour(px, py, (f < 0.5f ? colour::in : colour::added).withAlpha(a * kEnergyTopAlpha));
         }
 }
 

@@ -46,6 +46,14 @@ inline void ruleV(juce::Graphics& g, float x, float y0, float y1, juce::Colour c
     g.fillRect(x, y0, theme::stroke::rule, y1 - y0);
 }
 
+/// A mark of what is happening now, ringed in the ground so its grey reads over any fill beneath it.
+inline void nowMark(juce::Graphics& g, juce::Rectangle<float> mark, juce::Colour c) {
+    g.setColour(theme::colour::ground);
+    g.fillRect(mark.expanded(theme::stroke::liveHalo));
+    g.setColour(c);
+    g.fillRect(mark);
+}
+
 /// A negative number with a real minus sign, as the canvas sets it.
 inline juce::String signedNumber(double value, int decimals) {
     //  juce::String(double, 0) means "a default precision", not "none": whole numbers are rounded here.

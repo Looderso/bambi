@@ -114,8 +114,8 @@ void LevelColumn::paint(juce::Graphics& g) {
         g.setColour(colour::meterFill);
         g.fillRect(x, levelTop, barWidth, well.getBottom() - levelTop);
         if (m.holdDb > mtr::floorDb) {
-            g.setColour(colour::meterPeak);
-            g.fillRect(x, yFor(m.holdDb) - theme::stroke::meterPeak / 2.0f, barWidth, theme::stroke::meterPeak);
+            nowMark(g, {x, yFor(m.holdDb) - theme::stroke::meterPeak / 2.0f, barWidth, theme::stroke::meterPeak},
+                    colour::meterPeak);
         }
     }
     for (const double tick : mtr::ticksDb) ruleH(g, well.getX(), well.getRight(), yFor(tick), colour::meterTick);

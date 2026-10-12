@@ -73,7 +73,7 @@ float paintPyramid(ParameterPage& page, juce::Graphics& g, juce::Rectangle<float
             g.fillRect(box);
             const float fill = static_cast<float>(std::min(1.0, std::abs(w) / largest)) * (cell - 2.0f);
             if (fill > 0.0f) {
-                g.setColour(w >= 0.0 ? colour::valueFill : colour::liveValue);
+                g.setColour(w >= 0.0 ? colour::valueFill : colour::negativeFill);
                 g.fillRect(juce::Rectangle<float>{box.getX() + 1.0f, box.getBottom() - 1.0f - fill, cell - 2.0f, fill});
             }
             g.setColour(colour::rule);

@@ -48,9 +48,16 @@ void drawValueBar(juce::Graphics& g, juce::Rectangle<float> area, const BarConte
     if (bar.hasLive) {
         //  it straddles the bar rather than sitting inside it, so it stays visible: a thin hairline
         //  confined inside the bar measured as drawn and read as invisible
-        g.setColour(bar.enabled ? colour::liveValue : colour::inactive);
-        g.fillRect(x + w * unitClamp(bar.live) - theme::stroke::liveMark / 2.0f, area.getY() - ctl::liveMarkOver,
-                   theme::stroke::liveMark, area.getHeight() + 2.0f * ctl::liveMarkOver);
+        const juce::Rectangle<float> mark{x + w * unitClamp(bar.live) - theme::stroke::liveMark / 2.0f,
+                                          area.getY() - ctl::liveMarkOver, theme::stroke::liveMark,
+                                          area.getHeight() + 2.0f * ctl::liveMarkOver};
+        //  disabled, it goes without the ring: two greys alone would not tell the states apart
+        if (bar.enabled) {
+            nowMark(g, mark, colour::liveValue);
+        } else {
+            g.setColour(colour::inactive);
+            g.fillRect(mark);
+        }
     }
 }
 
@@ -61,7 +68,7 @@ void drawRemoteNotice(juce::Graphics& g, juce::Rectangle<float> area, const juce
          juce::Justification::centred);
     text(g, "its controls have not arrived yet", labelFont(), colour::label,
          {area.getX(), cy - 0.5f * line, area.getWidth(), line}, juce::Justification::centred);
-    text(g, "show this instance", labelFont(), colour::link, remoteNoticeLink(area), juce::Justification::centred);
+    text(g, "show this instance", labelFont(), colour::action, remoteNoticeLink(area), juce::Justification::centred);
 }
 
 juce::Rectangle<float> remoteNoticeLink(juce::Rectangle<float> area) {

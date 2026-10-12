@@ -13,7 +13,7 @@
 /// of state, or a pair of values shown as one range.
 namespace bambi::ui {
 
-/// A value: name, number, and a bar -- with the modulation range in blue.
+/// A value: name, number, and a bar -- with the modulation range in the plugin's own colour.
 struct TileContent {
     juce::String name, value;
     float valueSize{theme::type::value};
