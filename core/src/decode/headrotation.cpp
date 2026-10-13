@@ -37,7 +37,7 @@ bool HeadRotation::prepare(int order, double sampleRate) {
     inverseScratch_.assign(sz(rotationSize(order)), 0.0f);
     a_.assign(sz(kRotationHop) * sz(channels_), 0.0f);
     b_.assign(sz(kRotationHop) * sz(channels_), 0.0f);
-    goal_ = current_ = kIdentity3;
+    goal_ = current_ = built_ = kIdentity3;
     turnTo(current_);
     snap_ = true;
     settled_ = true;
@@ -75,9 +75,15 @@ void HeadRotation::process(const float* in, float* out, int frames) noexcept {
                 } else {
                     current_ = multiply(rotationAbout(axis, angle * alpha_), current_);
                 }
-                std::swap(previous_, forward_);
-                turnTo(current_);
-                moving_ = true;
+                //  Only a changed orientation is rebuilt and crossfaded: a target equal to the turn in force -- the
+                //  identity at the start, a tracker repeating itself -- passes the field through the one set of
+                //  blocks, unchanged bit for bit, where a crossfade of two equal sets would round.
+                if (current_ != built_) {
+                    std::swap(previous_, forward_);
+                    turnTo(current_);
+                    built_ = current_;
+                    moving_ = true;
+                }
             }
         }
         if (moving_) {

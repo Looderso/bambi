@@ -91,7 +91,7 @@ TEST_CASE("learn mode's flips undo a sender's inverted axis") {
     const std::array<float, 4> q = bridgeQuaternion(30, 20, -10);
     CHECK(
         apart(read(OrientationForm::QuaternionWxyz, {q[0], q[1], -q[2], q[3]}, Mounting::AsSent, {false, true, false}),
-              want) < 1e-6);
+              want) < 1e-5);  // a float quaternion carries about seven digits; the matrix it makes, six
 }
 
 TEST_CASE("a phone on the band or held in front maps into the head's frame") {
@@ -208,7 +208,7 @@ TEST_CASE("AirPods report a head frame: level on the head is a level head, a nod
 TEST_CASE("look and nod find how a device sits on the head, whichever way it sits") {
     //  Catches: the nod's axis taken with the wrong sign (pitch inverted), or the up axis read from the nodded pose.
     for (const Mat3& sits : {axesOfMounting(Mounting::AirPods), rotationAbout({0.3, 0.9, 0.2}, 1.1),
-                            multiply(rotationAbout({0, 0, 1}, 2.0), rotationAbout({1, 0, 0}, -0.7))}) {
+                             multiply(rotationAbout({0, 0, 1}, 2.0), rotationAbout({1, 0, 0}, -0.7))}) {
         //  the device's orientation for a head at H is H * sits (the head is D * sits^T); the head faces an
         //  arbitrary way, level
         const Mat3 level = multiply(headFromYpr(37, 0, 0), sits);

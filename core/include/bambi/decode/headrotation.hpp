@@ -47,6 +47,7 @@ private:
     double alpha_{1.0};  // the share of the way a hop takes toward the goal
     LatestValue<Mat3> target_;
     Mat3 goal_{kIdentity3}, current_{kIdentity3};
+    Mat3 built_{kIdentity3};  ///< the orientation forward_ holds; an unchanged one is neither rebuilt nor crossfaded
     bool snap_{true}, settled_{true}, moving_{false};
     int pos_{0};  // frames into the current hop
     std::vector<double> blocks_;
