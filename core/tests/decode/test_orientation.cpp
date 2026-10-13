@@ -207,7 +207,7 @@ TEST_CASE("AirPods report a head frame: level on the head is a level head, a nod
 
 TEST_CASE("look and nod find how a device sits on the head, whichever way it sits") {
     //  Catches: the nod's axis taken with the wrong sign (pitch inverted), or the up axis read from the nodded pose.
-    for (const Mat3 sits : {axesOfMounting(Mounting::AirPods), rotationAbout({0.3, 0.9, 0.2}, 1.1),
+    for (const Mat3& sits : {axesOfMounting(Mounting::AirPods), rotationAbout({0.3, 0.9, 0.2}, 1.1),
                             multiply(rotationAbout({0, 0, 1}, 2.0), rotationAbout({1, 0, 0}, -0.7))}) {
         //  the device's orientation for a head at H is H * sits (the head is D * sits^T); the head faces an
         //  arbitrary way, level
