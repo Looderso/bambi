@@ -11,14 +11,14 @@
     uses is named here and nowhere else. Code asks for a ROLE -- "the selected source", "a rule" --
     never for a hex value or a pixel size, so a change of look is an edit to this file.
     tools/check-style.sh fails if a literal colour, type size or corner radius turns up anywhere
-    else in plugin/Source.
+    else in ui/, editor/ or plugins/.
 
     Two layers of colour:
       palette  the raw colours, named for what they ARE
       colour   what each one is FOR. Repoint a role to change one use; change the palette to
                recolour everything that shares it.
 
-    The direction is Otl Aicher / HfG Ulm: light ground, black line work, structure by rules and
+    The direction is Ulm-school modernism: light ground, black line work, structure by rules and
     alignment rather than boxes, no rounding, no shadows, no gradients.
 */
 // clang-format off: every value is laid out as a table, which the formatter would flatten.
@@ -102,9 +102,8 @@ namespace colour
     inline const juce::Colour regionWash    = palette::ink;     ///< the side that passes
     inline const juce::Colour regionLabel   = palette::ink;
 
-    /// What a plugin answers when the probe is pointed is its own parts -- Echo's taps, Reverb's
-    /// reflections -- so the selected part is in the plugin's own colour (`answer()`, below) and the rest
-    /// in this grey.
+    /// When the probe is pointed, a plugin answers with its own parts -- Echo's taps, Reverb's reflections --
+    /// and the selected part is in the plugin's own colour (`answer()`, below), the rest in this grey.
     inline const juce::Colour answerOther   = palette::grey7;
 
     // modulation: its colour is the plugin's own, below
@@ -180,7 +179,7 @@ namespace type
     inline constexpr float trackingHeading  = 0.20f;
     inline constexpr float trackingWordmark = 0.30f;
 
-    //  the P2 diagnostic readout, monospaced; goes when the real editor arrives
+    //  the diagnostic readout, monospaced
     inline constexpr float readout      = 15.0f;
     inline constexpr float readoutSmall = 12.0f;
 } // namespace type
@@ -195,8 +194,8 @@ namespace stroke
     inline constexpr float trajectory   = 1.6f;
     inline constexpr float otherPath    = 1.0f;
     inline constexpr float otherPathDash[2] = { 3.0f, 4.0f };   ///< other instances' paths are dashed
-    /*  Another instance's region is dotted more tightly than its path: a silver dashed region was
-        indistinguishable from a silver dashed path. */
+    /*  Another instance's region is dotted more tightly than its path, so a dashed region and a dashed
+        path do not read alike. */
     inline constexpr float foreignRegionDash[2] = { 1.0f, 3.0f };
     inline constexpr float unplacedDash[2] = { 3.0f, 3.0f };   ///< the probe's ring before it is placed
     inline constexpr float toggle       = 1.3f;   ///< an unset toggle square's outline
@@ -397,7 +396,7 @@ namespace controls
     inline constexpr float triggerStep        = 0.01f;
     inline constexpr float handleStep         = 0.002f;   ///< a handle length, in radians
     //  the decoder's orientation strip and its loudspeaker table
-    inline constexpr float pairChoiceWidth = 112.0f;  ///< a two-entry segments row beside a tab row: head · scene
+    inline constexpr float pairChoiceWidth = 112.0f;  ///< the strip's two-entry segments row: head · scene
     inline constexpr float tableColumns[6] = {24.0f, 40.0f, 40.0f, 40.0f, 40.0f, 44.0f};  ///< ch, az, el, dist, gain, delay
     inline constexpr float learnSlotWidth  = 44.0f;   ///< a learned address's slot column
 } // namespace controls
@@ -454,11 +453,10 @@ namespace header
     inline constexpr float dividerHeight = 16.0f;
     inline constexpr float statusSquare  = 7.0f;
     inline constexpr float glyphBox      = 15.0f;
-    //  the plugin's icon, before the wordmark. Reserved and not drawn: each plugin is getting one,
-    //  and a square of the right size held open now is what keeps the header from moving when they arrive
+    //  the plugin's icon, before the wordmark
     inline constexpr float iconBox       = 16.0f;
 
-    //  The instance tabs, in the middle the header already had spare.
+    //  The instance tabs, in the middle of the header.
     inline constexpr float tabGap      = 2.0f;
     inline constexpr float tabMinWidth = 62.0f;    ///< narrower than this and a track name says nothing
     inline constexpr float tabMaxWidth = 132.0f;

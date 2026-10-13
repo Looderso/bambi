@@ -79,7 +79,6 @@ public:
     /// Light or stop an output. Lighting one whose channels collide with another's stops that one and says so in
     /// `notice()`; one needing more channels than the bus has does not light and says how many it needs.
     void playOutput(Output which, bool on);
-    /// The channels an output would write, counted from 1, as the state has it.
     /// The current state, copied: for the editor.
     bambi::DecoderState decoderState() const;
     /*  Message thread: a decoder as filters from a SOFA FIR-E file (tools/matrix/jconvolver-to-sofa.py writes one
@@ -209,8 +208,8 @@ private:
     bambi::HeadRotation scene_;              ///< the scene's turn, heard by every output
     bambi::HeadRotation turn_;               ///< the head undone, for the binaural decode and the slice
     bambi::RotationClock sceneClock_;        ///< the rates integrated; audio thread
-    bambi::host::TransportWatch transport_;  ///< a start or a locate restarts the turn when the rates are set to
-    std::int64_t hopPos_{0};        ///< frames since prepare, so the scene's turn is set per rotation hop; audio thread
+    bambi::host::TransportWatch transport_;  ///< a start or a locate zeroes the rates' turn unless they continue
+    std::int64_t hopPos_{0};  ///< frames since prepare: where in its rotation hop the scene's turn is set; audio thread
     mutable std::mutex workMutex_;  ///< prepare and build: never the audio thread
     double sampleRate_{48000.0};
     int engineOrder_{-1};  ///< what prepareToPlay built for; -1 until it has run
@@ -225,8 +224,7 @@ private:
 
     bambi::host::FieldBuffer field_;                                 ///< the input, interleaved
     std::vector<float> sceneField_, turned_, stereo_, speakersOut_;  ///< scratch, sized in prepareToPlay
-    std::vector<float> silence_;   ///< one block of nothing added, for the energy picture: a monitor adds nothing
-    std::vector<float> gainRamp_;  ///< the level per sample of the block
+    std::vector<float> gainRamp_;                                    ///< the level per sample of the block
     float gainNow_{1.0f}, gainCoefficient_{1.0f};
 
     //  The tracker. The OSC callback runs on the message thread and is the handoff's one writer; the audio

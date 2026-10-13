@@ -47,7 +47,7 @@ void drawValueBar(juce::Graphics& g, juce::Rectangle<float> area, const BarConte
         about the parameter. */
     if (bar.hasLive) {
         //  it straddles the bar rather than sitting inside it, so it stays visible: a thin hairline
-        //  confined inside the bar measured as drawn and read as invisible
+        //  confined inside the bar reads as invisible
         const juce::Rectangle<float> mark{x + w * unitClamp(bar.live) - theme::stroke::liveMark / 2.0f,
                                           area.getY() - ctl::liveMarkOver, theme::stroke::liveMark,
                                           area.getHeight() + 2.0f * ctl::liveMarkOver};
@@ -270,7 +270,7 @@ std::optional<float> drawNiceGrid(juce::Graphics& g, juce::Rectangle<float> plot
     namespace ctl = theme::controls;
     std::optional<float> zeroRow;
     for (const auto& tick : polarityAxis(polarity, maxTicks)) {
-        //  v is already in the curve's own [0, 1]: converting it again is what misplaced the LFO's zero
+        //  the tick is already in the curve's own [0, 1]: converting it again would misplace the zero
         const auto row = plot.getBottom() - plot.getHeight() * static_cast<float>(tick.at);
         ruleH(g, plot.getX(), plot.getRight(), row, tick.zero ? theme::colour::rule : theme::colour::envelopeGrid);
         text(g, juce::String(axisTickLabel(tick.value)), labelFont(),

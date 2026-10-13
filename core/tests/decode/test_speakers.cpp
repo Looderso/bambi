@@ -70,7 +70,7 @@ TEST_CASE("the renderer plays the design: matrix, gain and whole-sample delay, h
     double worst = 0;
     for (std::size_t i = 0; i < want.size(); ++i) worst = std::max(worst, std::abs(got[i] - want[i]));
     CHECK(worst < 1e-5);
-    // The farthest loudspeaker (channel 1) is not delayed, channel 7 by (1.65 - 1.39) / 343 s = 36 samples.
+    //  The farthest loudspeaker (channel 1) is not delayed, channel 7 by (1.65 - 1.39) / 343 s = 36 samples.
     CHECK(std::lround(d.delaySeconds[5] * fs) == 36);
 }
 
@@ -111,8 +111,8 @@ TEST_CASE("a new design fades in over ten milliseconds and then plays alone") {
     REQUIRE(swapped.publish(b));
     swapped.process(in.data() + static_cast<std::size_t>(before * C), C,
                     got.data() + static_cast<std::size_t>(before * 17), 17, frames - before);
-    // The ramp waits for the new design's longest delay (channel 13 at 1.30 m: 49 samples), then the output is the
-    // two designs' mixed with the ramp, after it b alone.
+    //  The ramp waits for the new design's longest delay (channel 13 at 1.30 m: 49 samples), then the output is the
+    //  two designs' mixed with the ramp, after it b alone.
     const int wait = 49;
     double worst = 0;
     for (int f = 0; f < frames; ++f)
@@ -194,7 +194,7 @@ TEST_CASE("a design that follows a fade closely waits until the lines have settl
     play(500, endB);
     REQUIRE(swapped.publish(c));  // one frame after the fade to b ended
     play(endB, frames);
-    // b plays alone until its lines have settled; then c's wait, c's ramp, c alone.
+    //  b plays alone until its lines have settled; then c's wait, c's ramp, c alone.
     const int startC = endB + settleB, rampC = startC + waitC;
     double worst = 0;
     for (int f = endB; f < frames; ++f)

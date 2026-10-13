@@ -338,10 +338,10 @@ void ParameterPage::onDefaultRestored(ParamId id) {
 }
 
 float ParameterPage::paintSourceTab(juce::Graphics& g, float x, const SourceTab& tab) {
-    if (!tab.select) return x;  // no source open: the bar is the three tabs and nothing else
+    if (!tab.select) return x;  // no source open: the bar is the plugin's own tabs and nothing else
     const auto tabFont = font(theme::type::body, theme::type::trackingTab);
-    //  a source's settings: a temporary tab, and a cross back to the tab it replaced
-    //  Step to the next source without going back to the matrix for it.
+    //  a source's settings: a temporary tab, a chevron either side to step to another source without going
+    //  back to the matrix, and a cross back to the tab it replaced
     const auto chevron = [&](juce::Rectangle<float> area, bool forward) {
         const auto mid = area.getCentreY();
         const auto near = forward ? area.getX() : area.getRight();

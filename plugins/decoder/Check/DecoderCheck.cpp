@@ -219,7 +219,7 @@ int main() {
         check(!ahead.empty() && !identical(ahead, y), "the slice is another design than the fold");
         check(!turnedAway.empty() && !identical(ahead, turnedAway), "and the head turns what the slice plays");
         //  The scene's turn reaches every output: the fold hears yaw, and the tracker turning the scene is heard
-        //  where the head was not. Static holds the sliders at zero.
+        //  where the head was not. Static holds the scene still whatever the sliders say.
         const auto sceneTurned = [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw", 180.0f); };
         const Channels sceneOnFold = render(busIn(16, 4), 128, 0.25, sceneTurned, &s);
         check(!sceneOnFold.empty() && !identical(y, sceneOnFold), "yaw turns the scene the fold plays");

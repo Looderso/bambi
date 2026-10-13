@@ -60,7 +60,8 @@ SceneRow sceneRow(int left, int top, bool full);
 /// The pieces a page is made of, drawn. They draw and say where; whoever calls them registers the presses.
 
 /*  One option of a choice -- a tab, a sub-tab, a segment: its name in black, and when chosen a black
-    block with the name in light text. Grey is only for an option that cannot be chosen. */
+    block with the name in light text. Grey is only for an option that cannot be chosen: `offered` false
+    greys the name, and a chosen one is then a grey block. */
 void drawChoice(juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& label, const juce::Font& f,
                 bool chosen, bool offered = true);
 /// A choice as segments: equal cells, one `drawChoice` each. Returns each segment's cell.

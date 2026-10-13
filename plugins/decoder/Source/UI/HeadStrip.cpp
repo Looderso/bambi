@@ -75,7 +75,7 @@ void HeadStrip::paint(juce::Graphics& g) {
             model().applyEdit("tracker", [which](PluginState& s) { s.decoder.trackerSource = which; });
         },
         [helper](int which) { return which < 2 || helper; });  // airpods and the phone need the bundled helper
-    //  the tracker's word at the right of the row, where the matrix has its count, the dot before it
+    //  the tracker's word at the right of the row, where the matrix has its count, and a status square before it
     const float tabTop = ctl::matrixTabsTop, tabHeight = ctl::tabBarHeight - ctl::matrixTabsTop;
     const float wordLeft = (boxes.empty() ? inset : boxes.back().getRight()) + ctl::tabGap;
     const float wordWidth = std::min(textWidth(labelFont(), live) + 2.0f, width - inset - wordLeft);
@@ -90,8 +90,9 @@ void HeadStrip::paint(juce::Graphics& g) {
     const bool tracked = source != 0;
 
     //  What the tracker's orientation does -- undone as a head, so what the listener hears stays in the room, or
-    //  one more turn of the scene -- and the tracker's buttons; static holds the sliders and rates at zero, to
-    //  hear a mix stand still while its turn is automated. Everything a tracker needs greys without one.
+    //  one more turn of the scene -- and the tracker's buttons; static holds the scene still whatever the sliders
+    //  and rates say, to hear a mix stand still while its turn is automated. Everything a tracker needs greys
+    //  without one.
     const juce::Rectangle<float> turns{content.getX(), y, ctl::pairChoiceWidth, ctl::segmentHeight};
     paintSegments(g, turns, {"head", "scene"}, d.trackerTurnsScene ? 1 : 0, mine && tracked, [this](int which) {
         model().applyEdit("tracker turns", [which](PluginState& s) { s.decoder.trackerTurnsScene = which == 1; });

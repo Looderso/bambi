@@ -11,14 +11,14 @@
 
 /*  The loudspeaker output on the audio thread: the decoding matrix applied per frame, each output's
  *  distance gain folded into its row, then each output delayed by its distance to the farthest
- *  loudspeaker, in whole samples. A design arrives whole from a worker through the link bus's triple
- *  buffer in place; when one arrives the renderer keeps its own copy of the old one and fades over
- *  kSpeakerFadeSeconds: the old and the new design each feed their own delay lines, and the two
- *  delayed outputs are mixed with the ramp, so nothing steps and every output fades together. Both
- *  sets of lines are written all the time, so the old design's history is there when a new one comes;
- *  the ramp waits for the new design's longest delay, until its own lines hold its signal, and the
- *  next design is taken up only once the lines have settled the same way after a fade. Silence until
- *  the first design.
+ *  loudspeaker, in whole samples. A design arrives whole from a worker through a triple buffer; when
+ *  one arrives the renderer keeps its own copy of the old one and fades over kSpeakerFadeSeconds: the
+ *  old and the new design each feed their own delay lines, and the two delayed outputs are mixed with
+ *  the ramp, so nothing steps and every output fades together. Both sets of lines are written all the
+ *  time, so the old design's history is there when a new one comes; the ramp waits for the new
+ *  design's longest delay, until its own lines hold its signal, and the next design is taken up only
+ *  once the lines have settled the same way after a fade. Only the outputs a design feeds are written
+ *  and read; a line a narrower design leaves is emptied once. Silence until the first design.
  */
 namespace bambi {
 
@@ -50,25 +50,26 @@ private:
     /// A design as the audio thread plays it: rows with the gains in, one delay per output, in samples.
     struct Set {
         int outputs{0}, channels{0};
-        std::vector<float> matrix;  // maxChannels x maxOutputs -- a channel's row over the outputs, so the per-frame
-                                    // multiply runs along contiguous outputs with no reduction; the stride is fixed
-        std::vector<int> delay;     // maxOutputs
-        int longestDelay{0};
+        /// maxChannels x maxOutputs: a channel's row over the outputs, so the per-frame multiply runs along
+        /// contiguous outputs with no reduction. The stride is maxOutputs, whatever the design uses.
+        std::vector<float> matrix;
+        std::vector<int> delay;  ///< maxOutputs, in samples, the renderer's latency included
+        int longestDelay{0};     ///< the largest of them, in samples
     };
     void mix(const Set& set, const float* x, int inChannels, float* y) const noexcept;
 
     int maxOutputs_{0}, maxChannels_{0}, ringLength_{0}, fade_{1}, maxDelay_{0}, latency_{0};
-    int activeOutputs_{0};  // the ring lines written so far; the rest are still zero
+    int activeOutputs_{0};  ///< the most ring lines written since prepare or reset; the lines past it are zero
     double sampleRate_{48000.0};
     LatestValue<Set> sets_;
     const Set* live_{nullptr};
-    Set leaving_;      // the renderer's copy of the set a new one replaces, for the fade
-    int fadePos_{-1};  // frames into the fade, negative while the new design's lines fill; -1 when not fading
+    Set leaving_;      ///< the renderer's copy of the set a new one replaces, for the fade
+    int fadePos_{-1};  ///< frames into the ramp; negative while the new design's lines fill, and -1 when no fade runs
     bool fading_{false};
-    int settle_{0};  // frames until the leaving lines hold the live design throughout, after a fade
-    std::vector<float> ringLive_, ringLeave_;  // maxOutputs x ringLength each: an output before its delay
+    int settle_{0};  ///< frames until the leaving lines hold the live design throughout, after a fade
+    std::vector<float> ringLive_, ringLeave_;  ///< maxOutputs x ringLength each: an output before its delay
     int write_{0};
-    std::vector<float> yLive_, yLeave_;  // maxOutputs each: one frame's outputs
+    std::vector<float> yLive_, yLeave_;  ///< maxOutputs each: one frame's outputs
 };
 
 /*  The loudspeaker path across its threads: request() from the message thread hands a layout, an

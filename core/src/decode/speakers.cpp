@@ -116,7 +116,7 @@ void SpeakerRenderer::process(const float* in, int inChannels, float* out, int o
             std::fill_n(ringLive_.data() + sz(k) * sz(ringLength_), ringLength_, 0.0f);
             std::fill_n(ringLeave_.data() + sz(k) * sz(ringLength_), ringLength_, 0.0f);
         }
-        activeOutputs_ = std::max(keep, std::min(activeOutputs_, keep));
+        activeOutputs_ = keep;
     }
     const int mask = ringLength_ - 1;
     for (int f = 0; f < frames; ++f) {
@@ -128,10 +128,10 @@ void SpeakerRenderer::process(const float* in, int inChannels, float* out, int o
         }
         mix(*live_, x, inChannels, yLive_.data());
         const bool fading = fading_;
+        //  t is the live design's share of the output: 0 while its lines fill, then the ramp, then 1
         const float t = !fading ? 1.0f : fadePos_ < 0 ? 0.0f : static_cast<float>(rampWeight(fadePos_ + 1, fade_));
         if (fading) mix(leaving_, x, inChannels, yLeave_.data());
-        //  only the outputs a design feeds are written and read: a 64-output ring walked for a pair would cost
-        //  the same as for a dome
+        //  Only the outputs a design feeds are written and read, so a pair costs less than a dome.
         const int active = std::max(live_->outputs, fading ? leaving_.outputs : 0);
         activeOutputs_ = std::max(activeOutputs_, active);
         for (int k = 0; k < active; ++k) {
@@ -199,6 +199,7 @@ bool SpeakerDecoder::work() {
     std::string error;
     bool published = false;
     if (!designAllrad(layout, order, weighting, design, &error, microphones)) {
+        //  `error` holds the reason; the previous design keeps playing
     } else if (!renderer_.publish(design)) {
         error = "the design does not fit what the renderer was prepared for";
     } else {

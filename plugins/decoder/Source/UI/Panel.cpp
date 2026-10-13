@@ -389,7 +389,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
     y = row.getBottom() + ctl::segmentGap;
     const int real = realLoudspeakers(d.layout);
     if (kind == 0) {
-        //  the ten systems, the loaded one black
+        //  the ITU systems, the loaded one black
         std::vector<juce::String> names;
         int selected = -1;
         for (std::string_view n : bs2051Names()) {

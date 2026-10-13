@@ -26,7 +26,6 @@ bambi::Layout layoutFor(const bambi::DecoderState& d) {
     return l;
 }
 
-/// What a bus's description says: the same line the layout log keeps.
 }  // namespace
 
 BambiDecoderProcessor::BambiDecoderProcessor()
@@ -273,8 +272,8 @@ void BambiDecoderProcessor::build(const bambi::DecoderState& d) {
 
 void BambiDecoderProcessor::buildMatrix(const bambi::DecoderState& d) {
     const auto stop = [this] {
-        //  Nothing new enters the convolver once the flag is down; a block already inside it is waited out, so the
-        //  buffers never move under the audio thread. Both flags are sequentially consistent with the audio
+        //  Nothing new enters the convolver once the flag is down; a block already inside it is waited out, for at
+        //  most 200 ms, so the buffers do not move under the audio thread. Both flags are sequentially consistent with the audio
         //  thread's raise-then-check, so the two cannot miss each other.
         matrixPlays_.store(false, std::memory_order_seq_cst);
         for (int i = 0; i < 200 && inConvolver_.load(std::memory_order_seq_cst); ++i) juce::Thread::sleep(1);
@@ -496,13 +495,6 @@ juce::String BambiDecoderProcessor::helperStatus() const {
 }
 
 void BambiDecoderProcessor::oscMessageReceived(const juce::OSCMessage& message) {
-    bambi::OrientationRead read;
-    int source = 0;
-    {
-        const std::lock_guard<std::mutex> lock(trackerMutex_);
-        read = trackerRead_;
-        source = trackerSource_;
-    }
     const juce::String address = message.getAddressPattern().toString();
     if (address == "/bambi/helper/status") {
         if (message.size() == 1 && message[0].isString()) {
@@ -788,15 +780,15 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     const auto ramp = [&](int i) { return gainRamp_[static_cast<std::size_t>(i)]; };
     const int speakerOutputs = diag_.speakerOutputs.load(std::memory_order_relaxed);
     const bool matrix = matrixPlays_.load(std::memory_order_seq_cst);
-    //  The scene turned, once a block, for every output; then the head undone, once a block, for whoever needs
-    //  it: the binaural decode, and a pair of loudspeakers whose slice follows the head.
-    //  The energy picture, while a window asks for it: the field as every output hears it, turned, is what
-    //  arrived; nothing is added, so the picture is all of what came in.
+    //  The energy picture, while a window asks for it: the field as every output hears it, turned by the scene,
+    //  is what arrived; nothing is added, so the picture is all of what came in.
     if (gatheringEnergy()) {
         gatherArrived(sceneField_.data(), n);
         gatherNothingLeaving(n);
         publishEnergy();
     }
+    //  The head undone, once a block and only for whoever needs it: the binaural decode, and a pair of
+    //  loudspeakers whose slice follows the head.
     bool turned = false;
     const auto turnOnce = [&] {
         if (!turned) turn_.process(sceneField_.data(), turned_.data(), n);

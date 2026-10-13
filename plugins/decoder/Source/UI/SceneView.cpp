@@ -240,9 +240,9 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
     strokeSegments(g, segments_, skipped_, colour::text.withAlpha(alpha), stroke::regionEdge, false);
     const auto tip = toScreen(projection_, state_.sphere.camera, vp, gaze);
     if (projection_ == Projection::Globe) {
-        //  the head itself at the centre: a circle with two eyes on its rim, a quarter turn apart astride the gaze.
-        //  Each eye is a direction scaled to the head's radius before projection, so the pair foreshortens as the
-        //  head turns toward or away from the viewer, and tilts with roll.
+        //  the head itself at the centre: a circle with an eye on its rim either side of the gaze, kEyeAngleRad off
+        //  it. Each eye is a direction scaled to the head's radius before projection, so the pair foreshortens as
+        //  the head turns toward or away from the viewer, and tilts with roll.
         const float r = shape::sourceDot + sc::headRadiusPad;
         const double unit = static_cast<double>(r) / vp.rx;
         const double c = std::cos(kEyeAngleRad), sn = std::sin(kEyeAngleRad);

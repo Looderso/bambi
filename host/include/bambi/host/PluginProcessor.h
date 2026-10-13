@@ -64,7 +64,7 @@ public:
     void releaseResources() override {}
     bool hasEditor() const override { return true; }
 
-    /// The plugin's own DSP load is measured round `renderBlock`, where it runs.
+    /// The plugin's own DSP load is measured around `renderBlock`, where it runs.
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) final;
     using AudioProcessor::processBlock;
 
