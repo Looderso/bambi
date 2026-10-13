@@ -70,6 +70,19 @@ dependency that can change under you is a dependency that can change your test r
 `doctest` is a build-time dependency of `bambi-tests` and is not linked into anything that
 ships, but its notice is preserved anyway because the source distribution contains it.
 
+## Data the decoder ships
+
+The Decoder's two heads are models learned from measured head-related transfer functions; the measurements
+themselves are not redistributed, the fitted tables are (`core/data/decode/head.json`, `ku100.json`).
+
+| Data | Holder | Licence | Used for |
+|---|---|---|---|
+| HUTUBS | Audio Communication Group, TU Berlin | CC BY 4.0 | the learned head, with 3D3A |
+| 3D3A | 3D Audio and Applied Acoustics Lab, Princeton University | CC BY 4.0 | the learned head, with HUTUBS |
+| SADIE II, KU100 (D1) | AudioLab, University of York | Apache 2.0 | the KU100 head |
+
+Their attribution travels with every build in `THIRD-PARTY-NOTICES.txt`, from `third_party/head-data/`.
+
 ## What is deliberately *not* a dependency
 
 Three pieces of numerical code here are written by hand. Each is a considered choice
