@@ -43,7 +43,7 @@ void ReverbControlState::answerProbe(bambi::Vec3 from, bambi::ui::ProbeReply& in
     const bambi::Room room = bambi::deriveRoom(frame.room);
     std::array<bambi::Reflection, bambi::kMaxImages> reflections{};
     const int count = bambi::reflectionsOf(room, from, frame.distance, reflections);
-    into.numbered = false;  // the reflections are one answer, what the room adds
+    into.numbered = false;  // the reflections are one answer, all the room's
     for (int i = 0; i < count; ++i) {
         const auto& r = reflections[static_cast<std::size_t>(i)];
         if (r.mirror <= 0.0) continue;

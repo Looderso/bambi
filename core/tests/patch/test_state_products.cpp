@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <string>
 
+#include "bambi/decode/params.hpp"
 #include "bambi/echo/params.hpp"
 #include "bambi/encode/params.hpp"
 #include "bambi/patch/state.hpp"
@@ -213,4 +214,73 @@ TEST_CASE("what a bounce should do is saved with the patch") {
         REQUIRE(loadState(Product::Reverb, m, text, back).ok);
         CHECK(back.renderQuality == RenderQuality::Realistic);
     }
+}
+
+TEST_CASE("the decoder's listening situation saves and loads whole, and is left out when it is the default") {
+    //  Catches: a field of the decoder's state dropped from the document, or written when nothing was set.
+    PluginState s{decodeParams()};
+    CHECK(saveState(Product::Decoder, decodeParams(), s).find("\"decoder\": {") ==
+          std::string::npos);  // the product line says decoder too
+    s.decoder.speakersPlay = true;
+    s.decoder.headphoneChannel = 13;
+    s.decoder.headSize = 1.12f;
+    s.decoder.earShift = -0.6f;
+    s.decoder.weighting = 1;
+    s.decoder.layoutName = "4+7+0";
+    Loudspeaker l;
+    l.azimuthDeg = 30;
+    l.elevationDeg = 0;
+    l.radiusM = 2.5;
+    l.channel = 1;
+    s.decoder.layout.push_back(l);
+    l.channel = 13;
+    l.elevationDeg = -90;
+    l.imaginary = true;
+    s.decoder.layout.push_back(l);
+    s.decoder.trackerSource = 1;
+    s.decoder.oscPort = 9001;
+    s.decoder.flip = {false, true, false};
+    s.decoder.pairSlice = true;
+    s.decoder.speakerFirstChannel = 5;
+    s.decoder.layoutTyped = true;
+    s.decoder.trackerTurnsScene = true;
+    s.decoder.sceneStatic = true;
+    s.decoder.oscAddresses = {"/zig/quat", "", ""};
+    s.decoder.oscForm = 2;
+    s.decoder.airpodsAxes = {0, 1, 0, -1, 0, 0, 0, 0, 1};
+    s.decoder.airpodsCalibrated = true;
+    s.decoder.matrixFile = "/arrays/iko.sofa";
+    s.decoder.matrixOutputs = 20;
+    s.decoder.matrixNormalization = 2;
+    s.decoder.hrtf = 2;
+    s.decoder.hrtfFile = "/heads/mine.sofa";
+    s.decoder.hrtfFileHead.text = std::make_shared<const std::string>("{\"version\":1,\"a head\":true}");
+    PluginState back;
+    REQUIRE(loadState(Product::Decoder, decodeParams(), saveState(Product::Decoder, decodeParams(), s), back).ok);
+    CHECK(back.decoder == s.decoder);
+    CHECK(stateVersionFor(Product::Decoder) == 1);
+    CHECK(name(Product::Decoder) == "decoder");
+    CHECK(productFromName("decoder") == Product::Decoder);
+}
+
+TEST_CASE("a decoder state loads sanitised: every value held to the range the window gives it") {
+    //  Catches: the sanitiser not called on load, or a clamp missing -- a head of size 0, a loudspeaker at no
+    //  distance, a port of 0, a head choice past the last.
+    PluginState s{decodeParams()};
+    s.decoder.headSize = 0.0f;
+    s.decoder.hrtf = 7;
+    s.decoder.oscPort = 0;
+    Loudspeaker l;
+    l.radiusM = 0.0;
+    l.channel = 0;
+    s.decoder.layout.push_back(l);
+    const Json j = toJson(Product::Decoder, decodeParams(), s);
+    PluginState back{decodeParams()};
+    REQUIRE(fromJson(Product::Decoder, decodeParams(), j, back).ok);
+    CHECK(back.decoder.headSize == doctest::Approx(0.75));
+    CHECK(back.decoder.hrtf == 2);
+    CHECK(back.decoder.oscPort == 1);
+    REQUIRE(back.decoder.layout.size() == 1);
+    CHECK(back.decoder.layout[0].radiusM == doctest::Approx(0.1));
+    CHECK(back.decoder.layout[0].channel == 1);
 }

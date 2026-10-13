@@ -34,7 +34,10 @@ add_executable(bambi-orders orders/main.cpp)
 target_link_libraries(bambi-orders PRIVATE bambi-encode)
 bambi_warnings(bambi-orders)
 
+add_executable(bambi-head head/main.cpp)
+target_link_libraries(bambi-head PRIVATE bambi-decode)
+bambi_warnings(bambi-head)
+
 add_executable(bambi-nulltest nulltest/main.cpp)
 target_link_libraries(bambi-nulltest PRIVATE bambi-core)
 bambi_warnings(bambi-nulltest)
-

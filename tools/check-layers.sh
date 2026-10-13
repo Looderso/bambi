@@ -19,7 +19,7 @@ LAYERS=(
     "dsp path region"  # 1  the FFT and features; trajectories and their shape; regions
     "patch"            # 2  parameters, state, undo, identity, json -- a patch contains a trajectory
     "mod"              # 3  the modulation matrix, over the patch and the path
-    "link scene encode echo reverb"  # 4  the bus, the scene's geometry, an engine
+    "link scene encode echo reverb decode"  # 4  the bus, the scene's geometry, an engine
 )
 
 layer_of() {

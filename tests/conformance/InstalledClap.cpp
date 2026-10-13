@@ -60,38 +60,51 @@ bool isAmbisonic(const char* portType) {
     return portType != nullptr && std::strcmp(portType, CLAP_PORT_AMBISONIC) == 0;
 }
 
-void probePlugin(Result& r, const clap_plugin* plugin, bool fieldEffect) {
+void probePlugin(Result& r, const clap_plugin* plugin, Kind kind) {
     const auto check = [&r](bool ok, const std::string& what) { report(r, ok, juce::String(what)); };
+    const bool fieldIn = kind != Kind::Source;    // the field arrives on the main input
+    const bool fieldOut = kind != Kind::Decoder;  // the field leaves on the main output
 
     const auto* ports =
         static_cast<const clap_plugin_audio_ports*>(plugin->get_extension(plugin, CLAP_EXT_AUDIO_PORTS));
     check(ports != nullptr, "clap.audio-ports is exposed");
     if (ports == nullptr) return;
 
-    //  A field effect takes the field on its main input; the encoder takes a stereo source there.
+    //  A field effect and the decoder take the field on the main input; the encoder takes a stereo source there.
+    //  The encoder and the effects return the field on the main output; the decoder returns loudspeaker feeds.
     clap_audio_port_info in0{};
     ports->get(plugin, 0, true, &in0);
-    check(isAmbisonic(in0.port_type) == fieldEffect,
-          fieldEffect ? "main input declares CLAP_PORT_AMBISONIC: a field arrives there"
-                      : "main input is not ambisonic: a source arrives there");
+    check(isAmbisonic(in0.port_type) == fieldIn, fieldIn
+                                                     ? "main input declares CLAP_PORT_AMBISONIC: a field arrives there"
+                                                     : "main input is not ambisonic: a source arrives there");
     clap_audio_port_info out0{};
     ports->get(plugin, 0, false, &out0);
-    check(isAmbisonic(out0.port_type), "main output declares CLAP_PORT_AMBISONIC");
-    check(out0.channel_count == 16, "main output is 16 channels (3rd order, the default)");
+    check(isAmbisonic(out0.port_type) == fieldOut, fieldOut
+                                                       ? "main output declares CLAP_PORT_AMBISONIC"
+                                                       : "main output is not ambisonic: channels of a bus leave there");
+    if (fieldOut)
+        check(out0.channel_count == 16, "main output is 16 channels (3rd order, the default)");
+    else
+        check(out0.channel_count == 2 && in0.channel_count == 16,
+              "the field arrives as 16 channels (3rd order, the default) and a pair leaves");
 
     const auto* amb = static_cast<const clap_plugin_ambisonic*>(plugin->get_extension(plugin, CLAP_EXT_AMBISONIC));
     check(amb != nullptr, "clap.ambisonic/3 is exposed");
     if (amb != nullptr) {
         clap_ambisonic_config_t cfg{};
-        check(amb->get_config(plugin, false, 0, &cfg) && cfg.ordering == CLAP_AMBISONIC_ORDERING_ACN &&
-                  cfg.normalization == CLAP_AMBISONIC_NORMALIZATION_SN3D,
-              "output 0 reports ACN / SN3D");
+        const bool outputIsAmbisonic = amb->get_config(plugin, false, 0, &cfg);
+        if (fieldOut)
+            check(outputIsAmbisonic && cfg.ordering == CLAP_AMBISONIC_ORDERING_ACN &&
+                      cfg.normalization == CLAP_AMBISONIC_NORMALIZATION_SN3D,
+                  "output 0 reports ACN / SN3D");
+        else
+            check(!outputIsAmbisonic, "output 0 is not reported as ambisonic");
         clap_ambisonic_config_t in{};
         const bool inputIsAmbisonic = amb->get_config(plugin, true, 0, &in);
-        if (fieldEffect)
+        if (fieldIn)
             check(inputIsAmbisonic && in.ordering == CLAP_AMBISONIC_ORDERING_ACN &&
                       in.normalization == CLAP_AMBISONIC_NORMALIZATION_SN3D,
-                  "input 0 reports ACN / SN3D too");
+                  "input 0 reports ACN / SN3D" + std::string(fieldOut ? " too" : ""));
         else
             check(!inputIsAmbisonic, "input 0 is not reported as ambisonic");
         const clap_ambisonic_config_t acnSn3d{CLAP_AMBISONIC_ORDERING_ACN, CLAP_AMBISONIC_NORMALIZATION_SN3D};
@@ -116,13 +129,27 @@ void probePlugin(Result& r, const clap_plugin* plugin, bool fieldEffect) {
         //  id equals position, so a host passing either selects the same configuration
         check(c.id == i, "configuration " + std::to_string(i) + " has id " + std::to_string(c.id));
         const bool selected = configs->select(plugin, c.id);
-        clap_audio_port_info after{};
-        ports->get(plugin, 0, false, &after);
         clap_ambisonic_config_t cfg{};
-        const bool follows = selected && after.channel_count == c.main_output_channel_count &&
-                             isAmbisonic(after.port_type) && amb != nullptr && amb->get_config(plugin, false, 0, &cfg);
-        check(follows, std::string("select \"") + c.name + "\" -> output " + std::to_string(after.channel_count) +
-                           " ch, ambisonic");
+        clap_audio_port_info after{};
+        if (fieldOut) {
+            ports->get(plugin, 0, false, &after);
+            const bool follows = selected && after.channel_count == c.main_output_channel_count &&
+                                 isAmbisonic(after.port_type) && amb != nullptr &&
+                                 amb->get_config(plugin, false, 0, &cfg);
+            check(follows, std::string("select \"") + c.name + "\" -> output " + std::to_string(after.channel_count) +
+                               " ch, ambisonic");
+        } else {
+            //  a decoder's configurations move the field's order on the input; the output stays the bus it was
+            ports->get(plugin, 0, true, &after);
+            clap_audio_port_info out{};
+            ports->get(plugin, 0, false, &out);
+            const bool follows = selected && after.channel_count == c.main_input_channel_count &&
+                                 isAmbisonic(after.port_type) && amb != nullptr &&
+                                 amb->get_config(plugin, true, 0, &cfg) && out.channel_count == 2 &&
+                                 !isAmbisonic(out.port_type);
+            check(follows, std::string("select \"") + c.name + "\" -> input " + std::to_string(after.channel_count) +
+                               " ch, ambisonic; the output still the pair");
+        }
     }
 }
 
@@ -167,7 +194,7 @@ Result probeInstalledClap(const Subject& subject) {
         const bool created = plugin != nullptr && plugin->init(plugin);
         report(r, created, juce::String("it creates and initialises: ") + desc->id);
         if (created) {
-            probePlugin(r, plugin, subject.fieldEffect);
+            probePlugin(r, plugin, subject.kind);
             plugin->destroy(plugin);
         }
     }

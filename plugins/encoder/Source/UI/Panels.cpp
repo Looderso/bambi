@@ -87,7 +87,7 @@ void DiagnosticsView::paint(juce::Graphics& g) {
     for (int i = 0; i < lines.size(); ++i) {
         const juce::Rectangle<float> box{static_cast<float>(theme::space::inset), y, static_cast<float>(getWidth()),
                                          lineHeight};
-        text(g, lines[i], mono, i == traceLine ? colour::link : colour::text, box);
+        text(g, lines[i], mono, i == traceLine ? colour::action : colour::text, box);
         if (i == traceLine) traceLine_ = box;
         y += lineHeight;
     }

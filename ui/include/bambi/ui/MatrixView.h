@@ -13,9 +13,9 @@ namespace bambi::ui {
     same component serves the encoder, Echo and Reverb. Sits under the scene -- never a tab. Three tabs
     over one list of target rows, six source columns each.
 
-      - a column's blue bar is its amount, an automatable parameter: drag it
+      - a column's bar, in the plugin's own colour, is its amount, an automatable parameter: drag it
       - a cell's bar is depth, which is state: drag it, click to set or clear, double-click to clear
-      - a violet dot marks a target with depth on another tab
+      - a grey dot marks a target with depth on another tab
       - the dashed row is provisional: a parameter name was clicked, and any depth commits it
 */
 class MatrixView final : public HitArea {

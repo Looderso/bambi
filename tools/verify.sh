@@ -10,7 +10,7 @@
 # The picture tools are here on purpose. A constructor that called a member of a base it had not
 # built yet passed every check in both effect suites and crashed the first tool that took a picture
 # after audio had run -- so "it exits 0" is asserted of each of them, which costs nothing.
-# conformance.sh is not run: it needs a real host and takes minutes. Run it before a release.
+# conformance.sh is not run: it loads the installed bundles as a host does and takes a minute. Run it before a release.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -45,6 +45,7 @@ if [ "${1:-}" != "--core" ]; then
     step "encoder checks"   "$(rel encoder bambi-plugin-check)"
     step "echo checks"      "$(rel echo bambi-echo-check)"
     step "reverb checks"    "$(rel reverb bambi-reverb-check)"
+    step "decoder checks"   "$(rel decoder bambi-decoder-check)"
     echo "pictures"
     step "encoder"          "$(rel encoder bambi-plugin-snapshot)" "$shot"
     for mode in "" --regions --sectors --settings --copy --presets --presets-name --presets-delete --axis --every-pass; do
@@ -52,6 +53,9 @@ if [ "${1:-}" != "--core" ]; then
     done
     for mode in "" --regions --settings --copy --room "--source 0"; do
         step "reverb $mode" "$(rel reverb bambi-reverb-shot)" "$shot" $mode
+    done
+    for mode in "" --speakers; do
+        step "decoder $mode" "$(rel decoder bambi-decoder-shot)" "$shot" $mode
     done
     rm -f "$shot"
 fi

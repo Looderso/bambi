@@ -35,7 +35,7 @@ constexpr int covarianceIndex(int channels, int i, int j) { return i * channels 
  */
 class CovarianceWindow {
 public:
-    /// Allocates for this order and this many frames a window. Nothing after this allocates.
+    /// Allocates for this order and `framesPerWindow` frames a window. Nothing after this allocates.
     void prepare(int order, int framesPerWindow);
 
     /// Forget the part-finished window: a locate, a reset, a stop.
@@ -43,6 +43,10 @@ public:
 
     /// `frames` interleaved frames. Real-time safe.
     void add(const float* interleaved, int frames) noexcept;
+    /// `frames` of silence: counted toward the window, nothing summed. Counts nothing before prepare().
+    void advance(int frames) noexcept {
+        if (frames > 0 && channels_ > 0) filled_ += frames;
+    }
 
     /// A window is full and waiting to be taken.
     bool ready() const noexcept { return filled_ >= framesPerWindow_ && framesPerWindow_ > 0; }

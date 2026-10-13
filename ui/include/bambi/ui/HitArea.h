@@ -5,6 +5,7 @@
 #include <functional>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace bambi::ui {
@@ -27,15 +28,15 @@ public:
     void paintOverChildren(juce::Graphics& g) override;
 
 protected:
-    /// A panel with more content than window scrolls under a part that stays put -- the matrix's column
-    /// heads, the right panel's tab bar. The panel declares its viewport and what it drew, during paint.
+    /// Declares the part that stays put -- the matrix's column heads, the right panel's tab bar -- and so the
+    /// viewport the rest scrolls in, from `top` to `bottom`. Called during paint, which also resets the content's end.
     void setViewport(float top, float bottom) {
         viewTop_ = top;
         viewBottom_ = bottom;
         contentBottom_ = top;
     }
-    /*  Slack only once something actually overflows. Added unconditionally it manufactures travel for a
-        panel whose content fits, which is how the default three matrix rows came to scroll. */
+    /*  Slack only once something actually overflows: added unconditionally it would give a panel whose
+        content fits some travel to scroll. */
     float maxScroll() const {
         const auto over = contentBottom_ - viewBottom_;
         return over > 0.0f ? over + kScrollPad : 0.0f;
@@ -136,6 +137,13 @@ protected:
     };
 
     void clearRegions() { regions_.clear(); }
+    /*  The tab row a slot draws where it has no frame of its own -- the matrix's, the decoder's orientation strip:
+     *  the names from `x`, in the tab face, standing `ctl::matrixTabsTop` below the slot's top edge, the chosen one
+     *  a block, a click choosing. `offered`, when given, says which tabs can be chosen: the others are greyed and
+     *  take no press. Returns each tab's box, in order. */
+    std::vector<juce::Rectangle<float>> paintTabRow(juce::Graphics& g, float x, std::span<const juce::String> names,
+                                                    int selected, std::function<void(int)> select,
+                                                    std::function<bool(int)> offered = {});
     void addRegion(Region region) {
         //  what the viewport hides takes no press: a tile scrolled under the tab bar is not there
         if (hitClip_.has_value()) region.area = region.area.getIntersection(*hitClip_);

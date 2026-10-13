@@ -24,8 +24,8 @@
  */
 namespace bambi::ui {
 
-/// A source's amount reads as a percentage: the modulation group's parameters that carry no unit. One
-/// What a tile shows for a value, as text.
+/// What a tile shows for a value, as text. A source's amount -- the modulation group's parameters that carry
+/// no unit -- reads as a percentage.
 juce::String tileValueText(const ParamDesc& d, double value);
 
 class ParameterPage : public HitArea {
@@ -122,8 +122,9 @@ public:
     float paintGroup(juce::Graphics& g, juce::Rectangle<float> content, float y, const juce::String& title,
                      std::initializer_list<Cell> cells);
 
-    /*  A choice as segments. `unavailable` is a segment drawn greyed that takes no click -- an
-     *  option this state cannot reach, shown rather than hidden so the set does not change shape. */
+    /*  A choice as segments. `unavailable` is the first segment drawn greyed that takes no click, it and every
+     *  one after it -- an option this state cannot reach, shown rather than hidden so the set does not change
+     *  shape. */
     void paintSegments(juce::Graphics& g, juce::Rectangle<float> area, std::initializer_list<const char*> names,
                        int selected, bool enabled, const std::function<void(int)>& choose, int unavailable = -1);
 
@@ -138,9 +139,14 @@ public:
                              int selected, bool enabled, const std::function<void(int)>& choose,
                              const std::function<void(int)>& reselect = {}, int unavailable = -1, int columns = 0);
 
-    /// An action, not a value: framed, and inert while disabled.
+    /// An action, not a value: framed, and inert while disabled. `on` draws it as a chosen block, for an action
+    /// that is running until clicked again.
     void paintButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled,
-                     std::function<void()> click);
+                     std::function<void()> click, bool on = false);
+    /// A button at its label's width with a note beside it, one row at the button's height; returns the row's bottom.
+    float paintButtonNote(juce::Graphics& g, juce::Rectangle<float> content, float y, const juce::String& label,
+                          bool enabled, std::function<void()> click, const juce::String& note,
+                          juce::Colour noteInk = theme::colour::label);
 
     /*  One parameter as a tile, drawn and made draggable. `name` overrides the manifest's, for a
      *  page that calls something by a shorter name than the host does. */
@@ -243,9 +249,9 @@ public:
         tileEnabled_[static_cast<std::size_t>(id)] = enabled;
     }
 
-    /*  The scratch a drag keeps between press and release. Protected because a page builds drags of
-     *  its own on values that are neither a host parameter nor a simple piece of state -- a
-     *  trajectory's shape parameters are one -- and they must feel identical to the shared ones. */
+    /*  The scratch a drag keeps between press and release, open to a page that builds drags of its own on
+     *  values that are neither a host parameter nor a simple piece of state -- a trajectory's shape
+     *  parameters are one -- and they must feel identical to the shared ones. */
     std::array<juce::Rectangle<float>, 2> stepAreas_{};
     EnvelopeGraph envelope_;
     juce::Point<float> dragFrom_{};  ///< where a state value's drag was pressed

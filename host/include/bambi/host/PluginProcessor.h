@@ -64,7 +64,7 @@ public:
     void releaseResources() override {}
     bool hasEditor() const override { return true; }
 
-    /// The plugin's own DSP load is measured round `renderBlock`, where it runs.
+    /// The plugin's own DSP load is measured around `renderBlock`, where it runs.
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) final;
     using AudioProcessor::processBlock;
 
@@ -81,6 +81,7 @@ public:
 
     //  ---- the patch, its history, and this instance on the bus -----------------------------
     Document& document() override { return document_; }
+    const Document& document() const { return document_; }
     /// The lock `committing` runs under, for a plugin that reads what it set there.
     std::mutex& committedMutex() const { return document_.committedMutex(); }
     LinkNode& link() { return link_; }
@@ -324,6 +325,8 @@ protected:
     }
     void gatherArrived(const float* interleaved, int frames) noexcept { arrivedWindow_.add(interleaved, frames); }
     void gatherLeaving(const float* interleaved, int frames) noexcept { addedWindow_.add(interleaved, frames); }
+    /// A block in which nothing left: a monitor adds nothing, and the window still has to fill.
+    void gatherNothingLeaving(int frames) noexcept { addedWindow_.advance(frames); }
     /// A window's worth has been gathered: publish it. A few hundred floats copied; nothing allocates.
     void publishEnergy() noexcept;
     void publishTurn(int slot, const RotationClock& turn) noexcept;

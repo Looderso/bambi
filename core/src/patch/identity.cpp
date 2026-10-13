@@ -11,6 +11,7 @@ std::string_view name(Product p) {
         case Product::Encoder: return "encoder";
         case Product::Echo: return "echo";
         case Product::Reverb: return "reverb";
+        case Product::Decoder: return "decoder";
         case Product::Unknown: break;
     }
     return "unknown";
@@ -20,6 +21,7 @@ Product productFromName(std::string_view s) {
     if (s == "encoder") return Product::Encoder;
     if (s == "echo") return Product::Echo;
     if (s == "reverb") return Product::Reverb;
+    if (s == "decoder") return Product::Decoder;
     return Product::Unknown;
 }
 

@@ -112,11 +112,12 @@ jobs:
           run "$(suite encoder bambi-plugin-check)"
           run "$(suite echo bambi-echo-check)"
           run "$(suite reverb bambi-reverb-check)"
+          run "$(suite decoder bambi-decoder-check)"
       - name: collect
         shell: bash
         run: |
           mkdir -p out/VST3 out/CLAP
-          for p in Encoder Echo Reverb; do
+          for p in Encoder Echo Reverb Decoder; do
             dir="build-plugin/plugins/$(echo "$p" | tr '[:upper:]' '[:lower:]')/Bambi${p}_artefacts/Release"
             cp -R "$dir/VST3/bambi $p.vst3" out/VST3/
             cp -R "$dir/CLAP/bambi $p.clap" out/CLAP/

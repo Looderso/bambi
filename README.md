@@ -2,7 +2,10 @@
 
 Intuitive yet powerful spatialization: a free and open-source ambisonics plugin suite. Every plugin shares one
 core, one look, one modulation matrix and a link between instances, and works in AmbiX at any order the host
-carries. VST3 and CLAP, on macOS, Windows and Linux.
+carries. VST3 and CLAP, on macOS, Windows and Linux. Four plugins: the **Encoder** places a source, **Echo**
+and **Reverb** are effects on the field, and the **Decoder** is the monitor — binaural with head tracking, or a
+loudspeaker layout. The Decoder's AirPods and phone tracking need macOS, where a helper app reads them; OSC
+tracking works everywhere.
 
 The website is **[bambi.wiki](https://bambi.wiki)**, with what each [plugin](https://bambi.wiki/plugins)
 does, and builds are on the [releases page](https://github.com/Looderso/bambi/releases). bambi is in **alpha**:

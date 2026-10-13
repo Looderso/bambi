@@ -43,9 +43,18 @@ Layout layout(const juce::AudioChannelSet& in, const juce::AudioChannelSet& side
     return l;
 }
 
+/// A decoder's: the field on its one input bus, no sidechain, and the output as wide as the host gives.
+Layout decoderLayout(const juce::AudioChannelSet& in, const juce::AudioChannelSet& out) {
+    Layout l;
+    l.inputBuses.add(in);
+    l.outputBuses.add(out);
+    return l;
+}
+
 juce::String describe(const Layout& l) {
-    return "in " + juce::String(l.getMainInputChannelSet().size()) + " | sc " +
-           juce::String(l.getChannelSet(true, 1).size()) + " | out " + juce::String(l.getMainOutputChannelSet().size());
+    juce::String s = "in " + juce::String(l.getMainInputChannelSet().size());
+    if (l.inputBuses.size() > 1) s += " | sc " + juce::String(l.getChannelSet(true, 1).size());
+    return s + " | out " + juce::String(l.getMainOutputChannelSet().size());
 }
 
 /*  The channel set for an order. JUCE's `ambisonic()` does not go all the way to kMaxHostOrder, and
@@ -82,7 +91,7 @@ Channels render(const Run& run, const Layout& l, int block, double seconds, bool
 
     const int inChannels = l.getMainInputChannelSet().size();
     const int outChannels = l.getMainOutputChannelSet().size();
-    const int sideChannels = l.getChannelSet(true, 1).size();
+    const int sideChannels = l.inputBuses.size() > 1 ? l.getChannelSet(true, 1).size() : 0;
     const int width = std::max({inChannels + sideChannels, outChannels, 1});
     const auto frames = static_cast<juce::int64>(seconds * kRate);
 
@@ -128,6 +137,18 @@ double energy(const Channels& c, std::size_t from = 0) {
     return sum;
 }
 
+/// The layout each shape means by "order N": a field effect the field in and out, the encoder a stereo source
+/// into the field, a decoder the field into a stereo pair.
+Layout atOrder(const Subject& s, int order) {
+    const auto stereo = juce::AudioChannelSet::stereo();
+    switch (s.kind) {
+        case Kind::Source: return layout(stereo, stereo, amb(order));
+        case Kind::FieldEffect: return layout(amb(order), stereo, amb(order));
+        case Kind::Decoder: return decoderLayout(amb(order), stereo);
+    }
+    return {};
+}
+
 //  ---- the six ----------------------------------------------------------------------------------
 
 /// 1 · the layouts it claims are accepted, and the ones it does not are refused.
@@ -137,29 +158,46 @@ void claimedLayouts(Run& r) {
     const auto accepts = [&proc](const Layout& l) { return proc->checkBusesLayoutSupported(l); };
 
     for (const int order : r.subject.orders) {
-        const auto in = r.subject.fieldEffect ? amb(order) : stereo;
-        const auto l = layout(in, stereo, amb(order));
+        const auto l = atOrder(r.subject, order);
         r.check(accepts(l), "order " + juce::String(order) + " accepted: " + describe(l));
+    }
+
+    if (r.subject.kind == Kind::Decoder) {
+        /*  The output is not the field: it is as wide as the host gives, two at least for a pair, and every output
+            is a set of channels on it. The input is the field at the order that fits, with spare channels. */
+        for (const int width : {2, 12, 18, 64})
+            r.check(accepts(decoderLayout(amb(3), juce::AudioChannelSet::discreteChannels(width))),
+                    "an output of " + juce::String(width) + " channels, whatever the input's order, is accepted");
+        r.check(!accepts(decoderLayout(amb(3), juce::AudioChannelSet::mono())), "a one-channel output refused");
+        r.check(!accepts(decoderLayout(amb(3), juce::AudioChannelSet::discreteChannels(65))),
+                "an output wider than 64 refused");
+        r.check(accepts(decoderLayout(juce::AudioChannelSet::discreteChannels(10), stereo)),
+                "an input width between orders is accepted, at the order that fits");
+        r.check(!accepts(decoderLayout(juce::AudioChannelSet::disabled(), stereo)), "no input refused");
+        r.check(!accepts(decoderLayout(amb(3), juce::AudioChannelSet::disabled())), "no output refused");
+        r.check(proc->getBusCount(true) == 1, "one input bus, the field: a decoder has no sidechain");
+        return;
     }
 
     /*  A width that is not a whole order is still accepted on the output and the extra channels left
      *  silent: a REAPER track has only even channel counts, so orders 2, 4, 6, 8 and 10 could never
      *  be asked for otherwise. The encoder alone can take one, since an effect's input must match
      *  its output exactly. */
-    if (!r.subject.fieldEffect) {
+    const bool fieldEffect = r.subject.kind == Kind::FieldEffect;
+    if (!fieldEffect) {
         const auto l = layout(stereo, stereo, juce::AudioChannelSet::discreteChannels(10));
         r.check(accepts(l), "a width between orders is accepted, the rest left silent: " + describe(l));
     }
 
     Layout noOutput;
-    noOutput.inputBuses.add(r.subject.fieldEffect ? amb(3) : stereo);
+    noOutput.inputBuses.add(fieldEffect ? amb(3) : stereo);
     noOutput.inputBuses.add(stereo);
     noOutput.outputBuses.add(juce::AudioChannelSet::disabled());
     r.check(!accepts(noOutput), "no output refused");
 
     //  A sidechain that is not connected is a layout a host may ask for, and must be accepted.
     Layout noSide;
-    noSide.inputBuses.add(r.subject.fieldEffect ? amb(3) : stereo);
+    noSide.inputBuses.add(fieldEffect ? amb(3) : stereo);
     noSide.inputBuses.add(juce::AudioChannelSet::disabled());
     noSide.outputBuses.add(amb(3));
     r.check(accepts(noSide), "a sidechain that is not connected: " + describe(noSide));
@@ -171,7 +209,18 @@ void wideMainInput(Run& r) {
     const auto stereo = juce::AudioChannelSet::stereo();
     const auto accepts = [&proc](const Layout& l) { return proc->checkBusesLayoutSupported(l); };
 
-    if (r.subject.fieldEffect) {
+    if (r.subject.kind == Kind::Decoder) {
+        /*  The main input IS the field, and the output's width has nothing to do with it: a host may give the
+            decoder a 16-channel field and a stereo output, or a 4-channel field and a 36-channel bus. A decoder
+            that tied the two would be an effect, and a host that renegotiated the output on an input change
+            would lose the loudspeakers' channels. */
+        r.check(accepts(decoderLayout(amb(3), stereo)),
+                "a wide field into a pair: " + describe(decoderLayout(amb(3), stereo)));
+        r.check(accepts(decoderLayout(amb(1), amb(5))),
+                "a narrow field into a wide bus: " + describe(decoderLayout(amb(1), amb(5))));
+        return;
+    }
+    if (r.subject.kind == Kind::FieldEffect) {
         /*  For a field effect the main input is the field, so the property takes the form "in must
             equal out": a plugin that accepted a different width would be answering a question it
             was not asked, and a host could then hand it a main bus wider than the field. */
@@ -192,10 +241,14 @@ void wideMainInput(Run& r) {
 
 /// 3 · the sidechain arrives, at every order, on its own bus.
 void sidechainAtEveryOrder(Run& r) {
-    const auto stereo = juce::AudioChannelSet::stereo();
+    if (r.subject.kind == Kind::Decoder) {
+        //  Nothing drives a decoder but the field: there is no bus for a sidechain to arrive on, which check 1 saw.
+        auto proc = r.make();
+        r.check(proc->getBusCount(true) == 1, "no sidechain bus, so nothing to feed");
+        return;
+    }
     for (const int order : {1, 3, 5}) {
-        const auto in = r.subject.fieldEffect ? amb(order) : stereo;
-        const auto l = layout(in, stereo, amb(order));
+        const auto l = atOrder(r.subject, order);
 
         /*  Audio on the sidechain bus alone, with the main input silent. What it must not do is
             reach the output as if it were the input: the sidechain drives detectors, never the
@@ -206,27 +259,29 @@ void sidechainAtEveryOrder(Run& r) {
     }
 }
 
-/// 4 · channels beyond the order are silent.
+/// 4 · channels beyond the order are silent; for a decoder, channels no output writes.
 void unusedOutputsSilent(Run& r) {
     /*  An in-place host hands over the same memory for input and output channels, so a plugin that
         simply did not write the channels past its order would leave the input's audio in them. */
     const auto stereo = juce::AudioChannelSet::stereo();
     const int order = 2;   // 9 channels
-    const int width = 12;  // three spare
+    const int width = 12;  // three spare; for a decoder, ten past the headphones' pair
+    const bool decoder = r.subject.kind == Kind::Decoder;
     Layout l;
-    l.inputBuses.add(r.subject.fieldEffect ? amb(order) : stereo);
-    l.inputBuses.add(stereo);
+    l.inputBuses.add(r.subject.kind == Kind::Source ? stereo : amb(order));
+    if (!decoder) l.inputBuses.add(stereo);
     l.outputBuses.add(juce::AudioChannelSet::discreteChannels(width));
 
     auto proc = r.make();
     if (!proc->setBusesLayout(l)) {
         /*  A field effect cannot take this layout at all -- its input must match its output, and 12
             is not a whole order. That is a stronger answer than silence, and it is checked above. */
-        r.check(r.subject.fieldEffect, "a width between orders is refused outright, which is stronger");
+        r.check(r.subject.kind == Kind::FieldEffect, "a width between orders is refused outright, which is stronger");
         return;
     }
     const auto out = render(r, l, 128, 0.2);
-    const int used = bambi::numChannels(bambi::host::orderThatFits(width));
+    //  a fresh decoder plays its headphones on the first pair and nothing else
+    const int used = decoder ? 2 : bambi::numChannels(bambi::host::orderThatFits(width));
     bool silent = static_cast<int>(out.size()) == width;
     for (int c = used; c < width && silent; ++c)
         for (const float v : out[static_cast<std::size_t>(c)])
@@ -239,8 +294,7 @@ void unusedOutputsSilent(Run& r) {
 
 /// 5 · output does not depend on the host's block size.
 void blockSizeIndependent(Run& r) {
-    const auto stereo = juce::AudioChannelSet::stereo();
-    const auto l = layout(r.subject.fieldEffect ? amb(3) : stereo, stereo, amb(3));
+    const auto l = atOrder(r.subject, 3);
     const auto reference = render(r, l, 128, 0.5);
     r.check(!reference.empty(), "renders at block 128");
     for (const int block : {1, 64, 333, 1024})
@@ -253,8 +307,7 @@ void offlineEqualsRealtime(Run& r) {
     /*  Reverb deliberately renders a better tail offline when it is asked to, which is a setting
         and not a difference in what a block does -- at its default, and for every plugin, offline
         and realtime are the same samples. */
-    const auto stereo = juce::AudioChannelSet::stereo();
-    const auto l = layout(r.subject.fieldEffect ? amb(3) : stereo, stereo, amb(3));
+    const auto l = atOrder(r.subject, 3);
     const auto realtime = render(r, l, 256, 0.5, false);
     const auto bounced = render(r, l, 512, 0.5, true);
     r.check(identical(realtime, bounced), "an offline bounce is sample for sample what was heard");

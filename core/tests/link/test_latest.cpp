@@ -101,3 +101,27 @@ TEST_CASE("under contention a reader never sees a torn value, and never goes bac
     CHECK(torn == 0);
     CHECK(backwards == 0);
 }
+
+TEST_CASE("a value published in place is read in place, and the reader keeps its slot until it asks again") {
+    //  Catches: latest() handing back a slot the writer may be filling, or hasFresh() cleared by anyone but the reader.
+    LatestValue<std::array<int, 4>> v;
+    CHECK(v.latest() == nullptr);
+    CHECK_FALSE(v.hasFresh());
+    v.staging() = {1, 2, 3, 4};
+    v.publish();
+    CHECK(v.hasFresh());
+    const std::array<int, 4>* first = v.latest();
+    REQUIRE(first != nullptr);
+    CHECK((*first)[2] == 3);
+    CHECK_FALSE(v.hasFresh());
+    CHECK(v.latest() == nullptr);
+    v.staging() = {5, 6, 7, 8};
+    v.publish();
+    v.staging() = {9, 10, 11, 12};  // the writer's new slot is never the reader's
+    CHECK(&v.staging() != first);
+    CHECK((*first)[0] == 1);
+    const std::array<int, 4>* second = v.latest();
+    REQUIRE(second != nullptr);
+    CHECK((*second)[0] == 5);
+    CHECK(second != first);
+}

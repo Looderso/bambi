@@ -102,18 +102,17 @@ float EnvelopeGraph::paint(ParameterPage& page, juce::Graphics& g, juce::Rectang
         handles_[index(grab)] = where;
         return where;
     };
-    //  every point and curve handle in the handle ink, the one held in the touched colour; the curve itself
-    //  is `output`, the same role as the bar above it
-    for (const auto grab : {EnvelopeGrab::AttackCurve, EnvelopeGrab::DecayCurve, EnvelopeGrab::ReleaseCurve}) {
-        g.setColour(grab == held_ ? colour::touched : colour::handle);
-        diamond(g, handle(grab), ctl::envelopeHandle);
-    }
+    //  every point and curve handle in the handle ink, the one held larger; the curve itself is `output`,
+    //  the same role as the bar above it
+    const auto grow = [this](EnvelopeGrab grab) { return grab == held_ ? theme::scene::handleHotGrow : 0.0f; };
+    g.setColour(colour::handle);
+    for (const auto grab : {EnvelopeGrab::AttackCurve, EnvelopeGrab::DecayCurve, EnvelopeGrab::ReleaseCurve})
+        diamond(g, handle(grab), ctl::envelopeHandle + grow(grab));
     for (const auto grab :
          {EnvelopeGrab::Attack, EnvelopeGrab::DecaySustain, EnvelopeGrab::SustainEdge, EnvelopeGrab::Release}) {
         const auto at = handle(grab);
-        g.setColour(grab == held_ ? colour::touched : colour::handle);
-        g.fillEllipse(at.x - ctl::envelopePoint, at.y - ctl::envelopePoint, 2.0f * ctl::envelopePoint,
-                      2.0f * ctl::envelopePoint);
+        const auto r = ctl::envelopePoint + grow(grab);
+        g.fillEllipse(at.x - r, at.y - r, 2.0f * r, 2.0f * r);
     }
     //  every handle takes a drag, captured by value: a gesture outlives the paint that registered
     //  it, and a lambda holding this paint's rectangle by reference reads a dead local on the first drag

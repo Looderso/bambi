@@ -15,7 +15,7 @@ namespace bambi {
 
 /// Which plugin an instance is. A document says which product wrote it so a patch from another
 /// plugin is refused rather than half-applied, and a version number reads against that plugin's meaning.
-enum class Product : std::uint32_t { Unknown = 0, Encoder = 1, Echo = 2, Reverb = 3 };
+enum class Product : std::uint32_t { Unknown = 0, Encoder = 1, Echo = 2, Reverb = 3, Decoder = 4 };
 
 std::string_view name(Product p);
 Product productFromName(std::string_view s);

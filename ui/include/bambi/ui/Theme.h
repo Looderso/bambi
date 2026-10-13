@@ -11,14 +11,14 @@
     uses is named here and nowhere else. Code asks for a ROLE -- "the selected source", "a rule" --
     never for a hex value or a pixel size, so a change of look is an edit to this file.
     tools/check-style.sh fails if a literal colour, type size or corner radius turns up anywhere
-    else in plugin/Source.
+    else in ui/, editor/ or plugins/.
 
     Two layers of colour:
       palette  the raw colours, named for what they ARE
       colour   what each one is FOR. Repoint a role to change one use; change the palette to
                recolour everything that shares it.
 
-    The direction is Otl Aicher / HfG Ulm: light ground, black line work, structure by rules and
+    The direction is Ulm-school modernism: light ground, black line work, structure by rules and
     alignment rather than boxes, no rounding, no shadows, no gradients.
 */
 // clang-format off: every value is laid out as a table, which the formatter would flatten.
@@ -28,129 +28,132 @@ namespace bambi::ui::theme
 // ---- palette: Munich 1972 on warm off-white ----------------------------------------------
 namespace palette
 {
-    inline const juce::Colour offWhite  { 0xffefede7 };
-    inline const juce::Colour stone     { 0xffe5e2db };
-    inline const juce::Colour sandLight { 0xffe1ddd4 };
-    inline const juce::Colour sand      { 0xffd5d1c8 };
-    inline const juce::Colour greyLight { 0xffc8c4ba };
-    inline const juce::Colour greyMid   { 0xffb7b2a8 };
-    inline const juce::Colour silver    { 0xffa9a59c };
-    inline const juce::Colour greyDark  { 0xff6f6b62 };
-    inline const juce::Colour black     { 0xff1b1a17 };
+    //  the neutrals, light to dark: every grey is warm
+    inline const juce::Colour paper { 0xffefede7 };
+    inline const juce::Colour grey1 { 0xffe5e2db };
+    inline const juce::Colour grey2 { 0xffe1ddd4 };
+    inline const juce::Colour grey3 { 0xffd5d1c8 };
+    inline const juce::Colour grey4 { 0xffc8c4ba };
+    inline const juce::Colour grey5 { 0xffb7b2a8 };
+    inline const juce::Colour grey6 { 0xffa9a59c };
+    inline const juce::Colour grey7 { 0xff6f6b62 };
+    inline const juce::Colour ink   { 0xff1b1a17 };
+
     inline const juce::Colour blue      { 0xff5e8bae };
     inline const juce::Colour blueDeep  { 0xff3f6a8c };
     inline const juce::Colour orange    { 0xffd4873a };
-    inline const juce::Colour green     { 0xff7ea47e };
-    inline const juce::Colour violet    { 0xff8b7ba8 };
-    //  each plugin's own: the encoder's is `blue`
-    inline const juce::Colour reverbViolet { 0xff967bb2 };
-    inline const juce::Colour echoSage     { 0xff6f9a74 };
+    inline const juce::Colour sage      { 0xff6f9a74 };
+    inline const juce::Colour violet    { 0xff967bb2 };
 } // namespace palette
 
 // ---- colour roles ---------------------------------------------------------------------------
 namespace colour
 {
     // surfaces
-    inline const juce::Colour ground      = palette::offWhite;   ///< the window
-    inline const juce::Colour panel       = palette::stone;      ///< globe, equirect, meter well
-    inline const juce::Colour highlight   = palette::stone;      ///< selected row, provisional parameter
+    inline const juce::Colour ground      = palette::paper;      ///< the window
+    inline const juce::Colour panel       = palette::grey1;      ///< globe, equirect, meter well
+    inline const juce::Colour highlight   = palette::grey1;      ///< selected row, provisional parameter
 
     // ink
-    inline const juce::Colour text        = palette::black;
-    inline const juce::Colour label       = palette::greyDark;   ///< lowercase labels, units
-    inline const juce::Colour textInverse = palette::offWhite;   ///< on a filled segment or chip
+    inline const juce::Colour text        = palette::ink;
+    inline const juce::Colour label       = palette::grey7;      ///< lowercase labels, units
+    inline const juce::Colour textInverse = palette::paper;      ///< on a filled segment or chip
 
     // structure
-    inline const juce::Colour ruleStrong  = palette::black;      ///< section boundaries
-    inline const juce::Colour rule        = palette::greyLight;  ///< dividers inside a section
-    inline const juce::Colour rowDivider  = palette::sandLight;  ///< between matrix rows
-    inline const juce::Colour track       = palette::sand;       ///< the unset part of a control's bar
-    inline const juce::Colour barTick     = palette::greyMid;    ///< where a signed value's zero is
-    inline const juce::Colour valueFill   = palette::black;      ///< the set part of a control's bar
-    inline const juce::Colour liveValue   = palette::orange;     ///< where the engine has the value now
+    inline const juce::Colour ruleStrong  = palette::ink;        ///< section boundaries
+    inline const juce::Colour rule        = palette::grey4;      ///< dividers inside a section
+    inline const juce::Colour rowDivider  = palette::grey2;      ///< between matrix rows
+    inline const juce::Colour track       = palette::grey3;      ///< the unset part of a control's bar
+    inline const juce::Colour barTick     = palette::grey5;      ///< where a signed value's zero is
+    inline const juce::Colour valueFill   = palette::ink;        ///< the set part of a control's bar
+    inline const juce::Colour negativeFill = palette::grey7;     ///< a negative weight, beside `valueFill`'s positive
+
+    /*  What is happening now or is in hand: one grey, so it never clashes with a plugin's own colour.
+        A mark of it over a fill is ringed in the ground, so it reads over ink and the modulated range.
+        What is held is not grey -- that would read as disabled -- but stays ink and grows. */
+    inline const juce::Colour now         = palette::grey7;
+    inline const juce::Colour liveValue   = now;                 ///< where the engine has the value now
+    inline const juce::Colour touched     = now;                 ///< the ring round the selected or hovered node
+    inline const juce::Colour insertMark  = now;                 ///< where a click would insert a node
+    inline const juce::Colour learning    = now;                 ///< learn, waiting for a note
+    inline const juce::Colour meterPeak   = now;
+
+    /*  The scene's two colours: what arrived at the plugin is orange, what the plugin adds is blue.
+        The encoder's source is what goes in, and the probe is a signal sent in, so both are `in`. */
+    inline const juce::Colour in          = palette::orange;
+    inline const juce::Colour added       = palette::blue;
 
     // the sphere
-    inline const juce::Colour sphere        = palette::black;      ///< outline and frame
-    inline const juce::Colour graticuleMain = palette::greyMid;    ///< equator, centre lines
-    inline const juce::Colour graticule     = palette::greyLight;
-    inline const juce::Colour axisLabel     = palette::greyDark;   ///< b · l · f · r
-    inline const juce::Colour trajectory    = palette::blue;       ///< the selected instance's path
-    inline const juce::Colour source        = palette::orange;     ///< the selected instance's source
-    inline const juce::Colour otherInstance = palette::silver;     ///< other instances' paths, sources, labels
-    inline const juce::Colour node          = palette::black;      ///< a custom chain's nodes, while editing
-    inline const juce::Colour nodeFill      = palette::offWhite;
-    inline const juce::Colour handle        = palette::black;      ///< what is grabbed to reshape: a node's handles and stems, a region's handles, an envelope's points
-    inline const juce::Colour insertMark    = palette::orange;     ///< where a click would insert a node
-    inline const juce::Colour touched       = palette::orange;     ///< the node or handle being held, or the node selected
-    inline const juce::Colour width         = palette::orange;     ///< the selected source's width, filled faintly
-    /// The added colour: the incoming field is orange and what a plugin adds is blue.
-    inline const juce::Colour added         = palette::blue;
-    /// and what arrived at the plugin: the other half of the pair.
-    inline const juce::Colour sceneIn       = palette::orange;
-    /// The ping: a signal sent into the plugin, so it takes the incoming field's orange. The
-    /// encoder's orange is its source, which is also what goes in, and the encoder has no ping.
-    inline const juce::Colour probe         = palette::orange;
+    inline const juce::Colour sphere        = palette::ink;      ///< outline and frame
+    inline const juce::Colour graticuleMain = palette::grey5;    ///< equator, centre lines
+    inline const juce::Colour graticule     = palette::grey4;
+    inline const juce::Colour axisLabel     = palette::grey7;    ///< b · l · f · r
+    inline const juce::Colour trajectory    = palette::ink;      ///< the selected instance's path: structure, not signal
+    inline const juce::Colour source        = in;                ///< the selected instance's source
+    inline const juce::Colour width         = in;                ///< the selected source's width, filled faintly
+    inline const juce::Colour probe         = in;
+    inline const juce::Colour otherInstance = palette::grey6;    ///< other instances' paths, sources, labels
+    inline const juce::Colour node          = palette::ink;      ///< a custom chain's nodes, while editing
+    inline const juce::Colour nodeFill      = palette::paper;
+    inline const juce::Colour handle        = palette::ink;      ///< what is grabbed to reshape: a node's handles and stems, a region's handles, an envelope's points
 
     /// A region is drawn in ink, so colour stays with `in` and `added`. Structure, not signal.
-    inline const juce::Colour regionEdge    = palette::black;   ///< its 0.5 contour
-    inline const juce::Colour regionWash    = palette::black;   ///< the side that passes
-    inline const juce::Colour regionLabel   = palette::black;
+    inline const juce::Colour regionEdge    = palette::ink;     ///< its 0.5 contour
+    inline const juce::Colour regionWash    = palette::ink;     ///< the side that passes
+    inline const juce::Colour regionLabel   = palette::ink;
 
-    /// What a plugin ANSWERS when the probe is pointed, in as many colours as it has things to
-    /// answer with. They step AROUND the added-blue rather than away from it: all one family, none
-    /// of them the wash's own colour at full strength.
-    inline const std::array<juce::Colour, 4> answerFamily{
-        juce::Colour(0xff7f6fa6), juce::Colour(0xff4a7ba0),
-        juce::Colour(0xff5f927f), juce::Colour(0xffa2708a)};
+    /// When the probe is pointed, a plugin answers with its own parts -- Echo's taps, Reverb's reflections --
+    /// and the selected part is in the plugin's own colour (`answer()`, below), the rest in this grey.
+    inline const juce::Colour answerOther   = palette::grey7;
 
     // modulation: its colour is the plugin's own, below
-    inline const juce::Colour elsewhere   = palette::greyDark;   ///< "has depth on another matrix tab"
-    inline const juce::Colour emptyCell   = palette::stone;
+    inline const juce::Colour elsewhere   = palette::grey7;      ///< "has depth on another matrix tab"
+    inline const juce::Colour emptyCell   = palette::grey1;
 
     // state
-    inline const juce::Colour inactive    = palette::silver;     ///< unselected selection bar, disabled glyph
-    inline const juce::Colour ok          = palette::black;      ///< link healthy
-    inline const juce::Colour link        = palette::blue;
-    inline const juce::Colour linkHover   = palette::blueDeep;
+    inline const juce::Colour inactive    = palette::grey6;      ///< unselected selection bar, disabled glyph
+    inline const juce::Colour ok          = palette::ink;        ///< the link bus healthy
+    inline const juce::Colour action      = palette::blue;       ///< text that does something when clicked
 
     // meter
-    inline const juce::Colour meterFill   = palette::black;
-    inline const juce::Colour meterPeak   = palette::orange;
-    inline const juce::Colour meterTick   = palette::greyLight;
+    inline const juce::Colour meterFill   = palette::ink;
+    inline const juce::Colour meterTick   = palette::grey4;
 
     // controls
-    inline const juce::Colour chosen      = palette::black;      ///< the open tab, the chosen segment, a toggle that is on, the loaded row of a list; a row that merely selects is `highlight`
-    inline const juce::Colour provisional = palette::silver;     ///< a provisional matrix row's dashed outline
+    inline const juce::Colour chosen      = palette::ink;        ///< the open tab, the chosen segment, a toggle that is on, the loaded row of a list; a row that merely selects is `highlight`
+    inline const juce::Colour provisional = palette::grey6;      ///< a provisional matrix row's dashed outline
 
     // a source's settings: sources · generators
-    inline const juce::Colour envelopeGrid  = palette::greyLight; ///< its axis, and a line at each stage's edge
-    inline const juce::Colour learning      = palette::orange;   ///< learn, waiting for a note
+    inline const juce::Colour envelopeGrid  = palette::grey4;    ///< its axis, and a line at each stage's edge
 
     /*  Which plugin this is: the rule under the header and the rule over the footer, and what modulates,
-        in the plugin's own colour. */
+        in the plugin's own colour. The encoder, where sound comes in, wears the incoming orange; the
+        decoder, where it goes out, the added blue. */
     inline juce::Colour identity(Product p)
     {
         switch (p)
         {
-            case Product::Reverb:  return palette::reverbViolet;
-            case Product::Echo:    return palette::echoSage;
-            case Product::Encoder: return palette::blue;
-            case Product::Unknown: return palette::blue;
+            case Product::Encoder: return palette::orange;
+            case Product::Echo:    return palette::sage;
+            case Product::Reverb:  return palette::violet;
+            case Product::Decoder: return palette::blue;
+            case Product::Unknown: return palette::grey7;
         }
-        return palette::blue;
+        return palette::grey7;
     }
 
     /*  This plugin's colour, for what it wears besides its rules. Set once by the editor before anything
         paints; one binary is one plugin, so every window in it shares the value. */
-    inline juce::Colour& accentSlot()
+    inline juce::Colour& identitySlot()
     {
-        static juce::Colour accent = palette::blue;
-        return accent;
+        static juce::Colour own = palette::grey7;
+        return own;
     }
-    inline void setAccent(Product p) { accentSlot() = identity(p); }
-    inline juce::Colour modulation() { return accentSlot(); }  ///< cell depth, source amount, modulated range
-    inline juce::Colour output()     { return accentSlot(); }  ///< a source's live output, its level and its curve
-    inline juce::Colour selected()   { return accentSlot(); }  ///< a selected row's bar, the open source's column
+    inline void setIdentity(Product p) { identitySlot() = identity(p); }
+    inline juce::Colour modulation() { return identitySlot(); }  ///< cell depth, source amount, modulated range
+    inline juce::Colour output()     { return identitySlot(); }  ///< a source's live output, its level and its curve
+    inline juce::Colour selected()   { return identitySlot(); }  ///< a selected row's bar, the open source's column
+    inline juce::Colour answer()     { return identitySlot(); }  ///< the probe's answer: the selected tap, every reflection
 } // namespace colour
 
 // ---- type ----------------------------------------------------------------------------------
@@ -176,7 +179,7 @@ namespace type
     inline constexpr float trackingHeading  = 0.20f;
     inline constexpr float trackingWordmark = 0.30f;
 
-    //  the P2 diagnostic readout, monospaced; goes when the real editor arrives
+    //  the diagnostic readout, monospaced
     inline constexpr float readout      = 15.0f;
     inline constexpr float readoutSmall = 12.0f;
 } // namespace type
@@ -191,8 +194,8 @@ namespace stroke
     inline constexpr float trajectory   = 1.6f;
     inline constexpr float otherPath    = 1.0f;
     inline constexpr float otherPathDash[2] = { 3.0f, 4.0f };   ///< other instances' paths are dashed
-    /*  Another instance's region is dotted more tightly than its path: a silver dashed region was
-        indistinguishable from a silver dashed path. */
+    /*  Another instance's region is dotted more tightly than its path, so a dashed region and a dashed
+        path do not read alike. */
     inline constexpr float foreignRegionDash[2] = { 1.0f, 3.0f };
     inline constexpr float unplacedDash[2] = { 3.0f, 3.0f };   ///< the probe's ring before it is placed
     inline constexpr float toggle       = 1.3f;   ///< an unset toggle square's outline
@@ -202,6 +205,8 @@ namespace stroke
     inline constexpr float selectionBar = 3.0f;   ///< an instance row
     inline constexpr float barTick      = 1.0f;   ///< the zero a signed value fills from
     inline constexpr float liveMark     = 2.5f;   ///< where the engine has a value now: over the fill
+    inline constexpr float liveHalo     = 1.0f;   ///< the ground around it, so it reads over any fill
+    inline constexpr float selectedRing = 2.0f;   ///< round the selected node; a hovered one's is a `rule`
     inline constexpr float meterPeak    = 2.0f;
     inline constexpr float curve        = 1.8f;   ///< an LFO's wave, an envelope's outline
 } // namespace stroke
@@ -279,11 +284,15 @@ namespace scene
     inline constexpr float nodeEndRing    = 9.5f;    ///< an open path's two derived endpoints
     inline constexpr float nodeHoverRing  = 10.0f;
     inline constexpr float handleRadius   = 4.0f;
-    inline constexpr float handleHotGrow  = 1.5f;    ///< a region handle hovered or held, larger by this
+    inline constexpr float handleHotGrow  = 1.5f;    ///< a handle or point hovered or held, larger by this
     inline constexpr float insertRadius   = 7.0f;
     inline constexpr float insertCross    = 3.0f;
     inline constexpr int   handleStem     = 12;      ///< points in a handle's stem: it follows the sphere
     inline constexpr float noticeInset    = 10.0f;
+    //  the decoder's scene: the head at the globe's centre and the sources it draws
+    inline constexpr float headRadiusPad       = 4.0f;   ///< the head's circle is a source dot this much wider
+    inline constexpr float eyeRadius           = 2.0f;   ///< the head's two eyes
+    inline constexpr float otherSourceLabelWidth = 80.0f;  ///< room for another instance's label beside its dot
 } // namespace scene
 
 // ---- controls: the matrix and the parameter tabs ---------------------------------------------
@@ -386,6 +395,10 @@ namespace controls
     inline constexpr float hysteresisDragSpan = 0.5f;
     inline constexpr float triggerStep        = 0.01f;
     inline constexpr float handleStep         = 0.002f;   ///< a handle length, in radians
+    //  the decoder's orientation strip and its loudspeaker table
+    inline constexpr float pairChoiceWidth = 112.0f;  ///< the strip's two-entry segments row: head · scene
+    inline constexpr float tableColumns[6] = {24.0f, 40.0f, 40.0f, 40.0f, 40.0f, 44.0f};  ///< ch, az, el, dist, gain, delay
+    inline constexpr float learnSlotWidth  = 44.0f;   ///< a learned address's slot column
 } // namespace controls
 
 // ---- the settings page -------------------------------------------------------------------------
@@ -440,11 +453,10 @@ namespace header
     inline constexpr float dividerHeight = 16.0f;
     inline constexpr float statusSquare  = 7.0f;
     inline constexpr float glyphBox      = 15.0f;
-    //  the plugin's icon, before the wordmark. Reserved and not drawn: each plugin is getting one,
-    //  and a square of the right size held open now is what keeps the header from moving when they arrive
+    //  the plugin's icon, before the wordmark
     inline constexpr float iconBox       = 16.0f;
 
-    //  The instance tabs, in the middle the header already had spare.
+    //  The instance tabs, in the middle of the header.
     inline constexpr float tabGap      = 2.0f;
     inline constexpr float tabMinWidth = 62.0f;    ///< narrower than this and a track name says nothing
     inline constexpr float tabMaxWidth = 132.0f;
@@ -457,6 +469,7 @@ namespace header
     inline constexpr float presetStep  = 14.0f;    ///< the preset's chevron box, either side of its name
     inline constexpr float chevronW    = 4.0f;
     inline constexpr float chevronH    = 5.0f;
+    inline constexpr float toggleWell = 2.0f;  ///< a tab's play square: the black square's inset in its white well
 } // namespace header
 
 // ---- the output meter, in every plugin ---------------------------------------------------------
@@ -471,6 +484,10 @@ namespace meter
     inline constexpr float  valueTop     = 12.0f;
     inline constexpr float  unitGap      = 10.0f;
     inline constexpr float  footer       = 20.0f;
+    inline constexpr float  channelInset = 5.0f;   ///< a per-channel well, in from the column's sides
+    inline constexpr float  channelGap   = 1.0f;   ///< between per-channel bars; none past denseFrom channels
+    inline constexpr int    denseFrom    = 40;
+    inline constexpr float  pairGap      = 6.0f;   ///< between the two bars of a pair, each a meterBar wide
 } // namespace meter
 
 // ---- spacing and layout, px at 1x --------------------------------------------------------------

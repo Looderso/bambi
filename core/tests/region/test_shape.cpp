@@ -15,11 +15,7 @@ namespace {
  *  exactly where a band's and a sector's edges live. */
 std::vector<Vec3> everywhere(int n = 400) {
     std::vector<Vec3> out;
-    const double ga = kPi * (3.0 - std::sqrt(5.0));
-    for (int i = 0; i < n; ++i) {
-        const double z = 1.0 - 2.0 * (i + 0.5) / n, r = std::sqrt(std::max(0.0, 1.0 - z * z));
-        out.push_back({r * std::cos(i * ga), r * std::sin(i * ga), z});
-    }
+    fibonacciSphere(n, out);
     return out;
 }
 

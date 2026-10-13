@@ -96,7 +96,7 @@ float ParameterPage::paintRetrigger(juce::Graphics& g, juce::Rectangle<float> co
     noteControl(retrigger, area, enabled);  // it has no tile, but it is where a click changes it
     y += ctl::segmentHeight + ctl::sectionGap;
     if (continues && enabled) {
-        const auto line = theme::type::label * ctl::noticeLineHeight;
+        const auto line = noteLineHeight();
         text(g, "runs on through play and locate: a bounce will differ", labelFont(), colour::label,
              {content.getX(), y, content.getWidth(), line});
         y += line + ctl::sectionGap;
@@ -106,7 +106,7 @@ float ParameterPage::paintRetrigger(juce::Graphics& g, juce::Rectangle<float> co
 }
 
 float ParameterPage::paintHint(juce::Graphics& g, juce::Rectangle<float> content, const juce::String& hint) {
-    const auto line = theme::type::label * ctl::noticeLineHeight;
+    const auto line = noteLineHeight();
     const auto f = labelFont();
     if (textWidth(f, hint) <= content.getWidth()) {
         text(g, hint, f, colour::label, content.withHeight(line));
@@ -157,7 +157,7 @@ void ParameterPage::paintSegments(juce::Graphics& g, juce::Rectangle<float> area
     for (const auto* name : names) labels.emplace_back(name);
     const auto cells = drawSegments(g, area, labels, selected, enabled, unavailable);
     for (int i = 0; i < static_cast<int>(cells.size()); ++i)
-        if (enabled && i != unavailable && i != selected)
+        if (enabled && (unavailable < 0 || i < unavailable) && i != selected)
             addRegion({cells[static_cast<std::size_t>(i)], {}, {}, {}, [choose, i] { choose(i); }, {}});
     noteContentBottom(area.getBottom() + scroll());
 }
@@ -170,7 +170,7 @@ ParameterPage::PickerLayout ParameterPage::paintPicker(juce::Graphics& g, float 
     const auto cells = drawSegmentLines(g, x, y, width, names, selected, enabled, unavailable, columns);
     for (int i = 0; i < static_cast<int>(cells.size()); ++i) {
         const auto& cell = cells[static_cast<std::size_t>(i)];
-        if (!enabled || i == unavailable) continue;
+        if (!enabled || (unavailable >= 0 && i >= unavailable)) continue;
         if (i != selected)
             addRegion({cell, {}, {}, {}, [choose, i] { choose(i); }, {}});
         else if (reselect)
@@ -181,9 +181,20 @@ ParameterPage::PickerLayout ParameterPage::paintPicker(juce::Graphics& g, float 
     return {cells, bottom};
 }
 
+float ParameterPage::paintButtonNote(juce::Graphics& g, juce::Rectangle<float> content, float y,
+                                     const juce::String& label, bool enabled, std::function<void()> click,
+                                     const juce::String& note, juce::Colour noteInk) {
+    const juce::Rectangle<float> button{content.getX(), y, framedButtonWidth(label), ctl::buttonHeight};
+    paintButton(g, button, label, enabled, std::move(click));
+    const float x = button.getRight() + static_cast<float>(theme::space::grid);
+    text(g, note, labelFont(), noteInk, {x, y, content.getRight() - x, ctl::buttonHeight},
+         juce::Justification::centredLeft);
+    return y + ctl::buttonHeight;
+}
+
 void ParameterPage::paintButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled,
-                                std::function<void()> click) {
-    drawFramedButton(g, area, label, enabled);
+                                std::function<void()> click, bool on) {
+    drawFramedButton(g, area, label, enabled, on);
     if (enabled) addRegion({area, {}, {}, {}, std::move(click), {}});
 }
 
@@ -327,10 +338,10 @@ void ParameterPage::onDefaultRestored(ParamId id) {
 }
 
 float ParameterPage::paintSourceTab(juce::Graphics& g, float x, const SourceTab& tab) {
-    if (!tab.select) return x;  // no source open: the bar is the three tabs and nothing else
+    if (!tab.select) return x;  // no source open: the bar is the plugin's own tabs and nothing else
     const auto tabFont = font(theme::type::body, theme::type::trackingTab);
-    //  a source's settings: a temporary tab, and a cross back to the tab it replaced
-    //  Step to the next source without going back to the matrix for it.
+    //  a source's settings: a temporary tab, a chevron either side to step to another source without going
+    //  back to the matrix, and a cross back to the tab it replaced
     const auto chevron = [&](juce::Rectangle<float> area, bool forward) {
         const auto mid = area.getCentreY();
         const auto near = forward ? area.getX() : area.getRight();

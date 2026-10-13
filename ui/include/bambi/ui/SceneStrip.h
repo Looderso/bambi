@@ -44,7 +44,9 @@ struct SceneStripAreas {
     juce::Rectangle<float> regions, energy, full;
 };
 
-SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection projection, const SceneViewState& view);
+/// `withRegions` false leaves the `regions always` toggle out, for a plugin that has no regions to show on its scene.
+SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection projection, const SceneViewState& view,
+                                bool withRegions = true);
 
 /// The strip's controls take their clicks. Called last in a view's paint so they lie on top and a
 /// press on one never orbits the globe. `relayout` runs when `full` flips, before `changed`.

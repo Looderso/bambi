@@ -37,6 +37,10 @@ struct EditorFrame {
         juce::String instance;  ///< the instance shown, for the footer
         int order{1};
         float dspPercent{0.0f};
+        /// A peak per channel of the output bus, when the plugin meters its channels apart; the column then draws a
+        /// bar each in place of the one. Null, and `outputPeak` is drawn.
+        const float* channelPeaks{nullptr};
+        int channels{0};
     };
 
     /// True when the engine moved something the page draws: a view drawn from it should repaint too.

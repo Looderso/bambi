@@ -12,6 +12,7 @@
 #include "bambi/math/vec3.hpp"
 #include "bambi/mod/manifest.hpp"
 #include "bambi/patch/identity.hpp"
+#include "bambi/patch/layout.hpp"
 #include "bambi/patch/parameters.hpp"
 #include "bambi/patch/state.hpp"
 #include "bambi/path/trajectory.hpp"
@@ -40,7 +41,7 @@ inline constexpr double kLinkPathStepRad = 1.0 * kDeg2Rad;
 int linkPathPointsFor(double lengthRad);
 inline constexpr int kLinkInboxReserved = 4;  ///< inbox slots only gesture begin/end may use
 /// Bump whenever the shared layout changes, so no instance ever maps a bus laid out another way.
-inline constexpr std::uint32_t kLinkVersion = 22;
+inline constexpr std::uint32_t kLinkVersion = 23;
 
 //  Which plugin an instance is: `patch/identity.hpp`, because the state format needs it too.
 
@@ -77,6 +78,14 @@ inline constexpr int kZeroRegionTurnAxes = 3;  ///< how the slot and the axis ar
 struct LinkPoint {
     float x{0.0f}, y{0.0f}, z{0.0f};
 };
+/// One loudspeaker of the decoder's layout, for other scenes to draw: its direction and its channel.
+inline constexpr int kLinkMaxSpeakers = kMaxDecoderOutputs;
+struct LinkSpeaker {
+    float azimuthDeg{0.0f}, elevationDeg{0.0f};
+    std::uint8_t channel{0};    ///< counted from 1; 0 for a point with no output
+    std::uint8_t imaginary{0};  ///< takes part in the panning, plays nothing
+    std::uint16_t reserved{0};
+};
 
 /*  STATIC section: what an instance is. POD, fixed width, no pointers, shared between processes that may be
  *  different builds. The path travels as a polyline, not a generator descriptor: draw-ready and version-proof, so
@@ -90,6 +99,10 @@ struct LinkStatic {
     std::uint32_t pointCount{0};         ///< 0 until setPath; linkPathPointsFor(its length) after
     LinkPoint centre{0.0f, 0.0f, 1.0f};  ///< what the transform rotates and shrinks about
     LinkPoint path[kLinkPathPoints]{};   ///< untransformed; apply LinkDynamic::transform()
+    /// The decoder's layout while it plays one: real and imaginary points. 0 for every other product, and for a
+    /// decoder on headphones alone.
+    std::uint32_t speakerCount{0};
+    LinkSpeaker speakers[kLinkMaxSpeakers]{};
 
     std::string labelString() const;
     void setLabel(std::string_view s);

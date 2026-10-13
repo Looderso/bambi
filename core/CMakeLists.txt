@@ -22,6 +22,7 @@ add_library(bambi-core STATIC
 
   src/dsp/features.cpp
   src/dsp/biquad.cpp
+  src/dsp/resample.cpp
   src/dsp/field.cpp
   src/dsp/fielddelay.cpp
   src/dsp/fft.cpp
@@ -98,6 +99,28 @@ add_library(bambi-reverb STATIC
 target_link_libraries(bambi-reverb PUBLIC bambi-core)
 bambi_warnings(bambi-reverb PEDANTIC)
 
+# ---- the Decoder's engine ---------------------------------------------------------------------
+add_library(bambi-decode STATIC
+  src/decode/headmodel.cpp
+  src/decode/headmodelfile.cpp
+  src/decode/measuredhead.cpp
+  src/decode/sofafile.cpp
+  src/decode/binaural.cpp
+  src/decode/convolver.cpp
+  src/decode/decoder.cpp
+  src/decode/layoutfile.cpp
+  src/decode/allrad.cpp
+  src/decode/speakers.cpp
+  src/decode/layouts.cpp
+  src/decode/virtualarray.cpp
+  src/decode/headrotation.cpp
+  src/decode/orientation.cpp
+  src/decode/params.cpp
+  src/decode/outputs.cpp
+)
+target_link_libraries(bambi-decode PUBLIC bambi-core PRIVATE convhull_3d libmysofa)
+bambi_warnings(bambi-decode PEDANTIC)
+
 # ---- one test binary over all of them ----------------------------------------------------------
 add_executable(bambi-tests
   tests/main.cpp
@@ -168,8 +191,25 @@ add_executable(bambi-tests
   tests/reverb/test_reverb_engine.cpp
   tests/reverb/test_reverb_regions.cpp
   tests/reverb/test_reverb_params.cpp
+  tests/decode/test_headmodel.cpp
+  tests/decode/test_measuredhead.cpp
+  tests/decode/test_sofafile.cpp
+  tests/decode/test_layoutfile.cpp
+  tests/decode/test_outputs.cpp
+  tests/dsp/test_resample.cpp
+  tests/decode/test_binaural.cpp
+  tests/decode/test_convolver.cpp
+  tests/decode/test_allrad.cpp
+  tests/decode/test_speakers.cpp
+  tests/decode/test_layouts.cpp
+  tests/decode/test_virtualarray.cpp
+  tests/decode/test_headrotation.cpp
+  tests/decode/test_orientation.cpp
+  tests/decode/test_params.cpp
 )
-target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb)
+target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode)
+# The tests read the shipped head model and its fixtures from the source tree.
+target_compile_definitions(bambi-tests PRIVATE BAMBI_CORE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bambi-tests PRIVATE tests)
 # doctest prints a string_view through <<, which MSVC's standard library defines only in <ostream>
 if(MSVC)

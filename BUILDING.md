@@ -40,6 +40,13 @@ This builds VST3 and CLAP of each plugin, each plugin's check suite, and the con
 suite. On macOS the plugins are copied into `~/Library/Audio/Plug-Ins` after building; `-DBAMBI_COPY_PLUGIN=OFF`
 turns that off. On Windows, copying into `C:\Program Files\Common Files` needs an administrator prompt.
 
+On macOS the Decoder's build also makes its helper, `plugins/decoder/Helper/`, a small app that reads AirPods
+through CoreMotion and serves the phone page; `Helper/nest.sh` nests it into both bundles after they are built and
+copied, and signs the bundles again. The other platforms build the Decoder without it, and its AirPods and phone
+tabs are not offered there. Two more tools come with the Decoder: `tools/head` turns a measured head (`.bin` or
+SOFA) into the head file the plugin ships, and `tools/matrix/jconvolver-to-sofa.py` (run with
+`uv run --with netCDF4 --with numpy`) turns a jconvolver filter set into the SOFA FIR-E matrix the Decoder loads.
+
 Linking the plugins with link-time optimisation needs a lot of memory. On a machine with little of it, link
 two at a time: `-DCMAKE_JOB_POOLS=link=2 -DCMAKE_JOB_POOL_LINK=link`.
 

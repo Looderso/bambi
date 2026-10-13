@@ -47,10 +47,17 @@ void drawValueBar(juce::Graphics& g, juce::Rectangle<float> area, const BarConte
         about the parameter. */
     if (bar.hasLive) {
         //  it straddles the bar rather than sitting inside it, so it stays visible: a thin hairline
-        //  confined inside the bar measured as drawn and read as invisible
-        g.setColour(bar.enabled ? colour::liveValue : colour::inactive);
-        g.fillRect(x + w * unitClamp(bar.live) - theme::stroke::liveMark / 2.0f, area.getY() - ctl::liveMarkOver,
-                   theme::stroke::liveMark, area.getHeight() + 2.0f * ctl::liveMarkOver);
+        //  confined inside the bar reads as invisible
+        const juce::Rectangle<float> mark{x + w * unitClamp(bar.live) - theme::stroke::liveMark / 2.0f,
+                                          area.getY() - ctl::liveMarkOver, theme::stroke::liveMark,
+                                          area.getHeight() + 2.0f * ctl::liveMarkOver};
+        //  disabled, it goes without the ring: two greys alone would not tell the states apart
+        if (bar.enabled) {
+            nowMark(g, mark, colour::liveValue);
+        } else {
+            g.setColour(colour::inactive);
+            g.fillRect(mark);
+        }
     }
 }
 
@@ -61,7 +68,7 @@ void drawRemoteNotice(juce::Graphics& g, juce::Rectangle<float> area, const juce
          juce::Justification::centred);
     text(g, "its controls have not arrived yet", labelFont(), colour::label,
          {area.getX(), cy - 0.5f * line, area.getWidth(), line}, juce::Justification::centred);
-    text(g, "show this instance", labelFont(), colour::link, remoteNoticeLink(area), juce::Justification::centred);
+    text(g, "show this instance", labelFont(), colour::action, remoteNoticeLink(area), juce::Justification::centred);
 }
 
 juce::Rectangle<float> remoteNoticeLink(juce::Rectangle<float> area) {
@@ -98,7 +105,7 @@ std::vector<juce::Rectangle<float>> drawSegments(juce::Graphics& g, juce::Rectan
                                           area.getHeight()};
         const bool on = static_cast<int>(i) == selected;
         drawChoice(g, cell, names[i], font(theme::type::body), on,
-                   enabled && (on || static_cast<int>(i) != unavailable));
+                   enabled && (on || unavailable < 0 || static_cast<int>(i) < unavailable));
         cells.push_back(cell);
     }
     return cells;
@@ -122,7 +129,7 @@ std::vector<juce::Rectangle<float>> drawSegmentLines(juce::Graphics& g, float x,
         const int n = std::min(columns, count - first);
         std::vector<juce::String> line(names.begin() + first, names.begin() + first + n);
         const int sel = (selected >= first && selected < first + n) ? selected - first : -1;
-        const int un = (unavailable >= first && unavailable < first + n) ? unavailable - first : -1;
+        const int un = unavailable < 0 || unavailable >= first + n ? -1 : std::max(0, unavailable - first);
         const auto lineCells =
             drawSegments(g, {x, y, cellWidth * static_cast<float>(n), ctl::segmentHeight}, line, sel, enabled, un);
         cells.insert(cells.end(), lineCells.begin(), lineCells.end());
@@ -131,8 +138,15 @@ std::vector<juce::Rectangle<float>> drawSegmentLines(juce::Graphics& g, float x,
     return cells;
 }
 
-void drawFramedButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled) {
+void drawFramedButton(juce::Graphics& g, juce::Rectangle<float> area, const juce::String& label, bool enabled,
+                      bool on) {
     namespace colour = theme::colour;
+    if (on) {
+        g.setColour(colour::chosen);
+        g.fillRect(area);
+        text(g, label, font(theme::type::body), colour::textInverse, area, juce::Justification::centred);
+        return;
+    }
     g.setColour(enabled ? colour::text : colour::inactive);
     g.drawRect(area, theme::stroke::rule);
     text(g, label, font(theme::type::body), enabled ? colour::text : colour::inactive, area,
@@ -256,7 +270,7 @@ std::optional<float> drawNiceGrid(juce::Graphics& g, juce::Rectangle<float> plot
     namespace ctl = theme::controls;
     std::optional<float> zeroRow;
     for (const auto& tick : polarityAxis(polarity, maxTicks)) {
-        //  v is already in the curve's own [0, 1]: converting it again is what misplaced the LFO's zero
+        //  the tick is already in the curve's own [0, 1]: converting it again would misplace the zero
         const auto row = plot.getBottom() - plot.getHeight() * static_cast<float>(tick.at);
         ruleH(g, plot.getX(), plot.getRight(), row, tick.zero ? theme::colour::rule : theme::colour::envelopeGrid);
         text(g, juce::String(axisTickLabel(tick.value)), labelFont(),

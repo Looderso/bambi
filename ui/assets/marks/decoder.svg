@@ -1,0 +1,10 @@
+<!-- bambi / Decoder mark -- sphere, the hull it pans across, the source in a facet -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="22" fill="none" stroke="#1b1a17" stroke-width="1.6"/>
+  <polygon points="19.07,14.2 44.93,14.2 52.92,38.8 32,54 11.08,38.8" fill="none" stroke="#1b1a17" stroke-width="1" opacity="0.5"/>
+  <g stroke="#1b1a17" stroke-width="1" opacity="0.5">
+    <path d="M32 32 L19.07 14.2"/><path d="M32 32 L44.93 14.2"/><path d="M32 32 L52.92 38.8"/>
+    <path d="M32 32 L32 54"/><path d="M32 32 L11.08 38.8"/>
+  </g>
+  <circle cx="32" cy="20.5" r="3" fill="#d4873a"/>
+</svg>

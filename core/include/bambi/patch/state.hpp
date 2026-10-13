@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include <array>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "bambi/patch/identity.hpp"
 #include "bambi/patch/json.hpp"
+#include "bambi/patch/layout.hpp"
 #include "bambi/patch/parameters.hpp"
 #include "bambi/path/shape.hpp"  // a patch contains a trajectory; path/ never includes patch/
 #include "bambi/region/shape.hpp"
@@ -94,6 +96,65 @@ inline constexpr std::array<std::string_view, 6> kRoomNames{"ambience", "room", 
 inline constexpr std::array<std::string_view, 3> kRoomShapeNames{"room", "hall", "tall"};
 inline constexpr std::array<std::string_view, 5> kEchoPatternNames{"even", "ping-pong", "spiral", "cascade", "single"};
 
+/// A large text held by value, copied by reference: equal when the texts are, however they are held.
+struct SharedText {
+    std::shared_ptr<const std::string> text;
+    bool empty() const { return text == nullptr || text->empty(); }
+    friend bool operator==(const SharedText& a, const SharedText& b) {
+        return a.text == b.text || (a.text != nullptr && b.text != nullptr && *a.text == *b.text);
+    }
+};
+
+/*  The decoder's listening situation: what plays and on which channels, the layout, the listener's two sliders,
+ *  the weighting, the tracker. State rather than parameters, since none of it is automated: a bounce hears it whole,
+ *  and so does the worker that designs the filters from it. Sparse in the document: written when not the default. */
+struct DecoderState {
+    bool headphonesPlay{true}, speakersPlay{false};
+    int headphoneChannel{1};    ///< the first channel of the pair, counted from 1
+    int hrtf{0};                ///< 0 the model; 1 the KU100 as measured; 2 a SOFA file, fitted on load
+    std::string hrtfFile;       ///< the SOFA file's path, for the page
+    SharedText hrtfFileHead;    ///< the file's head as a head file's text, so a session opens without the file
+    float headSize{1.0f};       ///< the head slider, 0.75..1.3
+    float earShift{0.0f};       ///< the ear slider, ERB, -2..2
+    bool throughLayout{false};  ///< headphones hear the layout's loudspeakers as points
+    int weighting{0};           ///< 0 one listener (basic), 1 audience (max-rE)
+    /// Two loudspeakers: the fold, everything on the pair, or the slice -- microphones at the loudspeakers, narrow,
+    /// the head turning the field, so only what the head points at plays between them (allrad.hpp)
+    bool pairSlice{false};
+    bool distanceCompensation{true};
+    int speakerFirstChannel{1};       ///< the bus channel the layout's channel 1 plays on: the layout moved as a block
+    std::string layoutName;           ///< a built-in's name, or the file's, for the page
+    bool layoutTyped{false};          ///< typed in, or edited after loading: the table is its source now
+    std::vector<Loudspeaker> layout;  ///< the loudspeakers themselves, so a session opens without the file
+    /// A decoder as filters instead: a SOFA FIR-E file's path. Too large to travel with the session, it is read
+    /// again from here, and the page says when it is not there. Empty for a layout of positions.
+    std::string matrixFile;
+    int matrixOutputs{0};           ///< the file's outputs, so the channel map knows them before the file is read
+    int matrixNormalization{0};     ///< what its filters expect on their input: 0 as the file says, 1 SN3D, 2 N3D
+    int trackerSource{0};           ///< 0 none, 1 OSC, 2 AirPods through the bundled helper, 3 a phone's page
+    bool trackerTurnsScene{false};  ///< the tracker's orientation turns the scene, not the head: no compensation
+    bool sceneStatic{false};        ///< the scene's turn from the sliders and rates held at zero, the tracker kept
+    int oscPort{9000};
+    bool oscNetwork{false};                         ///< bound to this computer until asked
+    std::array<bool, 3> flip{false, false, false};  ///< learn mode's signs
+    /*  Learn mode: what the port's orientation arrives as when it is none of the known families. One address with
+        the form its message carries, or three addresses for yaw, pitch and roll sent apart, each taking its
+        message's first number. The first empty: the known table. */
+    std::array<std::string, 3> oscAddresses;  ///< [0] the message, or yaw; [1] pitch; [2] roll
+    int oscForm{
+        0};  ///< 1 quaternion w first; 2 w last; 3 yaw, pitch, roll in degrees, up positive; 4 pitch down; 5 radians
+    /// How the AirPods sit on the head, as look-and-nod found it: rows the head's front, left and up in the
+    /// sensor's frame. The frame they report worn upright (x right, y forward, z up) until a calibration replaces it.
+    std::array<double, 9> airpodsAxes{0, 1, 0, -1, 0, 0, 0, 0, 1};
+    bool airpodsCalibrated{false};
+
+    friend bool operator==(const DecoderState&, const DecoderState&) = default;
+};
+
+/// Every field held to the range the window gives it, so a session written by hand or by an older build opens
+/// without a value the engine cannot take: a head of size 0, a loudspeaker at no distance, a port below 1.
+void sanitiseDecoder(DecoderState& d);
+
 struct RoomState {
     int preset{3};  ///< hall: what a fresh Reverb's parameters are
     int shape{1};   ///< RoomShape::Hall
@@ -126,8 +187,9 @@ struct PluginState {
     /// What a bounce should do. Written only when not the default, so a plugin with no quality
     /// switch carries nothing.
     RenderQuality renderQuality{RenderQuality::Realistic};
-    RoomState room;      ///< Reverb's; sparse
-    int echoPattern{2};  ///< Echo's: spiral, what a fresh Echo's taps are; sparse
+    RoomState room;        ///< Reverb's; sparse
+    int echoPattern{2};    ///< Echo's: spiral, what a fresh Echo's taps are; sparse
+    DecoderState decoder;  ///< the decoder's; sparse
     /// Window size as a multiple of its design size. Belongs to the session, not the sound: no
     /// preset carries it, a preset load keeps it, undo doesn't touch it. Sparse.
     float windowScale{1.0f};

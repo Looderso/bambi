@@ -27,18 +27,8 @@ struct Quadrature {
 };
 
 Quadrature exactQuadrature(int order) {
-    std::vector<double> z, wz;
-    gaussLegendre(order + 1, z, wz);
-    const int nPhi = 2 * order + 2;
     Quadrature q;
-    for (std::size_t i = 0; i < z.size(); ++i) {
-        const double r = std::sqrt(std::max(0.0, 1.0 - z[i] * z[i]));
-        for (int j = 0; j < nPhi; ++j) {
-            const double phi = 2.0 * kPi * j / nPhi;
-            q.points.push_back({r * std::cos(phi), r * std::sin(phi), z[i]});
-            q.weights.push_back(wz[i] / (2.0 * nPhi));
-        }
-    }
+    quadratureGrid(order + 1, 2 * order + 2, q.points, q.weights);
     return q;
 }
 

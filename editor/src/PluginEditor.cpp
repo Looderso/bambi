@@ -35,6 +35,7 @@ PluginEditor::PluginEditor(host::PluginProcessor& processor, Parts parts, const 
       page_(parts.page),
       globe_(parts.globe),
       equirect_(parts.equirect),
+      underScene_(parts.underScene),
       view_(parts.view),
       header_(
           parts.instances, plugin,
@@ -67,8 +68,8 @@ PluginEditor::PluginEditor(host::PluginProcessor& processor, Parts parts, const 
     //  home: back to this window's own instance, from whichever it is showing
     header_.onHome([this, &instances = parts.instances] { instances.selectInstance(processor_.identity().instance); });
     //  which plugin this is: its own colour, on the header's rule and the footer's and on what modulates
-    colour::setAccent(processor_.linkHost().product());
-    header_.setIdentity(colour::identity(processor_.linkHost().product()));
+    colour::setIdentity(processor_.linkHost().product());
+    header_.setIdentity(colour::identitySlot());
     header_.onPreset([this] { openPresets(!browser_.isVisible()); },
                      [this](int delta) {
                          if (presets_.step(delta)) presetChanged();
@@ -95,6 +96,7 @@ PluginEditor::PluginEditor(host::PluginProcessor& processor, Parts parts, const 
     for (auto* child :
          std::initializer_list<juce::Component*>{&header_, &globe_, &equirect_, &matrix_, &page_, &levels_, &footer_})
         shell_.addAndMakeVisible(child);
+    if (underScene_ != nullptr) shell_.addAndMakeVisible(underScene_);  // in the matrix's place
     shell_.addChildComponent(settings_);
     shell_.addChildComponent(browser_);
     shell_.addChildComponent(confirm_);
@@ -139,7 +141,7 @@ void PluginEditor::paint(juce::Graphics& g) { g.fillAll(colour::ground); }
 
 void PluginEditor::Shell::paintOverChildren(juce::Graphics& g) {
     //  over the matrix's footer, the page's footer and the level column alike: one rule, the window's own
-    g.setColour(colour::identity(owner.processor_.linkHost().product()));
+    g.setColour(colour::identitySlot());
     g.fillRect(0.0f, static_cast<float>(m::windowHeight - m::footerHeight), static_cast<float>(m::windowWidth),
                ui::theme::stroke::identityRule);
 }
@@ -166,7 +168,11 @@ void PluginEditor::Shell::resized() {
     o.globe_.setVisible(!row.globe.isEmpty());
     if (!row.globe.isEmpty()) o.globe_.setBounds(row.globe);
     o.equirect_.setBounds(row.equirect);
-    o.matrix_.setBounds(0, matrixTop() + 1, m::leftColumn, m::windowHeight - matrixTop() - 1);
+    //  the matrix under the scene, or the plugin's own strip in its place
+    const juce::Rectangle<int> under{0, matrixTop() + 1, m::leftColumn, m::windowHeight - matrixTop() - 1};
+    o.matrix_.setBounds(under);
+    o.matrix_.setVisible(o.underScene_ == nullptr);
+    if (o.underScene_ != nullptr) o.underScene_->setBounds(under);
     /*  The right-hand side: the panel between two rules, the footer under it, and the level
         column down the window's edge. */
     const int rightX = m::leftColumn + 1;

@@ -168,7 +168,7 @@ void SettingsPage::paint(juce::Graphics& g) {
             options_.push_back(std::move(cells));
             y2 += ctl::segmentHeight + ctl::segmentGap;
             if (choice.note.isNotEmpty()) {
-                const auto line = theme::type::label * ctl::noticeLineHeight;
+                const auto line = noteLineHeight();
                 text(g, choice.note, labelFont(), colour::label, {x2, y2, half, line});
                 y2 += line;
             }

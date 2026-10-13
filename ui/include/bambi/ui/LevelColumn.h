@@ -30,6 +30,8 @@ public:
 
     /// Once a frame: the output's peak, linear. Falls and holds as a meter does, and repaints.
     void update(float peakLinear, double dtSeconds);
+    /// Once a frame instead of update(): a peak per channel of the bus, one bar each in the well, "n ch" under them.
+    void updateChannels(const float* peaksLinear, int channels, double dtSeconds);
 
     void paint(juce::Graphics& g) override;
     void mouseMove(const juce::MouseEvent& e) override;
@@ -41,7 +43,12 @@ private:
     PatchModel& model_;
     std::vector<Level> levels_;
     std::vector<juce::Rectangle<float>> areas_;
-    double levelDb_{theme::meter::silenceDb}, holdDb_{theme::meter::silenceDb}, holdLeft_{0.0};
+    struct Meter {
+        double levelDb{theme::meter::silenceDb}, holdDb{theme::meter::silenceDb}, holdLeft{0.0};
+        void feed(float peakLinear, double dtSeconds);
+    };
+    std::vector<Meter> meters_{1};  ///< the output's, or one per channel while channels_ > 0
+    int channels_{0};
     HostDrag drag_;  ///< a level's drag, between its press and its moves
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LevelColumn)

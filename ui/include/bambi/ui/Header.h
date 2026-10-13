@@ -28,6 +28,23 @@ public:
         int peers{0};
     };
     void setStatus(Link status);
+    /*  A mark in each tab, for a plugin whose tabs are things that play rather than instances: `mark(index)` is
+        -1 for none, 0 for a hollow square, 1 for a filled one; a click on the square calls `toggle(index)` instead
+        of selecting the tab. Both are empty by default: the tabs are then drawn without marks. */
+    void setTabMarks(std::function<int(int)> mark, std::function<void(int)> toggle) {
+        tabMark_ = std::move(mark);
+        tabToggle_ = std::move(toggle);
+    }
+    /*  A plugin whose tabs are not its instances -- the decoder's are its outputs -- switches between the
+     *  session's instances of its kind here instead: their labels left of the link line, the shown one as a
+     *  block, drawn only while there are two or more. `select` takes the index chosen. */
+    void setInstanceSwitch(std::vector<juce::String> labels, int selected, std::function<void(int)> select);
+    juce::Rectangle<float> instanceSwitchArea(int index) const {
+        return index >= 0 && index < static_cast<int>(switchAreas_.size())
+                   ? switchAreas_[static_cast<std::size_t>(index)]
+                   : juce::Rectangle<float>{};
+    }
+    juce::Rectangle<float> tabMarkArea(int index) const;
     /*  The preset cluster, `< preset . name* >`: the name opens the browser, the chevrons step through
         the whole list. Greyed and inert while the window shows another instance -- a preset is this
         instance's own. Repaints when it changes. */
@@ -75,12 +92,19 @@ public:
     int repaintsAsked() const { return asked_; }
 
 private:
-    juce::Colour identity_ = theme::colour::identity(Product::Encoder);
+    juce::Colour identity_ = theme::colour::identity(Product::Unknown);
     struct Tab {
         bambi::Uuid id;
         juce::String label;
         juce::Rectangle<float> area;
+        juce::Rectangle<float> mark;  ///< the square, when the plugin asked for one; empty otherwise
     };
+    std::function<int(int)> tabMark_;
+    std::function<void(int)> tabToggle_;
+    std::vector<juce::String> switchLabels_;
+    int switchSelected_{0};
+    std::function<void(int)> onSwitch_;
+    std::vector<juce::Rectangle<float>> switchAreas_;
     juce::Rectangle<float> settingsBounds() const;
     juce::Rectangle<float> iconBounds() const;
     /// The plugin's mark, in its reserved square before the wordmark.

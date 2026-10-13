@@ -42,6 +42,13 @@ OWN = [
     ("pffft", "third_party/pffft", "the FFT for the spectral features", "LICENSE"),
     ("yyjson", "third_party/yyjson", "reading and writing state and presets", "LICENSE"),
     ("dr_libs", "third_party/dr_libs", "reading and writing WAV files", "LICENSE"),
+    ("convhull_3d", "third_party/convhull_3d", "the convex hull for the loudspeaker decoder", "LICENSE"),
+    ("libmysofa", "third_party/libmysofa", "reading SOFA files, the reader only", "LICENSE"),
+    ("zlib", "third_party/zlib", "inflating a SOFA file's compressed datasets, the inflate half only", "LICENSE"),
+    ("qrcodegen", "third_party/qrcodegen", "the QR code for the decoder's phone page", "LICENSE"),
+    ("head data", "third_party/head-data",
+     "the decoder's shipped heads, learned from HUTUBS and 3D3A (CC BY 4.0) and the SADIE II KU100 (Apache 2.0)",
+     "LICENSE"),
 ]
 
 LICENCE_FILE = re.compile(r"^(licen[cs]e|copying)|licen[cs]e\.txt$", re.I)

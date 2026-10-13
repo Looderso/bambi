@@ -4,12 +4,12 @@
 #
 # It links EVERY plugin's code at once, which is why each plugin's `createPluginFilter` lives in its
 # own PluginEntry.cpp. One binary rather than one per plugin, because the point is
-# that the three answer the same questions the same way.
+# that the four answer the same questions the same way.
 
 #  Its own JUCE: it hosts plugins, which the shared one is not built to do.
 bambi_plugin_tool(bambi-conformance NAME "bambi" OWN_JUCE
     SOURCES conformance/main.cpp conformance/Conformance.cpp conformance/InstalledVst3.cpp conformance/InstalledClap.cpp
-    LIBRARIES bambi-encoder-code bambi-echo-code bambi-reverb-code)
+    LIBRARIES bambi-encoder-code bambi-echo-code bambi-reverb-code bambi-decoder-code)
 target_compile_definitions(bambi-conformance PRIVATE JUCE_PLUGINHOST_VST3=1)
 target_include_directories(bambi-conformance PRIVATE
     ${PROJECT_SOURCE_DIR}/third_party/clap-juce-extensions/clap-libs/clap/include)

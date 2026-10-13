@@ -131,7 +131,7 @@ static_assert(std::tuple_size_v<decltype(PluginState::envTriggers)> == kLinkTrig
 static_assert(alignof(Slot) == 8);
 static_assert(sizeof(LinkRegionShape) == 8 + 13 * 4 + 4 * kRegionWeights);  // 316, no padding: all 4-byte fields
 static_assert(sizeof(LinkEnergy) == 8 + 8 * kLinkEnergyValues);
-static_assert(sizeof(Slot) == 87176);  ///< pins the layout; a change here is a kLinkVersion bump
+static_assert(sizeof(Slot) == 87944);  ///< pins the layout; a change here is a kLinkVersion bump
 static_assert(sizeof(Header) == 48);
 static_assert(sizeof(Segment) == sizeof(Header) + kLinkMaxInstances * sizeof(Slot));
 

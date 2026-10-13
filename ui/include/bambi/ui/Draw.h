@@ -15,6 +15,8 @@ inline juce::Font font(float size, float trackingEm = 0.0f) {
 }
 
 inline juce::Font labelFont() { return font(theme::type::label, theme::type::trackingLabel); }
+/// The height of one line of a note or hint in the label face.
+inline float noteLineHeight() { return theme::type::label * theme::controls::noticeLineHeight; }
 
 inline juce::Font smallFont() { return font(theme::type::small, theme::type::trackingLabel); }
 
@@ -42,6 +44,14 @@ inline void ruleH(juce::Graphics& g, float x0, float x1, float y, juce::Colour c
 inline void ruleV(juce::Graphics& g, float x, float y0, float y1, juce::Colour c) {
     g.setColour(c);
     g.fillRect(x, y0, theme::stroke::rule, y1 - y0);
+}
+
+/// A mark of what is happening now, ringed in the ground so its grey reads over any fill beneath it.
+inline void nowMark(juce::Graphics& g, juce::Rectangle<float> mark, juce::Colour c) {
+    g.setColour(theme::colour::ground);
+    g.fillRect(mark.expanded(theme::stroke::liveHalo));
+    g.setColour(c);
+    g.fillRect(mark);
 }
 
 /// A negative number with a real minus sign, as the canvas sets it.

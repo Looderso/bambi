@@ -46,7 +46,8 @@ struct ProbeTrace {
 struct ProbeReply {
     std::vector<ProbeMark> marks;
     std::vector<ProbeTrace> traces;
-    bool numbered{true};  ///< each group a numbered answer in its own colour; false draws all in the added colour
+    bool numbered{
+        true};  ///< each group a numbered answer, the lead in the plugin's own colour and the rest grey; false draws all in the plugin's own colour
 };
 using ProbeAnswer = std::function<void(Vec3 from, ProbeReply& into)>;
 
