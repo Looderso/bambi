@@ -66,12 +66,25 @@ const grace = new Task(() => {
     status("off", "the host did not come back; every routing is back as it was");
 });
 
+//  The device is being removed: every observer and timer stopped first, so nothing reports into a device that
+//  is going.
+function notifydeleted() {
+    for (const o of lightObservers) o.property = "";
+    lightObservers = [];
+    stopObserving();
+    refresh.cancel();
+    relight.cancel();
+    grace.cancel();
+    unconfirm.cancel();
+}
+
 function dictionary(name) {
     store = new Dict(name);
 }
 
 function bang() {
     ready = true;
+    observeLightly();
     post("bambi: loaded; the set kept " + (store === null ? "nothing (no dict)" : store.getkeys()) + "\n");
     identify();
     on = remembered().length > 0;
@@ -260,34 +273,96 @@ function nodes() {
     return out;
 }
 
+//  A node's features, for finding it again after a reopening: what a user changes one of at a time.
+function fingerprint(n) {
+    const t = n.api;
+    const devices = [];
+    for (let i = 0; i < t.getcount("devices"); ++i) devices.push(text(new LiveAPI(n.path + " devices " + i), "name"));
+    let group = "";
+    if (!n.ret && Number(t.get("is_grouped")) === 1) group = text(new LiveAPI("id " + t.get("group_track")[1]), "name");
+    return {ret: n.ret, index: n.index, name: n.name, colour: hex(t.get("color")),
+            kind: n.ret ? "return" : Number(t.get("is_foldable")) === 1 ? "group" : "track", group: group,
+            devices: devices};
+}
+
+const MATCH = {name: 4, index: 2, colour: 1, group: 1, devices: 3, someDevices: 1, enough: 4};
+
+//  How alike a saved node and a current one are; -1 when they cannot be the same node at all.
+function likeness(a, b) {
+    if (a.ret !== b.ret || (a.kind !== undefined && a.kind !== b.kind)) return -1;
+    let score = 0;
+    if (a.name === b.name) score += MATCH.name;
+    if (a.index === b.index) score += MATCH.index;
+    if (a.colour !== undefined && a.colour === b.colour) score += MATCH.colour;
+    if (a.group !== undefined && a.group === b.group) score += MATCH.group;
+    const da = a.devices || [], db_ = b.devices || [];
+    if (da.length > 0 && da.join("\u0000") === db_.join("\u0000")) score += MATCH.devices;
+    else if (da.length > 0 && db_.length > 0 && da.filter(d => db_.indexOf(d) >= 0).length * 2 >= Math.max(da.length, db_.length))
+        score += MATCH.someDevices;
+    return score;
+}
+
+//  Which saved node each current one is: the most alike pair first, as long as it is alike enough and no other
+//  free pair is as alike for either side -- a tie is left unmatched rather than guessed. Returns, per current node,
+//  the saved node's key or 0. Pure: no Live, so it can be tested outside Max.
+function match(saved, current) {
+    const pairs = [];
+    saved.forEach((a, i) => current.forEach((b, j) => {
+        const score = likeness(a, b);
+        if (score >= MATCH.enough) pairs.push({i: i, j: j, score: score});
+    }));
+    pairs.sort((x, y) => y.score - x.score);
+    const savedTaken = {}, currentTaken = {}, out = current.map(() => 0);
+    for (const p of pairs) {
+        if (savedTaken[p.i] || currentTaken[p.j]) continue;
+        const rival = pairs.some(q => q !== p && q.score === p.score && !savedTaken[q.i] && !currentTaken[q.j] &&
+                                      (q.i === p.i || q.j === p.j));
+        if (rival) continue;
+        savedTaken[p.i] = currentTaken[p.j] = true;
+        out[p.j] = saved[p.i].key;
+    }
+    return out;
+}
+
 //  Every track and return with its key: by Live's id where this session saw it before; after a reopening by its
-//  place and name, then by its name alone; a key of its own when none matches. The set keeps every key with the
-//  place and name it was last seen at, so the next opening can find it again.
+//  likeness to what the set kept -- name, place, colour, group, devices -- so a renamed or moved track is still
+//  itself; a key of its own when nothing kept is alike enough. The set keeps every key with those features, kept
+//  current by the light observers, so the next opening can find it again.
+//  The picture of the set, built once and handed out until something changes: what the light observers see
+//  marks it stale. Each node's fingerprint is kept by Live's id and taken again only when that node changed, so a
+//  track moved costs a reordering, not a question to every device in the set.
+let picture = null;
+let prints = {};   // Live id -> fingerprint without its place
+
+function stale(live) {
+    picture = null;
+    if (live !== undefined) delete prints[live];
+}
+
 function identify() {
+    if (picture !== null) return picture;
     const known = kept("tracks", {next: 1, list: []});
     const now = nodes().map(n => {
         const t = new LiveAPI(n.path);
         return Object.assign(n, {api: t, live: Number(t.id), name: text(t, "name"), key: 0});
     });
+    for (const n of now) {
+        if (prints[n.live] === undefined || prints[n.live].name !== n.name) prints[n.live] = fingerprint(n);
+        n.print = Object.assign({}, prints[n.live], {index: n.index});
+    }
     const taken = {};
-    const claim = (n, key) => {
-        n.key = key;
-        taken[key] = true;
-    };
     for (const n of now)
-        if (keyOfLive[n.live] !== undefined) claim(n, keyOfLive[n.live]);
-    for (const n of now) {
-        if (n.key) continue;
-        const e = known.list.find(e => !taken[e.key] && e.ret === n.ret && e.index === n.index && e.name === n.name);
-        if (e) claim(n, e.key);
-    }
-    for (const n of now) {
-        if (n.key) continue;
-        const e = known.list.find(e => !taken[e.key] && e.ret === n.ret && e.name === n.name);
-        if (e) claim(n, e.key);
-    }
+        if (keyOfLive[n.live] !== undefined) {
+            n.key = keyOfLive[n.live];
+            taken[n.key] = true;
+        }
+    const open = now.filter(n => !n.key);
+    const found = match(known.list.filter(e => !taken[e.key]), open.map(n => n.print));
+    open.forEach((n, j) => {
+        if (found[j]) n.key = found[j];
+    });
     for (const n of now)
-        if (!n.key) claim(n, known.next++);
+        if (!n.key) n.key = known.next++;
 
     keyOfLive = {};
     liveOfKey = {};
@@ -295,10 +370,69 @@ function identify() {
         keyOfLive[n.live] = n.key;
         liveOfKey[n.key] = n.live;
     }
-    const tracks = {next: known.next, list: now.map(n => ({key: n.key, ret: n.ret, index: n.index, name: n.name}))};
+    const tracks = {next: known.next, list: now.map(n => Object.assign({key: n.key}, n.print))};
     if (JSON.stringify(tracks) !== JSON.stringify(known)) keep("tracks", tracks);  // a write marks the set changed
+    picture = now;
     return now;
 }
+
+// ---- the light observers ------------------------------------------------------------------------------------
+
+//  Always on, whether bambi is or not: what identifies a track -- the track list, names, colours, devices -- so
+//  the set's memory of it is never older than the set, and the list shows the set as it is. They tell the host
+//  nothing. Their reports are gathered into one refresh: an observer reports once as it is set up.
+let lightObservers = [];
+let reshaped = false;  // the track list changed since the last refresh: the route observers follow it
+const refresh = new Task(() => {
+    const started = Date.now();
+    identify();
+    showList();
+    if (on) {
+        sendTree();
+        if (reshaped) observe();
+    }
+    reshaped = false;
+    post("bambi: refreshed in " + (Date.now() - started) + " ms\n");
+});
+
+function softly() {
+    refresh.cancel();
+    refresh.schedule(80);
+}
+
+function watchLightly(path, prop, then) {
+    const o = new LiveAPI(args => {
+        if (args[0] === prop) then();
+    }, path);
+    o.property = prop;
+    lightObservers.push(o);
+}
+
+function observeLightly() {
+    for (const o of lightObservers) o.property = "";
+    lightObservers = [];
+    const rebuild = () => {
+        stale();
+        reshaped = true;
+        softly();
+        relight.cancel();
+        relight.schedule(80);  // a track added, removed or moved: its own observers too
+    };
+    watchLightly("live_set", "tracks", rebuild);
+    watchLightly("live_set", "return_tracks", rebuild);
+    for (const n of nodes()) {
+        const live = Number(new LiveAPI(n.path).id);
+        const changed = () => {
+            stale(live);
+            softly();
+        };
+        watchLightly(n.path, "name", changed);
+        watchLightly(n.path, "color", changed);
+        watchLightly(n.path, "devices", changed);
+        watchLightly(n.path, "is_grouped", changed);
+    }
+}
+const relight = new Task(() => observeLightly());
 
 // ---- the set as the host sees it ----------------------------------------------------------------------------
 
@@ -417,24 +551,11 @@ function observe() {
     watch(song, "current_song_time", transport);
     watch(song, "is_playing", transport);
     watch(song, "tempo", transport);
-    const changed = () => {
-        sendTree();
-        showList();
-    };
-    watch(song, "tracks", changed);
-    watch(song, "return_tracks", changed);
+    //  names, colours and the track list come with the tree, which the light observers' refresh sends
 
     for (const n of all) {
         const t = n.api, key = n.key, name = n.name;
         const value = (what, v) => sendValue(key, name, what, v);
-        watch(n.path, "name", v => {
-            value("name", String(v[0]));
-            showList();
-        });
-        watch(n.path, "color", v => {
-            value("colour", hex(v[0]));
-            showList();
-        });
         watch(n.path, "mute", v => value("mute", Number(v[0])));  // also the track's on/off button
         watch(n.path, "solo", v => value("solo", Number(v[0])));
         watch(n.path, "output_routing_type", () => {
@@ -570,7 +691,7 @@ function groupOf(n) {
 function showList() {
     const all = identify();
     const kept_ = remembered();
-    const stray = strays(all).map(n => n.key);
+    const stray = strays(all).map(n => n.key);  // the same picture: identify() hands out what it built
     const rows = all.map(n => {
         const group = n.ret ? null : groupOf(n);
         const output = outputOf(n);
