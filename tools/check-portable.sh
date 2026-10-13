@@ -11,7 +11,7 @@
 #      Rosetta timings prove nothing about speed, and this is still Apple clang and Apple libm.
 #
 #   3. The golden scenarios, rendered by both builds, null within -120 dBFS, and their control
-#      traces match exactly. It is a comparison rather than a manifest because an exact hash
+#      traces match: every control value exactly, a float readout within one part in a million. It is a comparison rather than a manifest because an exact hash
 #      cannot be made architecture-independent at any quantisation (see tools/golden.sh). -120 dBFS
 #      is chosen against the worst divergence these scenarios actually show, well below anything
 #      audible, and tight enough that a real determinism bug cannot hide under it.
@@ -85,9 +85,21 @@ while IFS='|' read -r name args column; do
         d=$(printf '%s' "$out" | sed -n 's/.*worst difference \(-*[0-9.]*\) dBFS.*/\1/p' | tail -1)
         worst="$worst${d:--999}"$'\n'
     fi
-    if ! cmp -s "$TMP/$name.arm.csv" "$TMP/$name.x86.csv"; then
-        echo "portable: FAIL $name -- the control traces differ between architectures"
-        echo "        a trace is printed at %.6f, so this is a real divergence, not rounding"
+    #  A trace's control columns -- times, periods, counts -- must match exactly; its energy column is a float
+    #  sum printed at nine digits, which the two architectures accumulate in a different order, so a number is
+    #  equal within one part in a million and anything else exactly.
+    if ! awk -F, 'NR==FNR { a[FNR] = $0; next }
+                  { n = split(a[FNR], x, ","); if (n != NF) exit 1
+                    for (i = 1; i <= NF; i++) {
+                      if (x[i] == $i) continue
+                      if (x[i] ~ /^-?[0-9.]+(e[-+]?[0-9]+)?$/ && $i ~ /^-?[0-9.]+(e[-+]?[0-9]+)?$/) {
+                        d = x[i] - $i; if (d < 0) d = -d
+                        m = x[i] < 0 ? -x[i] : x[i]; if ($i < 0 && -$i > m) m = -$i; if ($i > m) m = $i
+                        if (d <= 1e-6 * (m > 1 ? m : 1)) continue
+                      }
+                      exit 1
+                    } }' "$TMP/$name.arm.csv" "$TMP/$name.x86.csv"; then
+        echo "portable: FAIL $name -- the control traces differ between architectures beyond rounding"
         fail=1
     fi
 done < <(grep -v '^#' tests/golden/scenarios.txt | grep .)
