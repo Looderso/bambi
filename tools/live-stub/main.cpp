@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "bambi/live/pairs.hpp"
+#include "bambi/live/protocol.hpp"
 #include "bambi/patch/json.hpp"
 
 #ifdef __APPLE__
@@ -40,8 +41,6 @@ using Clock = std::chrono::steady_clock;
 using bambi::Json;
 using bambi::live::TrackId;
 using bambi::live::TrackPair;
-
-constexpr int kProtocol = 1;
 
 struct Session {
     int fd{-1};
@@ -100,60 +99,39 @@ std::string channelName(int channel) {
 }
 #endif
 
-void send(Session& s, const Json& message) {
-    const std::string line = message.dump(0) + "\n";
+namespace live = bambi::live;
+
+void send(Session& s, const live::Message& message) {
+    const std::string line = live::serialise(message) + "\n";
     if (s.fd >= 0) (void)::write(s.fd, line.data(), line.size());
 }
 
-std::string text(const Json& m, const char* key) {
-    const Json* v = m.find(key);
-    return v != nullptr ? std::string(v->stringOr("")) : std::string();
+const char* kindName(live::Node::Kind k) {
+    return k == live::Node::Kind::Group ? "group" : k == live::Node::Kind::Return ? "return" : "track";
 }
 
-double number(const Json& m, const char* key, double fallback = 0.0) {
-    const Json* v = m.find(key);
-    return v != nullptr ? v->numberOr(fallback) : fallback;
-}
-
-void onTree(Session& s, const Json& m) {
-    const Json* nodes = m.find("nodes");
-    if (nodes == nullptr) return;
+void onTree(Session& s, const live::Tree& tree) {
     std::vector<TrackId> top;
-    std::vector<std::pair<TrackId, std::string>> names;
     std::vector<TrackId> sending;  // tracks with a send up: the test warning's subject
-    std::printf("tree: %zu nodes\n", nodes->size());
-    for (const Json& n : nodes->items()) {
-        const std::string kind = text(n, "kind");
-        const bool topLevel = n.find("parent") == nullptr || n.find("parent")->isNull();
-        const bool elsewhere = text(n, "path") == "elsewhere";
-        std::printf("  %-6s %-24s id %-6.0f %s%s\n", kind.c_str(), text(n, "name").c_str(), number(n, "id"),
-                    elsewhere  ? "not on a path to Main"
-                    : topLevel ? "top"
-                               : "into its group",
-                    number(n, "audio", 1) != 0 ? "" : ", no audio");
-        if (topLevel && !elsewhere && kind != "return" && number(n, "audio", 1) != 0)
-            top.push_back(static_cast<TrackId>(number(n, "id")));
-        names.emplace_back(static_cast<TrackId>(number(n, "id")), text(n, "name"));
-        if (const Json* sends = n.find("sends"))
-            for (const Json& v : sends->items())
-                if (v.isNumber()) {
-                    sending.push_back(static_cast<TrackId>(number(n, "id")));
-                    break;
-                }
+    std::printf("tree: %zu nodes\n", tree.nodes.size());
+    for (const live::Node& n : tree.nodes) {
+        const bool elsewhere = n.path == live::Node::Path::Elsewhere;
+        std::printf("  %-6s %-24s id %-6llu %s%s\n", kindName(n.kind), n.name.c_str(),
+                    static_cast<unsigned long long>(n.id),
+                    elsewhere   ? "not on a path to Main"
+                    : !n.parent ? "top"
+                                : "into its group",
+                    n.audio ? "" : ", no audio");
+        if (!n.parent && !elsewhere && n.kind != live::Node::Kind::Return && n.audio) top.push_back(n.id);
+        for (const auto& send : n.sends)
+            if (send) {
+                sending.push_back(n.id);
+                break;
+            }
     }
-    const bambi::live::PairAssignment a = bambi::live::assignPairs(s.pairs, top, s.pairCount);
+    const live::PairAssignment a = live::assignPairs(s.pairs, top, s.pairCount);
     s.pairs = a.pairs;
-    Json route = Json::object();
-    route.set("type", Json("route"));
-    Json tracks = Json::array();
-    for (const TrackPair& p : a.pairs) {
-        Json t = Json::object();
-        t.set("id", Json(static_cast<double>(p.track)));
-        t.set("pair", Json(p.pair));
-        tracks.push(std::move(t));
-    }
-    route.set("tracks", std::move(tracks));
-    send(s, route);
+    send(s, live::Route{a.pairs});
     std::printf("route: %zu tracks on pairs, %zu left over\n", a.pairs.size(), a.unassigned.size());
 
     //  the host's state, kept by the device so the set saves it
@@ -166,30 +144,22 @@ void onTree(Session& s, const Json& m) {
         pairs.push(std::move(t));
     }
     state.set("pairs", std::move(pairs));
-    Json save = Json::object();
-    save.set("type", Json("save"));
-    save.set("state", std::move(state));
-    send(s, save);
+    send(s, live::Save{std::move(state)});
 
     //  what the host would say about the mix; the stub's are test values, a warning on every routed track
     //  with a send up, so the device's list can be seen to mark it
-    Json info = Json::object();
-    info.set("type", Json("info"));
-    info.set("latency", Json(12.0));
-    info.set("rate", Json(48000.0));
-    Json warnings = Json::object();
+    live::Info info{12.0, 48000.0, {}};
     for (const TrackPair& p : a.pairs)
         if (std::find(sending.begin(), sending.end(), p.track) != sending.end())
-            warnings.set(std::to_string(p.track), Json("its sends go to Live's returns, which stay stereo here"));
-    info.set("warnings", std::move(warnings));
+            info.warnings[p.track] = "its sends go to Live's returns, which stay stereo here";
     send(s, info);
 #ifdef __APPLE__
     std::vector<std::string> channels(static_cast<std::size_t>(2 * s.pairCount + 2));
     for (const TrackPair& p : a.pairs)
-        for (const auto& [id, name] : names)
-            if (id == p.track) {
-                channels[static_cast<std::size_t>(2 * p.pair)] = name + " L";
-                channels[static_cast<std::size_t>(2 * p.pair + 1)] = name + " R";
+        for (const live::Node& n : tree.nodes)
+            if (n.id == p.track) {
+                channels[static_cast<std::size_t>(2 * p.pair)] = n.name + " L";
+                channels[static_cast<std::size_t>(2 * p.pair + 1)] = n.name + " R";
             }
     channels[static_cast<std::size_t>(2 * s.pairCount)] = "bambi return L";
     channels[static_cast<std::size_t>(2 * s.pairCount + 1)] = "bambi return R";
@@ -197,15 +167,13 @@ void onTree(Session& s, const Json& m) {
 #endif
 }
 
-void onTransport(Session& s, const Json& m) {
-    const bool playing = number(m, "playing") != 0;
+void onTransport(Session& s, const live::TransportMessage& m) {
     const auto now = Clock::now();
-    if (playing && s.playing && m.find("ppq") != nullptr)
+    if (m.playing && s.playing)
         s.intervalsMs.push_back(std::chrono::duration<double, std::milli>(now - s.lastPosition).count());
-    if (playing != s.playing)
-        std::printf("transport: %s at %.3f, %.2f bpm\n", playing ? "playing" : "stopped", number(m, "ppq"),
-                    number(m, "bpm"));
-    s.playing = playing;
+    if (m.playing != s.playing)
+        std::printf("transport: %s at %.3f, %.2f bpm\n", m.playing ? "playing" : "stopped", m.ppq, m.bpm);
+    s.playing = m.playing;
     s.lastPosition = now;
 }
 
@@ -220,50 +188,50 @@ void report(Session& s) {
     s.intervalsMs.clear();
 }
 
+//  What the device says, answered as the host will answer it.
+struct Handler {
+    Session& s;
+    void operator()(const live::Hello& h) const {
+        std::printf("hello: protocol %d, Live %s, %.0f Hz%s\n", h.protocol, h.live.c_str(), h.rate,
+                    live::accepts(h) ? "" : " -- not a protocol this host speaks");
+        send(s, live::Welcome{live::kProtocol, true});
+    }
+    void operator()(const live::Restore& r) const {
+        s.pairs.clear();
+        if (const Json* pairs = r.state.find("pairs"))
+            for (const Json& p : pairs->items()) {
+                const Json* id = p.find("id");
+                const Json* pair = p.find("pair");
+                if (id != nullptr && pair != nullptr)
+                    s.pairs.push_back({static_cast<TrackId>(id->numberOr(0)), static_cast<int>(pair->numberOr(0))});
+            }
+        std::printf("restore: %zu tracks' pairs from the set\n", s.pairs.size());
+    }
+    void operator()(const live::Tree& t) const { onTree(s, t); }
+    void operator()(const live::TransportMessage& m) const { onTransport(s, m); }
+    void operator()(const live::Routed& r) const {
+        for (const auto& t : r.tracks)
+            std::printf("routed: %-24s %s\n", t.name.c_str(), t.ok ? t.to.c_str() : t.error.c_str());
+    }
+    void operator()(const live::Value& v) const {
+        std::printf("value: %-24s %-12s %s\n", v.name.c_str(), v.what.c_str(), v.value.dump(0).c_str());
+    }
+    void operator()(const live::Show&) const { std::printf("show: the host's window would come to the front\n"); }
+    void operator()(const live::Switched& b) const { std::printf("bambi %s\n", b.on ? "on" : "off"); }
+    template <typename Other>
+    void operator()(const Other&) const {
+        std::printf("a message only the host sends, from the device\n");
+    }
+};
+
 void handle(Session& s, const std::string& line) {
     std::string error;
-    const Json m = Json::parse(line, &error);
-    if (!m.isObject()) {
-        std::printf("not JSON (%s): %s\n", error.c_str(), line.c_str());
+    const auto m = live::parse(line, &error);
+    if (!m) {
+        std::printf("not understood (%s): %s\n", error.c_str(), line.c_str());
         return;
     }
-    const std::string type = text(m, "type");
-    if (type == "hello") {
-        std::printf("hello: protocol %.0f, Live %s, %.0f Hz\n", number(m, "protocol"), text(m, "live").c_str(),
-                    number(m, "rate"));
-        Json w = Json::object();
-        w.set("type", Json("welcome"));
-        w.set("protocol", Json(kProtocol));
-        w.set("loop", Json(true));
-        send(s, w);
-    } else if (type == "restore") {
-        s.pairs.clear();
-        if (const Json* st = m.find("state"))
-            if (const Json* pairs = st->find("pairs"))
-                for (const Json& p : pairs->items())
-                    s.pairs.push_back({static_cast<TrackId>(number(p, "id")), static_cast<int>(number(p, "pair"))});
-        std::printf("restore: %zu tracks' pairs from the set\n", s.pairs.size());
-    } else if (type == "tree") {
-        onTree(s, m);
-    } else if (type == "transport") {
-        onTransport(s, m);
-    } else if (type == "routed") {
-        if (const Json* r = m.find("tracks"))
-            for (const Json& t : r->items())
-                std::printf("routed: %-24s %s\n", text(t, "name").c_str(),
-                            t.find("ok") != nullptr && t.find("ok")->boolOr(false) ? text(t, "to").c_str()
-                                                                                   : text(t, "error").c_str());
-    } else if (type == "value") {
-        const Json* v = m.find("value");
-        std::printf("value: %-24s %-12s %s\n", text(m, "name").c_str(), text(m, "what").c_str(),
-                    v != nullptr ? v->dump(0).c_str() : "");
-    } else if (type == "show") {
-        std::printf("show: the host's window would come to the front\n");
-    } else if (type == "bambi") {
-        std::printf("bambi %s\n", number(m, "on") != 0 ? "on" : "off");
-    } else {
-        std::printf("%s\n", line.c_str());
-    }
+    std::visit(Handler{s}, *m);
 }
 
 }  // namespace
@@ -315,8 +283,7 @@ int main(int argc, char** argv) {
         if (fds[0].revents & POLLIN) {
             const int client = ::accept(server, nullptr, nullptr);
             if (s.fd >= 0) {  // one device at a time: the first is answered, a second is told so
-                const std::string busy = R"({"type":"busy"})"
-                                         "\n";
+                const std::string busy = bambi::live::serialise(bambi::live::Busy{}) + "\n";
                 (void)::write(client, busy.data(), busy.size());
                 ::close(client);
             } else {

@@ -129,8 +129,11 @@ add_library(bambi-live STATIC
   src/live/pairs.cpp
   src/live/transport.cpp
   src/live/latency.cpp
+  src/live/protocol.cpp
 )
 target_include_directories(bambi-live PUBLIC include)
+#  the protocol reads and writes through patch/'s Json
+target_link_libraries(bambi-live PUBLIC bambi-core)
 bambi_warnings(bambi-live PEDANTIC)
 
 # ---- one test binary over all of them ----------------------------------------------------------
@@ -222,6 +225,7 @@ add_executable(bambi-tests
   tests/live/test_pairs.cpp
   tests/live/test_transport.cpp
   tests/live/test_latency.cpp
+  tests/live/test_protocol.cpp
 )
 target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode bambi-live)
 # The tests read the shipped head model and its fixtures from the source tree.
