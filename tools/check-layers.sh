@@ -69,6 +69,14 @@ above core   'ui|host|editor'
 above ui     'host|editor'
 above host   'ui|editor'
 
+#  An app sits above everything: no library of the suite may reach into it.
+apps=$(grep -rnE '#include "[^"]*apps/' core ui host editor plugins tools --include='*.h' --include='*.hpp' --include='*.cpp' || true)
+if [ -n "$apps" ]; then
+    echo "$apps"
+    echo "layers: nothing in the suite includes an app"
+    fail=1
+fi
+
 if [ "$fail" -ne 0 ]; then
     echo "layers: core's layering is what keeps it from going flat again. Move the type, do not add the include."
     exit 1
