@@ -128,7 +128,7 @@ bambi_warnings(bambi-decode PEDANTIC)
 add_library(bambi-live STATIC
   src/live/pairs.cpp
   src/live/transport.cpp
-  src/live/latency.cpp
+  src/live/graph.cpp
   src/live/protocol.cpp
 )
 target_include_directories(bambi-live PUBLIC include)
@@ -224,7 +224,7 @@ add_executable(bambi-tests
 
   tests/live/test_pairs.cpp
   tests/live/test_transport.cpp
-  tests/live/test_latency.cpp
+  tests/live/test_graph.cpp
   tests/live/test_protocol.cpp
 )
 target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode bambi-live)
