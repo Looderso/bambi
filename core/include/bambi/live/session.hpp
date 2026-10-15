@@ -64,6 +64,8 @@ public:
     const std::optional<Hello>& hello() const { return hello_; }
     bool on() const { return on_; }
     const Tree& tree() const { return tree_; }
+    /// Whether a tree has come: before it, tree() says nothing of the set, not that it is empty.
+    bool hasTree() const { return treed_; }
     const std::vector<TrackPair>& pairs() const { return pairs_; }
     const std::vector<TrackId>& unassigned() const { return unassigned_; }
     const Routed& routed() const { return routed_; }

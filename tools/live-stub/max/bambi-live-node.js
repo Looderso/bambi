@@ -24,6 +24,21 @@ const APP = path.resolve(__dirname,
 const STUB = path.resolve(__dirname, "../../../build/bambi-live-stub");
 const LOG = path.join(os.homedir(), "Library/Logs/bambi-live-stub.log");
 
+//  A line too long for one Max message -- a symbol holds at most 32767 bytes -- goes as pieces: each "+" and at most
+//  PIECE characters, never splitting a character in two, then "." to join them. A JSON line never starts with either.
+const PIECE = 8000;
+function pieces(line) {
+    const out = [];
+    for (let at = 0; at < line.length;) {
+        let end = Math.min(line.length, at + PIECE);
+        const c = line.charCodeAt(end - 1);
+        if (end < line.length && c >= 0xd800 && c <= 0xdbff) --end;  // the first half of a pair: keep it with its second
+        out.push(line.slice(at, end));
+        at = end;
+    }
+    return out;
+}
+
 let socket = null;
 let open = false;
 let refused = false;   // the host said busy on this connection
@@ -65,7 +80,12 @@ function connect() {
                 maxApi.outlet("refused");
                 continue;
             }
-            maxApi.outlet("fromhost", line);
+            if (line.length <= PIECE) {
+                maxApi.outlet("fromhost", line);
+                continue;
+            }
+            for (const piece of pieces(line)) maxApi.outlet("fromhost", "+" + piece);
+            maxApi.outlet("fromhost", ".");
         }
     });
     socket.on("error", e => {
@@ -78,12 +98,23 @@ function connect() {
         refused = false;
         socket = null;
         pending = "";
+        fromDevice = "";
         setTimeout(connect, wait);
     });
 }
 
-maxApi.addHandler("send", line => {
-    if (open && !refused) socket.write(String(line) + "\n");
+let fromDevice = "";  // the pieces of a long line from the device, until its "."
+maxApi.addHandler("send", sent => {
+    let line = String(sent);
+    if (line[0] === "+") {
+        fromDevice += line.slice(1);
+        return;
+    }
+    if (line === ".") {
+        line = fromDevice;
+        fromDevice = "";
+    }
+    if (open && !refused) socket.write(line + "\n");
 });
 
 connect();

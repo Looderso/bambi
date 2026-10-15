@@ -125,7 +125,8 @@ private:
             onField_ = session.field();
             juce::String status;
             const bool changed = engine_.setField(session.field(), session.pairs(), status);
-            engine_.forget(session.tree(), session.shape());
+            //  only once Live has said what its set holds: before, an empty tree would forget every kept state
+            if (session.hasTree()) engine_.forget(session.tree(), session.shape());
             problem_ = changed || status.isEmpty() ? juce::String() : status;
             if (changed) {
                 named_.fill({});

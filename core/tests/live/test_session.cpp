@@ -273,3 +273,15 @@ TEST_CASE("a group the user takes whole stays whole") {
     s.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1})}});  // the same set again
     CHECK(s.shape().split.empty());
 }
+
+TEST_CASE("before a tree has come, the session says it has none rather than an empty set") {
+    //  Catches: a restore read as a set with no tracks -- whoever forgets what the set no longer holds would forget
+    //  everything the restore just gave back.
+    DeviceSession s;
+    s.answer(Restore{Json::object()});
+    CHECK_FALSE(s.hasTree());
+    s.answer(Tree{{node(1)}});
+    CHECK(s.hasTree());
+    s.disconnected();
+    CHECK(s.hasTree());  // the set is as it was until a new tree says otherwise
+}

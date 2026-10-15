@@ -114,9 +114,11 @@ function idle() {
 
 // ---- what the set keeps -------------------------------------------------------------------------------------
 
+//  A value kept long is kept in pieces, each a symbol of its own, joined when read.
 function kept(name, fallback) {
     if (store === null || !store.contains(name)) return fallback;
-    const s = String(store.get(name));
+    const v = store.get(name);
+    const s = Array.isArray(v) ? v.join("") : String(v);
     return s.length > 0 ? JSON.parse(s) : fallback;
 }
 
@@ -124,8 +126,11 @@ function keep(name, value) {
     if (store === null) return;
     if (value === null) {
         if (store.contains(name)) store.remove(name);
+        return;
     }
-    else store.set(name, JSON.stringify(value));
+    const s = JSON.stringify(value);
+    if (s.length <= PIECE) store.set(name, s);
+    else store.set(name, pieces(s));
 }
 
 function remembered() {
@@ -138,9 +143,33 @@ function remember(list) {
 
 // ---- the host ------------------------------------------------------------------------------------------------
 
-function send(message) {
-    if (linked) outlet(0, "send", JSON.stringify(message));
+//  A line too long for one Max message -- a symbol holds at most 32767 bytes -- goes as pieces: each "+" and at most
+//  PIECE characters, never splitting a character in two, then "." to join them. A JSON line never starts with either.
+const PIECE = 8000;
+function pieces(line) {
+    const out = [];
+    for (let at = 0; at < line.length;) {
+        let end = Math.min(line.length, at + PIECE);
+        const c = line.charCodeAt(end - 1);
+        if (end < line.length && c >= 0xd800 && c <= 0xdbff) --end;  // the first half of a pair: keep it with its second
+        out.push(line.slice(at, end));
+        at = end;
+    }
+    return out;
 }
+
+function send(message) {
+    if (!linked) return;
+    const line = JSON.stringify(message);
+    if (line.length <= PIECE) {
+        outlet(0, "send", line);
+        return;
+    }
+    for (const piece of pieces(line)) outlet(0, "send", "+" + piece);
+    outlet(0, "send", ".");
+}
+
+let fromHost = "";  // the pieces of a long line from the host, until its "."
 
 function status(what, why) {
     outlet(0, "status", what);
@@ -191,10 +220,19 @@ function refused() {
     idle();
 }
 
-function fromhost(line) {
+function fromhost(sent) {
+    let line = String(sent);
+    if (line[0] === "+") {
+        fromHost += line.slice(1);
+        return;
+    }
+    if (line === ".") {
+        line = fromHost;
+        fromHost = "";
+    }
     let m;
     try {
-        m = JSON.parse(String(line));
+        m = JSON.parse(line);
     } catch (e) {
         post("bambi: not JSON from the host: " + line + "\n");
         return;
