@@ -77,6 +77,7 @@ struct Field {
     std::vector<Part> parts;           ///< a bus before everything in it
     std::vector<FieldReturn> returns;  ///< in Live's order
     std::vector<Insert> main;          ///< Main's chain, before the decoder
+    friend bool operator==(const Field&, const Field&) = default;
 
     /// The sources, in the order of the parts: what needs a pair.
     std::vector<TrackId> sources() const;

@@ -14,6 +14,7 @@
 #include "Device.h"
 #include "Engine.h"
 #include "Rail.h"
+#include "Routing.h"
 #include "bambi/ui/Theme.h"
 #include "loop.hpp"
 
@@ -73,6 +74,9 @@ public:
         device_.setLatency(engine_.latencyMs(), 48000.0);
 
         addAndMakeVisible(rail_);
+        addChildComponent(routing_);
+        routing_.reshape = [this](bambi::live::Shape shape) { device_.reshape(std::move(shape)); };
+        routing_.showDecoder = [this] { showView(View::Decoder); };
         update();
         showView(View::Decoder);
         startTimer(1000);
@@ -86,10 +90,11 @@ public:
         auto area = getLocalBounds();
         rail_.setBounds(area.removeFromLeft(bambi::ui::theme::rail::width));
         if (editor_ != nullptr) editor_->setBounds(area.withSize(editor_->getWidth(), editor_->getHeight()));
+        routing_.setBounds(area);
     }
 
 private:
-    enum class View { Encoder, Echo, Reverb, Decoder };
+    enum class View { Encoder, Echo, Reverb, Decoder, Routing };
 
     //  The plugins' states, kept with the set when they changed. Only while bambi is on: a device sends what the set
     //  kept before it switches on, and the defaults must not be kept over it.
@@ -105,9 +110,9 @@ private:
 
     void update() {
         const auto& session = device_.session();
-        if (session.pairs() != onPairs_ || session.field().parts != onParts_) {
+        if (session.pairs() != onPairs_ || !(session.field() == onField_)) {
             onPairs_ = session.pairs();
-            onParts_ = session.field().parts;
+            onField_ = session.field();
             juce::String status;
             const bool changed = engine_.setField(session.field(), session.pairs(), status);
             problem_ = changed || status.isEmpty() ? juce::String() : status;
@@ -115,7 +120,7 @@ private:
                 named_.fill({});
                 device_.setLatency(engine_.latencyMs(), 48000.0);
                 //  a window on an Encoder let go of closes before that Encoder can be freed
-                if (view_ != View::Decoder && !engine_.holds(shownPlugin_)) showView(view_);
+                if (view_ != View::Decoder && view_ != View::Routing && !engine_.holds(shownPlugin_)) showView(view_);
             }
         }
         engine_.setSends(session.field(), session.tree());
@@ -136,6 +141,13 @@ private:
             labels.push_back(nameOf(views_[i]));
             if (views_[i] == view_) selected = static_cast<int>(i);
         }
+        //  the routing page after a gap: the column's labels and its views stay one to one
+        labels.push_back({});
+        views_.push_back(View::Decoder);
+        labels.push_back("routing");
+        views_.push_back(View::Routing);
+        if (view_ == View::Routing) selected = static_cast<int>(views_.size()) - 1;
+        routing_.show(session.tree(), session.shape(), session.field(), session.pairs());
         rail_.setViews(labels, selected, [this](int i) { showView(views_[static_cast<std::size_t>(i)]); });
         rail_.setStatus(running_ ? describe(device_.session(), listening_, error_, problem_, engine_.latencyMs())
                                  : bambi::livehost::Rail::Status{false, {"audio", "off"}, started_});
@@ -147,6 +159,7 @@ private:
             case View::Echo: return engine_.firstEffect(bambi::live::Effect::Echo);
             case View::Reverb: return engine_.firstEffect(bambi::live::Effect::Reverb);
             case View::Decoder: return engine_.decoder();
+            case View::Routing: return nullptr;
         }
         return nullptr;
     }
@@ -157,6 +170,7 @@ private:
             case View::Echo: return "echo";
             case View::Reverb: return "reverb";
             case View::Decoder: return "decoder";
+            case View::Routing: return "routing";
         }
         return "";
     }
@@ -164,8 +178,9 @@ private:
     void showView(View v) {
         if (editor_ != nullptr) removeChildComponent(editor_.get());
         editor_.reset();
-        if (pluginOf(v) == nullptr) v = View::Decoder;
+        if (v != View::Routing && pluginOf(v) == nullptr) v = View::Decoder;
         auto* plugin = pluginOf(v);
+        routing_.setVisible(v == View::Routing);
         view_ = v;
         shownPlugin_ = plugin;
         if (plugin != nullptr) editor_.reset(plugin->createEditorAndMakeActive());
@@ -182,13 +197,14 @@ private:
     juce::String started_;  ///< what the engine said when it started, or why it did not
     juce::String problem_;  ///< why the last change to what it plays could not be made
     bambi::livehost::Rail rail_;
+    bambi::livehost::RoutingPage routing_;
     std::vector<View> views_;
     View view_{View::Decoder};
     std::unique_ptr<juce::AudioProcessorEditor> editor_;
     bool listening_{false};
     std::string error_;                            ///< why the port could not be opened
     std::vector<bambi::live::TrackPair> onPairs_;  ///< the pairs and the field the program was last built for
-    std::vector<bambi::live::Part> onParts_;
+    bambi::live::Field onField_;
     juce::AudioProcessor* shownPlugin_{nullptr};  ///< the instance the window shows
     std::string kept_;                            ///< the plugins' states as last kept or restored
     std::array<juce::String, kPairs> named_{};    ///< each Encoder's track name and colour as last given

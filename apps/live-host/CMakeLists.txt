@@ -6,7 +6,7 @@
 juce_add_gui_app(bambi-live-host PRODUCT_NAME "bambi live host" COMPANY_NAME "${BAMBI_COMPANY_NAME}"
                  BUNDLE_ID org.bambi.livehost MICROPHONE_PERMISSION_ENABLED TRUE
                  MICROPHONE_PERMISSION_TEXT "bambi live host plays the tracks Live sends it through the loop device.")
-target_sources(bambi-live-host PRIVATE Source/Main.cpp Source/Device.cpp Source/Engine.cpp Source/Rail.cpp Source/Plugins.cpp Source/Runner.cpp)
+target_sources(bambi-live-host PRIVATE Source/Main.cpp Source/Device.cpp Source/Engine.cpp Source/Rail.cpp Source/Routing.cpp Source/Plugins.cpp Source/Runner.cpp)
 target_compile_definitions(bambi-live-host PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
                                                    JUCE_APPLICATION_NAME_STRING="bambi live host"
                                                    JUCE_APPLICATION_VERSION_STRING="0.1.0")

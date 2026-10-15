@@ -198,6 +198,7 @@ namespace stroke
         path do not read alike. */
     inline constexpr float foreignRegionDash[2] = { 1.0f, 3.0f };
     inline constexpr float unplacedDash[2] = { 3.0f, 3.0f };   ///< the probe's ring before it is placed
+    inline constexpr float outsideDash[2] = { 3.0f, 3.0f };    ///< the live host's routing page: what Live plays, outside the field
     inline constexpr float toggle       = 1.3f;   ///< an unset toggle square's outline
     inline constexpr float glyph        = 1.3f;   ///< pictograms: 0/45/90 degrees only, one weight, no fills
     inline constexpr float underline    = 2.0f;   ///< a modulated parameter's label
@@ -455,6 +456,25 @@ namespace rail
     inline constexpr float gap    = 12.0f;  ///< between the plugin views and the routing page
     inline constexpr int   problemLines = 8;  ///< what went wrong, wrapped this far at most
 } // namespace rail
+
+// ---- the live host's routing page: Live's tracks, the field, Main ------------------------------
+namespace routing
+{
+    inline constexpr float row        = 40.0f;   ///< a node and, under it, its sends
+    inline constexpr float boxWidth   = 132.0f;
+    inline constexpr float boxHeight  = 22.0f;
+    inline constexpr float mainWidth  = 70.0f;
+    inline constexpr float left       = 16.0f;   ///< the page's inset, either side
+    inline constexpr float top        = 14.0f;   ///< from the band to the first row
+    inline constexpr float gutter      = 40.0f;  ///< between a column's widest node and the next column: the connectors
+    inline constexpr float gutterLeast = 16.0f;  ///< as narrow as it gets for a deep set; never a sideways scroll
+    inline constexpr float chainRoom  = 200.0f;  ///< kept right of Main for its chain and the decoder
+    inline constexpr float control    = 16.0f;   ///< a switch's, a chip's, a button's height
+    inline constexpr float gap        = 4.0f;    ///< between controls on a row
+    inline constexpr float padX       = 8.0f;    ///< text inside a box or a chip
+    inline constexpr float sendsLine  = 16.0f;   ///< the line under a box that holds its sends
+    inline constexpr float returnsGap = 24.0f;   ///< from the last track to the returns' heading
+} // namespace routing
 
 // ---- the header, in every plugin --------------------------------------------------------------
 namespace header
