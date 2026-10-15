@@ -13,6 +13,10 @@ namespace bambi::loop {
 /// Whether the device is installed and running, by the uid its build gives it.
 bool installed();
 
+/// The loop device an aggregate device holds -- the one a program playing through that aggregate reaches: "bambi",
+/// else "BlackHole 16ch"; empty when no aggregate holds either.
+std::string inAggregate();
+
 /// Names its channels, channel 1 first. False when the device is not there or refuses.
 bool nameChannels(const std::vector<std::string>& names);
 

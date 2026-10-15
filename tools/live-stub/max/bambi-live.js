@@ -42,6 +42,7 @@ const GRACE_MS = 5000;
 const RETURN_IN = "15/16";   // the host's binaural mix: the loop device's pair after the tracks' seven
 const RETURN_NAME = "bambi";
 const MONITOR_IN = 0;
+const RETURN_START_DB = -12;  // the bambi track starts low: the decoded mix of every track bambi plays can reach full scale
 
 let store = null;      // the dict the set keeps
 let ready = false;     // loaded; a press before that is a parameter being restored
@@ -303,15 +304,29 @@ function makeReturn() {
     const view = new LiveAPI("live_set view");
     const selected = view.get("selected_track");  // a new track takes the selection; it goes back after
     set.call("create_audio_track", -1);
-    const t = new LiveAPI("live_set tracks " + (set.getcount("tracks") - 1));
+    const path = "live_set tracks " + (set.getcount("tracks") - 1);
+    const t = new LiveAPI(path);
     t.set("name", RETURN_NAME);
     const listening = chooseNamed(t, "input_routing_type", "Ext. In") &&
                       chooseNamed(t, "input_routing_channel", RETURN_IN);
     t.set("current_monitoring_state", MONITOR_IN);
     chooseNamed(t, "output_routing_type", MAIN);
+    setDb(path + " mixer_device volume", RETURN_START_DB);
     if (Number(selected[1]) > 0) view.set("selected_track", "id", Number(selected[1]));
     stale();
     return listening;
+}
+
+//  A fader to the value Live shows as `target` dB: found by halving, as Live says what a value is in dB but not the
+//  other way round.
+function setDb(path, target) {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 24; ++i) {
+        const mid = (lo + hi) / 2, d = db(path, mid);
+        if (d === null || d < target) lo = mid;
+        else hi = mid;
+    }
+    new LiveAPI(path).set("value", (lo + hi) / 2);
 }
 
 function removeReturn() {

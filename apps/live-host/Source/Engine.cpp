@@ -7,6 +7,7 @@
 
 #include "Plugins.h"
 #include "bambi/live/graph.hpp"
+#include "loop.hpp"
 
 namespace bambi::livehost {
 
@@ -59,8 +60,13 @@ bool Engine::start(const Settings& settings, juce::String& status) {
 
     //  The device first: the plugins are prepared at what it runs at. Opened by name, never the system's default,
     //  which may be one -- a Bluetooth headset -- that takes its time, or hangs, to open.
+    //  the loop device Live reaches, through the aggregate it plays on; failing that, bambi's own, else BlackHole
     juce::String opened;
-    for (const char* name : {"bambi", "BlackHole 16ch"}) {
+    std::vector<juce::String> names;
+    if (const auto held = loop::inAggregate(); !held.empty()) names.push_back(juce::String(held));
+    for (const char* name : {"bambi", "BlackHole 16ch"})
+        if (std::find(names.begin(), names.end(), juce::String(name)) == names.end()) names.push_back(name);
+    for (const juce::String& name : names) {
         juce::AudioDeviceManager::AudioDeviceSetup setup;
         setup.inputDeviceName = setup.outputDeviceName = name;
         setup.sampleRate = s_.rate;

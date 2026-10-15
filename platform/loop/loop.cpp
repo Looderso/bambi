@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "loop.hpp"
 
+#include <algorithm>
+
 #ifdef __APPLE__
 #include <CoreAudio/CoreAudio.h>
 #endif
@@ -20,9 +22,49 @@ AudioObjectID device() {
     return id;
 }
 
+//  Every aggregate device's sub-devices, by uid.
+std::vector<std::string> aggregated() {
+    std::vector<std::string> uids;
+    const AudioObjectPropertyAddress all{kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal,
+                                         kAudioObjectPropertyElementMain};
+    UInt32 size = 0;
+    if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &all, 0, nullptr, &size) != noErr) return uids;
+    std::vector<AudioObjectID> devices(size / sizeof(AudioObjectID));
+    if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &all, 0, nullptr, &size, devices.data()) != noErr)
+        return uids;
+    for (const AudioObjectID d : devices) {
+        UInt32 transport = 0, tsize = sizeof transport;
+        const AudioObjectPropertyAddress t{kAudioDevicePropertyTransportType, kAudioObjectPropertyScopeGlobal,
+                                           kAudioObjectPropertyElementMain};
+        if (AudioObjectGetPropertyData(d, &t, 0, nullptr, &tsize, &transport) != noErr ||
+            transport != kAudioDeviceTransportTypeAggregate)
+            continue;
+        CFArrayRef subs = nullptr;
+        UInt32 ssize = sizeof subs;
+        const AudioObjectPropertyAddress sub{kAudioAggregateDevicePropertyFullSubDeviceList,
+                                             kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+        if (AudioObjectGetPropertyData(d, &sub, 0, nullptr, &ssize, &subs) != noErr || subs == nullptr) continue;
+        for (CFIndex i = 0; i < CFArrayGetCount(subs); ++i) {
+            const auto uid = static_cast<CFStringRef>(CFArrayGetValueAtIndex(subs, i));
+            char buffer[256] = {};
+            if (CFStringGetCString(uid, buffer, sizeof buffer, kCFStringEncodingUTF8)) uids.emplace_back(buffer);
+        }
+        CFRelease(subs);
+    }
+    return uids;
+}
+
 }  // namespace
 
 bool installed() { return device() != kAudioObjectUnknown; }
+
+std::string inAggregate() {
+    const auto uids = aggregated();
+    const auto holds = [&](const char* uid) { return std::find(uids.begin(), uids.end(), uid) != uids.end(); };
+    if (holds("bambi_UID")) return "bambi";
+    if (holds("BlackHole16ch_UID")) return "BlackHole 16ch";
+    return {};
+}
 
 bool nameChannels(const std::vector<std::string>& names) {
     const AudioObjectID d = device();
@@ -56,6 +98,7 @@ std::string channelName(int channel) {
 }
 #else
 bool installed() { return false; }
+std::string inAggregate() { return {}; }
 bool nameChannels(const std::vector<std::string>&) { return false; }
 std::string channelName(int) { return {}; }
 #endif

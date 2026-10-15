@@ -104,6 +104,12 @@ private:
     //  kept before it switches on, and the defaults must not be kept over it.
     void timerCallback() override {
         engine_.tidy();
+        //  Live gone: the host quits after a while; the device starts it again when the set is opened
+        if (device_.session().connected()) {
+            heard_ = true;
+            alone_ = 0;
+        } else if (heard_ && ++alone_ >= kQuitAfterSeconds)
+            juce::JUCEApplication::getInstance()->systemRequestedQuit();
         if (!device_.session().on()) return;
         bambi::Json states = engine_.states();
         std::string text = states.dump(0);
@@ -213,6 +219,9 @@ private:
     bambi::live::Field onField_;
     juce::AudioProcessor* shownPlugin_{nullptr};  ///< the instance the window shows
     std::string kept_;                            ///< the plugins' states as last kept or restored
+    static constexpr int kQuitAfterSeconds = 60;  ///< alone, after a device has been here
+    bool heard_{false};                           ///< a device has been connected
+    int alone_{0};                                ///< seconds without one since
     std::array<juce::String, kPairs> named_{};    ///< each Encoder's track name and colour as last given
     bambi::livehost::DeviceServer device_;        ///< last: gone first, before what its events touch
 };
