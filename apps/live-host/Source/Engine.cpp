@@ -14,6 +14,23 @@ namespace {
 
 constexpr std::int64_t kFadeIn = 4800;  ///< samples from silence to the mix, at every start
 
+juce::String encoded(juce::AudioProcessor* p) {
+    juce::MemoryBlock block;
+    if (p != nullptr) p->getStateInformation(block);
+    return block.toBase64Encoding();
+}
+
+//  A state as the set kept it, into `p`; one missing or unreadable leaves it as it is.
+void decode(juce::AudioProcessor* p, const Json* state) {
+    juce::MemoryBlock block;
+    if (p == nullptr || state == nullptr || !state->isString() ||
+        !block.fromBase64Encoding(juce::String(std::string(state->stringOr("")))) || block.getSize() == 0)
+        return;
+    p->setStateInformation(block.getData(), static_cast<int>(block.getSize()));
+}
+
+std::string keyOf(live::TrackId track) { return std::to_string(track); }
+
 std::int64_t nowNs() noexcept {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
@@ -24,8 +41,8 @@ std::int64_t nowNs() noexcept {
 Engine::~Engine() {
     devices_.removeAudioCallback(this);
     devices_.closeAudioDevice();
-    for (auto& p : plugins_)
-        if (p != nullptr) p->releaseResources();
+    for (auto& v : voices_) v.encoder->releaseResources();
+    if (decoder_ != nullptr) decoder_->releaseResources();
 }
 
 bool Engine::start(const Settings& settings, juce::String& status) {
@@ -57,42 +74,23 @@ bool Engine::start(const Settings& settings, juce::String& status) {
         return false;
     }
     s_.rate = device->getCurrentSampleRate();
-    const int block = device->getCurrentBufferSizeSamples();
+    block_ = device->getCurrentBufferSizeSamples();
 
-    live::Plan plan;
-    for (int pair = 0; pair < s_.pairs; ++pair) {
-        auto loaded = loadInstalled("bambi Encoder", Role::Encoder, s_.order, s_.rate, block);
-        if (loaded.plugin == nullptr) {
-            status = loaded.status;
-            return false;
-        }
-        plugins_.push_back(std::move(loaded.plugin));
-        live::FieldNode n;
-        n.track = static_cast<live::TrackId>(pair + 1);
-        n.pair = pair;
-        n.encoder = pair;
-        plan.nodes.push_back(n);
-    }
-    auto decoded = loadInstalled("bambi Decoder", Role::Decoder, s_.order, s_.rate, block, 2);
+    auto decoded = loadInstalled("bambi Decoder", Role::Decoder, s_.order, s_.rate, block_, 2);
     if (decoded.plugin == nullptr) {
         status = decoded.status;
         return false;
     }
-    plugins_.push_back(std::move(decoded.plugin));
-    plan.decoder = s_.pairs;
-    for (auto& p : plugins_) plan.slots.push_back({p->getLatencySamples()});
-
+    decoder_ = std::move(decoded.plugin);
+    live::Plan plan;
+    plan.slots = {{decoder_->getLatencySamples()}};
+    plan.decoder = 0;
     std::string error;
     const auto compiled = live::compile(plan, &error);
-    if (!compiled) {
-        status = "the plan: " + juce::String(error);
-        return false;
-    }
-    std::vector<juce::AudioProcessor*> slots;
-    for (auto& p : plugins_) slots.push_back(p.get());
     juce::String why;
-    if (!runner_.prepare(*compiled, slots, 0, {s_.order, block, channels, 2, s_.rate}, why)) {
-        status = "the runner: " + why;
+    if (!compiled ||
+        !runner_.prepare(*compiled, {decoder_.get()}, 0, {s_.order, block_, channels, 2, s_.rate}, why, {decoder_})) {
+        status = "the first program: " + (compiled ? why : juce::String(error));
         return false;
     }
     projector_ = live::TransportProjector({s_.rate});
@@ -100,14 +98,93 @@ bool Engine::start(const Settings& settings, juce::String& status) {
     runner_.setClock(&projector_);
     loopChannels_ = channels;
 
-    const int lateness =
-        device->getInputLatencyInSamples() + device->getOutputLatencyInSamples() + block + compiled->latency;
-    latencyMs_ = 1000.0 * lateness / s_.rate;
+    deviceLatency_ = device->getInputLatencyInSamples() + device->getOutputLatencyInSamples() + block_;
+    latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
     devices_.addAudioCallback(this);
-    status = opened + ", " + juce::String(s_.rate / 1000.0) + " kHz, " + juce::String(block) +
-             " samples: " + juce::String(s_.pairs) + " Encoders and the Decoder at order " + juce::String(s_.order) +
-             ", " + juce::String(latencyMs_, 1) + " ms here";
+    status = opened + ", " + juce::String(s_.rate / 1000.0) + " kHz, " + juce::String(block_) + " samples, order " +
+             juce::String(s_.order) + ": the Decoder, " + juce::String(latencyMs_, 1) + " ms here";
     return true;
+}
+
+bool Engine::setTracks(const std::vector<live::TrackPair>& pairs, juce::String& status) {
+    std::vector<Voice> next;
+    bool changed = false;
+    for (const live::TrackPair& tp : pairs) {
+        if (tp.pair < 0 || tp.pair >= s_.pairs) continue;
+        const auto had =
+            std::find_if(voices_.begin(), voices_.end(), [&](const Voice& v) { return v.track == tp.track; });
+        if (had != voices_.end()) {
+            next.push_back({tp.track, tp.pair, had->encoder});
+            changed = changed || had->pair != tp.pair;
+            continue;
+        }
+        auto loaded = loadInstalled("bambi Encoder", Role::Encoder, s_.order, s_.rate, block_);
+        if (loaded.plugin == nullptr) {
+            status = loaded.status;
+            continue;
+        }
+        std::shared_ptr<juce::AudioPluginInstance> encoder = std::move(loaded.plugin);
+        decode(encoder.get(), waiting_.find(keyOf(tp.track)));
+        waiting_.erase(keyOf(tp.track));
+        next.push_back({tp.track, tp.pair, std::move(encoder)});
+        changed = true;
+    }
+    changed = changed || next.size() != voices_.size();
+    if (!changed) return false;
+
+    live::Plan plan;
+    std::vector<juce::AudioProcessor*> slots;
+    Runner::Keep keep;
+    for (const Voice& v : next) {
+        live::FieldNode n;
+        n.track = v.track;
+        n.pair = v.pair;
+        n.encoder = static_cast<int>(slots.size());
+        plan.nodes.push_back(n);
+        plan.slots.push_back({v.encoder->getLatencySamples()});
+        slots.push_back(v.encoder.get());
+        keep.push_back(v.encoder);
+    }
+    plan.decoder = static_cast<int>(slots.size());
+    plan.slots.push_back({decoder_->getLatencySamples()});
+    slots.push_back(decoder_.get());
+    keep.push_back(decoder_);
+
+    std::string error;
+    const auto compiled = live::compile(plan, &error);
+    juce::String why;
+    if (!compiled || !runner_.swap(*compiled, slots, 0, why, std::move(keep))) {
+        status = "the plan: " + (compiled ? why : juce::String(error));
+        return false;
+    }
+    //  the Encoders only the old program plays stay alive in it until the audio thread lets go of it
+    voices_ = std::move(next);
+    latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
+    status = juce::String(static_cast<int>(voices_.size())) + " Encoders and the Decoder";
+    return true;
+}
+
+Json Engine::states() const {
+    Json encoders = waiting_;  // a restored state whose track is not on a pair now is kept for when it is
+    for (const Voice& v : voices_) encoders.set(keyOf(v.track), Json(encoded(v.encoder.get()).toStdString()));
+    Json all = Json::object();
+    all.set("encoders", std::move(encoders));
+    all.set("decoder", Json(encoded(decoder_.get()).toStdString()));
+    return all;
+}
+
+void Engine::restore(const Json& states) {
+    waiting_ = Json::object();
+    if (const Json* encoders = states.find("encoders"); encoders != nullptr && encoders->isObject())
+        for (const auto& [track, state] : encoders->members()) {
+            const auto v =
+                std::find_if(voices_.begin(), voices_.end(), [&](const Voice& x) { return keyOf(x.track) == track; });
+            if (v != voices_.end())
+                decode(v->encoder.get(), &state);
+            else
+                waiting_.set(track, state);
+        }
+    decode(decoder_.get(), states.find("decoder"));
 }
 
 void Engine::transport(const live::TransportMessage& message, std::int64_t stampNs) noexcept {
@@ -115,13 +192,9 @@ void Engine::transport(const live::TransportMessage& message, std::int64_t stamp
 }
 
 juce::AudioProcessor* Engine::encoder(int pair) const {
-    return pair >= 0 && pair < s_.pairs && pair < static_cast<int>(plugins_.size())
-               ? plugins_[static_cast<std::size_t>(pair)].get()
-               : nullptr;
-}
-
-juce::AudioProcessor* Engine::decoder() const {
-    return static_cast<int>(plugins_.size()) == s_.pairs + 1 ? plugins_.back().get() : nullptr;
+    for (const Voice& v : voices_)
+        if (v.pair == pair) return v.encoder.get();
+    return nullptr;
 }
 
 void Engine::audioDeviceAboutToStart(juce::AudioIODevice* device) {

@@ -52,6 +52,7 @@ add_library(bambi-core STATIC
   src/patch/undo.cpp
 
   src/link/directory.cpp
+  src/link/handoff.cpp
   src/link/link.cpp
   $<IF:$<PLATFORM_ID:Windows>,src/link/os_windows.cpp,src/link/os_posix.cpp>
 
@@ -179,6 +180,7 @@ add_executable(bambi-tests
   tests/patch/test_undo.cpp
 
   tests/link/test_directory.cpp
+  tests/link/test_handoff.cpp
   tests/link/test_latest.cpp
   tests/link/test_link.cpp
   tests/link/test_spsc.cpp

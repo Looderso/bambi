@@ -11,14 +11,15 @@
 /*  State reaching the audio thread without a lock.
  *
  *  Every plugin in the suite does this identically and only the payload differs: the encoder hands
- *  over a compiled patch, a trajectory and a region; Echo hands over a patch and its send. So the
- *  payload is the template parameter and the protocol is here, once.
+ *  over a compiled patch, a trajectory and a region; Echo hands over a patch and its send; the live
+ *  host hands over the plan it plays and the instances it plays it on. So the payload is the
+ *  template parameter and the protocol is here, once.
  *
  *  The protocol: the message thread builds a snapshot whole -- every allocation on its side -- and
  *  posts it. The audio thread takes it by pointer at a block boundary, pushes the one it was using
  *  onto a queue, and never frees anything. The message thread drains that queue.
  */
-namespace bambi::host {
+namespace bambi {
 
 /// Counts what is alive and what was freed on the audio thread. The second number must stay zero: a test can only make that assertion if something counts.
 struct SnapshotCensus {
@@ -99,6 +100,10 @@ public:
         while (retired_.pop(old)) delete old;
     }
 
+    /// Whether a snapshot is posted and not yet taken. Either thread; on the audio thread, to prepare a block for
+    /// the change before adopting. Only the audio thread takes one, so it stays true until an adopt that found
+    /// room in the retire queue.
+    bool pending() const noexcept { return pending_.load(std::memory_order_acquire) != nullptr; }
     /// The snapshot the audio thread is using. Const, because a posted snapshot is never modified -- the whole protocol rests on that. Null only before `begin()`, which every plugin calls in its constructor.
     const Snapshot* current() const noexcept { return current_; }
 
@@ -113,4 +118,4 @@ private:
     std::atomic<std::uint64_t> deferred_{0};
 };
 
-}  // namespace bambi::host
+}  // namespace bambi

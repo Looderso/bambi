@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 //  bambi live host: the app that plays a Live set's tracks through the suite's own plugins. It opens the loop
-//  device, plays every pair through an Encoder of its own and the Decoder, answers the bambi Live device and gives
+//  device, plays every track on a pair through an Encoder of its own and the Decoder, answers the bambi Live device and gives
 //  the plugins Live's transport, and each Encoder its track's name and colour. The plugins' states are kept with
 //  the set, through the device, and given back when the set returns them. The window shows one plugin at a time,
 //  chosen above it.
@@ -32,36 +32,6 @@ juce::String describe(const bambi::live::DeviceSession& s, bool listening, const
     return line;
 }
 
-//  The plugins' states as the set keeps them: each as its own base64, the Encoders by pair.
-bambi::Json statesOf(const bambi::livehost::Engine& engine, int pairs) {
-    const auto state = [](juce::AudioProcessor* p) {
-        juce::MemoryBlock block;
-        if (p != nullptr) p->getStateInformation(block);
-        return bambi::Json(block.toBase64Encoding().toStdString());
-    };
-    bambi::Json encoders = bambi::Json::array();
-    for (int pair = 0; pair < pairs; ++pair) encoders.push(state(engine.encoder(pair)));
-    bambi::Json all = bambi::Json::object();
-    all.set("encoders", std::move(encoders));
-    all.set("decoder", state(engine.decoder()));
-    return all;
-}
-
-//  The states the set gave back, into the plugins; one missing or unreadable leaves its plugin as it is.
-void restoreStates(const bambi::livehost::Engine& engine, int pairs, const bambi::Json& states) {
-    const auto restore = [](juce::AudioProcessor* p, const bambi::Json* state) {
-        juce::MemoryBlock block;
-        if (p == nullptr || state == nullptr || !state->isString() ||
-            !block.fromBase64Encoding(juce::String(std::string(state->stringOr("")))) || block.getSize() == 0)
-            return;
-        p->setStateInformation(block.getData(), static_cast<int>(block.getSize()));
-    };
-    if (const bambi::Json* encoders = states.find("encoders"); encoders != nullptr && encoders->isArray())
-        for (int pair = 0; pair < pairs && pair < static_cast<int>(encoders->items().size()); ++pair)
-            restore(engine.encoder(pair), &encoders->items()[static_cast<std::size_t>(pair)]);
-    restore(engine.decoder(), states.find("decoder"));
-}
-
 //  A track's name and colour as a plugin takes them; nothing for a pair no track is on.
 juce::AudioProcessor::TrackProperties propertiesOf(const bambi::live::Node* track) {
     juce::AudioProcessor::TrackProperties p;
@@ -83,7 +53,7 @@ public:
         device_.changed = [this] { update(); };
         device_.restored = [this] {
             if (const bambi::Json* states = device_.session().kept("plugins")) {
-                restoreStates(engine_, kPairs, *states);
+                engine_.restore(*states);
                 kept_ = states->dump(0);
             }
         };
@@ -94,6 +64,7 @@ public:
         listening_ = device_.start(&error_);
         juce::String status;
         engine_.start({3, kPairs, 64, 48000.0, 0}, status);
+        started_ = status;
         status_.setText(status, juce::dontSendNotification);
         device_.setLatency(engine_.latencyMs(), 48000.0);
 
@@ -125,8 +96,9 @@ private:
     //  The plugins' states, kept with the set when they changed. Only while bambi is on: a device sends what the set
     //  kept before it switches on, and the defaults must not be kept over it.
     void timerCallback() override {
+        engine_.tidy();
         if (!device_.session().on()) return;
-        bambi::Json states = statesOf(engine_, kPairs);
+        bambi::Json states = engine_.states();
         std::string text = states.dump(0);
         if (text == kept_) return;
         kept_ = std::move(text);
@@ -135,6 +107,18 @@ private:
 
     void update() {
         live_.setText(describe(device_.session(), listening_, error_), juce::dontSendNotification);
+        if (const auto& pairs = device_.session().pairs(); pairs != onPairs_) {
+            onPairs_ = pairs;
+            juce::String status;
+            if (engine_.setTracks(pairs, status)) {
+                named_.fill({});
+                device_.setLatency(engine_.latencyMs(), 48000.0);
+                //  a window on an Encoder let go of closes before that Encoder can be freed
+                const int shown = choice_.getSelectedId();
+                if (shown != kDecoderId && engine_.encoder(shown - 2) != shownPlugin_) showEditor(kDecoderId);
+            }
+            if (status.isNotEmpty()) status_.setText(started_ + " · " + status, juce::dontSendNotification);
+        }
         for (int pair = 0; pair < kPairs; ++pair) {
             const auto* track = device_.session().trackOn(pair);
             const juce::String now = track == nullptr ? juce::String() : juce::String(track->name + track->colour);
@@ -145,12 +129,13 @@ private:
         const int selected = choice_.getSelectedId();
         choice_.clear(juce::dontSendNotification);
         choice_.addItem("Decoder", kDecoderId);
-        for (int pair = 0; pair < kPairs; ++pair) {
-            const auto* track = device_.session().trackOn(pair);
-            choice_.addItem("Encoder, pair " + juce::String(pair + 1) +
-                                (track == nullptr ? "" : " -- " + juce::String(track->name)),
-                            2 + pair);
-        }
+        for (int pair = 0; pair < kPairs; ++pair)
+            if (engine_.encoder(pair) != nullptr) {
+                const auto* track = device_.session().trackOn(pair);
+                choice_.addItem("Encoder, pair " + juce::String(pair + 1) +
+                                    (track == nullptr ? "" : " -- " + juce::String(track->name)),
+                                2 + pair);
+            }
         choice_.setSelectedId(selected, juce::dontSendNotification);
     }
 
@@ -158,6 +143,7 @@ private:
         if (editor_ != nullptr) removeChildComponent(editor_.get());
         editor_.reset();
         auto* plugin = id == kDecoderId ? engine_.decoder() : engine_.encoder(id - 2);
+        shownPlugin_ = plugin;
         if (plugin != nullptr) editor_.reset(plugin->createEditorAndMakeActive());
         if (editor_ != nullptr) addAndMakeVisible(*editor_);
         const int w = std::max(640, editor_ != nullptr ? editor_->getWidth() : 0);
@@ -171,9 +157,12 @@ private:
     juce::ComboBox choice_;
     bool listening_{false};
     std::string error_;
-    std::string kept_;                          ///< the plugins' states as last kept or restored
-    std::array<juce::String, kPairs> named_{};  ///< each Encoder's track name and colour as last given
-    bambi::livehost::DeviceServer device_;      ///< last: gone first, before what its events touch
+    juce::String started_;                         ///< what the engine said when it started
+    std::vector<bambi::live::TrackPair> onPairs_;  ///< the pairs the Encoders were last loaded for
+    juce::AudioProcessor* shownPlugin_{nullptr};   ///< the instance the window shows
+    std::string kept_;                             ///< the plugins' states as last kept or restored
+    std::array<juce::String, kPairs> named_{};     ///< each Encoder's track name and colour as last given
+    bambi::livehost::DeviceServer device_;         ///< last: gone first, before what its events touch
 };
 
 class Window final : public juce::DocumentWindow {

@@ -12,12 +12,18 @@
 #include "Runner.h"
 #include "bambi/link/spsc.hpp"
 #include "bambi/live/arrival.hpp"
+#include "bambi/live/pairs.hpp"
 #include "bambi/live/transport.hpp"
+#include "bambi/patch/json.hpp"
 
-/*  The host's audio: the loop device opened as the host's own, an Encoder for each of its pairs and the Decoder,
- *  played by the runner. Live's tracks arrive on the pairs; the decoded mix goes out on the pair past them, which
- *  Live's bambi return plays. Every pair has its Encoder whether a track is on it or not, so a track added or moved
- *  in Live changes no plugin here.
+/*  The host's audio: the loop device opened as the host's own, an Encoder for every track on one of its pairs and
+ *  the Decoder, played by the runner. Live's tracks arrive on the pairs; the decoded mix goes out on the pair past
+ *  them, which Live's bambi return plays. A track keeps its Encoder, and what it is set to, for as long as it is on
+ *  a pair; one new to a pair gets one loaded, and one gone lets go of its own -- each change a new program for the
+ *  runner, swapped in with a short fade.
+ *
+ *  The plugins' states, as the set keeps them: each Encoder's by its track, the Decoder's, each base64. A state
+ *  restored for a track not yet on a pair waits for it.
  *
  *  Live's transport arrives on the message thread, each message stamped with when its line was read; the audio
  *  thread takes it from a queue at the start of its next block and places it on the host's samples. It follows a
@@ -47,14 +53,34 @@ public:
     /// Live's transport, as the device sent it, stamped in steady-clock nanoseconds when its line was read.
     void transport(const live::TransportMessage& message, std::int64_t stampNs) noexcept;
 
+    /// The tracks on pairs now. Loads an Encoder for each track new to a pair, lets go of each whose track has
+    /// gone, and swaps the new program in. True when the Encoders changed. Message thread; loading takes a moment
+    /// per Encoder.
+    bool setTracks(const std::vector<live::TrackPair>& pairs, juce::String& status);
+
+    /// Frees the programs and Encoders the audio thread has let go of. Message thread.
+    void tidy() { runner_.tidy(); }
+
+    /// Every plugin's state, as the set keeps it.
+    Json states() const;
+    /// States the set gave back, into the plugins they belong to; one for a track not on a pair waits for it.
+    void restore(const Json& states);
+
     /// The host's own part of the spatial mix's lateness: the loop device both ways, the device's buffer and the
     /// plan. Live's own part comes on top.
     double latencyMs() const { return latencyMs_; }
 
+    /// The Encoder of the track on `pair`; none when no track is on it.
     juce::AudioProcessor* encoder(int pair) const;
-    juce::AudioProcessor* decoder() const;
+    juce::AudioProcessor* decoder() const { return decoder_.get(); }
 
 private:
+    struct Voice {  // a track on a pair, and its Encoder
+        live::TrackId track{0};
+        int pair{-1};
+        std::shared_ptr<juce::AudioPluginInstance> encoder;
+    };
+
     struct Timed {
         live::TransportMessage message;
         std::int64_t stampNs{0};
@@ -68,7 +94,10 @@ private:
 
     Settings s_;
     juce::AudioDeviceManager devices_;
-    std::vector<std::unique_ptr<juce::AudioPluginInstance>> plugins_;  ///< the pairs' Encoders, then the Decoder
+    std::vector<Voice> voices_;
+    std::shared_ptr<juce::AudioPluginInstance> decoder_;
+    Json waiting_ = Json::object();  ///< restored Encoder states, by track, for tracks not yet on a pair
+    int block_{64};
     Runner runner_;
     live::TransportProjector projector_;
     std::optional<live::Arrivals> arrivals_;
@@ -76,6 +105,7 @@ private:
     int loopChannels_{16};
     int returnChannel_{14};
     double latencyMs_{0.0};
+    int deviceLatency_{0};               ///< the loop device both ways, and its buffer
     std::atomic<bool> playable_{false};  ///< the device runs at the rate the plugins were prepared for
     std::int64_t faded_{0};              ///< samples of the fade-in played
 };

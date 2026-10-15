@@ -7,7 +7,6 @@
 # lock, and joins the link bus. Only the engine and the control step differ.
 
 add_library(bambi-host STATIC
-  src/Handoff.cpp
   src/Layout.cpp
   src/LinkNode.cpp
   src/ControlTarget.cpp

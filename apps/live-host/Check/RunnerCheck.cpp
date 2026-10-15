@@ -15,6 +15,10 @@
 //  stand-in insert that records what its playhead says at every piece: that must be what an independent projector
 //  fed the same messages says at the same samples, at every block size.
 //
+//  A fourth swaps one program for another while it plays: for an identical one, the output must be the unswapped
+//  render faded out and back in, exactly; for one that adds a track, the track must be heard after it and not
+//  before; and the program swapped out, with what it kept alive, must be freed by tidy() and never in a block.
+//
 //  The direct renders are wired by hand here, without the runner, so the two can disagree.
 
 #include <cmath>
@@ -29,6 +33,7 @@
 #include "bambi/live/transport.hpp"
 
 using namespace bambi;
+using bambi::SnapshotCensus;
 using bambi::livehost::Role;
 
 namespace {
@@ -394,6 +399,79 @@ double peak(const juce::AudioBuffer<float>& a) {
     return std::max(a.getMagnitude(0, 0, kLength), a.getMagnitude(1, 0, kLength));
 }
 
+//  One Encoder on `pair`, or one on each of `pairs`, into the Decoder: slot 0 and 1 are the Set's two Encoders.
+live::Plan encoding(std::vector<int> pairs) {
+    live::Plan p;
+    p.slots = {{0}, {0}, {0}, {0}, {0}};
+    for (std::size_t i = 0; i < pairs.size(); ++i) {
+        live::FieldNode n;
+        n.track = static_cast<live::TrackId>(i + 1);
+        n.pair = pairs[i];
+        n.encoder = static_cast<int>(i);
+        p.nodes.push_back(n);
+    }
+    p.decoder = 4;
+    return p;
+}
+
+constexpr int kSwapAt = 24000;  // a multiple of every block size the swap is played at; 100 does not divide the fade
+
+struct Swapped {
+    juce::AudioBuffer<float> out;
+    bool keptThroughSwap{false};  // what the first program kept, alive once the second played
+    bool freedByTidy{false};      // and gone after tidy()
+};
+
+//  `first` played, `second` swapped in before the block at kSwapAt; `second` empty: no swap.
+Swapped swapRender(int block, const live::Plan& first, const live::Plan* second, const juce::AudioBuffer<float>& in) {
+    Swapped r;
+    Set s = load();
+    if (!s.ok) return r;
+    live::Plan played = first;
+    for (std::size_t i = 0; i < s.plugins.size(); ++i) played.slots[i].latency = s.plugins[i]->getLatencySamples();
+    std::vector<juce::AudioProcessor*> slots;
+    for (auto& plugin : s.plugins) slots.push_back(plugin.get());
+    livehost::Runner runner;
+    juce::String why;
+    auto kept = std::make_shared<int>(1);
+    const std::weak_ptr<int> watch = kept;
+    if (!runner.prepare(*live::compile(played), slots, 0, {kOrder, kMaxBlock, 4, 2}, why, {kept})) {
+        std::printf("  the runner: %s\n", why.toRawUTF8());
+        return r;
+    }
+    kept.reset();
+    r.out.setSize(2, kLength);
+    juce::AudioBuffer<float> loop(4, kDeviceBlock), part(2, kDeviceBlock);
+    for (int at = 0; at < kLength; at += block) {
+        if (at == kSwapAt && second != nullptr) {
+            live::Plan next = *second;
+            for (std::size_t i = 0; i < s.plugins.size(); ++i)
+                next.slots[i].latency = s.plugins[i]->getLatencySamples();
+            if (!runner.swap(*live::compile(next), slots, 0, why)) std::printf("  the swap: %s\n", why.toRawUTF8());
+        }
+        const int n = std::min(block, kLength - at);
+        for (int ch = 0; ch < 4; ++ch) loop.copyFrom(ch, 0, in, ch, at, n);
+        runner.process(loop, part, n);
+        for (int ch = 0; ch < 2; ++ch) r.out.copyFrom(ch, at, part, ch, 0, n);
+    }
+    r.keptThroughSwap = !watch.expired();
+    runner.tidy();
+    r.freedByTidy = watch.expired();
+    return r;
+}
+
+//  Low noise on the pairs asked for, silence on the others.
+juce::AudioBuffer<float> noiseOn(std::vector<int> pairs) {
+    juce::AudioBuffer<float> b(4, kLength);
+    b.clear();
+    std::mt19937 random(9);
+    std::uniform_real_distribution<float> noise(-0.1f, 0.1f);
+    for (const int pair : pairs)
+        for (int i = 0; i < kLength; ++i)
+            for (int ch = 2 * pair; ch < 2 * pair + 2; ++ch) b.setSample(ch, i, noise(random));
+    return b;
+}
+
 }  // namespace
 
 int main() {
@@ -467,6 +545,49 @@ int main() {
     failed += differ == 0 ? 0 : 1;
     std::printf("the playhead at the same sample, across block sizes: %zu differ %s\n", differ,
                 differ == 0 ? "" : "  FAIL");
+
+    std::printf("a program swapped while it plays\n");
+    const auto one = encoding({0});
+    const auto both = encoding({0, 1});
+    const auto onFirst = noiseOn({0});
+    const auto onSecond = noiseOn({1});
+    for (const int block : {1, 64, 100, 1500}) {
+        //  for the same plan: the unswapped render, times the fade
+        const auto plain = swapRender(block, one, nullptr, onFirst);
+        const auto same = swapRender(block, one, &one, onFirst);
+        if (plain.out.getNumSamples() == 0 || same.out.getNumSamples() == 0) return 1;
+        double off = 0.0;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < kLength; ++i) {
+                const int k = i - kSwapAt;
+                const double gain = k < 0 || k >= 2 * livehost::Runner::kFade ? 1.0
+                                    : k < livehost::Runner::kFade
+                                        ? 1.0 - static_cast<double>(k) / livehost::Runner::kFade
+                                        : static_cast<double>(k - livehost::Runner::kFade) / livehost::Runner::kFade;
+                off = std::max(off, std::abs(same.out.getSample(ch, i) - gain * plain.out.getSample(ch, i)));
+            }
+        const bool faded = off <= 1e-6;
+        //  for one that adds a track: silent before, heard after
+        const auto added = swapRender(block, one, &both, onSecond);
+        if (added.out.getNumSamples() == 0) return 1;
+        float before = 0.0f, after = 0.0f;
+        for (int ch = 0; ch < 2; ++ch) {
+            //  the old program, which encodes only the silent pair, plays until the fade out ends
+            before = std::max(before, added.out.getMagnitude(ch, 0, kSwapAt + livehost::Runner::kFade));
+            after = std::max(after, added.out.getMagnitude(ch, kSwapAt + 2 * livehost::Runner::kFade,
+                                                           kLength - kSwapAt - 2 * livehost::Runner::kFade));
+        }
+        const bool heard = before == 0.0f && after > 1e-3f;
+        const bool freed = same.keptThroughSwap && same.freedByTidy && added.keptThroughSwap && added.freedByTidy &&
+                           SnapshotCensus::freedOnAudioThread() == 0;
+        const bool ok = faded && heard && freed;
+        failed += ok ? 0 : 1;
+        std::printf(
+            "the swap, block %4d: faded within %.3g, the added track %s (peak %.4f after), the old program "
+            "%s %s\n",
+            block, off, heard ? "heard only after" : "NOT as it should be", static_cast<double>(after),
+            freed ? "freed by tidy, not in a block" : "NOT freed as it should be", ok ? "" : "  FAIL");
+    }
 
     std::printf(failed == 0 ? "the runner plays both plans as the direct renders do, at every block size\n"
                             : "%d renders differ\n",
