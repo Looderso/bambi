@@ -195,6 +195,14 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     //  the Encoders only the old program plays stay alive in it until the audio thread lets go of it
     for (const auto& key : restoredEncoders) waiting_.erase(key);
     for (const auto& key : restoredEffects) waitingEffects_.erase(key);
+    //  a track that leaves the field, or an insert whose node does, keeps its state for when it comes back
+    for (const Voice& v : voices_)
+        if (std::none_of(next.begin(), next.end(), [&](const Voice& x) { return x.track == v.track; }))
+            waiting_.set(keyOf(v.track), Json(encoded(v.encoder.get()).toStdString()));
+    for (const Fx& f : effects_)
+        if (std::none_of(nextEffects.begin(), nextEffects.end(),
+                         [&](const Fx& x) { return x.insert.id == f.insert.id; }))
+            waitingEffects_.set(keyOf(f.insert.id), Json(encoded(f.plugin.get()).toStdString()));
     voices_ = std::move(next);
     effects_ = std::move(nextEffects);
     playing_ = fp.effects;
@@ -211,6 +219,22 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
 void Engine::setSends(const live::Field& field, const live::Tree& tree) {
     const std::vector<float> levels = live::levels(fieldPlan_, field, tree);
     for (std::size_t i = 0; i < levels.size(); ++i) runner_.setLevel(static_cast<int>(i), levels[i]);
+}
+
+void Engine::forget(const live::Tree& tree, const live::Shape& shape) {
+    Json encoders = Json::object();
+    for (const auto& [track, state] : waiting_.members())
+        if (std::any_of(tree.nodes.begin(), tree.nodes.end(),
+                        [&](const live::Node& n) { return keyOf(n.id) == track; }))
+            encoders.set(track, state);
+    waiting_ = std::move(encoders);
+    Json effects = Json::object();
+    for (const auto& [id, state] : waitingEffects_.members())
+        for (const live::Chain& c : shape.chains)
+            if (std::any_of(c.inserts.begin(), c.inserts.end(),
+                            [&](const live::Insert& i) { return keyOf(i.id) == id; }))
+                effects.set(id, state);
+    waitingEffects_ = std::move(effects);
 }
 
 Json Engine::states() const {

@@ -28,7 +28,8 @@
  *
  *  The plugins' states, as the set keeps them: each Encoder's by its track, each insert's by its id, the
  *  Decoder's, each base64. A state restored for a track not yet on a pair, or an insert not yet playing, waits for
- *  it.
+ *  it; so does the state of one that leaves the field, until it comes back -- or until Live no longer has the track,
+ *  or the shape the insert.
  *
  *  Live's transport arrives on the message thread, each message stamped with when its line was read; the audio
  *  thread takes it from a queue at the start of its next block and places it on the host's samples. It follows a
@@ -66,6 +67,9 @@ public:
     /// Every level from Live, as `tree` has it now, for the field last set: the sends' knobs, a split group's fader
     /// on its bus, a field return's fader. Message thread; the runner ramps to them.
     void setSends(const live::Field& field, const live::Tree& tree);
+
+    /// Drops the states kept for a track Live no longer has, or an insert the shape no longer has. Message thread.
+    void forget(const live::Tree& tree, const live::Shape& shape);
 
     /// Frees the programs and Encoders the audio thread has let go of. Message thread.
     void tidy() { runner_.tidy(); }

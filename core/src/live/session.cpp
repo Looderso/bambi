@@ -59,7 +59,27 @@ const Node* DeviceSession::trackOn(int pair) const {
     return nullptr;
 }
 
-std::vector<Message> DeviceSession::onTree(const Tree& t) {
+std::vector<Message> DeviceSession::onTree(const Tree& t, bool adopt) {
+    if (adopt && treed_) {
+        const std::vector<TrackId> before = field_.sources();
+        const auto within = [&](const Node& n, TrackId group) {  // `n` anywhere below `group`
+            std::optional<TrackId> up = n.parent;
+            for (int depth = 0; up && depth < 64; ++depth) {
+                if (*up == group) return true;
+                const auto p = std::find_if(t.nodes.begin(), t.nodes.end(), [&](const Node& x) { return x.id == *up; });
+                up = p == t.nodes.end() ? std::nullopt : p->parent;
+            }
+            return false;
+        };
+        for (const Node& g : t.nodes) {
+            if (g.kind != Node::Kind::Group) continue;
+            if (std::find(shape_.split.begin(), shape_.split.end(), g.id) != shape_.split.end()) continue;
+            const bool holdsSource = std::any_of(t.nodes.begin(), t.nodes.end(), [&](const Node& n) {
+                return within(n, g.id) && std::find(before.begin(), before.end(), n.id) != before.end();
+            });
+            if (holdsSource) shape_.split.push_back(g.id);
+        }
+    }
     tree_ = t;
     treed_ = true;
     field_ = layOut(tree_, shape_);
@@ -75,7 +95,7 @@ std::vector<Message> DeviceSession::onTree(const Tree& t) {
 std::vector<Message> DeviceSession::reshape(Shape shape) {
     shape_ = std::move(shape);
     if (!treed_) return {};
-    return onTree(Tree{tree_});
+    return onTree(Tree{tree_}, false);
 }
 
 std::vector<Message> DeviceSession::answer(const Message& in) {
@@ -83,7 +103,7 @@ std::vector<Message> DeviceSession::answer(const Message& in) {
         hello_ = *h;
         return {Welcome{kProtocol, s_.loop}};
     }
-    if (const auto* t = std::get_if<Tree>(&in)) return onTree(*t);
+    if (const auto* t = std::get_if<Tree>(&in)) return onTree(*t, true);
     if (const auto* r = std::get_if<Restore>(&in)) {
         pairs_.clear();
         kept_ = Json::object();

@@ -240,3 +240,36 @@ TEST_CASE("the routing says which of Live's returns the field plays, so the devi
     const auto given = s.reshape(Shape{});
     CHECK(only<Route>(given).silent.empty());
 }
+
+TEST_CASE("tracks bambi plays grouped in Live keep their Encoders: the new group is split, its tracks its bus's") {
+    //  Catches: a group formed around sources taken whole -- their Encoders, inserts and positions gone -- or a
+    //  nested group left whole inside the split one, or a group of untouched tracks split for nothing.
+    DeviceSession s;
+    s.answer(Tree{{node(2), node(3), node(4)}});  // three sources at the top
+    REQUIRE(pairOf(s, 2) >= 0);
+    //  2 and 3 grouped into 1, which is grouped into 9 with a fresh group 5 of a new track 6
+    s.answer(Tree{{node(9, Node::Kind::Group), node(1, Node::Kind::Group, TrackId{9}),
+                   node(2, Node::Kind::Track, TrackId{1}), node(3, Node::Kind::Track, TrackId{1}),
+                   node(5, Node::Kind::Group, TrackId{9}), node(6, Node::Kind::Track, TrackId{5}), node(4)}});
+    const auto& split = s.shape().split;
+    CHECK(std::find(split.begin(), split.end(), TrackId{1}) != split.end());
+    CHECK(std::find(split.begin(), split.end(), TrackId{9}) != split.end());
+    CHECK(std::find(split.begin(), split.end(), TrackId{5}) == split.end());  // new tracks only: whole
+    CHECK(pairOf(s, 2) >= 0);
+    CHECK(pairOf(s, 3) >= 0);
+    CHECK(pairOf(s, 5) >= 0);  // the fresh group, whole
+}
+
+TEST_CASE("a group the user takes whole stays whole") {
+    //  Catches: the user's "encode whole" undone by the very shape it makes, because its tracks were sources.
+    DeviceSession s;
+    s.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1})}});
+    s.reshape(Shape{{1}, {}, {}, {}, {}});
+    REQUIRE(pairOf(s, 2) >= 0);
+    s.reshape(Shape{});
+    CHECK(s.shape().split.empty());
+    CHECK(pairOf(s, 1) >= 0);
+    CHECK(pairOf(s, 2) == -1);
+    s.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1})}});  // the same set again
+    CHECK(s.shape().split.empty());
+}

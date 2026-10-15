@@ -354,6 +354,28 @@ void RoutingPage::body(juce::Graphics& g, float top) {
         }
         y += rt::row;
     }
+    //  the chains whose track Live no longer has: kept, never dropped unseen, removable insert by insert
+    bool headed = false;
+    for (const live::Chain& c : shape_.chains) {
+        if (c.node == live::kMain || c.inserts.empty()) continue;
+        if (std::any_of(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& n) { return n.id == c.node; }))
+            continue;
+        if (!headed) {
+            y = ui::drawGroupHeading(g, rt::left, y + rt::returnsGap, w - 2.0f * rt::left, "orphaned");
+            headed = true;
+        }
+        const float cy = y + rt::boxHeight / 2.0f;
+        ui::text(g, "a track Live no longer has", ui::smallFont(), colour::label,
+                 {rt::left, y, rt::boxWidth, rt::boxHeight});
+        float x = rt::left + rt::boxWidth + rt::gap * 2.0f;
+        for (const live::Insert& ins : c.inserts) {
+            const auto chip = ui::drawChip(g, {x, cy - rt::control / 2.0f}, rt::control, nameOf(ins.effect),
+                                           colour::text, colourOf(ins.effect), true);
+            addClickArea(chip.cross, removal(c.node, ins.id, nameOf(ins.effect)));
+            x = chip.box.getRight() + rt::gap;
+        }
+        y += rt::row;
+    }
     noteContentBottom(y + scroll());
 }
 
@@ -457,25 +479,29 @@ float RoutingPage::chain(juce::Graphics& g, live::TrackId owner, float x, float 
             addClickArea(chip.box, [this, id, effect] {
                 if (showInsert) showInsert(id, effect);
             });
-        addClickArea(chip.cross, [this, owner, id, name] {
-            confirm_.ask("remove this " + name + "?", "its settings go with it; the host has no undo yet", "remove",
-                         [this, owner, id] {
-                             change([owner, id](live::Shape& s) {
-                                 for (live::Chain& c : s.chains)
-                                     if (c.node == owner)
-                                         c.inserts.erase(
-                                             std::remove_if(c.inserts.begin(), c.inserts.end(),
-                                                            [&](const live::Insert& i) { return i.id == id; }),
-                                             c.inserts.end());
-                             });
-                         });
-        });
+        addClickArea(chip.cross, removal(owner, id, name));
         x = slot(
                 g, chip.box.getRight(), y, ins.sidechain, pick_.insert == id, [this, id] { arm({0, id}); },
                 [this] { choose(0); }) +
             rt::gap;
     }
     return x;
+}
+
+//  Removing an insert, after asking: its settings go with it, and the host has no undo.
+std::function<void()> RoutingPage::removal(live::TrackId owner, std::uint64_t id, juce::String name) {
+    return [this, owner, id, name] {
+        confirm_.ask("remove this " + name + "?", "its settings go with it; the host has no undo yet", "remove",
+                     [this, owner, id] {
+                         change([owner, id](live::Shape& s) {
+                             for (live::Chain& c : s.chains)
+                                 if (c.node == owner)
+                                     c.inserts.erase(std::remove_if(c.inserts.begin(), c.inserts.end(),
+                                                                    [&](const live::Insert& i) { return i.id == id; }),
+                                                     c.inserts.end());
+                         });
+                     });
+    };
 }
 
 void RoutingPage::addInsert(live::TrackId owner, live::Effect effect) {

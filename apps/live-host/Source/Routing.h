@@ -28,6 +28,9 @@
  *  picks it, and escape, empty ground or the slot again cancels; "none" clears it. A sidechain whose track has left
  *  the field reads lost. Unarmed, a source's box opens its Encoder and an insert's chip its plugin.
  *
+ *  A chain whose track Live no longer has is listed under "orphaned", below the returns, its inserts removable
+ *  one by one: kept, never dropped unseen.
+ *
  *  A chain on a node the field no longer takes is kept, for when it is taken again. The band at the top stays while
  *  the rest scrolls. Clicks only, on release. Message thread.
  */
@@ -67,6 +70,7 @@ private:
     static float offersWidth(const std::vector<Offer>& offers);
     void offer(juce::Graphics& g, float x, float y, const std::vector<Offer>& offers);
     void addInsert(live::TrackId owner, live::Effect effect);
+    std::function<void()> removal(live::TrackId owner, std::uint64_t id, juce::String name);
     float controlsWidth(const live::Node& n) const;
     float chainWidth(live::TrackId owner) const;
     void band(juce::Graphics& g);

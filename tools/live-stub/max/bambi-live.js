@@ -548,9 +548,27 @@ function db(path, value) {
 //  Where a node's audio goes, as the user set it: for a track this device routed, the routing it remembers; for
 //  one on the loop device's channels that it did not route, the routing the snapshot saved, else its group or Main
 //  -- bambi's channel is never where the user meant it to go.
+//  The routing Live gives a track by default -- into its group if it is in one, else to Main -- kept as this marker
+//  rather than by name, so a track grouped or ungrouped while bambi plays it belongs to where it now is, and goes
+//  back there. A routing the user chose -- out of a group straight to Main, or anywhere else -- is kept by name.
+const DEFAULT_ROUTING = "@default";
+
+function normalised(type, n) {
+    const group = groupOf(n);
+    if (group !== null && (type === text(group, "name") || type === "Group")) return DEFAULT_ROUTING;
+    if (group === null && MAIN.indexOf(type) >= 0) return DEFAULT_ROUTING;
+    return type;
+}
+
+function resolved(type, n) {
+    if (type !== DEFAULT_ROUTING) return type;
+    const group = groupOf(n);
+    return group !== null ? text(group, "name") : MAIN[0];
+}
+
 function outputOf(n) {
     const k = remembered().find(e => e.key === n.key);
-    if (k) return k.type;
+    if (k) return resolved(k.type, n);
     const now = read(n.api, "output_routing_type").display_name;
     if (n.ret || !isStereoOut(n.api)) return now;
     const s = kept("snapshot", null);
@@ -561,8 +579,9 @@ function outputOf(n) {
 }
 
 //  A tree of where the audio goes, not of how the tracks are filed: a track in a group belongs to it only
-//  while it plays into it. Played to Main it is a path of its own; played anywhere else it is not on a path
-//  to Main at all, and the host leaves it alone.
+//  while it plays into it -- by its routing as the user has it, not as bambi made it, so a track grouped while
+//  bambi plays it belongs to the group. Played to Main it is a path of its own; played anywhere else it is not on
+//  a path to Main at all, and the host leaves it alone.
 function tree() {
     const list = identify().map(n => {
         const t = n.api;
@@ -709,19 +728,20 @@ function route(m) {
 //  having put it there -- then what the snapshot saved, else its group or Main.
 function originalOf(key, t) {
     const n = {key: key, api: t, ret: false};
-    if (!isStereoOut(t))
-        return {type: read(t, "output_routing_type").display_name, channel: read(t, "output_routing_channel").display_name};
+    if (!isStereoOut(t)) {
+        const type = read(t, "output_routing_type").display_name;
+        return {type: normalised(type, n), channel: read(t, "output_routing_channel").display_name};
+    }
     const s = kept("snapshot", null);
     const saved = s === null ? null : s.list.find(e => e.key === key);
-    if (saved) return {type: saved.type, channel: saved.channel};
-    const group = groupOf(n);
-    return {type: group !== null ? text(group, "name") : MAIN[0], channel: ""};
+    if (saved) return {type: normalised(saved.type, n), channel: saved.channel};
+    return {type: DEFAULT_ROUTING, channel: ""};
 }
 
 function restore(entry) {
-    post("bambi: " + entry.name + " back to " + entry.type + " " + entry.channel + "\n");
+    post("bambi: " + entry.name + " back to " + entry.type + " " + entry.channel + "\n");  // @default: its group or Main
     const t = trackOf(entry.key);
-    if (t === null || !chooseNamed(t, "output_routing_type", entry.type)) return false;  // gone, or refused
+    if (t === null || !chooseNamed(t, "output_routing_type", resolved(entry.type, {api: t}))) return false;  // gone, or refused
     chooseNamed(t, "output_routing_channel", entry.channel);  // Main has no channel to choose
     set_[entry.key] = routingOf(t);
     return true;

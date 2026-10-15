@@ -17,7 +17,11 @@
  *  A hello is welcomed. A tree is the set as it is now: every track, group or return the device sent, and the
  *  answer is the pairs -- one for every source of the field the user's shape lays over it (field.hpp), each
  *  keeping the pair it had; then the session's state to keep with the set, and what the host says about the mix.
- *  A new shape is laid over the last tree, and answered the same way. A restore
+ *  A new shape is laid over the last tree, and answered the same way.
+ *
+ *  Grouping tracks never changes what is heard: a group in a new tree that holds, anywhere below it, a track the
+ *  field played as a source is split, so its tracks stay sources with their Encoders and inserts, and the group
+ *  becomes their bus. Only a tree from Live does this, never the user's own shape. A restore
  *  gives back the state an earlier session kept. A change of a value is taken into the tree.
  *
  *  What the set keeps for the host is the pairs, the shape and the parts the host gives the session by name -- its plugins'
@@ -84,7 +88,7 @@ public:
     void disconnected();
 
 private:
-    std::vector<Message> onTree(const Tree& t);
+    std::vector<Message> onTree(const Tree& t, bool adopt);
     Json state() const;
 
     SessionSettings s_;
