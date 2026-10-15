@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "bambi/live/field.hpp"
 #include "bambi/live/pairs.hpp"
 #include "bambi/live/protocol.hpp"
 
@@ -14,12 +15,12 @@
  *  stand-in that proves the device without it -- which add only the socket.
  *
  *  A hello is welcomed. A tree is the set as it is now: every track, group or return the device sent, and the
- *  answer is the pairs -- one for every node at the top of the set that plays to Main and has audio, a return
- *  never, a node inside a group never (its group carries it), a track playing elsewhere never -- each keeping the
- *  pair it had; then the session's state to keep with the set, and what the host says about the mix. A restore
+ *  answer is the pairs -- one for every source of the field the user's shape lays over it (field.hpp), each
+ *  keeping the pair it had; then the session's state to keep with the set, and what the host says about the mix.
+ *  A new shape is laid over the last tree, and answered the same way. A restore
  *  gives back the state an earlier session kept. A change of a value is taken into the tree.
  *
- *  What the set keeps for the host is the pairs and the parts the host gives the session by name -- its plugins'
+ *  What the set keeps for the host is the pairs, the shape and the parts the host gives the session by name -- its plugins'
  *  states -- each sent again whenever the host asks, and all of it given back by a restore.
  *
  *  The loop device's channels, named for the pairs: "<track> L" and "<track> R" on a pair's two, the binaural
@@ -43,6 +44,12 @@ public:
     /// What to send back, in order; nothing for most messages.
     std::vector<Message> answer(const Message& in);
 
+    /// The user's shape: the routing it makes, and the state with it, when a tree has come; nothing before.
+    std::vector<Message> reshape(Shape shape);
+    const Shape& shape() const { return shape_; }
+    /// The field the shape lays over the last tree.
+    const Field& field() const { return field_; }
+
     void setLoop(bool present) { s_.loop = present; }
     void setLatency(double ms, double rate) {
         s_.latencyMs = ms;
@@ -59,8 +66,8 @@ public:
     const std::optional<TransportMessage>& transport() const { return transport_; }
     int shows() const { return shows_; }  ///< times "open host" was pressed
 
-    /// A part of what the set keeps, beside the pairs, replacing the one of that name. One named "pairs" is
-    /// never saved: the pairs are the session's own.
+    /// A part of what the set keeps, beside the pairs, replacing the one of that name. One named "pairs" or
+    /// "shape" is never saved: those are the session's own.
     void keep(std::string_view name, Json value);
     /// The part of that name, as kept or restored; none when there is none.
     const Json* kept(std::string_view name) const { return kept_.find(name); }
@@ -84,6 +91,9 @@ private:
     std::optional<Hello> hello_;
     bool on_{false};
     Tree tree_;
+    bool treed_{false};  ///< a tree has come
+    Shape shape_;
+    Field field_;
     std::vector<TrackPair> pairs_;
     std::vector<TrackId> unassigned_;
     Json kept_ = Json::object();

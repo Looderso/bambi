@@ -45,6 +45,7 @@ Json DeviceSession::state() const {
     }
     Json state = kept_;
     state.set("pairs", std::move(pairs));
+    state.set("shape", toJson(shape_));
     return state;
 }
 
@@ -60,13 +61,19 @@ const Node* DeviceSession::trackOn(int pair) const {
 
 std::vector<Message> DeviceSession::onTree(const Tree& t) {
     tree_ = t;
-    std::vector<TrackId> top;
-    for (const Node& n : t.nodes)
-        if (!n.parent && n.path == Node::Path::Main && n.kind != Node::Kind::Return && n.audio) top.push_back(n.id);
-    const PairAssignment a = assignPairs(pairs_, top, s_.pairCount);
+    treed_ = true;
+    field_ = layOut(tree_, shape_);
+    const std::vector<TrackId> sources = field_.sources();
+    const PairAssignment a = assignPairs(pairs_, sources, s_.pairCount);
     pairs_ = a.pairs;
     unassigned_ = a.unassigned;
     return {Route{pairs_}, Save{state()}, Info{s_.latencyMs, s_.rate, {}}};
+}
+
+std::vector<Message> DeviceSession::reshape(Shape shape) {
+    shape_ = std::move(shape);
+    if (!treed_) return {};
+    return onTree(Tree{tree_});
 }
 
 std::vector<Message> DeviceSession::answer(const Message& in) {
@@ -80,6 +87,7 @@ std::vector<Message> DeviceSession::answer(const Message& in) {
         kept_ = Json::object();
         if (r->state.isObject())
             for (const auto& [name, value] : r->state.members()) keep(name, value);
+        if (const Json* shape = r->state.find("shape")) shape_ = shapeFrom(*shape);
         if (const Json* pairs = r->state.find("pairs"); pairs != nullptr && pairs->isArray())
             for (const Json& p : pairs->items()) {
                 const Json* id = p.find("id");

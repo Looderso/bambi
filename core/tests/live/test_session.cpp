@@ -198,3 +198,35 @@ TEST_CASE("the track on a pair, as the tree has it now") {
     CHECK(s.trackOn(1)->name == "bass");
     CHECK(s.trackOn(2) == nullptr);
 }
+
+TEST_CASE("a new shape lays the field out again: a split group's children get pairs, the group lets go of its own") {
+    //  Catches: a shape that changes nothing until the next tree, or a group that keeps its pair beside its
+    //  children's -- it would be heard twice.
+    DeviceSession s;
+    CHECK(s.reshape(Shape{{1}, {}, {}}).empty());  // no tree yet: nothing to route
+    s.reshape({});
+    s.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(3)}});
+    CHECK(pairOf(s, 1) == 0);
+    CHECK(pairOf(s, 3) == 1);
+    const auto answers = s.reshape(Shape{{1}, {}, {}});
+    REQUIRE(answers.size() == 3);
+    (void)only<Route>(answers);
+    CHECK(pairOf(s, 1) == -1);
+    CHECK(pairOf(s, 2) == 0);  // the pair its group let go of
+    CHECK(pairOf(s, 3) == 1);  // kept
+    REQUIRE(s.field().parts.size() == 3);
+    CHECK(s.field().parts[0].bus);
+}
+
+TEST_CASE("the shape goes into every save and comes back with a restore") {
+    //  Catches: a shape the set never keeps, so a reopened set plays every group whole again.
+    DeviceSession first;
+    first.reshape(Shape{{1}, {3}, {}});
+    first.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(3)}});
+    DeviceSession second;
+    second.answer(Restore{first.save().state});
+    CHECK(second.shape() == Shape{{1}, {3}, {}});
+    second.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(3)}});
+    CHECK(pairOf(second, 2) == pairOf(first, 2));
+    CHECK(pairOf(second, 3) == -1);
+}

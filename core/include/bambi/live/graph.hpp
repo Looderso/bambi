@@ -33,6 +33,7 @@ struct FieldNode {
     int encoder{-1};  ///< a source's encoder slot; a bus has none
     int parent{-1};   ///< the bus it plays into, by index; -1: Main
     std::vector<int> inserts;
+    friend bool operator==(const FieldNode&, const FieldNode&) = default;
 };
 
 struct Return {

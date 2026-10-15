@@ -42,6 +42,7 @@ Engine::~Engine() {
     devices_.removeAudioCallback(this);
     devices_.closeAudioDevice();
     for (auto& v : voices_) v.encoder->releaseResources();
+    for (auto& f : effects_) f.plugin->releaseResources();
     if (decoder_ != nullptr) decoder_->releaseResources();
 }
 
@@ -106,52 +107,67 @@ bool Engine::start(const Settings& settings, juce::String& status) {
     return true;
 }
 
-bool Engine::setTracks(const std::vector<live::TrackPair>& pairs, juce::String& status) {
+bool Engine::setField(const live::Field& field, const std::vector<live::TrackPair>& pairs, juce::String& status) {
+    live::FieldPlan fp = live::planOf(field, pairs);
+    //  each source's Encoder: the one it had, or one loaded now
     std::vector<Voice> next;
-    bool changed = false;
-    for (const live::TrackPair& tp : pairs) {
-        if (tp.pair < 0 || tp.pair >= s_.pairs) continue;
-        const auto had =
-            std::find_if(voices_.begin(), voices_.end(), [&](const Voice& v) { return v.track == tp.track; });
+    std::vector<int> drop;  // nodes whose Encoder could not be loaded
+    for (std::size_t slot = 0; slot < fp.encoders.size(); ++slot) {
+        const live::TrackId track = fp.encoders[slot];
+        const auto node = std::find_if(fp.plan.nodes.begin(), fp.plan.nodes.end(),
+                                       [&](const live::FieldNode& n) { return n.encoder == static_cast<int>(slot); });
+        const int pair = node->pair;
+        const auto had = std::find_if(voices_.begin(), voices_.end(), [&](const Voice& v) { return v.track == track; });
         if (had != voices_.end()) {
-            next.push_back({tp.track, tp.pair, had->encoder});
-            changed = changed || had->pair != tp.pair;
+            next.push_back({track, pair, had->encoder});
             continue;
         }
         auto loaded = loadInstalled("bambi Encoder", Role::Encoder, s_.order, s_.rate, block_);
         if (loaded.plugin == nullptr) {
             status = loaded.status;
-            continue;
+            return false;
         }
         std::shared_ptr<juce::AudioPluginInstance> encoder = std::move(loaded.plugin);
-        decode(encoder.get(), waiting_.find(keyOf(tp.track)));
-        waiting_.erase(keyOf(tp.track));
-        next.push_back({tp.track, tp.pair, std::move(encoder)});
-        changed = true;
+        decode(encoder.get(), waiting_.find(keyOf(track)));
+        waiting_.erase(keyOf(track));
+        next.push_back({track, pair, std::move(encoder)});
     }
-    changed = changed || next.size() != voices_.size();
-    if (!changed) return false;
+    //  each insert's Echo or Reverb: the one it had, or one loaded now
+    std::vector<Fx> nextEffects;
+    for (const live::Insert& insert : fp.effects) {
+        const auto had =
+            std::find_if(effects_.begin(), effects_.end(), [&](const Fx& f) { return f.insert.id == insert.id; });
+        if (had != effects_.end() && had->insert.effect == insert.effect) {
+            nextEffects.push_back(*had);
+            continue;
+        }
+        auto loaded = loadInstalled(insert.effect == live::Effect::Reverb ? "bambi Reverb" : "bambi Echo", Role::Effect,
+                                    s_.order, s_.rate, block_);
+        if (loaded.plugin == nullptr) {
+            status = loaded.status;
+            return false;
+        }
+        std::shared_ptr<juce::AudioPluginInstance> plugin = std::move(loaded.plugin);
+        decode(plugin.get(), waitingEffects_.find(keyOf(insert.id)));
+        waitingEffects_.erase(keyOf(insert.id));
+        nextEffects.push_back({insert, std::move(plugin)});
+    }
+    if (fp.plan.nodes == plan_.nodes && fp.plan.main == plan_.main && fp.effects == playing_)
+        return false;  // the same shape, the same plugins
 
-    live::Plan plan;
     std::vector<juce::AudioProcessor*> slots;
     Runner::Keep keep;
-    for (const Voice& v : next) {
-        live::FieldNode n;
-        n.track = v.track;
-        n.pair = v.pair;
-        n.encoder = static_cast<int>(slots.size());
-        plan.nodes.push_back(n);
-        plan.slots.push_back({v.encoder->getLatencySamples()});
-        slots.push_back(v.encoder.get());
-        keep.push_back(v.encoder);
-    }
-    plan.decoder = static_cast<int>(slots.size());
-    plan.slots.push_back({decoder_->getLatencySamples()});
-    slots.push_back(decoder_.get());
-    keep.push_back(decoder_);
+    const auto add = [&](const std::shared_ptr<juce::AudioPluginInstance>& plugin) {
+        fp.plan.slots[slots.size()].latency = plugin->getLatencySamples();
+        slots.push_back(plugin.get());
+        keep.push_back(plugin);
+    };
+    for (const Voice& v : next) add(v.encoder);
+    for (const Fx& f : nextEffects) add(f.plugin);
+    add(decoder_);
 
     std::string error;
-    const auto compiled = live::compile(plan, &error);
+    const auto compiled = live::compile(fp.plan, &error);
     juce::String why;
     if (!compiled || !runner_.swap(*compiled, slots, 0, why, std::move(keep))) {
         status = "the plan: " + (compiled ? why : juce::String(error));
@@ -159,16 +175,25 @@ bool Engine::setTracks(const std::vector<live::TrackPair>& pairs, juce::String& 
     }
     //  the Encoders only the old program plays stay alive in it until the audio thread lets go of it
     voices_ = std::move(next);
+    effects_ = std::move(nextEffects);
+    playing_ = std::move(fp.effects);
+    plan_ = std::move(fp.plan);
     latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
-    status = juce::String(static_cast<int>(voices_.size())) + " Encoders and the Decoder";
+    int buses = 0;
+    for (const live::FieldNode& n : plan_.nodes) buses += n.pair < 0 ? 1 : 0;
+    status =
+        juce::String(static_cast<int>(voices_.size())) + " Encoders, " + juce::String(buses) + " buses and the Decoder";
     return true;
 }
 
 Json Engine::states() const {
     Json encoders = waiting_;  // a restored state whose track is not on a pair now is kept for when it is
     for (const Voice& v : voices_) encoders.set(keyOf(v.track), Json(encoded(v.encoder.get()).toStdString()));
+    Json effects = waitingEffects_;
+    for (const Fx& f : effects_) effects.set(keyOf(f.insert.id), Json(encoded(f.plugin.get()).toStdString()));
     Json all = Json::object();
     all.set("encoders", std::move(encoders));
+    all.set("effects", std::move(effects));
     all.set("decoder", Json(encoded(decoder_.get()).toStdString()));
     return all;
 }
@@ -184,6 +209,16 @@ void Engine::restore(const Json& states) {
             else
                 waiting_.set(track, state);
         }
+    waitingEffects_ = Json::object();
+    if (const Json* effects = states.find("effects"); effects != nullptr && effects->isObject())
+        for (const auto& [id, state] : effects->members()) {
+            const auto f =
+                std::find_if(effects_.begin(), effects_.end(), [&](const Fx& x) { return keyOf(x.insert.id) == id; });
+            if (f != effects_.end())
+                decode(f->plugin.get(), &state);
+            else
+                waitingEffects_.set(id, state);
+        }
     decode(decoder_.get(), states.find("decoder"));
 }
 
@@ -195,6 +230,25 @@ juce::AudioProcessor* Engine::encoder(int pair) const {
     for (const Voice& v : voices_)
         if (v.pair == pair) return v.encoder.get();
     return nullptr;
+}
+
+juce::AudioProcessor* Engine::firstEncoder() const {
+    const Voice* first = nullptr;
+    for (const Voice& v : voices_)
+        if (first == nullptr || v.pair < first->pair) first = &v;
+    return first == nullptr ? nullptr : first->encoder.get();
+}
+
+juce::AudioProcessor* Engine::firstEffect(live::Effect effect) const {
+    for (const Fx& f : effects_)
+        if (f.insert.effect == effect) return f.plugin.get();
+    return nullptr;
+}
+
+bool Engine::holds(const juce::AudioProcessor* p) const {
+    if (p != nullptr && p == decoder_.get()) return true;
+    if (std::any_of(effects_.begin(), effects_.end(), [&](const Fx& f) { return f.plugin.get() == p; })) return true;
+    return std::any_of(voices_.begin(), voices_.end(), [&](const Voice& v) { return v.encoder.get() == p; });
 }
 
 void Engine::audioDeviceAboutToStart(juce::AudioIODevice* device) {
