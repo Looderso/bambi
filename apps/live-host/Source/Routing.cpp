@@ -160,8 +160,28 @@ void RoutingPage::choose(live::TrackId from) {
     repaint();
 }
 
+void RoutingPage::attachTo(live::TrackId target) {
+    const live::TrackId orphan = pick_.orphan;
+    pick_ = {};
+    change([orphan, target](live::Shape& s) {
+        std::vector<live::Insert> moved;
+        for (const live::Chain& c : s.chains)
+            if (c.node == orphan) moved = c.inserts;
+        s.chains.erase(
+            std::remove_if(s.chains.begin(), s.chains.end(), [&](const live::Chain& c) { return c.node == orphan; }),
+            s.chains.end());
+        auto to =
+            std::find_if(s.chains.begin(), s.chains.end(), [&](const live::Chain& c) { return c.node == target; });
+        if (to == s.chains.end()) to = s.chains.insert(s.chains.end(), live::Chain{target, {}});
+        to->inserts.insert(to->inserts.end(), moved.begin(), moved.end());
+    });
+    repaint();
+}
+
 //  What the band says while a slot waits.
 juce::String RoutingPage::picking() const {
+    if (pick_.orphan != 0)
+        return "attach the orphaned chain" + kDot + "click a part of the field" + kDot + "esc cancels";
     juce::String what;
     if (pick_.source != 0) {
         const auto n =
@@ -299,6 +319,7 @@ void RoutingPage::body(juce::Graphics& g, float top) {
         frame(g, box, colour::ruleStrong, ui::theme::stroke::rule, false);
         if (hover_ == kHoverMain) hoverRing(g, box);
         ui::text(g, "main", ui::labelFont(), colour::text, box.withTrimmedLeft(rt::padX));
+        if (pick_.orphan != 0) addClickArea(box, [this] { attachTo(live::kMain); });
         float x = chain(g, live::kMain, box.getRight() + rt::gap * 2.0f, m.y);
         if (hover_ == kHoverMain) offer(g, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f, offers);
         //  the decoder, a node of its own after Main's chain, in its plugin's colour; a click shows it
@@ -328,6 +349,10 @@ void RoutingPage::body(juce::Graphics& g, float top) {
         frame(g, box, field ? colour::ruleStrong : colour::rule, ui::theme::stroke::rule, !field);
         if (hover_ == r.id) hoverRing(g, box);
         ui::text(g, juce::String(r.name), ui::labelFont(), colour::text, box.withTrimmedLeft(rt::padX));
+        if (field && pick_.orphan != 0) {
+            const auto rid = r.id;
+            addClickArea(box, [this, rid] { attachTo(rid); });
+        }
         ui::text(g, field ? "return" : "live", ui::smallFont(), colour::label, box.withTrimmedRight(rt::padX),
                  juce::Justification::centredRight);
         const juce::Rectangle<float> sw{box.getRight() + rt::gap * 2.0f, cy - rt::control / 2.0f,
@@ -368,6 +393,21 @@ void RoutingPage::body(juce::Graphics& g, float top) {
         ui::text(g, "a track Live no longer has", ui::smallFont(), colour::label,
                  {rt::left, y, rt::boxWidth, rt::boxHeight});
         float x = rt::left + rt::boxWidth + rt::gap * 2.0f;
+        const auto node = c.node;
+        const juce::Rectangle<float> attach{x, cy - rt::control / 2.0f, ui::framedButtonWidth("pick a part"),
+                                            rt::control};
+        if (pick_.orphan == node) {
+            ui::drawWaiting(g, attach, "pick a part", ui::font(ui::theme::type::body));
+            addClickArea(attach, [this] {
+                pick_ = {};
+                repaint();
+            });
+        } else {
+            ui::drawFramedButton(g, attach.withWidth(ui::framedButtonWidth("attach")), "attach", !pick_.armed());
+            if (!pick_.armed())
+                addClickArea(attach.withWidth(ui::framedButtonWidth("attach")), [this, node] { arm({0, 0, node}); });
+        }
+        x = attach.getRight() + rt::gap * 2.0f;
         for (const live::Insert& ins : c.inserts) {
             const auto chip = ui::drawChip(g, {x, cy - rt::control / 2.0f}, rt::control, nameOf(ins.effect),
                                            colour::text, colourOf(ins.effect), true);
@@ -392,7 +432,8 @@ float RoutingPage::node(juce::Graphics& g, const Node& n, juce::Point<float> at)
 
     //  outside the field dashed in the rule; a source the encoder's, a bus ink; a source with no pair not chosen.
     //  While a sidechain slot waits, all that cannot be its source is greyed.
-    const bool pickable = pick_.armed() && canBeSource(n.id) && pick_.source != n.id;
+    const bool pickable =
+        pick_.orphan != 0 ? part != nullptr : pick_.armed() && canBeSource(n.id) && pick_.source != n.id;
     const bool greyed = unpaired || (pick_.armed() && !pickable);
     const juce::Colour c = greyed && pick_.armed() ? colour::inactive
                            : part == nullptr       ? colour::rule
@@ -405,7 +446,12 @@ float RoutingPage::node(juce::Graphics& g, const Node& n, juce::Point<float> at)
              box.withTrimmedLeft(rt::padX));
     const auto id = n.id;
     if (pickable)
-        addClickArea(box, [this, id] { choose(id); });
+        addClickArea(box, [this, id] {
+            if (pick_.orphan != 0)
+                attachTo(id);
+            else
+                choose(id);
+        });
     else if (!pick_.armed() && part != nullptr && !part->bus && pair >= 0)
         addClickArea(box, [this, id] {
             if (showSource) showSource(id);

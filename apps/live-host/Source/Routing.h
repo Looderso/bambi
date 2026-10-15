@@ -29,7 +29,8 @@
  *  the field reads lost. Unarmed, a source's box opens its Encoder and an insert's chip its plugin.
  *
  *  A chain whose track Live no longer has is listed under "orphaned", below the returns, its inserts removable
- *  one by one: kept, never dropped unseen.
+ *  one by one: kept, never dropped unseen. "attach" arms it, as a sidechain slot is armed, and a click on a part of
+ *  the field, on Main or on a return the field plays moves the whole chain there, after that part's own inserts.
  *
  *  A chain on a node the field no longer takes is kept, for when it is taken again. The band at the top stays while
  *  the rest scrolls. Clicks only, on release. Message thread.
@@ -79,10 +80,12 @@ private:
     void change(const std::function<void(live::Shape&)>& edit);
 
     //  A sidechain slot waiting for a source: a source's Encoder's, or an insert's.
+    //  ... or an orphaned chain waiting for a part of the field to take it.
     struct Pick {
         live::TrackId source{0};
         std::uint64_t insert{0};
-        bool armed() const { return source != 0 || insert != 0; }
+        live::TrackId orphan{0};  ///< the chain's former track
+        bool armed() const { return source != 0 || insert != 0 || orphan != 0; }
     };
     bool canBeSource(live::TrackId id) const;
     juce::String slotLabel(live::TrackId heard) const;
@@ -91,6 +94,7 @@ private:
                std::function<void()> clear);
     void arm(Pick pick);
     void choose(live::TrackId from);
+    void attachTo(live::TrackId target);
     juce::String picking() const;
 
     live::Tree tree_;
