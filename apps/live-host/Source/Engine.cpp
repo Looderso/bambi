@@ -188,8 +188,7 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     std::string error;
     const auto compiled = live::compile(fp.plan, &error);
     juce::String why;
-    const int levels = static_cast<int>(fp.plan.nodes.size() * fp.plan.returns.size());
-    if (!compiled || !runner_.swap(*compiled, slots, levels, why, std::move(keep))) {
+    if (!compiled || !runner_.swap(*compiled, slots, compiled->levels, why, std::move(keep))) {
         status = "the plan: " + (compiled ? why : juce::String(error));
         return false;
     }
@@ -210,7 +209,7 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
 }
 
 void Engine::setSends(const live::Field& field, const live::Tree& tree) {
-    const std::vector<float> levels = live::sendLevels(fieldPlan_, field, tree);
+    const std::vector<float> levels = live::levels(fieldPlan_, field, tree);
     for (std::size_t i = 0; i < levels.size(); ++i) runner_.setLevel(static_cast<int>(i), levels[i]);
 }
 

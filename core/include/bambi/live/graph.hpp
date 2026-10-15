@@ -53,7 +53,7 @@ enum class Step {
     Encode,   ///< slot reads pair `from` of the loop device and writes buffer `to`
     Process,  ///< slot runs on buffer `to`, in place
     Clear,    ///< buffer `to` silent
-    Add,      ///< buffer `to` += buffer `from`, delayed by `delay` samples, times the level `gain` names (-1: unity)
+    Add,      ///< buffer `to` += buffer `from`, delayed by `delay` samples, times the level `gain` names
     Decode,   ///< slot reads buffer `from` and writes the output
 };
 
@@ -72,6 +72,9 @@ struct Compiled {
     std::vector<Op> ops;
     int buffers{0};  ///< field buffers: one per node, then one per return, then Main's
     int latency{0};  ///< samples from the loop device to the output, the same on every path
+    /// Entries in the runner's level table: a send's, node * returns + return; then each node's where it plays
+    /// into its bus or Main, nodes * returns + node; then each return's into Main, nodes * returns + nodes + return.
+    int levels{0};
     int mainBuffer() const { return buffers - 1; }
 };
 

@@ -187,6 +187,7 @@ Tree sending() {
     Tree t;
     Node g = node(1, Node::Kind::Group);
     g.sends = {-6.0, std::nullopt};
+    g.fader = 0.0;
     Node a = node(2, Node::Kind::Track, TrackId{1});
     a.sends = {0.0, -20.0};
     Node b = node(3);
@@ -232,8 +233,8 @@ TEST_CASE("every send's level is its node's own knob in Live, as a gain, by node
     const Shape shape{{1}, {}, {}, {10, 11}, {}};
     const Field f = layOut(sending(), shape);  // bus 1 { 2 }, 3; returns A, B
     const FieldPlan fp = planOf(f, {{2, 0}, {3, 1}});
-    const auto levels = sendLevels(fp, f, sending());
-    REQUIRE(levels.size() == 6);
+    const auto levels = live::levels(fp, f, sending());
+    REQUIRE(levels.size() == 3 * 2 + 3 + 2);        // sends, then three nodes, then two returns
     CHECK(levels[0] == doctest::Approx(0.501187));  // the group to A, -6 dB
     CHECK(levels[1] == 0.0f);                       // the group to B: silence
     CHECK(levels[2] == doctest::Approx(1.0));       // track 2 to A, 0 dB
@@ -294,4 +295,29 @@ TEST_CASE("the Encoders' sidechains the set keeps read back") {
     //  Catches: a source's sidechain written but not read, or its two tracks swapped.
     const Shape shape{{}, {}, {}, {}, {{2, 3}, {5, 2}}};
     CHECK(shapeFrom(toJson(shape)).sidechains == shape.sidechains);
+}
+
+TEST_CASE("a bus plays at its group's fader, and sends after it; a source at unity; a return at its own fader") {
+    //  Catches: a split group's fader doing nothing, its mute ignored, its sends before its fader, a source's fader
+    //  applied twice -- Live has applied it -- or a return silenced by the mute the device itself set.
+    Tree t = sending();  // group 1 { 2 }, 3; returns 10, 11
+    t.nodes[0].fader = -6.0;
+    t.nodes[1].fader = -20.0;  // a source: Live has it already
+    t.nodes[3].fader = -12.0;  // return A
+    t.nodes[3].mute = true;    // as the device mutes it
+    const Shape shape{{1}, {}, {}, {10}, {}};
+    const Field f = layOut(t, shape);
+    const FieldPlan fp = planOf(f, {{2, 0}, {3, 1}});
+    auto l = live::levels(fp, f, t);
+    const std::size_t nodes = 3, returns = 1;
+    REQUIRE(l.size() == nodes * returns + nodes + returns);
+    CHECK(l[nodes * returns + 0] == doctest::Approx(0.501187));      // the bus, -6 dB
+    CHECK(l[nodes * returns + 1] == 1.0f);                           // track 2, a source
+    CHECK(l[nodes * returns + 2] == 1.0f);                           // track 3
+    CHECK(l[0] == doctest::Approx(0.501187 * 0.501187));             // the group's -6 dB send, after its -6 dB fader
+    CHECK(l[nodes * returns + nodes] == doctest::Approx(0.251189));  // return A at -12 dB, muted or not
+    t.nodes[0].mute = true;
+    l = live::levels(fp, f, t);
+    CHECK(l[nodes * returns + 0] == 0.0f);  // a muted group's bus
+    CHECK(l[0] == 0.0f);                    // and its send
 }

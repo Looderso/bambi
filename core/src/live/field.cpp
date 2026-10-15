@@ -124,20 +124,32 @@ FieldPlan planOf(const Field& field, const std::vector<TrackPair>& pairs) {
     return out;
 }
 
-std::vector<float> sendLevels(const FieldPlan& plan, const Field& field, const Tree& tree) {
-    const std::size_t returns = field.returns.size();
-    std::vector<float> levels(plan.plan.nodes.size() * returns, 0.0f);
-    for (std::size_t k = 0; k < plan.plan.nodes.size(); ++k) {
-        const auto node = std::find_if(tree.nodes.begin(), tree.nodes.end(),
-                                       [&](const Node& n) { return n.id == plan.plan.nodes[k].track; });
-        if (node == tree.nodes.end()) continue;
+std::vector<float> levels(const FieldPlan& plan, const Field& field, const Tree& tree) {
+    const std::size_t nodes = plan.plan.nodes.size(), returns = field.returns.size();
+    std::vector<float> out(nodes * returns + nodes + returns, 0.0f);
+    const auto nodeOf = [&](TrackId id) -> const Node* {
+        const auto n = std::find_if(tree.nodes.begin(), tree.nodes.end(), [&](const Node& x) { return x.id == id; });
+        return n == tree.nodes.end() ? nullptr : &*n;
+    };
+    const auto gain = [](const std::optional<double>& dB) {
+        return dB ? static_cast<float>(std::pow(10.0, *dB / 20.0)) : 0.0f;
+    };
+    for (std::size_t k = 0; k < nodes; ++k) {
+        const FieldNode& fn = plan.plan.nodes[k];
+        const Node* node = nodeOf(fn.track);
+        const bool bus = fn.pair < 0;
+        //  a bus at its group's fader, silent while muted; a source at unity
+        const float fader = !bus ? 1.0f : node == nullptr || node->mute ? 0.0f : gain(node->fader);
+        out[nodes * returns + k] = fader;
+        if (node == nullptr) continue;
         for (std::size_t r = 0; r < returns; ++r) {
             const auto send = static_cast<std::size_t>(field.returns[r].send);
-            if (send < node->sends.size() && node->sends[send])
-                levels[k * returns + r] = static_cast<float>(std::pow(10.0, *node->sends[send] / 20.0));
+            if (send < node->sends.size()) out[k * returns + r] = gain(node->sends[send]) * (bus ? fader : 1.0f);
         }
     }
-    return levels;
+    for (std::size_t r = 0; r < returns; ++r)
+        if (const Node* ret = nodeOf(field.returns[r].node)) out[nodes * returns + nodes + r] = gain(ret->fader);
+    return out;
 }
 
 namespace {

@@ -165,7 +165,7 @@ TEST_CASE("whatever is read is finished: a send after its node's inserts, a bus 
     }
 }
 
-TEST_CASE("a send reads its node's level from the table, the dry paths none") {
+TEST_CASE("a send reads its node's level from the table, a node and a return their own where they play on") {
     //  Catches: the table read the wrong way round (return * nodes + node), or a dry path scaled by a send level.
     Plan p = source(0);
     FieldNode second = p.nodes[0];
@@ -181,9 +181,20 @@ TEST_CASE("a send reads its node's level from the table, the dry paths none") {
     for (const Op& op : c->ops) {
         if (op.step != Step::Add) continue;
         if (op.to >= nodes && op.to < nodes + returns)
-            CHECK(op.gain == op.from * returns + (op.to - nodes));
+            CHECK(op.gain == op.from * returns + (op.to - nodes));  // a send
         else
-            CHECK(op.gain == -1);
+            CHECK(op.gain == nodes * returns + op.from);  // a node or a return, into its parent or Main
+    }
+    CHECK(c->levels == nodes * returns + nodes + returns);
+    //  and in trees with buses inside buses: every way into a bus or Main reads its own
+    std::mt19937 random(23);
+    for (int round = 0; round < 100; ++round) {
+        const Plan q = randomPlan(random);
+        const auto d = compile(q);
+        REQUIRE(d.has_value());
+        const int n = static_cast<int>(q.nodes.size()), r = static_cast<int>(q.returns.size());
+        for (const Op& op : d->ops)
+            if (op.step == Step::Add && !(op.to >= n && op.to < n + r)) CHECK(op.gain == n * r + op.from);
     }
 }
 

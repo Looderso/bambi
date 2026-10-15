@@ -111,10 +111,14 @@ struct FieldPlan {
 };
 FieldPlan planOf(const Field& field, const std::vector<TrackPair>& pairs);
 
-/// Every send's level in the plan, as gains, by the runner's entries: node * returns + return. A part's send to a
-/// return is its node's send knob for that return in `tree`, in dB; a knob the tree does not have, or one at
-/// silence, is 0.
-std::vector<float> sendLevels(const FieldPlan& plan, const Field& field, const Tree& tree);
+/// Every level the plan plays at, as gains, by the runner's entries (graph.hpp's `Compiled::levels`):
+///   - a part's send to a return: its node's send knob for that return in `tree`, in dB -- times the fader, for a
+///     bus, since Live's sends follow it; a knob the tree does not have, or one at silence, is 0;
+///   - a part where it plays into its bus or Main: a source at unity -- Live has applied its fader before the pair
+///     -- a bus at its group's fader, and silent while the group is muted, since its children left Live before both;
+///   - a return of the field where it plays into Main: its fader in Live. Not its mute: the device mutes it in Live,
+///     so that only the field plays it.
+std::vector<float> levels(const FieldPlan& plan, const Field& field, const Tree& tree);
 
 /// The shape as the set keeps it, and back; anything unreadable is left out.
 Json toJson(const Shape& shape);

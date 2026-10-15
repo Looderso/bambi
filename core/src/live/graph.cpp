@@ -53,6 +53,8 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
     const auto sidechainOf = [&](int slot) { return p.slots[static_cast<std::size_t>(slot)].sidechain; };
     if (!valid(p, error)) return std::nullopt;
     const int nodes = static_cast<int>(p.nodes.size()), returns = static_cast<int>(p.returns.size());
+    //  a node's or a return's level, where it plays into its parent or Main: after the sends' entries, by buffer
+    const auto levelOf = [&](int buffer) { return nodes * returns + buffer; };
     const auto latency = [&](int slot) { return std::max(0, p.slots[static_cast<std::size_t>(slot)].latency); };
     const auto chained = [&](const std::vector<int>& chain) {
         int sum = 0;
@@ -85,7 +87,7 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
             for (const int k : kids) ready = std::max(ready, out[static_cast<std::size_t>(k)]);
             c.ops.push_back({Step::Clear, -1, -1, i, 0, -1});
             for (const int k : kids)
-                c.ops.push_back({Step::Add, -1, k, i, ready - out[static_cast<std::size_t>(k)], -1});
+                c.ops.push_back({Step::Add, -1, k, i, ready - out[static_cast<std::size_t>(k)], levelOf(k)});
         }
         for (const int s : n.inserts) c.ops.push_back({Step::Process, s, -1, i, 0, -1, sidechainOf(s)});
         out[static_cast<std::size_t>(i)] = ready + chained(n.inserts);
@@ -114,12 +116,15 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
     for (int r = 0; r < returns; ++r) ready = std::max(ready, returned[static_cast<std::size_t>(r)]);
     const int main = c.mainBuffer();
     c.ops.push_back({Step::Clear, -1, -1, main, 0, -1});
-    for (const int t : top) c.ops.push_back({Step::Add, -1, t, main, ready - out[static_cast<std::size_t>(t)], -1});
+    for (const int t : top)
+        c.ops.push_back({Step::Add, -1, t, main, ready - out[static_cast<std::size_t>(t)], levelOf(t)});
     for (int r = 0; r < returns; ++r)
-        c.ops.push_back({Step::Add, -1, nodes + r, main, ready - returned[static_cast<std::size_t>(r)], -1});
+        c.ops.push_back(
+            {Step::Add, -1, nodes + r, main, ready - returned[static_cast<std::size_t>(r)], levelOf(nodes + r)});
     for (const int s : p.main) c.ops.push_back({Step::Process, s, -1, main, 0, -1, sidechainOf(s)});
     c.ops.push_back({Step::Decode, p.decoder, main, -1, 0, -1});
     c.latency = ready + chained(p.main) + latency(p.decoder);
+    c.levels = nodes * returns + nodes + returns;
     return c;
 }
 

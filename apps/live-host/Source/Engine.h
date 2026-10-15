@@ -63,8 +63,8 @@ public:
     /// the program changed. Message thread; loading takes a moment per Encoder.
     bool setField(const live::Field& field, const std::vector<live::TrackPair>& pairs, juce::String& status);
 
-    /// Every send's level from its knob in Live, as `tree` has it now, for the field last set. Message thread; the
-    /// runner ramps to them.
+    /// Every level from Live, as `tree` has it now, for the field last set: the sends' knobs, a split group's fader
+    /// on its bus, a field return's fader. Message thread; the runner ramps to them.
     void setSends(const live::Field& field, const live::Tree& tree);
 
     /// Frees the programs and Encoders the audio thread has let go of. Message thread.

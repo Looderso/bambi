@@ -111,7 +111,7 @@ juce::AudioBuffer<float> throughRunner(int block) {
     for (auto& plugin : s.plugins) slots.push_back(plugin.get());
     livehost::Runner runner;
     juce::String why;
-    if (!runner.prepare(*compiled, slots, 2, {kOrder, kMaxBlock, 4, 2}, why)) {
+    if (!runner.prepare(*compiled, slots, compiled->levels, {kOrder, kMaxBlock, 4, 2}, why)) {
         std::printf("  the runner: %s\n", why.toRawUTF8());
         return {};
     }
@@ -245,8 +245,8 @@ juce::AudioBuffer<float> delayedThroughRunner(int block) {
     if (!compiled) return {};
     livehost::Runner runner;
     juce::String why;
-    if (!runner.prepare(*compiled, {s.plugins[0].get(), s.plugins[1].get(), &insert, s.plugins[4].get()}, 0,
-                        {kOrder, kMaxBlock, 4, 2}, why))
+    if (!runner.prepare(*compiled, {s.plugins[0].get(), s.plugins[1].get(), &insert, s.plugins[4].get()},
+                        compiled->levels, {kOrder, kMaxBlock, 4, 2}, why))
         return {};
     const juce::AudioBuffer<float> in = signal();
     juce::AudioBuffer<float> out(2, kLength), loop(4, kDeviceBlock), outBlock(2, kDeviceBlock);
@@ -358,7 +358,7 @@ std::vector<live::Playhead> timedThroughRunner(int block, std::vector<std::int64
     live::TransportProjector clock(clockSettings());
     livehost::Runner runner;
     juce::String why;
-    if (!runner.prepare(*compiled, {s.plugins[0].get(), &recorder, s.plugins[4].get()}, 0,
+    if (!runner.prepare(*compiled, {s.plugins[0].get(), &recorder, s.plugins[4].get()}, compiled->levels,
                         {kOrder, kMaxBlock, 4, 2, kRate}, why))
         return {};
     runner.setClock(&clock);
@@ -432,7 +432,8 @@ Swapped swapRender(int block, const live::Plan& first, const live::Plan* second,
     juce::String why;
     auto kept = std::make_shared<int>(1);
     const std::weak_ptr<int> watch = kept;
-    if (!runner.prepare(*live::compile(played), slots, 0, {kOrder, kMaxBlock, 4, 2}, why, {kept})) {
+    if (!runner.prepare(*live::compile(played), slots, live::compile(played)->levels, {kOrder, kMaxBlock, 4, 2}, why,
+                        {kept})) {
         std::printf("  the runner: %s\n", why.toRawUTF8());
         return r;
     }
@@ -445,7 +446,8 @@ Swapped swapRender(int block, const live::Plan& first, const live::Plan* second,
             live::Plan next = *second;
             for (std::size_t i = 0; i < s.plugins.size(); ++i)
                 next.slots[i].latency = s.plugins[i]->getLatencySamples();
-            if (!runner.swap(*live::compile(next), slots, 0, why)) std::printf("  the swap: %s\n", why.toRawUTF8());
+            if (!runner.swap(*live::compile(next), slots, live::compile(next)->levels, why))
+                std::printf("  the swap: %s\n", why.toRawUTF8());
         }
         const int n = std::min(block, kLength - at);
         for (int ch = 0; ch < 4; ++ch) loop.copyFrom(ch, 0, in, ch, at, n);
@@ -526,7 +528,8 @@ std::vector<float> standInSwap(int block, bool swap, bool delayed) {
     const auto compiled = live::compile(p);
     livehost::Runner runner;
     juce::String why;
-    if (!compiled || !runner.prepare(*compiled, slots, 0, {kOrder, kMaxBlock, 4, 2, kRate}, why)) return {};
+    if (!compiled || !runner.prepare(*compiled, slots, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why))
+        return {};
     std::vector<float> got;
     juce::AudioBuffer<float> loop(4, kDeviceBlock), part(2, kDeviceBlock);
     loop.clear();
@@ -535,7 +538,7 @@ std::vector<float> standInSwap(int block, bool swap, bool delayed) {
         loop.setSample(2, i, kLevel);
     }
     for (int at = 0; at < kLength; at += block) {
-        if (swap && at == kSwapAt) (void)runner.swap(*compiled, slots, 0, why);
+        if (swap && at == kSwapAt) (void)runner.swap(*compiled, slots, compiled->levels, why);
         const int n = std::min(block, kLength - at);
         runner.process(loop, part, n);
         for (int i = 0; i < n; ++i) got.push_back(part.getSample(0, i));
@@ -591,7 +594,8 @@ std::vector<float> sidechained(int block, int pair, bool encoder = false) {
     livehost::Runner runner;
     juce::String why;
     juce::AudioProcessor* first = encoder ? static_cast<juce::AudioProcessor*>(&b) : &a;
-    if (!compiled || !runner.prepare(*compiled, {first, &side, &out}, 0, {kOrder, kMaxBlock, 4, 2, kRate}, why)) {
+    if (!compiled ||
+        !runner.prepare(*compiled, {first, &side, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why)) {
         std::printf("  the runner: %s\n", why.toRawUTF8());
         return {};
     }
@@ -639,7 +643,7 @@ std::vector<float> sendGains(int block, int swapAt = 0, float swapLevel = 0.0f) 
     if (!compiled) return {};
     livehost::Runner runner;
     juce::String why;
-    if (!runner.prepare(*compiled, {&spread, &out}, 1, {kOrder, kMaxBlock, 2, 2, kRate}, why)) {
+    if (!runner.prepare(*compiled, {&spread, &out}, compiled->levels, {kOrder, kMaxBlock, 2, 2, kRate}, why)) {
         std::printf("  the runner: %s\n", why.toRawUTF8());
         return {};
     }
@@ -651,7 +655,7 @@ std::vector<float> sendGains(int block, int swapAt = 0, float swapLevel = 0.0f) 
     for (int at = 0; at < kRampLength; at += block) {
         while (next < kLevels.size() && kLevels[next].first <= at) runner.setLevel(0, kLevels[next++].second);
         if (swapAt != 0 && at == swapAt) {
-            (void)runner.swap(*compiled, {&spread, &out}, 1, why);
+            (void)runner.swap(*compiled, {&spread, &out}, compiled->levels, why);
             runner.setLevel(0, swapLevel);
         }
         const int n = std::min(block, kRampLength - at);
