@@ -52,9 +52,7 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
         p->lines.push_back(std::move(l));
     }
     p->levelCount = std::max(levels, 0);
-    p->levels = std::make_unique<std::atomic<float>[]>(static_cast<std::size_t>(p->levelCount));
-    for (int i = 0; i < p->levelCount; ++i)
-        p->levels[static_cast<std::size_t>(i)].store(1.0f, std::memory_order_relaxed);
+    p->levels = std::make_unique<Program::Level[]>(static_cast<std::size_t>(p->levelCount));
     for (juce::AudioProcessor* plugin : slots)
         if (plugin != nullptr) {
             plugin->setNonRealtime(false);
@@ -89,7 +87,7 @@ bool Runner::swap(const live::Compiled& compiled, const std::vector<juce::AudioP
 
 void Runner::setLevel(int entry, float level) noexcept {
     if (latest_ != nullptr && entry >= 0 && entry < latest_->levelCount)
-        latest_->levels[static_cast<std::size_t>(entry)].store(level, std::memory_order_relaxed);
+        latest_->levels[static_cast<std::size_t>(entry)].target.store(level, std::memory_order_relaxed);
 }
 
 //  A plugin over `scratch`, already sized to the piece: its inputs as the caller filled them, its outputs left there.
@@ -109,8 +107,9 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
             fade_ = Fade::Out;
             faded_ = 0;
         }
-        //  a piece ends where a fade does, so the swap falls between two pieces
-        int n = std::min(frames - done, setup_.maxBlock);
+        //  a piece ends where a fade does, so the swap falls between two pieces, and at a grid point, where the
+        //  sends take their levels
+        int n = std::min({frames - done, setup_.maxBlock, kLevelGrid - static_cast<int>(sample_ % kLevelGrid)});
         if (fade_ != Fade::None) n = std::min(n, kFade - faded_);
         piece(*handoff_.current(), loop, done, output, done, n);
         if (fade_ != Fade::None) {
@@ -124,7 +123,12 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
                 faded_ = 0;
                 if (fade_ == Fade::Out) {
                     //  the new program, faded in -- or, with no room to retire the old one, the old one again
-                    (void)handoff_.adopt();
+                    if (const Program* next = handoff_.adopt())
+                        for (int i = 0; i < next->levelCount; ++i) {
+                            const auto& l = next->levels[static_cast<std::size_t>(i)];
+                            l.from = l.to = l.target.load(std::memory_order_relaxed);
+                            l.begun = true;
+                        }
                     fade_ = Fade::In;
                 } else {
                     fade_ = Fade::None;
@@ -138,6 +142,15 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
 void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int loopStart,
                    juce::AudioBuffer<float>& output, int outStart, int frames) noexcept {
     if (clock_ != nullptr) playhead_.set(clock_->reading(sample_), setup_.rate);
+    const int offset = static_cast<int>(sample_ % kLevelGrid);
+    if (offset == 0)
+        for (int i = 0; i < p.levelCount; ++i) {
+            const auto& l = p.levels[static_cast<std::size_t>(i)];
+            const float before = l.to;  // where the last interval's ramp ended
+            l.to = l.target.load(std::memory_order_relaxed);
+            l.from = l.begun ? before : l.to;
+            l.begun = true;
+        }
     for (std::size_t k = 0; k < p.compiled.ops.size(); ++k) {
         const live::Op& op = p.compiled.ops[k];
         switch (op.step) {
@@ -165,15 +178,21 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
             }
             case live::Step::Clear: p.buffers[static_cast<std::size_t>(op.to)].clear(0, frames); break;
             case live::Step::Add: {
-                const float level =
-                    op.gain < 0 ? 1.0f : p.levels[static_cast<std::size_t>(op.gain)].load(std::memory_order_relaxed);
+                float g0 = 1.0f, g1 = 1.0f;  // the gain at the piece's first sample, and just after its last
+                if (op.gain >= 0) {
+                    const auto& l = p.levels[static_cast<std::size_t>(op.gain)];
+                    g0 = gainAt(l, offset);
+                    g1 = gainAt(l, offset + frames);
+                }
                 auto& to = p.buffers[static_cast<std::size_t>(op.to)];
                 const auto& from = p.buffers[static_cast<std::size_t>(op.from)];
                 Line& line = p.lines[k];
                 if (line.length == 0) {
-                    for (int ch = 0; ch < field_; ++ch) to.addFrom(ch, 0, from, ch, 0, frames, level);
+                    for (int ch = 0; ch < field_; ++ch)
+                        to.addFromWithRamp(ch, 0, from.getReadPointer(ch), frames, g0, g1);
                     break;
                 }
+                const float step = (g1 - g0) / static_cast<float>(frames);
                 for (int ch = 0; ch < field_; ++ch) {
                     float* mem = line.memory.getWritePointer(ch);
                     const float* in = from.getReadPointer(ch);
@@ -182,7 +201,7 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
                     for (int i = 0; i < frames; ++i) {
                         const float delayed = mem[at];
                         mem[at] = in[i];
-                        dst[i] += level * delayed;
+                        dst[i] += (g0 + step * static_cast<float>(i)) * delayed;
                         if (++at == line.length) at = 0;
                     }
                 }

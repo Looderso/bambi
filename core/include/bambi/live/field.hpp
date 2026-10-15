@@ -23,6 +23,10 @@
  *  stays with it as the chain changes around it, so its instance and its settings do. A chain on a node not in the
  *  field is kept in the shape and plays nowhere.
  *
+ *  A Live return the shape takes into the field is a return of the field: every part sends to it, after its
+ *  inserts, at the level its own send knob for that return has in Live, and its chain plays what they send. Live's
+ *  own return is then to be silent, or it would be heard as well.
+ *
  *  Allocates; for the message thread.
  */
 namespace bambi::live {
@@ -44,9 +48,10 @@ struct Chain {
 };
 
 struct Shape {
-    std::vector<TrackId> split;   ///< groups whose children the field takes one by one, the group their bus
-    std::vector<TrackId> inLive;  ///< top-level nodes that stay in Live: nothing of them reaches the field
-    std::vector<Chain> chains;    ///< one per node with inserts, Main's among them
+    std::vector<TrackId> split;    ///< groups whose children the field takes one by one, the group their bus
+    std::vector<TrackId> inLive;   ///< top-level nodes that stay in Live: nothing of them reaches the field
+    std::vector<Chain> chains;     ///< one per node with inserts, Main's among them
+    std::vector<TrackId> returns;  ///< Live's returns the field plays, its own
     friend bool operator==(const Shape&, const Shape&) = default;
 
     /// The inserts on `node`, kMain for Main's; none when it has no chain.
@@ -61,9 +66,17 @@ struct Part {
     friend bool operator==(const Part&, const Part&) = default;
 };
 
+struct FieldReturn {
+    TrackId node{0};  ///< the Live return
+    int send{0};      ///< its place among Live's returns: which of a track's send knobs feeds it
+    std::vector<Insert> inserts;
+    friend bool operator==(const FieldReturn&, const FieldReturn&) = default;
+};
+
 struct Field {
-    std::vector<Part> parts;   ///< a bus before everything in it
-    std::vector<Insert> main;  ///< Main's chain, before the decoder
+    std::vector<Part> parts;           ///< a bus before everything in it
+    std::vector<FieldReturn> returns;  ///< in Live's order
+    std::vector<Insert> main;          ///< Main's chain, before the decoder
 
     /// The sources, in the order of the parts: what needs a pair.
     std::vector<TrackId> sources() const;
@@ -72,8 +85,8 @@ struct Field {
 Field layOut(const Tree& tree, const Shape& shape);
 
 /// The plan that plays a field: a node per source with a pair, encoded by an Encoder slot of its own, slots
-/// 0, 1, ... in the order of the parts; a node per bus; then a slot per insert, the parts' in their order and
-/// Main's last; the decoder the slot after them all. A source without a pair -- one past the loop device's pairs --
+/// 0, 1, ... in the order of the parts; a node per bus; a return per return of the field; then a slot per
+/// insert, the parts' in their order, the returns' and Main's last; the decoder the slot after them all. A source without a pair -- one past the loop device's pairs --
 /// is left out with its inserts, and a bus keeps its place. The slots' latencies are the caller's to fill.
 struct FieldPlan {
     Plan plan;
@@ -81,6 +94,11 @@ struct FieldPlan {
     std::vector<Insert> effects;    ///< the insert each slot after the Encoders plays
 };
 FieldPlan planOf(const Field& field, const std::vector<TrackPair>& pairs);
+
+/// Every send's level in the plan, as gains, by the runner's entries: node * returns + return. A part's send to a
+/// return is its node's send knob for that return in `tree`, in dB; a knob the tree does not have, or one at
+/// silence, is 0.
+std::vector<float> sendLevels(const FieldPlan& plan, const Field& field, const Tree& tree);
 
 /// The shape as the set keeps it, and back; anything unreadable is left out.
 Json toJson(const Shape& shape);

@@ -112,7 +112,7 @@ TEST_CASE("every message comes back from the wire as it went") {
     CHECK(again(r) == r);
     const Welcome w{1, false};
     CHECK(again(w) == w);
-    const Route ro{{{5, 0}, {11, 3}}};
+    const Route ro{{{5, 0}, {11, 3}}, {20, 21}};
     CHECK(again(ro) == ro);
     const Info i{12.0, 48000.0, {{4, "its sends are post-fader"}, {9, "lost"}}};
     CHECK(again(i) == i);

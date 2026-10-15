@@ -253,6 +253,7 @@ function stop() {
     identify();
     post("bambi: off, restoring " + remembered().length + " tracks\n");
     const back = restoreAll();
+    silence([]);
     removeReturn();
     outlet(1, "set", 0);
     send({type: "bambi", on: 0});
@@ -697,6 +698,7 @@ function route(m) {
                         : {id: key, name: name, ok: false, error: "no Ext. Out " + to + " (enabled as a stereo pair?)"});
     }
     remember(list);
+    silence(m.silent || []);
     routing = false;
     send({type: "routed", tracks: results});
     idle();
@@ -723,6 +725,29 @@ function restore(entry) {
     chooseNamed(t, "output_routing_channel", entry.channel);  // Main has no channel to choose
     set_[entry.key] = routingOf(t);
     return true;
+}
+
+//  Live's returns the field plays are muted in Live, or they would be heard twice; each one's own mute is kept with
+//  the set, so it is given back as it was -- one the user had muted stays muted.
+function silence(keys) {
+    const was = kept("silenced", []);
+    const now = [];
+    for (const entry of was) {
+        if (keys.indexOf(entry.key) >= 0) {
+            now.push(entry);
+            continue;
+        }
+        const t = trackOf(entry.key);
+        if (t !== null) t.set("mute", entry.mute);
+    }
+    for (const key of keys) {
+        if (now.some(e => e.key === key)) continue;
+        const t = trackOf(key);
+        if (t === null) continue;
+        now.push({key: key, mute: Number(t.get("mute"))});
+        t.set("mute", 1);
+    }
+    keep("silenced", now.length > 0 ? now : null);
 }
 
 function restoreAll() {

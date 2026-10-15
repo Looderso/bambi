@@ -63,6 +63,10 @@ public:
     /// the program changed. Message thread; loading takes a moment per Encoder.
     bool setField(const live::Field& field, const std::vector<live::TrackPair>& pairs, juce::String& status);
 
+    /// Every send's level from its knob in Live, as `tree` has it now, for the field last set. Message thread; the
+    /// runner ramps to them.
+    void setSends(const live::Field& field, const live::Tree& tree);
+
     /// Frees the programs and Encoders the audio thread has let go of. Message thread.
     void tidy() { runner_.tidy(); }
 
@@ -114,6 +118,7 @@ private:
     std::vector<Fx> effects_;            ///< in the order of their slots, after the Encoders
     live::Plan plan_;                    ///< the plan the runner was last given, its latencies aside
     std::vector<live::Insert> playing_;  ///< the inserts it plays, in the order of their slots
+    live::FieldPlan fieldPlan_;          ///< the plan with its Encoders and inserts, for the send levels
     std::shared_ptr<juce::AudioPluginInstance> decoder_;
     Json waiting_ = Json::object();         ///< restored Encoder states, by track, for tracks not yet on a pair
     Json waitingEffects_ = Json::object();  ///< restored insert states, by insert, for inserts not yet playing

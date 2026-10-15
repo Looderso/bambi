@@ -67,7 +67,9 @@ std::vector<Message> DeviceSession::onTree(const Tree& t) {
     const PairAssignment a = assignPairs(pairs_, sources, s_.pairCount);
     pairs_ = a.pairs;
     unassigned_ = a.unassigned;
-    return {Route{pairs_}, Save{state()}, Info{s_.latencyMs, s_.rate, {}}};
+    std::vector<TrackId> silent;
+    for (const FieldReturn& r : field_.returns) silent.push_back(r.node);
+    return {Route{pairs_, std::move(silent)}, Save{state()}, Info{s_.latencyMs, s_.rate, {}}};
 }
 
 std::vector<Message> DeviceSession::reshape(Shape shape) {

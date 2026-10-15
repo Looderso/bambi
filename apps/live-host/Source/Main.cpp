@@ -116,6 +116,7 @@ private:
                 if (view_ != View::Decoder && !engine_.holds(shownPlugin_)) showView(view_);
             }
         }
+        engine_.setSends(session.field(), session.tree());
         for (int pair = 0; pair < kPairs; ++pair) {
             const auto* track = device_.session().trackOn(pair);
             const juce::String now = track == nullptr ? juce::String() : juce::String(track->name + track->colour);

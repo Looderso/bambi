@@ -23,6 +23,11 @@
  *  kept, is freed on the message thread -- by the next swap(), or by tidy(). process() allocates, frees and locks
  *  nothing, so it runs on the audio thread.
  *
+ *  A send's level changes only on the host's grid of kLevelGrid samples: at each grid point the level last set is
+ *  taken, and the send ramps to it linearly over the next kLevelGrid samples, so a moving knob does not click and
+ *  what is heard does not depend on the block size. A program starts at its levels, with no ramp: the first at
+ *  its first block, one swapped in where it takes over.
+ *
  *  The instances are the caller's, prepared by it at the plan's order and at least `maxBlock`; what a program must
  *  keep alive is handed to it as `keep`. The runner only calls processBlock on them, and gives each its playhead.
  *  That playhead reads the projector set with setClock(), asked before every piece for where Live is at the
@@ -42,7 +47,8 @@ public:
     };
     using Keep = std::vector<std::shared_ptr<void>>;  ///< what a program keeps alive while it may be played
 
-    static constexpr int kFade = 256;  ///< samples of the fade out before a swap, and of the fade in after
+    static constexpr int kFade = 256;       ///< samples of the fade out before a swap, and of the fade in after
+    static constexpr int kLevelGrid = 256;  ///< samples between the points where a send takes its new level
 
     /// The first program, before any audio. False, with `error` set, when the plan names a slot it was given no
     /// instance for, or a buffer or pair it does not have.
@@ -67,8 +73,8 @@ public:
     std::int64_t sample() const noexcept { return sample_; }
 
     /// A send's level, by the entry the compiled steps name: node * returns + return, in the program last
-    /// prepared or swapped. Message thread: each entry is a value of its own, ordered against nothing, read at the
-    /// next block.
+    /// prepared or swapped. Message thread: each entry is a value of its own, ordered against nothing, taken at
+    /// the next grid point.
     void setLevel(int entry, float level) noexcept;
 
     /// `frames` of the loop device in, the decoder's out, played in pieces of at most `maxBlock`. Output channels
@@ -90,13 +96,22 @@ private:
         mutable std::vector<juce::AudioBuffer<float>> buffers;
         mutable std::vector<juce::AudioBuffer<float>> scratch;  // per slot
         mutable std::vector<Line> lines;                        // per step
-        std::unique_ptr<std::atomic<float>[]> levels;
+        struct Level {
+            std::atomic<float> target{1.0f};     ///< as last set
+            mutable float from{1.0f}, to{1.0f};  ///< the ramp of this grid interval: the audio thread's
+            mutable bool begun{false};           ///< a ramp has been taken; before it, the level is its target
+        };
+        std::unique_ptr<Level[]> levels;
         int levelCount{0};
     };
 
     std::unique_ptr<Program> build(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots,
                                    int levels, juce::String& error, Keep keep);
     void run(const Program& p, int slot, juce::AudioBuffer<float>& scratch) noexcept;
+    /// A send's gain at `offset` samples into the current grid interval.
+    static float gainAt(const Program::Level& l, int offset) noexcept {
+        return l.from + (l.to - l.from) * static_cast<float>(offset) / static_cast<float>(kLevelGrid);
+    }
     void piece(const Program& p, const juce::AudioBuffer<float>& loop, int loopStart, juce::AudioBuffer<float>& output,
                int outStart, int frames) noexcept;
 

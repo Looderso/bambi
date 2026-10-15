@@ -105,6 +105,7 @@ struct Welcome {
 
 struct Route {
     std::vector<TrackPair> tracks;  ///< every track bambi plays and its pair; one not here goes back
+    std::vector<TrackId> silent;    ///< Live's returns the field plays: silent in Live; one not here as it was
     friend bool operator==(const Route&, const Route&) = default;
 };
 

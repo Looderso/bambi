@@ -152,7 +152,10 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
         waitingEffects_.erase(keyOf(insert.id));
         nextEffects.push_back({insert, std::move(plugin)});
     }
-    if (fp.plan.nodes == plan_.nodes && fp.plan.main == plan_.main && fp.effects == playing_)
+    if (fp.plan.nodes == plan_.nodes && fp.plan.main == plan_.main && fp.effects == playing_ &&
+        fp.plan.returns.size() == plan_.returns.size() &&
+        std::equal(fp.plan.returns.begin(), fp.plan.returns.end(), plan_.returns.begin(),
+                   [](const live::Return& a, const live::Return& b) { return a.chain == b.chain; }))
         return false;  // the same shape, the same plugins
 
     std::vector<juce::AudioProcessor*> slots;
@@ -169,21 +172,28 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     std::string error;
     const auto compiled = live::compile(fp.plan, &error);
     juce::String why;
-    if (!compiled || !runner_.swap(*compiled, slots, 0, why, std::move(keep))) {
+    const int levels = static_cast<int>(fp.plan.nodes.size() * fp.plan.returns.size());
+    if (!compiled || !runner_.swap(*compiled, slots, levels, why, std::move(keep))) {
         status = "the plan: " + (compiled ? why : juce::String(error));
         return false;
     }
     //  the Encoders only the old program plays stay alive in it until the audio thread lets go of it
     voices_ = std::move(next);
     effects_ = std::move(nextEffects);
-    playing_ = std::move(fp.effects);
-    plan_ = std::move(fp.plan);
+    playing_ = fp.effects;
+    plan_ = fp.plan;
+    fieldPlan_ = std::move(fp);
     latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
     int buses = 0;
     for (const live::FieldNode& n : plan_.nodes) buses += n.pair < 0 ? 1 : 0;
     status =
         juce::String(static_cast<int>(voices_.size())) + " Encoders, " + juce::String(buses) + " buses and the Decoder";
     return true;
+}
+
+void Engine::setSends(const live::Field& field, const live::Tree& tree) {
+    const std::vector<float> levels = live::sendLevels(fieldPlan_, field, tree);
+    for (std::size_t i = 0; i < levels.size(); ++i) runner_.setLevel(static_cast<int>(i), levels[i]);
 }
 
 Json Engine::states() const {

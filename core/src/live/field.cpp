@@ -53,6 +53,12 @@ Field layOut(const Tree& tree, const Shape& shape) {
     Field field;
     for (const Node& n : tree.nodes)
         if (!n.parent && reaches(n) && !has(shape.inLive, n.id)) place(tree, shape, n, -1, field, 0);
+    int send = 0;
+    for (const Node& n : tree.nodes) {
+        if (n.kind != Node::Kind::Return) continue;
+        if (has(shape.returns, n.id)) field.returns.push_back({n.id, send, shape.insertsOn(n.id)});
+        ++send;
+    }
     field.main = shape.insertsOn(kMain);
     return field;
 }
@@ -84,10 +90,31 @@ FieldPlan planOf(const Field& field, const std::vector<TrackPair>& pairs) {
     };
     for (std::size_t k = 0; k < out.plan.nodes.size(); ++k)
         for (const Insert& insert : *chains[k]) out.plan.nodes[k].inserts.push_back(slot(insert));
+    for (const FieldReturn& r : field.returns) {
+        Return ret;
+        for (const Insert& insert : r.inserts) ret.chain.push_back(slot(insert));
+        out.plan.returns.push_back(std::move(ret));
+    }
     for (const Insert& insert : field.main) out.plan.main.push_back(slot(insert));
     out.plan.decoder = static_cast<int>(out.encoders.size() + out.effects.size());
     out.plan.slots.assign(static_cast<std::size_t>(out.plan.decoder) + 1, Slot{});
     return out;
+}
+
+std::vector<float> sendLevels(const FieldPlan& plan, const Field& field, const Tree& tree) {
+    const std::size_t returns = field.returns.size();
+    std::vector<float> levels(plan.plan.nodes.size() * returns, 0.0f);
+    for (std::size_t k = 0; k < plan.plan.nodes.size(); ++k) {
+        const auto node = std::find_if(tree.nodes.begin(), tree.nodes.end(),
+                                       [&](const Node& n) { return n.id == plan.plan.nodes[k].track; });
+        if (node == tree.nodes.end()) continue;
+        for (std::size_t r = 0; r < returns; ++r) {
+            const auto send = static_cast<std::size_t>(field.returns[r].send);
+            if (send < node->sends.size() && node->sends[send])
+                levels[k * returns + r] = static_cast<float>(std::pow(10.0, *node->sends[send] / 20.0));
+        }
+    }
+    return levels;
 }
 
 namespace {
@@ -132,6 +159,7 @@ Json toJson(const Shape& shape) {
     j.set("split", ids(shape.split));
     j.set("inLive", ids(shape.inLive));
     j.set("chains", std::move(chains));
+    j.set("returns", ids(shape.returns));
     return j;
 }
 
@@ -143,7 +171,7 @@ Shape shapeFrom(const Json& json) {
                 if (const auto v = idOf(id, 1.0)) out.push_back(*v);
         return out;
     };
-    Shape shape{ids("split"), ids("inLive"), {}};
+    Shape shape{ids("split"), ids("inLive"), {}, ids("returns")};
     if (const Json* chains = json.find("chains"); chains != nullptr && chains->isArray())
         for (const Json& c : chains->items()) {
             const Json* node = c.find("node");

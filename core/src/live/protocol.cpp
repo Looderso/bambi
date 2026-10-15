@@ -169,6 +169,9 @@ struct Writer {
             tracks.push(std::move(t));
         }
         o.set("tracks", std::move(tracks));
+        Json silent = Json::array();
+        for (const TrackId r : m.silent) silent.push(number(r));
+        o.set("silent", std::move(silent));
         return o;
     }
     Json operator()(const Save& m) const {
@@ -239,6 +242,9 @@ std::optional<Message> parse(std::string_view line, std::string* error) {
         if (const Json* tracks = member(o, "tracks"); tracks != nullptr && tracks->isArray())
             for (const Json& t : tracks->items())
                 r.tracks.push_back({id(t), static_cast<int>(std::llround(number(t, "pair")))});
+        if (const Json* silent = member(o, "silent"); silent != nullptr && silent->isArray())
+            for (const Json& s : silent->items())
+                if (s.numberOr(0.0) >= 1.0) r.silent.push_back(static_cast<TrackId>(std::llround(s.numberOr(0.0))));
         return r;
     }
     if (type == "save") {

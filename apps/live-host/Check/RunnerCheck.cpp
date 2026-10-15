@@ -169,32 +169,13 @@ juce::AudioBuffer<float> direct() {
 }
 
 //  A stand-in insert: the field through, `delay` samples late, its latency reported as such.
-class DelayBy final : public juce::AudioProcessor {
+//  A stand-in plugin: everything a processor must say that none of the stand-ins has anything to say about.
+class StandIn : public juce::AudioProcessor {
 public:
-    explicit DelayBy(int delay)
-        : AudioProcessor(BusesProperties()
-                             .withInput("in", juce::AudioChannelSet::ambisonic(kOrder))
-                             .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))),
-          delay_(delay) {
-        setLatencySamples(delay);
-    }
-    void prepareToPlay(double, int) override {
-        memory_.setSize(kField, delay_);
-        memory_.clear();
-        at_ = 0;
-    }
+    using AudioProcessor::AudioProcessor;
+    void prepareToPlay(double, int) override {}
     void releaseResources() override {}
-    void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer&) override {
-        for (int i = 0; i < b.getNumSamples(); ++i) {
-            for (int ch = 0; ch < kField; ++ch) {
-                const float in = b.getSample(ch, i);
-                b.setSample(ch, i, memory_.getSample(ch, at_));
-                memory_.setSample(ch, at_, in);
-            }
-            if (++at_ == delay_) at_ = 0;
-        }
-    }
-    const juce::String getName() const override { return "delay by"; }
+    const juce::String getName() const override { return "stand-in"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
@@ -207,6 +188,32 @@ public:
     void changeProgramName(int, const juce::String&) override {}
     void getStateInformation(juce::MemoryBlock&) override {}
     void setStateInformation(const void*, int) override {}
+};
+
+class DelayBy final : public StandIn {
+public:
+    explicit DelayBy(int delay)
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::ambisonic(kOrder))
+                      .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))),
+          delay_(delay) {
+        setLatencySamples(delay);
+    }
+    void prepareToPlay(double, int) override {
+        memory_.setSize(kField, delay_);
+        memory_.clear();
+        at_ = 0;
+    }
+    void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer&) override {
+        for (int i = 0; i < b.getNumSamples(); ++i) {
+            for (int ch = 0; ch < kField; ++ch) {
+                const float in = b.getSample(ch, i);
+                b.setSample(ch, i, memory_.getSample(ch, at_));
+                memory_.setSample(ch, at_, in);
+            }
+            if (++at_ == delay_) at_ = 0;
+        }
+    }
 
 private:
     int delay_;
@@ -290,14 +297,12 @@ juce::AudioBuffer<float> delayedDirect() {
 }
 
 //  A stand-in insert that passes the field through and records, at every processBlock, what its playhead says.
-class Recorder final : public juce::AudioProcessor {
+class Recorder final : public StandIn {
 public:
     Recorder()
-        : AudioProcessor(BusesProperties()
-                             .withInput("in", juce::AudioChannelSet::ambisonic(kOrder))
-                             .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))) {}
-    void prepareToPlay(double, int) override {}
-    void releaseResources() override {}
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::ambisonic(kOrder))
+                      .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))) {}
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override {
         live::Playhead p;
         p.timeline = -1;  // nothing said
@@ -310,19 +315,6 @@ public:
             }
         seen.push_back(p);
     }
-    const juce::String getName() const override { return "recorder"; }
-    bool acceptsMidi() const override { return false; }
-    bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
-    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
-    bool hasEditor() const override { return false; }
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override { return {}; }
-    void changeProgramName(int, const juce::String&) override {}
-    void getStateInformation(juce::MemoryBlock&) override {}
-    void setStateInformation(const void*, int) override {}
 
     std::vector<live::Playhead> seen;
 };
@@ -381,7 +373,12 @@ std::vector<live::Playhead> timedThroughRunner(int block, std::vector<std::int64
             ++next;
         }
         const int n = std::min(block, kTimed - at);
-        for (int piece = 0; piece < n; piece += kMaxBlock) starts.push_back(at + piece);
+        //  the runner plays in pieces of at most kMaxBlock that never cross a point of its level grid
+        for (int piece = 0; piece < n;) {
+            starts.push_back(at + piece);
+            const int grid = livehost::Runner::kLevelGrid;
+            piece += std::min({kMaxBlock, n - piece, grid - (at + piece) % grid});
+        }
         runner.process(loop, out, n);
     }
     return recorder.seen;
@@ -470,6 +467,97 @@ juce::AudioBuffer<float> noiseOn(std::vector<int> pairs) {
         for (int i = 0; i < kLength; ++i)
             for (int ch = 2 * pair; ch < 2 * pair + 2; ++ch) b.setSample(ch, i, noise(random));
     return b;
+}
+
+//  Stand-ins that make a send's gain readable: one that puts its track's left channel on every channel of the field,
+//  where an Encoder would encode it, and one that gives the field's first two channels out, where a Decoder would.
+class Spread final : public StandIn {
+public:
+    Spread()
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::stereo())
+                      .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))) {}
+    void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer&) override {
+        for (int ch = 1; ch < kField; ++ch) b.copyFrom(ch, 0, b, 0, 0, b.getNumSamples());
+    }
+};
+
+class PassOut final : public StandIn {
+public:
+    PassOut()
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::ambisonic(kOrder))
+                      .withOutput("out", juce::AudioChannelSet::stereo())) {}
+    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override {}
+};
+
+constexpr float kLevel = 0.1f;  // the track, constant on its left channel
+//  When the send's level is set, and to what: before the block at each sample, which every block size tried
+//  starts a block at; neither is a point of the level grid.
+const std::vector<std::pair<int, float>> kLevels{{0, 1.0f}, {24000, 0.25f}, {48000, 0.75f}};
+constexpr int kRampLength = 64000;
+
+//  The send's gain the output says, sample by sample: one track into Main and, at the level, into an empty return.
+//  `swapAt`, when not 0: the same plan swapped in before the block there, its level set to `swapLevel` at once.
+std::vector<float> sendGains(int block, int swapAt = 0, float swapLevel = 0.0f) {
+    Spread spread;
+    PassOut out;
+    live::Plan p;
+    p.slots = {{0}, {0}};
+    live::FieldNode a;
+    a.track = 1;
+    a.pair = 0;
+    a.encoder = 0;
+    p.nodes = {a};
+    p.returns = {live::Return{}};
+    p.decoder = 1;
+    const auto compiled = live::compile(p);
+    if (!compiled) return {};
+    livehost::Runner runner;
+    juce::String why;
+    if (!runner.prepare(*compiled, {&spread, &out}, 1, {kOrder, kMaxBlock, 2, 2, kRate}, why)) {
+        std::printf("  the runner: %s\n", why.toRawUTF8());
+        return {};
+    }
+    std::vector<float> gains;
+    juce::AudioBuffer<float> loop(2, kDeviceBlock), part(2, kDeviceBlock);
+    loop.clear();
+    for (int i = 0; i < kDeviceBlock; ++i) loop.setSample(0, i, kLevel);
+    std::size_t next = 0;
+    for (int at = 0; at < kRampLength; at += block) {
+        while (next < kLevels.size() && kLevels[next].first <= at) runner.setLevel(0, kLevels[next++].second);
+        if (swapAt != 0 && at == swapAt) {
+            (void)runner.swap(*compiled, {&spread, &out}, 1, why);
+            runner.setLevel(0, swapLevel);
+        }
+        const int n = std::min(block, kRampLength - at);
+        runner.process(loop, part, n);
+        //  the track, plus the send; through a swap's fade, the output over the fade's gain
+        for (int i = 0; i < n; ++i) {
+            const int k = at + i - swapAt - livehost::Runner::kFade;
+            const float fade = swapAt != 0 && k >= 0 && k < livehost::Runner::kFade
+                                   ? static_cast<float>(k) / static_cast<float>(livehost::Runner::kFade)
+                                   : 1.0f;
+            gains.push_back(fade > 0.0f ? part.getSample(0, i) / (kLevel * fade) - 1.0f : 0.0f);
+        }
+    }
+    return gains;
+}
+
+//  The same rule written out on its own: at each grid point the level last set is taken, and ramped to over the
+//  next interval; at the very first, it is simply the level.
+float expectedGain(int sample) {
+    const int grid = livehost::Runner::kLevelGrid;
+    const auto levelAt = [](int t) {
+        float l = 1.0f;
+        for (const auto& [when, level] : kLevels)
+            if (when <= t) l = level;
+        return l;
+    };
+    const int start = sample - sample % grid;
+    const float to = levelAt(start);
+    const float from = start == 0 ? to : levelAt(start - grid);
+    return from + (to - from) * static_cast<float>(sample - start) / static_cast<float>(grid);
 }
 
 }  // namespace
@@ -587,6 +675,34 @@ int main() {
             "%s %s\n",
             block, off, heard ? "heard only after" : "NOT as it should be", static_cast<double>(after),
             freed ? "freed by tidy, not in a block" : "NOT freed as it should be", ok ? "" : "  FAIL");
+    }
+
+    std::printf("a send's level, changed while it plays\n");
+    for (const int block : {1, 64, 100, 1500}) {
+        //  Catches: a level taken at once rather than on the grid, a ramp anchored to the block rather than to the
+        //  grid, a step where a ramp should be, or a first block that ramps up from 1.
+        const auto gains = sendGains(block);
+        if (gains.size() != static_cast<std::size_t>(kRampLength)) return 1;
+        double off = 0.0;
+        for (int i = 0; i < kRampLength; ++i)
+            off = std::max(off, static_cast<double>(std::abs(gains[static_cast<std::size_t>(i)] - expectedGain(i))));
+        const bool ok = off <= 1e-5;
+        failed += ok ? 0 : 1;
+        std::printf("the send's level, block %4d: within %.3g of the grid's ramp %s\n", block, off, ok ? "" : "  FAIL");
+    }
+
+    for (const int block : {1, 64, 100, 1500}) {
+        //  Catches: a program swapped in between two grid points that plays its defaults until the next one.
+        constexpr int at = 48000;  // not a point of the grid
+        const auto gains = sendGains(block, at, 0.5f);
+        if (gains.size() != static_cast<std::size_t>(kRampLength)) return 1;
+        double off = 0.0;
+        for (int i = at + livehost::Runner::kFade + 1; i < at + 2 * livehost::Runner::kFade; ++i)
+            off = std::max(off, static_cast<double>(std::abs(gains[static_cast<std::size_t>(i)] - 0.5f)));
+        const bool ok = off <= 1e-4;
+        failed += ok ? 0 : 1;
+        std::printf("the send's level through a swap, block %4d: within %.3g of the new program's %s\n", block, off,
+                    ok ? "" : "  FAIL");
     }
 
     std::printf(failed == 0 ? "the runner plays both plans as the direct renders do, at every block size\n"
