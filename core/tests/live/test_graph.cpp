@@ -280,3 +280,30 @@ TEST_CASE("a plan that does not hold together is refused") {
 
     CHECK(compile(source(0), &error).has_value());
 }
+
+TEST_CASE("an Encoder's and an insert's step name the pair their sidechain hears; one without, none") {
+    //  Catches: a sidechain pair lost on the way to the step, one given to every slot, or to the wrong one.
+    Plan p;
+    p.slots = {
+        {0, 4}, {0, 5}, {0, -1}, {0, -1}};  // the encoder hearing pair 4, an insert pair 5, an insert, the decoder
+    FieldNode n;
+    n.track = 1;
+    n.pair = 0;
+    n.encoder = 0;
+    n.inserts = {1, 2};
+    p.nodes = {n};
+    p.decoder = 3;
+    const auto c = compile(p);
+    REQUIRE(c.has_value());
+    int seen = 0;
+    for (const Op& op : c->ops)
+        if (op.step == Step::Process) {
+            CHECK(op.sidechain == (op.slot == 1 ? 5 : -1));
+            ++seen;
+        } else if (op.step == Step::Encode) {
+            CHECK(op.sidechain == 4);
+            CHECK(op.from == 0);  // its own pair, apart from its sidechain's
+            ++seen;
+        }
+    CHECK(seen == 3);
+}

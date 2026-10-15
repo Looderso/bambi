@@ -77,6 +77,10 @@ public:
         addChildComponent(routing_);
         routing_.reshape = [this](bambi::live::Shape shape) { device_.reshape(std::move(shape)); };
         routing_.showDecoder = [this] { showView(View::Decoder); };
+        routing_.showSource = [this](bambi::live::TrackId track) { showView(View::Encoder, engine_.encoderOf(track)); };
+        routing_.showInsert = [this](std::uint64_t insert, bambi::live::Effect effect) {
+            showView(effect == bambi::live::Effect::Reverb ? View::Reverb : View::Echo, engine_.effectOf(insert));
+        };
         update();
         showView(View::Decoder);
         startTimer(1000);
@@ -175,11 +179,12 @@ private:
         return "";
     }
 
-    void showView(View v) {
+    //  `v`, showing `which` of its plugins when given, else the first
+    void showView(View v, juce::AudioProcessor* which = nullptr) {
         if (editor_ != nullptr) removeChildComponent(editor_.get());
         editor_.reset();
-        if (v != View::Routing && pluginOf(v) == nullptr) v = View::Decoder;
-        auto* plugin = pluginOf(v);
+        if (v != View::Routing && which == nullptr && pluginOf(v) == nullptr) v = View::Decoder;
+        auto* plugin = which != nullptr ? which : pluginOf(v);
         routing_.setVisible(v == View::Routing);
         view_ = v;
         shownPlugin_ = plugin;
@@ -214,7 +219,7 @@ private:
 class Window final : public juce::DocumentWindow {
 public:
     Window()
-        : DocumentWindow("bambi live host", juce::Colours::black,
+        : DocumentWindow("bambi live host", bambi::ui::theme::colour::ground,
                          DocumentWindow::closeButton | DocumentWindow::minimiseButton) {
         setUsingNativeTitleBar(true);
         setContentOwned(new Content(), true);

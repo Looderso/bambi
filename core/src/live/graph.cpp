@@ -50,6 +50,7 @@ bool valid(const Plan& p, std::string* error) {
 }  // namespace
 
 std::optional<Compiled> compile(const Plan& p, std::string* error) {
+    const auto sidechainOf = [&](int slot) { return p.slots[static_cast<std::size_t>(slot)].sidechain; };
     if (!valid(p, error)) return std::nullopt;
     const int nodes = static_cast<int>(p.nodes.size()), returns = static_cast<int>(p.returns.size());
     const auto latency = [&](int slot) { return std::max(0, p.slots[static_cast<std::size_t>(slot)].latency); };
@@ -78,7 +79,7 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
         for (const int k : kids) play(k);
         int ready = 0;
         if (n.pair >= 0) {
-            c.ops.push_back({Step::Encode, n.encoder, n.pair, i, 0, -1});
+            c.ops.push_back({Step::Encode, n.encoder, n.pair, i, 0, -1, sidechainOf(n.encoder)});
             ready = latency(n.encoder);
         } else {
             for (const int k : kids) ready = std::max(ready, out[static_cast<std::size_t>(k)]);
@@ -86,7 +87,7 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
             for (const int k : kids)
                 c.ops.push_back({Step::Add, -1, k, i, ready - out[static_cast<std::size_t>(k)], -1});
         }
-        for (const int s : n.inserts) c.ops.push_back({Step::Process, s, -1, i, 0, -1});
+        for (const int s : n.inserts) c.ops.push_back({Step::Process, s, -1, i, 0, -1, sidechainOf(s)});
         out[static_cast<std::size_t>(i)] = ready + chained(n.inserts);
     };
     for (const int t : top) play(t);
@@ -102,7 +103,7 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
             c.ops.push_back(
                 {Step::Add, -1, i, buffer, slowestNode - out[static_cast<std::size_t>(i)], i * returns + r});
         for (const int s : p.returns[static_cast<std::size_t>(r)].chain)
-            c.ops.push_back({Step::Process, s, -1, buffer, 0, -1});
+            c.ops.push_back({Step::Process, s, -1, buffer, 0, -1, sidechainOf(s)});
         returned[static_cast<std::size_t>(r)] =
             (nodes > 0 ? slowestNode : 0) + chained(p.returns[static_cast<std::size_t>(r)].chain);
     }
@@ -116,7 +117,7 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
     for (const int t : top) c.ops.push_back({Step::Add, -1, t, main, ready - out[static_cast<std::size_t>(t)], -1});
     for (int r = 0; r < returns; ++r)
         c.ops.push_back({Step::Add, -1, nodes + r, main, ready - returned[static_cast<std::size_t>(r)], -1});
-    for (const int s : p.main) c.ops.push_back({Step::Process, s, -1, main, 0, -1});
+    for (const int s : p.main) c.ops.push_back({Step::Process, s, -1, main, 0, -1, sidechainOf(s)});
     c.ops.push_back({Step::Decode, p.decoder, main, -1, 0, -1});
     c.latency = ready + chained(p.main) + latency(p.decoder);
     return c;

@@ -32,15 +32,13 @@ void frame(juce::Graphics& g, juce::Rectangle<float> box, juce::Colour c, float 
     }
     juce::Path p;
     p.addRectangle(box);
-    juce::Path d;
-    juce::PathStrokeType(weight).createDashedStroke(d, p, ui::theme::stroke::outsideDash, 2);
-    g.fillPath(d);
+    ui::strokeDashed(g, p, ui::theme::stroke::outsideDash, juce::PathStrokeType(weight));
 }
 
 //  The ring round a node under the pointer, outside its frame.
 void hoverRing(juce::Graphics& g, juce::Rectangle<float> box) {
     g.setColour(colour::touched);
-    g.drawRect(box.expanded(2.0f * ui::theme::stroke::rule), ui::theme::stroke::rule);
+    g.drawRect(box.expanded(rt::ringGap), ui::theme::stroke::rule);
 }
 
 //  A connector: from a child's right edge to its parent's left edge, across and down.
@@ -56,9 +54,7 @@ void connect(juce::Graphics& g, juce::Point<float> from, juce::Point<float> to, 
         g.strokePath(p, juce::PathStrokeType(ui::theme::stroke::rule));
         return;
     }
-    juce::Path d;
-    juce::PathStrokeType(ui::theme::stroke::rule).createDashedStroke(d, p, ui::theme::stroke::outsideDash, 2);
-    g.fillPath(d);
+    ui::strokeDashed(g, p, ui::theme::stroke::outsideDash, juce::PathStrokeType(ui::theme::stroke::rule));
 }
 
 //  A send's level as the row under a node says it.
@@ -72,6 +68,7 @@ juce::String dB(double v) {
 }  // namespace
 
 RoutingPage::RoutingPage() {
+    setWantsKeyboardFocus(true);
     addChildComponent(confirm_);
     confirm_.answered = [this] { repaint(); };
 }
@@ -103,6 +100,93 @@ void RoutingPage::change(const std::function<void(live::Shape&)>& edit) {
     live::Shape next = shape_;
     edit(next);
     if (reshape) reshape(std::move(next));
+}
+
+bool RoutingPage::canBeSource(live::TrackId id) const {
+    const live::Part* part = partOf(id);
+    return part != nullptr && !part->bus && pairOf(id) >= 0;
+}
+
+juce::String RoutingPage::slotLabel(live::TrackId heard) const {
+    if (heard == 0) return juce::String("sc ") + juce::String::fromUTF8("\xe2\x80\x93");
+    const auto n = std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == heard; });
+    if (n == tree_.nodes.end()) return "sc lost";
+    return "sc " + juce::String(n->name) + (canBeSource(heard) ? "" : " lost");
+}
+
+float RoutingPage::slotWidth(live::TrackId heard, bool waiting) const {
+    return ui::textWidth(ui::smallFont(), waiting ? juce::String("sc none") : slotLabel(heard)) + 2.0f * rt::padX;
+}
+
+//  A sidechain's slot: what it hears, or, armed, a block waiting for a source whose click clears it.
+float RoutingPage::slot(juce::Graphics& g, float x, float y, live::TrackId heard, bool waiting,
+                        std::function<void()> armIt, std::function<void()> clear) {
+    const juce::Rectangle<float> box{x, y - rt::control / 2.0f, slotWidth(heard, waiting), rt::control};
+    if (waiting) {
+        ui::drawWaiting(g, box, "sc none", ui::smallFont());
+        addClickArea(box, std::move(clear));
+        return box.getRight();
+    }
+    g.setColour(colour::rule);
+    g.drawRect(box, ui::theme::stroke::rule);
+    const bool lost = heard != 0 && !canBeSource(heard);
+    ui::text(g, slotLabel(heard), ui::smallFont(), lost ? colour::inactive : colour::label, box,
+             juce::Justification::centred);
+    if (!pick_.armed()) addClickArea(box, std::move(armIt));
+    return box.getRight();
+}
+
+void RoutingPage::arm(Pick pick) {
+    pick_ = pick;
+    grabKeyboardFocus();
+    repaint();
+}
+
+void RoutingPage::choose(live::TrackId from) {
+    const Pick pick = pick_;
+    pick_ = {};
+    change([pick, from](live::Shape& s) {
+        if (pick.insert != 0) {
+            for (live::Chain& c : s.chains)
+                for (live::Insert& i : c.inserts)
+                    if (i.id == pick.insert) i.sidechain = from;
+            return;
+        }
+        s.sidechains.erase(std::remove_if(s.sidechains.begin(), s.sidechains.end(),
+                                          [&](const live::Sidechain& c) { return c.source == pick.source; }),
+                           s.sidechains.end());
+        if (from != 0) s.sidechains.push_back({pick.source, from});
+    });
+    repaint();
+}
+
+//  What the band says while a slot waits.
+juce::String RoutingPage::picking() const {
+    juce::String what;
+    if (pick_.source != 0) {
+        const auto n =
+            std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == pick_.source; });
+        what = (n != tree_.nodes.end() ? juce::String(n->name) : juce::String()) + "'s encoder";
+    } else {
+        for (const live::Chain& c : shape_.chains)
+            for (const live::Insert& i : c.inserts)
+                if (i.id == pick_.insert) {
+                    const auto n = std::find_if(tree_.nodes.begin(), tree_.nodes.end(),
+                                                [&](const Node& x) { return x.id == c.node; });
+                    what = nameOf(i.effect) + " on " +
+                           (c.node == live::kMain    ? juce::String("main")
+                            : n != tree_.nodes.end() ? juce::String(n->name)
+                                                     : juce::String());
+                }
+    }
+    return "sidechain for " + what + kDot + "click a source" + kDot + "esc cancels";
+}
+
+bool RoutingPage::keyPressed(const juce::KeyPress& key) {
+    if (key != juce::KeyPress::escapeKey || !pick_.armed()) return false;
+    pick_ = {};
+    repaint();
+    return true;
 }
 
 void RoutingPage::mouseMove(const juce::MouseEvent& e) {
@@ -146,15 +230,23 @@ void RoutingPage::band(juce::Graphics& g) {
     const juce::String toMain = juce::String("field ") + juce::String::fromUTF8("\xe2\x86\x92") + " main";
     const auto f = ui::labelFont();
     ui::text(g, "live", f, colour::label, {rt::left, 0.0f, ui::textWidth(f, "live") + 2.0f, h});
-    ui::text(g, count, f, colour::label, {rt::left + rt::boxWidth, 0.0f, ui::textWidth(f, count) + 2.0f, h});
+    const juce::String middle = pick_.armed() ? picking() : count;
+    ui::text(g, middle, f, pick_.armed() ? colour::text : colour::label,
+             {rt::left + rt::boxWidth, 0.0f, ui::textWidth(f, middle) + 2.0f, h});
     const float tw = ui::textWidth(f, toMain) + 2.0f;
     ui::text(g, toMain, f, colour::label, {w - rt::left - tw, 0.0f, tw, h});
     g.setColour(colour::rule);
-    g.fillRect(0.0f, h - ui::theme::stroke::identityRule, w, ui::theme::stroke::identityRule);
+    g.fillRect(0.0f, h - ui::theme::stroke::rule, w, ui::theme::stroke::rule);
 }
 
 void RoutingPage::body(juce::Graphics& g, float top) {
     const auto w = static_cast<float>(getWidth());
+    //  armed, a click anywhere else cancels: this lies under everything drawn after it
+    if (pick_.armed())
+        addClickArea(getLocalBounds().toFloat(), [this] {
+            pick_ = {};
+            repaint();
+        });
     //  each column as wide as its widest node with its controls; the gutters narrow for a deep set
     const int mainColumn = layout_.main.column;
     std::vector<float> widest(static_cast<std::size_t>(mainColumn), rt::boxWidth);
@@ -199,14 +291,16 @@ void RoutingPage::body(juce::Graphics& g, float top) {
     {
         const auto m = at(layout_.main);
         const juce::Rectangle<float> box{m.x, m.y - rt::boxHeight / 2.0f, rt::mainWidth, rt::boxHeight};
+        const auto offers = offersFor(nullptr, live::kMain);
         rows_.push_back(
-            {{box.getX(), box.getY(), rt::mainWidth + chainWidth(live::kMain) + rt::gap * 3.0f, rt::row}, kHoverMain});
+            {{box.getX(), box.getY(),
+              std::max(rt::mainWidth + chainWidth(live::kMain) + rt::gap * 3.0f, offersWidth(offers)), rt::row},
+             kHoverMain});
         frame(g, box, colour::ruleStrong, ui::theme::stroke::rule, false);
         if (hover_ == kHoverMain) hoverRing(g, box);
         ui::text(g, "main", ui::labelFont(), colour::text, box.withTrimmedLeft(rt::padX));
         float x = chain(g, live::kMain, box.getRight() + rt::gap * 2.0f, m.y);
-        if (hover_ == kHoverMain)
-            adders(g, live::kMain, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f);
+        if (hover_ == kHoverMain) offer(g, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f, offers);
         //  the decoder, a node of its own after Main's chain, in its plugin's colour; a click shows it
         const float dx = std::min(x + rt::gutterLeast, w - rt::left - rt::mainWidth);
         connect(g, {x - rt::gap, m.y}, {dx, m.y}, true);
@@ -214,6 +308,8 @@ void RoutingPage::body(juce::Graphics& g, float top) {
         g.setColour(colour::ground);
         g.fillRect(decoder);
         frame(g, decoder, colour::identity(Product::Decoder), ui::theme::stroke::rule, false);
+        rows_.push_back({decoder, kHoverDecoder});
+        if (hover_ == kHoverDecoder) hoverRing(g, decoder);
         ui::text(g, "decoder", ui::labelFont(), colour::text, decoder.withTrimmedLeft(rt::padX));
         addClickArea(decoder, [this] {
             if (showDecoder) showDecoder();
@@ -235,7 +331,7 @@ void RoutingPage::body(juce::Graphics& g, float top) {
         ui::text(g, field ? "return" : "live", ui::smallFont(), colour::label, box.withTrimmedRight(rt::padX),
                  juce::Justification::centredRight);
         const juce::Rectangle<float> sw{box.getRight() + rt::gap * 2.0f, cy - rt::control / 2.0f,
-                                        ui::framedButtonWidth("bambi") * 2.0f, rt::control};
+                                        ui::segmentsWidth({"live", "bambi"}), rt::control};
         const auto cells = ui::drawSegments(g, sw, {"live", "bambi"}, field ? 1 : 0, true);
         const auto id = r.id;
         addClickArea(cells[0], [this, id] {
@@ -251,7 +347,7 @@ void RoutingPage::body(juce::Graphics& g, float top) {
         if (field) {
             chain(g, r.id, sw.getRight() + rt::gap * 2.0f, cy);
             if (hover_ == r.id)
-                adders(g, r.id, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f);
+                offer(g, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f, offersFor(nullptr, r.id));
             else
                 ui::text(g, "hears its sends after the faders", ui::smallFont(), colour::label,
                          {box.getX() + rt::padX, box.getBottom(), w - box.getX(), rt::sendsLine});
@@ -266,18 +362,32 @@ float RoutingPage::node(juce::Graphics& g, const Node& n, juce::Point<float> at)
     const int pair = pairOf(n.id);
     const bool unpaired = part != nullptr && !part->bus && pair < 0;
     const juce::Rectangle<float> box{at.x, at.y - rt::boxHeight / 2.0f, rt::boxWidth, rt::boxHeight};
-    rows_.push_back({{box.getX(), box.getY(), rt::boxWidth + controlsWidth(n) + rt::gap, rt::row}, n.id});
+    const auto offers = offersFor(&n, n.id);
+    rows_.push_back(
+        {{box.getX(), box.getY(), std::max(rt::boxWidth + controlsWidth(n) + rt::gap, offersWidth(offers)), rt::row},
+         n.id});
     const bool hovered = hover_ == n.id;
 
-    //  outside the field dashed in the rule; a source the encoder's, a bus ink; a source with no pair not chosen
-    const juce::Colour c = part == nullptr ? colour::rule
-                           : part->bus     ? colour::ruleStrong
-                           : unpaired      ? colour::inactive
-                                           : colour::identity(Product::Encoder);
+    //  outside the field dashed in the rule; a source the encoder's, a bus ink; a source with no pair not chosen.
+    //  While a sidechain slot waits, all that cannot be its source is greyed.
+    const bool pickable = pick_.armed() && canBeSource(n.id) && pick_.source != n.id;
+    const bool greyed = unpaired || (pick_.armed() && !pickable);
+    const juce::Colour c = greyed && pick_.armed() ? colour::inactive
+                           : part == nullptr       ? colour::rule
+                           : part->bus             ? colour::ruleStrong
+                           : unpaired              ? colour::inactive
+                                                   : colour::identity(Product::Encoder);
     frame(g, box, c, ui::theme::stroke::rule, part == nullptr);
-    if (hovered) hoverRing(g, box);
-    ui::text(g, juce::String(n.name), ui::labelFont(), unpaired ? colour::inactive : colour::text,
+    if (hovered && (!pick_.armed() || pickable)) hoverRing(g, box);
+    ui::text(g, juce::String(n.name), ui::labelFont(), greyed ? colour::inactive : colour::text,
              box.withTrimmedLeft(rt::padX));
+    const auto id = n.id;
+    if (pickable)
+        addClickArea(box, [this, id] { choose(id); });
+    else if (!pick_.armed() && part != nullptr && !part->bus && pair >= 0)
+        addClickArea(box, [this, id] {
+            if (showSource) showSource(id);
+        });
     const juce::String kind = part == nullptr ? (n.parent ? "" : "live")
                               : part->bus     ? "bus"
                               : unpaired      ? "no pair"
@@ -286,11 +396,17 @@ float RoutingPage::node(juce::Graphics& g, const Node& n, juce::Point<float> at)
              juce::Justification::centredRight);
 
     float x = box.getRight() + rt::gap * 2.0f;
-    const auto id = n.id;
+    //  a source's Encoder's sidechain
+    if (part != nullptr && !part->bus) {
+        const bool waiting = pick_.source == id;
+        x = slot(
+                g, x, at.y, part->sidechain, waiting, [this, id] { arm({id, 0}); }, [this] { choose(0); }) +
+            rt::gap * 2.0f;
+    }
     //  the switch, at the top only
     if (!n.parent) {
         const bool inLive = std::find(shape_.inLive.begin(), shape_.inLive.end(), id) != shape_.inLive.end();
-        const juce::Rectangle<float> sw{x, at.y - rt::control / 2.0f, ui::framedButtonWidth("bambi") * 2.0f,
+        const juce::Rectangle<float> sw{x, at.y - rt::control / 2.0f, ui::segmentsWidth({"live", "bambi"}),
                                         rt::control};
         const auto cells = ui::drawSegments(g, sw, {"live", "bambi"}, inLive ? 0 : 1, true);
         addClickArea(cells[0], [this, id] {
@@ -308,34 +424,8 @@ float RoutingPage::node(juce::Graphics& g, const Node& n, juce::Point<float> at)
     if (part != nullptr) x = chain(g, id, x, at.y);
 
     //  under the pointer: what the row offers, on the line under the box, in place of the sends
-    if (hovered) {
-        const float ly = box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f;
-        float lx = box.getX();
-        //  a backing in the ground, so the line reads over a connector or a column it reaches into
-        const float reach = ui::framedButtonWidth("+ echo") + ui::framedButtonWidth("+ reverb") +
-                            ui::framedButtonWidth("encode whole") + 3.0f * rt::gap;
-        g.setColour(colour::ground);
-        g.fillRect(lx, ly - rt::control / 2.0f - rt::gap / 2.0f, reach, rt::control + rt::gap);
-        if (part != nullptr) lx = adders(g, id, lx, ly);
-        if (part != nullptr && part->bus) {
-            const juce::Rectangle<float> b{lx, ly - rt::control / 2.0f, ui::framedButtonWidth("encode whole"),
-                                           rt::control};
-            ui::drawFramedButton(g, b, "encode whole", true);
-            addClickArea(b, [this, id] {
-                change([id](live::Shape& s) {
-                    s.split.erase(std::remove(s.split.begin(), s.split.end(), id), s.split.end());
-                });
-            });
-        }
-        //  inside a group the field takes whole: the group can become a bus, this track a source of its own
-        const live::Part* group = n.parent ? partOf(*n.parent) : nullptr;
-        if (part == nullptr && group != nullptr && !group->bus) {
-            const auto parent = *n.parent;
-            const juce::Rectangle<float> b{lx, ly - rt::control / 2.0f, ui::framedButtonWidth("encode here"),
-                                           rt::control};
-            ui::drawFramedButton(g, b, "encode here", true);
-            addClickArea(b, [this, parent] { change([parent](live::Shape& s) { s.split.push_back(parent); }); });
-        }
+    if (hovered && !offers.empty() && !pick_.armed()) {
+        offer(g, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f, offers);
         return x;
     }
 
@@ -357,19 +447,17 @@ float RoutingPage::node(juce::Graphics& g, const Node& n, juce::Point<float> at)
 }
 
 float RoutingPage::chain(juce::Graphics& g, live::TrackId owner, float x, float y) {
-    const std::vector<live::Insert>& inserts = shape_.insertsOn(owner);
-    for (const live::Insert& ins : inserts) {
+    for (const live::Insert& ins : shape_.insertsOn(owner)) {
         const juce::String name = nameOf(ins.effect);
-        const float cw = ui::textWidth(ui::labelFont(), name) + 2.0f * rt::padX + rt::control;
-        const juce::Rectangle<float> chip{x, y - rt::control / 2.0f, cw, rt::control};
-        g.setColour(colour::rule);
-        g.drawRect(chip, ui::theme::stroke::rule);
-        g.setColour(colourOf(ins.effect));
-        g.fillRect(chip.withWidth(ui::theme::stroke::selectionBar));
-        ui::text(g, name, ui::labelFont(), colour::text, chip.withTrimmedLeft(rt::padX).withTrimmedRight(rt::control));
-        const auto cross = ui::drawCloseCross(g, chip.withTrimmedLeft(cw - rt::control).reduced(rt::gap));
+        const auto chip =
+            ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, name, colour::text, colourOf(ins.effect), true);
         const auto id = ins.id;
-        addClickArea(cross, [this, owner, id, name] {
+        const auto effect = ins.effect;
+        if (!pick_.armed())
+            addClickArea(chip.box, [this, id, effect] {
+                if (showInsert) showInsert(id, effect);
+            });
+        addClickArea(chip.cross, [this, owner, id, name] {
             confirm_.ask("remove this " + name + "?", "its settings go with it; the host has no undo yet", "remove",
                          [this, owner, id] {
                              change([owner, id](live::Shape& s) {
@@ -382,42 +470,81 @@ float RoutingPage::chain(juce::Graphics& g, live::TrackId owner, float x, float 
                              });
                          });
         });
-        x = chip.getRight() + rt::gap;
+        x = slot(
+                g, chip.box.getRight(), y, ins.sidechain, pick_.insert == id, [this, id] { arm({0, id}); },
+                [this] { choose(0); }) +
+            rt::gap;
     }
     return x;
 }
 
-float RoutingPage::adders(juce::Graphics& g, live::TrackId owner, float x, float y) {
-    for (const live::Effect e : {live::Effect::Echo, live::Effect::Reverb}) {
-        const juce::String label = "+ " + nameOf(e);
-        const juce::Rectangle<float> b{x, y - rt::control / 2.0f, ui::framedButtonWidth(label), rt::control};
-        ui::drawFramedButton(g, b, label, true);
-        addClickArea(b, [this, owner, e] {
-            change([owner, e](live::Shape& s) {
-                std::uint64_t next = 1;
-                for (const live::Chain& c : s.chains)
-                    for (const live::Insert& i : c.inserts) next = std::max(next, i.id + 1);
-                auto c = std::find_if(s.chains.begin(), s.chains.end(),
-                                      [&](const live::Chain& ch) { return ch.node == owner; });
-                if (c == s.chains.end()) c = s.chains.insert(s.chains.end(), live::Chain{owner, {}});
-                c->inserts.push_back({next, e});
-            });
-        });
+void RoutingPage::addInsert(live::TrackId owner, live::Effect effect) {
+    change([owner, effect](live::Shape& s) {
+        std::uint64_t next = 1;
+        for (const live::Chain& c : s.chains)
+            for (const live::Insert& i : c.inserts) next = std::max(next, i.id + 1);
+        auto c =
+            std::find_if(s.chains.begin(), s.chains.end(), [&](const live::Chain& ch) { return ch.node == owner; });
+        if (c == s.chains.end()) c = s.chains.insert(s.chains.end(), live::Chain{owner, {}});
+        c->inserts.push_back({next, effect, 0});
+    });
+}
+
+//  What a row offers under the pointer: inserts for whatever the field plays -- a part, Main, a return in it -- and
+//  for a bus "encode whole"; for a track inside a group the field takes whole, "encode here".
+std::vector<RoutingPage::Offer> RoutingPage::offersFor(const Node* n, live::TrackId owner) {
+    std::vector<Offer> out;
+    const live::Part* part = n != nullptr ? partOf(n->id) : nullptr;
+    if (n == nullptr || part != nullptr)
+        for (const live::Effect e : {live::Effect::Echo, live::Effect::Reverb})
+            out.push_back({"+ " + nameOf(e), [this, owner, e] { addInsert(owner, e); }});
+    if (part != nullptr && part->bus)
+        out.push_back({"encode whole", [this, owner] {
+                           change([owner](live::Shape& s) {
+                               s.split.erase(std::remove(s.split.begin(), s.split.end(), owner), s.split.end());
+                           });
+                       }});
+    const live::Part* group = n != nullptr && n->parent ? partOf(*n->parent) : nullptr;
+    if (n != nullptr && part == nullptr && group != nullptr && !group->bus) {
+        const auto parent = *n->parent;
+        out.push_back(
+            {"encode here", [this, parent] { change([parent](live::Shape& s) { s.split.push_back(parent); }); }});
+    }
+    return out;
+}
+
+float RoutingPage::offersWidth(const std::vector<Offer>& offers) {
+    float w = 0.0f;
+    for (const Offer& o : offers) w += ui::framedButtonWidth(o.label) + rt::gap;
+    return w;
+}
+
+//  The buttons, on a backing in the ground as wide as they are, so they read over a connector or a column they reach.
+void RoutingPage::offer(juce::Graphics& g, float x, float y, const std::vector<Offer>& offers) {
+    if (offers.empty()) return;
+    g.setColour(colour::ground);
+    g.fillRect(x, y - rt::control / 2.0f - rt::gap / 2.0f, offersWidth(offers), rt::control + rt::gap);
+    for (const Offer& o : offers) {
+        const juce::Rectangle<float> b{x, y - rt::control / 2.0f, ui::framedButtonWidth(o.label), rt::control};
+        ui::drawFramedButton(g, b, o.label, true);
+        addClickArea(b, o.act);
         x = b.getRight() + rt::gap;
     }
-    return x;
 }
 
 float RoutingPage::chainWidth(live::TrackId owner) const {
     float w = 0.0f;
     for (const live::Insert& ins : shape_.insertsOn(owner))
-        w += ui::textWidth(ui::labelFont(), nameOf(ins.effect)) + 2.0f * rt::padX + rt::control + rt::gap;
+        w += ui::chipWidth(nameOf(ins.effect), rt::control, true, true) +
+             slotWidth(ins.sidechain, pick_.insert == ins.id) + rt::gap;
     return w;
 }
 
 float RoutingPage::controlsWidth(const Node& n) const {
     float w = 0.0f;
-    if (!n.parent) w += rt::gap * 2.0f + ui::framedButtonWidth("bambi") * 2.0f;
+    if (!n.parent) w += rt::gap * 2.0f + ui::segmentsWidth({"live", "bambi"});
+    if (const live::Part* part = partOf(n.id); part != nullptr && !part->bus)
+        w += rt::gap * 2.0f + slotWidth(part->sidechain, pick_.source == n.id);
     if (partOf(n.id) != nullptr) w += rt::gap * 2.0f + chainWidth(n.id);
     return w;
 }

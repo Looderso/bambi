@@ -543,6 +543,73 @@ std::vector<float> standInSwap(int block, bool swap, bool delayed) {
     return got;
 }
 
+//  An insert that plays its sidechain's left channel in place of the field it is given: what reaches its sidechain,
+//  made audible.
+class Side final : public StandIn {
+public:
+    Side()
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::ambisonic(kOrder))
+                      .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))
+                      .withInput("sidechain", juce::AudioChannelSet::stereo())) {}
+    void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer&) override {
+        for (int ch = 0; ch < kField; ++ch) b.copyFrom(ch, 0, b, kField, 0, b.getNumSamples());
+    }
+};
+
+//  An encoder that puts its sidechain's left channel on every channel of the field, where Spread puts its track's.
+class SpreadSide final : public StandIn {
+public:
+    SpreadSide()
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::stereo())
+                      .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))
+                      .withInput("sidechain", juce::AudioChannelSet::stereo())) {}
+    void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer&) override {
+        const juce::AudioBuffer<float> side(b.getArrayOfWritePointers() + 2, 1, b.getNumSamples());
+        for (int ch = kField - 1; ch >= 0; --ch) b.copyFrom(ch, 0, side, 0, 0, b.getNumSamples());
+    }
+};
+
+//  One track into Main, its sidechain hearing `pair` (-1: none) -- the insert's, or with `encoder` the track's own
+//  Encoder's; the track on pair 0 at kLevel, pair 1 at three times that. Main's first channel, sample by sample.
+std::vector<float> sidechained(int block, int pair, bool encoder = false) {
+    Spread a;
+    SpreadSide b;
+    Side side;
+    PassOut out;
+    live::Plan p;
+    live::FieldNode n;
+    n.track = 1;
+    n.pair = 0;
+    n.encoder = 0;
+    if (!encoder) n.inserts = {1};
+    p.nodes = {n};
+    p.slots = {{0, encoder ? pair : -1}, {0, encoder ? -1 : pair}, {0, -1}};
+    p.decoder = 2;
+    const auto compiled = live::compile(p);
+    livehost::Runner runner;
+    juce::String why;
+    juce::AudioProcessor* first = encoder ? static_cast<juce::AudioProcessor*>(&b) : &a;
+    if (!compiled || !runner.prepare(*compiled, {first, &side, &out}, 0, {kOrder, kMaxBlock, 4, 2, kRate}, why)) {
+        std::printf("  the runner: %s\n", why.toRawUTF8());
+        return {};
+    }
+    std::vector<float> got;
+    juce::AudioBuffer<float> loop(4, kDeviceBlock), part(2, kDeviceBlock);
+    loop.clear();
+    for (int i = 0; i < kDeviceBlock; ++i) {
+        loop.setSample(0, i, kLevel);
+        loop.setSample(2, i, 3.0f * kLevel);
+    }
+    for (int at = 0; at < kLength; at += block) {
+        const int n = std::min(block, kLength - at);
+        runner.process(loop, part, n);
+        for (int i = 0; i < n; ++i) got.push_back(part.getSample(0, i));
+    }
+    return got;
+}
+
 //  The swap's fade at `k` samples after it was asked for, with no delay to hold through: down, then up.
 double fadeAt(int k) {
     const int f = livehost::Runner::kFade;
@@ -769,6 +836,26 @@ int main() {
         failed += ok ? 0 : 1;
         std::printf("the send's level through a swap, block %4d: within %.3g of the new program's %s\n", block, off,
                     ok ? "" : "  FAIL");
+    }
+
+    std::printf("an insert's sidechain\n");
+    for (const int block : {1, 64, 100, 1500}) {
+        //  Catches: an Encoder's or an insert's sidechain left silent, fed from the track's own pair or another, or
+        //  one heard by a slot that has none.
+        float off = 0.0f, loud = 0.0f;
+        for (const bool encoder : {false, true}) {
+            const auto heard = sidechained(block, 1, encoder);
+            const auto none = sidechained(block, -1, encoder);
+            if (heard.size() != static_cast<std::size_t>(kLength) || none.size() != heard.size()) return 1;
+            for (std::size_t i = 0; i < heard.size(); ++i) {
+                off = std::max(off, std::abs(heard[i] - 3.0f * kLevel));
+                loud = std::max(loud, std::abs(none[i]));
+            }
+        }
+        const bool ok = off <= 1e-6f && loud == 0.0f;
+        failed += ok ? 0 : 1;
+        std::printf("the sidechains, block %4d: an Encoder's and an insert's their pair within %.3g, none silent %s\n",
+                    block, static_cast<double>(off), ok ? "" : "  FAIL");
     }
 
     std::printf(failed == 0 ? "the runner plays both plans as the direct renders do, at every block size\n"

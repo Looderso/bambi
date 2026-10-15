@@ -24,7 +24,8 @@
 namespace bambi::live {
 
 struct Slot {
-    int latency{0};  ///< samples, as the plugin reports it; a negative report counts as 0
+    int latency{0};     ///< samples, as the plugin reports it; a negative report counts as 0
+    int sidechain{-1};  ///< an Encoder's or an insert's: the loop device's pair its sidechain hears; -1 silence
 };
 
 struct FieldNode {
@@ -63,6 +64,7 @@ struct Op {
     int to{-1};
     int delay{0};
     int gain{-1};
+    int sidechain{-1};  ///< Encode, Process: the loop device's pair the slot's sidechain hears; -1 silence
     friend bool operator==(const Op&, const Op&) = default;
 };
 

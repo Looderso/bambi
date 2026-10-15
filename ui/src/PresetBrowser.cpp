@@ -396,13 +396,8 @@ void PresetBrowser::paint(juce::Graphics& g) {
             auto x = inset;
             const auto chipY = top + st::titleHeight - ps::chipGap;
             const auto chip = [&](const juce::String& label, const std::string& folder) {
-                const juce::Rectangle<float> box{
-                    x, chipY, textWidth(labelFont(), label) + 2.0f * static_cast<float>(theme::scene::presetChipPadX),
-                    ps::chipHeight};
-                if (box.getRight() > width - inset) return;
-                g.setColour(colour::rule);
-                g.drawRect(box, theme::stroke::rule);
-                text(g, label, labelFont(), colour::label, box, juce::Justification::centred);
+                if (x + chipWidth(label, ps::chipHeight, false, false) > width - inset) return;
+                const auto box = drawChip(g, {x, chipY}, ps::chipHeight, label, colour::label).box;
                 addClickArea(box, [this, folder] {
                     const auto typed = parsePresetPath(entry_.getText().toStdString());
                     const auto name = typed.has_value() ? juce::String(typed->name) : juce::String();

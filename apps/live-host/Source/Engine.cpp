@@ -163,8 +163,13 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
         restoredEffects.push_back(keyOf(insert.id));
         nextEffects.push_back({insert, std::move(plugin)});
     }
+    const auto sidechains = [](const live::Plan& p) {
+        std::vector<int> out;
+        for (const live::Slot& slot : p.slots) out.push_back(slot.sidechain);
+        return out;
+    };
     if (fp.plan.nodes == plan_.nodes && fp.plan.main == plan_.main && fp.effects == playing_ &&
-        fp.plan.returns.size() == plan_.returns.size() &&
+        sidechains(fp.plan) == sidechains(plan_) && fp.plan.returns.size() == plan_.returns.size() &&
         std::equal(fp.plan.returns.begin(), fp.plan.returns.end(), plan_.returns.begin(),
                    [](const live::Return& a, const live::Return& b) { return a.chain == b.chain; }))
         return false;  // the same shape, the same plugins
@@ -260,6 +265,18 @@ juce::AudioProcessor* Engine::firstEncoder() const {
     for (const Voice& v : voices_)
         if (first == nullptr || v.pair < first->pair) first = &v;
     return first == nullptr ? nullptr : first->encoder.get();
+}
+
+juce::AudioProcessor* Engine::encoderOf(live::TrackId track) const {
+    for (const Voice& v : voices_)
+        if (v.track == track) return v.encoder.get();
+    return nullptr;
+}
+
+juce::AudioProcessor* Engine::effectOf(std::uint64_t insert) const {
+    for (const Fx& f : effects_)
+        if (f.insert.id == insert) return f.plugin.get();
+    return nullptr;
 }
 
 juce::AudioProcessor* Engine::firstEffect(live::Effect effect) const {

@@ -16,7 +16,8 @@
  *  2p + 1 -- and the decoder's go out.
  *
  *  A plan and everything it plays with is one program: the steps, the instances, a field buffer per node, return
- *  and Main, for each slot a buffer as wide as the plugin's widest side, its sidechain left silent, a delay line for
+ *  and Main, for each slot a buffer as wide as the plugin's widest side -- an Encoder's or an insert's sidechain
+ *  hearing the pair its step names, or silence -- a delay line for
  *  every step that delays, the send levels. It is built whole on the message thread, by prepare() before audio
  *  runs and by swap() while it does. A swapped program is taken at a block: what the loop device brings and the
  *  output both fade out over kFade samples, silence is held through the old program's longest delay line, the new

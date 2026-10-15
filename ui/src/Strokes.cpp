@@ -3,6 +3,7 @@
 
 #include <algorithm>
 
+#include "bambi/ui/Draw.h"
 #include "bambi/ui/Theme.h"
 
 namespace bambi::ui {
@@ -66,9 +67,7 @@ void strokeSegments(juce::Graphics& g, const std::vector<ScreenSegment>& segment
         ++issued;
         g.setColour(c);
         if (dashed) {
-            juce::Path dashes;
-            stroke.createDashedStroke(dashes, path, theme::stroke::otherPathDash, 2);
-            g.fillPath(dashes);
+            strokeDashed(g, path, theme::stroke::otherPathDash, stroke);
         } else {
             g.strokePath(path, stroke);
         }

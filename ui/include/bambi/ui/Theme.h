@@ -474,6 +474,7 @@ namespace routing
     inline constexpr float padX       = 8.0f;    ///< text inside a box or a chip
     inline constexpr float sendsLine  = 16.0f;   ///< the line under a box that holds its sends
     inline constexpr float returnsGap = 24.0f;   ///< from the last track to the returns' heading
+    inline constexpr float ringGap    = 2.0f;    ///< from a box to the ring round it under the pointer
 } // namespace routing
 
 // ---- the header, in every plugin --------------------------------------------------------------

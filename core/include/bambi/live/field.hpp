@@ -21,7 +21,10 @@
  *
  *  Each part of the field, and Main, may carry a chain of inserts, Echo or Reverb, each with an id of its own that
  *  stays with it as the chain changes around it, so its instance and its settings do. A chain on a node not in the
- *  field is kept in the shape and plays nowhere.
+ *  field is kept in the shape and plays nowhere. A source's Encoder, and an insert, may take a sidechain from a
+ *  source of the field -- a source never from itself: that track's
+ *  own stereo, as it arrives on its pair, before its Encoder; a sidechain whose track is not a source with a pair
+ *  hears silence, and is kept for when it is one again.
  *
  *  A Live return the shape takes into the field is a return of the field: every part sends to it, after its
  *  inserts, at the level its own send knob for that return has in Live, and its chain plays what they send. Live's
@@ -36,6 +39,7 @@ enum class Effect { Echo, Reverb };
 struct Insert {
     std::uint64_t id{0};  ///< > 0, the shape's own, never reused for another insert
     Effect effect{Effect::Echo};
+    TrackId sidechain{0};  ///< the track whose stereo its sidechain hears, a source of the field; 0 none
     friend bool operator==(const Insert&, const Insert&) = default;
 };
 
@@ -47,15 +51,24 @@ struct Chain {
     friend bool operator==(const Chain&, const Chain&) = default;
 };
 
+struct Sidechain {
+    TrackId source{0};  ///< a track whose Encoder takes it
+    TrackId from{0};    ///< the track its sidechain hears
+    friend bool operator==(const Sidechain&, const Sidechain&) = default;
+};
+
 struct Shape {
-    std::vector<TrackId> split;    ///< groups whose children the field takes one by one, the group their bus
-    std::vector<TrackId> inLive;   ///< top-level nodes that stay in Live: nothing of them reaches the field
-    std::vector<Chain> chains;     ///< one per node with inserts, Main's among them
-    std::vector<TrackId> returns;  ///< Live's returns the field plays, its own
+    std::vector<TrackId> split;         ///< groups whose children the field takes one by one, the group their bus
+    std::vector<TrackId> inLive;        ///< top-level nodes that stay in Live: nothing of them reaches the field
+    std::vector<Chain> chains;          ///< one per node with inserts, Main's among them
+    std::vector<TrackId> returns;       ///< Live's returns the field plays, its own
+    std::vector<Sidechain> sidechains;  ///< the sources whose Encoder's sidechain hears another track
     friend bool operator==(const Shape&, const Shape&) = default;
 
     /// The inserts on `node`, kMain for Main's; none when it has no chain.
     const std::vector<Insert>& insertsOn(TrackId node) const;
+    /// The track `source`'s Encoder's sidechain hears; 0 none.
+    TrackId sidechainOf(TrackId source) const;
 };
 
 struct Part {
@@ -63,6 +76,7 @@ struct Part {
     bool bus{false};  ///< a split group; otherwise a source, encoded from its pair
     int parent{-1};   ///< the bus it plays into, by index into the field's parts; -1: Main
     std::vector<Insert> inserts;
+    TrackId sidechain{0};  ///< a source's: the track its Encoder's sidechain hears; 0 none
     friend bool operator==(const Part&, const Part&) = default;
 };
 
@@ -88,7 +102,8 @@ Field layOut(const Tree& tree, const Shape& shape);
 /// The plan that plays a field: a node per source with a pair, encoded by an Encoder slot of its own, slots
 /// 0, 1, ... in the order of the parts; a node per bus; a return per return of the field; then a slot per
 /// insert, the parts' in their order, the returns' and Main's last; the decoder the slot after them all. A source without a pair -- one past the loop device's pairs --
-/// is left out with its inserts, and a bus keeps its place. The slots' latencies are the caller's to fill.
+/// is left out with its inserts, and a bus keeps its place. An insert's slot names the pair its sidechain hears.
+/// The slots' latencies are the caller's to fill.
 struct FieldPlan {
     Plan plan;
     std::vector<TrackId> encoders;  ///< the track each Encoder slot encodes

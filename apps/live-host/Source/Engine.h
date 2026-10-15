@@ -81,6 +81,9 @@ public:
 
     /// The Encoder on the lowest pair a track is on; none while no track is.
     juce::AudioProcessor* firstEncoder() const;
+    /// The Encoder of `track`, and the plugin of an insert; none when the engine plays no such thing.
+    juce::AudioProcessor* encoderOf(live::TrackId track) const;
+    juce::AudioProcessor* effectOf(std::uint64_t insert) const;
     /// The first insert of that kind, in the order of the slots; none while there is none.
     juce::AudioProcessor* firstEffect(live::Effect effect) const;
     /// Whether `p` is one of the plugins the engine plays now.

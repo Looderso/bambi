@@ -111,6 +111,12 @@ std::vector<juce::Rectangle<float>> drawSegments(juce::Graphics& g, juce::Rectan
     return cells;
 }
 
+float segmentsWidth(const std::vector<juce::String>& names) {
+    float widest = 0.0f;
+    for (const auto& n : names) widest = std::max(widest, framedButtonWidth(n));
+    return widest * static_cast<float>(names.size());
+}
+
 float segmentLinesHeight(int count, int columns) {
     const int lines = (columns <= 0 || columns >= count) ? 1 : (count + columns - 1) / columns;
     return static_cast<float>(lines) * theme::controls::segmentHeight;
@@ -192,6 +198,33 @@ void drawFactRow(juce::Graphics& g, juce::Rectangle<float> row, const juce::Stri
         text(g, value, font(theme::type::body), set ? colour::text : colour::inactive, row,
              juce::Justification::centredRight);
     ruleH(g, row.getX(), row.getRight(), row.getBottom() - theme::stroke::rule, colour::rowDivider);
+}
+
+void drawWaiting(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& label, const juce::Font& f) {
+    g.setColour(theme::colour::learning);
+    g.fillRect(box);
+    text(g, label, f, theme::colour::textInverse, box, juce::Justification::centred);
+}
+
+float chipWidth(const juce::String& label, float height, bool accent, bool closable) {
+    return textWidth(labelFont(), label) + 2.0f * static_cast<float>(theme::scene::presetChipPadX) +
+           (accent ? theme::stroke::selectionBar : 0.0f) + (closable ? height : 0.0f);
+}
+
+Chip drawChip(juce::Graphics& g, juce::Point<float> topLeft, float height, const juce::String& label, juce::Colour ink,
+              std::optional<juce::Colour> accent, bool closable) {
+    Chip c;
+    c.box = {topLeft.x, topLeft.y, chipWidth(label, height, accent.has_value(), closable), height};
+    g.setColour(theme::colour::rule);
+    g.drawRect(c.box, theme::stroke::rule);
+    auto inner = c.box;
+    if (accent) {
+        g.setColour(*accent);
+        g.fillRect(inner.removeFromLeft(theme::stroke::selectionBar));
+    }
+    if (closable) c.cross = drawCloseCross(g, inner.removeFromRight(height).reduced(height / 4.0f));
+    text(g, label, labelFont(), ink, inner, juce::Justification::centred);
+    return c;
 }
 
 juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> box) {

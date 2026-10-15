@@ -48,6 +48,14 @@ inline void switchLabel(juce::Graphics& g, const juce::String& s, juce::Rectangl
     text(g, s, labelFont(), chosen ? theme::colour::textInverse : theme::colour::text, box, j);
 }
 
+/// `path` in dashes, `dash` the on and off lengths, drawn in the current colour with `stroke`'s weight and ends.
+inline void strokeDashed(juce::Graphics& g, const juce::Path& path, const float (&dash)[2],
+                         const juce::PathStrokeType& stroke) {
+    juce::Path dashes;
+    stroke.createDashedStroke(dashes, path, dash, 2);
+    g.fillPath(dashes);
+}
+
 inline void ruleH(juce::Graphics& g, float x0, float x1, float y, juce::Colour c) {
     g.setColour(c);
     g.fillRect(x0, y, x1 - x0, theme::stroke::rule);

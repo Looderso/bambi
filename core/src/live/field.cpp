@@ -18,11 +18,12 @@ bool reaches(const Node& n) { return n.path == Node::Path::Main && n.kind != Nod
 bool place(const Tree& tree, const Shape& shape, const Node& n, int parent, Field& field, int depth) {
     const bool split = n.kind == Node::Kind::Group && has(shape.split, n.id);
     if (!split) {
-        field.parts.push_back({n.id, false, parent, shape.insertsOn(n.id)});
+        const TrackId from = shape.sidechainOf(n.id);
+        field.parts.push_back({n.id, false, parent, shape.insertsOn(n.id), from == n.id ? 0 : from});
         return true;
     }
     const int bus = static_cast<int>(field.parts.size());
-    field.parts.push_back({n.id, true, parent, shape.insertsOn(n.id)});
+    field.parts.push_back({n.id, true, parent, shape.insertsOn(n.id), 0});
     bool any = false;
     //  a tree Live made has no cycle; the depth guards one a device could send
     if (depth < 64)
@@ -40,6 +41,12 @@ const std::vector<Insert>& Shape::insertsOn(TrackId node) const {
     for (const Chain& c : chains)
         if (c.node == node) return c.inserts;
     return none;
+}
+
+TrackId Shape::sidechainOf(TrackId source) const {
+    for (const Sidechain& c : sidechains)
+        if (c.source == source) return c.from;
+    return 0;
 }
 
 std::vector<TrackId> Field::sources() const {
@@ -98,6 +105,22 @@ FieldPlan planOf(const Field& field, const std::vector<TrackPair>& pairs) {
     for (const Insert& insert : field.main) out.plan.main.push_back(slot(insert));
     out.plan.decoder = static_cast<int>(out.encoders.size() + out.effects.size());
     out.plan.slots.assign(static_cast<std::size_t>(out.plan.decoder) + 1, Slot{});
+    const auto pairOf = [&](TrackId t) {
+        const auto p = std::find_if(pairs.begin(), pairs.end(), [&](const TrackPair& tp) { return tp.track == t; });
+        return p == pairs.end() ? -1 : p->pair;
+    };
+    for (const FieldNode& n : out.plan.nodes)
+        if (n.encoder >= 0) {
+            const auto part =
+                std::find_if(field.parts.begin(), field.parts.end(), [&](const Part& x) { return x.node == n.track; });
+            out.plan.slots[static_cast<std::size_t>(n.encoder)].sidechain = pairOf(part->sidechain);
+        }
+    for (std::size_t e = 0; e < out.effects.size(); ++e) {
+        const TrackId from = out.effects[e].sidechain;
+        const auto p = std::find_if(pairs.begin(), pairs.end(), [&](const TrackPair& tp) { return tp.track == from; });
+        //  only the field's sources have pairs -- a bus, a node in Live, a track inside a whole group, no track (0) none
+        if (p != pairs.end()) out.plan.slots[out.encoders.size() + e].sidechain = p->pair;
+    }
     return out;
 }
 
@@ -148,6 +171,7 @@ Json toJson(const Shape& shape) {
             Json insert = Json::object();
             insert.set("id", Json(static_cast<double>(i.id)));
             insert.set("effect", Json(std::string(nameOf(i.effect))));
+            if (i.sidechain != 0) insert.set("sidechain", Json(static_cast<double>(i.sidechain)));
             inserts.push(std::move(insert));
         }
         Json chain = Json::object();
@@ -160,6 +184,14 @@ Json toJson(const Shape& shape) {
     j.set("inLive", ids(shape.inLive));
     j.set("chains", std::move(chains));
     j.set("returns", ids(shape.returns));
+    Json sidechains = Json::array();
+    for (const Sidechain& c : shape.sidechains) {
+        Json o = Json::object();
+        o.set("source", Json(static_cast<double>(c.source)));
+        o.set("from", Json(static_cast<double>(c.from)));
+        sidechains.push(std::move(o));
+    }
+    j.set("sidechains", std::move(sidechains));
     return j;
 }
 
@@ -171,7 +203,15 @@ Shape shapeFrom(const Json& json) {
                 if (const auto v = idOf(id, 1.0)) out.push_back(*v);
         return out;
     };
-    Shape shape{ids("split"), ids("inLive"), {}, ids("returns")};
+    Shape shape{ids("split"), ids("inLive"), {}, ids("returns"), {}};
+    if (const Json* list = json.find("sidechains"); list != nullptr && list->isArray())
+        for (const Json& c : list->items()) {
+            const Json* source = c.find("source");
+            const Json* from = c.find("from");
+            const auto a = source != nullptr ? idOf(*source, 1.0) : std::nullopt;
+            const auto b = from != nullptr ? idOf(*from, 1.0) : std::nullopt;
+            if (a && b) shape.sidechains.push_back({*a, *b});
+        }
     if (const Json* chains = json.find("chains"); chains != nullptr && chains->isArray())
         for (const Json& c : chains->items()) {
             const Json* node = c.find("node");
@@ -184,7 +224,9 @@ Shape shapeFrom(const Json& json) {
                     const Json* effect = i.find("effect");
                     const auto n = id != nullptr ? idOf(*id, 1.0) : std::nullopt;
                     const auto e = effect != nullptr ? effectNamed(effect->stringOr("")) : std::nullopt;
-                    if (n && e) chain.inserts.push_back({*n, *e});
+                    const Json* from = i.find("sidechain");
+                    const auto side = from != nullptr ? idOf(*from, 1.0) : std::nullopt;
+                    if (n && e) chain.inserts.push_back({*n, *e, side.value_or(0)});
                 }
             shape.chains.push_back(std::move(chain));
         }
