@@ -441,6 +441,7 @@ Swapped swapRender(int block, const live::Plan& first, const live::Plan* second,
     juce::AudioBuffer<float> loop(4, kDeviceBlock), part(2, kDeviceBlock);
     for (int at = 0; at < kLength; at += block) {
         if (at == kSwapAt && second != nullptr) {
+            for (auto& plugin : s.plugins) runner.ready(plugin.get());
             live::Plan next = *second;
             for (std::size_t i = 0; i < s.plugins.size(); ++i)
                 next.slots[i].latency = s.plugins[i]->getLatencySamples();
@@ -492,6 +493,62 @@ public:
 };
 
 constexpr float kLevel = 0.1f;  // the track, constant on its left channel
+
+//  One track through stand-ins into Main, or with `delayed` a second through a stand-in that delays by kDelay, so
+//  the first is delayed as much where they meet; constant on their left channels. With `swap`, the same plan
+//  swapped in before the block at kSwapAt. Main's first channel, sample by sample.
+std::vector<float> standInSwap(int block, bool swap, bool delayed) {
+    Spread a, b;
+    DelayBy delay(kDelay);
+    PassOut out;
+    delay.prepareToPlay(kRate, kMaxBlock);
+    live::Plan p;
+    live::FieldNode first;
+    first.track = 1;
+    first.pair = 0;
+    first.encoder = 0;
+    p.nodes = {first};
+    std::vector<juce::AudioProcessor*> slots{&a};
+    if (delayed) {
+        live::FieldNode second;
+        second.track = 2;
+        second.pair = 1;
+        second.encoder = 1;
+        second.inserts = {2};
+        p.nodes.push_back(second);
+        slots.push_back(&b);
+        slots.push_back(&delay);
+    }
+    p.decoder = static_cast<int>(slots.size());
+    slots.push_back(&out);
+    p.slots.assign(slots.size(), {});
+    if (delayed) p.slots[2].latency = kDelay;
+    const auto compiled = live::compile(p);
+    livehost::Runner runner;
+    juce::String why;
+    if (!compiled || !runner.prepare(*compiled, slots, 0, {kOrder, kMaxBlock, 4, 2, kRate}, why)) return {};
+    std::vector<float> got;
+    juce::AudioBuffer<float> loop(4, kDeviceBlock), part(2, kDeviceBlock);
+    loop.clear();
+    for (int i = 0; i < kDeviceBlock; ++i) {
+        loop.setSample(0, i, kLevel);
+        loop.setSample(2, i, kLevel);
+    }
+    for (int at = 0; at < kLength; at += block) {
+        if (swap && at == kSwapAt) (void)runner.swap(*compiled, slots, 0, why);
+        const int n = std::min(block, kLength - at);
+        runner.process(loop, part, n);
+        for (int i = 0; i < n; ++i) got.push_back(part.getSample(0, i));
+    }
+    return got;
+}
+
+//  The swap's fade at `k` samples after it was asked for, with no delay to hold through: down, then up.
+double fadeAt(int k) {
+    const int f = livehost::Runner::kFade;
+    if (k < 0 || k >= 2 * f) return 1.0;
+    return k < f ? 1.0 - static_cast<double>(k) / f : static_cast<double>(k - f) / f;
+}
 //  When the send's level is set, and to what: before the block at each sample, which every block size tried
 //  starts a block at; neither is a point of the level grid.
 const std::vector<std::pair<int, float>> kLevels{{0, 1.0f}, {24000, 0.25f}, {48000, 0.75f}};
@@ -532,13 +589,14 @@ std::vector<float> sendGains(int block, int swapAt = 0, float swapLevel = 0.0f) 
         }
         const int n = std::min(block, kRampLength - at);
         runner.process(loop, part, n);
-        //  the track, plus the send; through a swap's fade, the output over the fade's gain
+        //  the track, plus the send; through a swap's fade, the output over the fade's gain, which the track has
+        //  at the source and again at the output
         for (int i = 0; i < n; ++i) {
             const int k = at + i - swapAt - livehost::Runner::kFade;
             const float fade = swapAt != 0 && k >= 0 && k < livehost::Runner::kFade
                                    ? static_cast<float>(k) / static_cast<float>(livehost::Runner::kFade)
                                    : 1.0f;
-            gains.push_back(fade > 0.0f ? part.getSample(0, i) / (kLevel * fade) - 1.0f : 0.0f);
+            gains.push_back(fade > 0.0f ? part.getSample(0, i) / (kLevel * fade * fade) - 1.0f : 0.0f);
         }
     }
     return gains;
@@ -640,21 +698,29 @@ int main() {
     const auto onFirst = noiseOn({0});
     const auto onSecond = noiseOn({1});
     for (const int block : {1, 64, 100, 1500}) {
-        //  for the same plan: the unswapped render, times the fade
-        const auto plain = swapRender(block, one, nullptr, onFirst);
-        const auto same = swapRender(block, one, &one, onFirst);
-        if (plain.out.getNumSamples() == 0 || same.out.getNumSamples() == 0) return 1;
+        //  Catches: a swap with no fade, a fade on the output only -- an insert or line kept across the swap would
+        //  hear a step -- a fade that is not the same on both, or a swap in the wrong place.
+        //  For the same plan on stand-ins that keep nothing: the unswapped render, times the fade at the source and
+        //  again at the output.
+        const auto plainOut = standInSwap(block, false, false);
+        const auto sameOut = standInSwap(block, true, false);
+        if (plainOut.size() != static_cast<std::size_t>(kLength) || sameOut.size() != plainOut.size()) return 1;
         double off = 0.0;
-        for (int ch = 0; ch < 2; ++ch)
-            for (int i = 0; i < kLength; ++i) {
-                const int k = i - kSwapAt;
-                const double gain = k < 0 || k >= 2 * livehost::Runner::kFade ? 1.0
-                                    : k < livehost::Runner::kFade
-                                        ? 1.0 - static_cast<double>(k) / livehost::Runner::kFade
-                                        : static_cast<double>(k - livehost::Runner::kFade) / livehost::Runner::kFade;
-                off = std::max(off, std::abs(same.out.getSample(ch, i) - gain * plain.out.getSample(ch, i)));
-            }
+        for (int i = 0; i < kLength; ++i) {
+            const double f = fadeAt(i - kSwapAt);
+            off = std::max(
+                off, std::abs(sameOut[static_cast<std::size_t>(i)] - f * f * plainOut[static_cast<std::size_t>(i)]));
+        }
         const bool faded = off <= 1e-6;
+        //  Catches: a program swapped in while the old one's lines and a kept insert still hold what came before --
+        //  one path's tail would be heard without the other's. With a delay line, silence is held through it, and
+        //  the paths meet again only once both start afresh.
+        const auto heldOut = standInSwap(block, true, true);
+        if (heldOut.size() != static_cast<std::size_t>(kLength)) return 1;
+        float duringHold = 0.0f;
+        for (int i = kSwapAt + livehost::Runner::kFade; i < kSwapAt + livehost::Runner::kFade + 2 * kDelay; ++i)
+            duringHold = std::max(duringHold, std::abs(heldOut[static_cast<std::size_t>(i)]));
+        const bool held = duringHold == 0.0f && std::abs(heldOut.back() - 2.0f * kLevel) < 1e-6f;
         //  for one that adds a track: silent before, heard after
         const auto added = swapRender(block, one, &both, onSecond);
         if (added.out.getNumSamples() == 0) return 1;
@@ -666,14 +732,14 @@ int main() {
                                                            kLength - kSwapAt - 2 * livehost::Runner::kFade));
         }
         const bool heard = before == 0.0f && after > 1e-3f;
-        const bool freed = same.keptThroughSwap && same.freedByTidy && added.keptThroughSwap && added.freedByTidy &&
-                           SnapshotCensus::freedOnAudioThread() == 0;
-        const bool ok = faded && heard && freed;
+        const bool freed = added.keptThroughSwap && added.freedByTidy && SnapshotCensus::freedOnAudioThread() == 0;
+        const bool ok = faded && held && heard && freed;
         failed += ok ? 0 : 1;
         std::printf(
-            "the swap, block %4d: faded within %.3g, the added track %s (peak %.4f after), the old program "
+            "the swap, block %4d: faded within %.3g, %s, the added track %s (peak %.4f after), the old program "
             "%s %s\n",
-            block, off, heard ? "heard only after" : "NOT as it should be", static_cast<double>(after),
+            block, off, held ? "silent through the delay" : "NOT silent through the delay",
+            heard ? "heard only after" : "NOT as it should be", static_cast<double>(after),
             freed ? "freed by tidy, not in a block" : "NOT freed as it should be", ok ? "" : "  FAIL");
     }
 

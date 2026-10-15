@@ -31,6 +31,15 @@ void decode(juce::AudioProcessor* p, const Json* state) {
 
 std::string keyOf(live::TrackId track) { return std::to_string(track); }
 
+//  A loaded plugin, shared by the programs that play it, released and freed by whichever lets go of it last -- on
+//  the message thread, where programs are freed.
+std::shared_ptr<juce::AudioPluginInstance> shared(std::unique_ptr<juce::AudioPluginInstance> plugin) {
+    return {plugin.release(), [](juce::AudioPluginInstance* p) {
+                p->releaseResources();
+                delete p;
+            }};
+}
+
 std::int64_t nowNs() noexcept {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
@@ -41,9 +50,6 @@ std::int64_t nowNs() noexcept {
 Engine::~Engine() {
     devices_.removeAudioCallback(this);
     devices_.closeAudioDevice();
-    for (auto& v : voices_) v.encoder->releaseResources();
-    for (auto& f : effects_) f.plugin->releaseResources();
-    if (decoder_ != nullptr) decoder_->releaseResources();
 }
 
 bool Engine::start(const Settings& settings, juce::String& status) {
@@ -82,7 +88,7 @@ bool Engine::start(const Settings& settings, juce::String& status) {
         status = decoded.status;
         return false;
     }
-    decoder_ = std::move(decoded.plugin);
+    decoder_ = shared(std::move(decoded.plugin));
     live::Plan plan;
     plan.slots = {{decoder_->getLatencySamples()}};
     plan.decoder = 0;
@@ -109,6 +115,9 @@ bool Engine::start(const Settings& settings, juce::String& status) {
 
 bool Engine::setField(const live::Field& field, const std::vector<live::TrackPair>& pairs, juce::String& status) {
     live::FieldPlan fp = live::planOf(field, pairs);
+    //  the restored states the new plugins took: given up only once the swap is made, so a change that fails part
+    //  of the way leaves them for the next
+    std::vector<std::string> restoredEncoders, restoredEffects;
     //  each source's Encoder: the one it had, or one loaded now
     std::vector<Voice> next;
     std::vector<int> drop;  // nodes whose Encoder could not be loaded
@@ -127,9 +136,10 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
             status = loaded.status;
             return false;
         }
-        std::shared_ptr<juce::AudioPluginInstance> encoder = std::move(loaded.plugin);
+        std::shared_ptr<juce::AudioPluginInstance> encoder = shared(std::move(loaded.plugin));
+        runner_.ready(encoder.get());
         decode(encoder.get(), waiting_.find(keyOf(track)));
-        waiting_.erase(keyOf(track));
+        restoredEncoders.push_back(keyOf(track));
         next.push_back({track, pair, std::move(encoder)});
     }
     //  each insert's Echo or Reverb: the one it had, or one loaded now
@@ -147,9 +157,10 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
             status = loaded.status;
             return false;
         }
-        std::shared_ptr<juce::AudioPluginInstance> plugin = std::move(loaded.plugin);
+        std::shared_ptr<juce::AudioPluginInstance> plugin = shared(std::move(loaded.plugin));
+        runner_.ready(plugin.get());
         decode(plugin.get(), waitingEffects_.find(keyOf(insert.id)));
-        waitingEffects_.erase(keyOf(insert.id));
+        restoredEffects.push_back(keyOf(insert.id));
         nextEffects.push_back({insert, std::move(plugin)});
     }
     if (fp.plan.nodes == plan_.nodes && fp.plan.main == plan_.main && fp.effects == playing_ &&
@@ -178,6 +189,8 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
         return false;
     }
     //  the Encoders only the old program plays stay alive in it until the audio thread lets go of it
+    for (const auto& key : restoredEncoders) waiting_.erase(key);
+    for (const auto& key : restoredEffects) waitingEffects_.erase(key);
     voices_ = std::move(next);
     effects_ = std::move(nextEffects);
     playing_ = fp.effects;

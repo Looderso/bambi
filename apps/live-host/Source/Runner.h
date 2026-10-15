@@ -18,8 +18,9 @@
  *  A plan and everything it plays with is one program: the steps, the instances, a field buffer per node, return
  *  and Main, for each slot a buffer as wide as the plugin's widest side, its sidechain left silent, a delay line for
  *  every step that delays, the send levels. It is built whole on the message thread, by prepare() before audio
- *  runs and by swap() while it does. A swapped program is taken at a block: the output fades out over kFade
- *  samples, the new program takes over, and it fades back in. The program it replaced, and every instance only it
+ *  runs and by swap() while it does. A swapped program is taken at a block: what the loop device brings and the
+ *  output both fade out over kFade samples, silence is held through the old program's longest delay line, the new
+ *  program takes over, and both fade back in -- so no insert or line kept across the swap hears a step. The program it replaced, and every instance only it
  *  kept, is freed on the message thread -- by the next swap(), or by tidy(). process() allocates, frees and locks
  *  nothing, so it runs on the audio thread.
  *
@@ -55,7 +56,12 @@ public:
     bool prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
                  const Setup& setup, juce::String& error, Keep keep = {});
 
-    /// A new program, while audio runs, at the setup prepare() was given; the same checks.
+    /// An instance new to the runner, readied for it before it is in any program: the playhead it reads, and that
+    /// it plays in real time. Message thread; prepare() readies the first program's itself.
+    void ready(juce::AudioProcessor* plugin);
+
+    /// A new program, while audio runs, at the setup prepare() was given; the same checks. Every instance it names
+    /// not in a program before must have been readied.
     bool swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
               juce::String& error, Keep keep = {});
 
@@ -103,6 +109,7 @@ private:
         };
         std::unique_ptr<Level[]> levels;
         int levelCount{0};
+        int longest{0};  ///< samples: the longest delay line
     };
 
     std::unique_ptr<Program> build(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots,
@@ -113,7 +120,7 @@ private:
         return l.from + (l.to - l.from) * static_cast<float>(offset) / static_cast<float>(kLevelGrid);
     }
     void piece(const Program& p, const juce::AudioBuffer<float>& loop, int loopStart, juce::AudioBuffer<float>& output,
-               int outStart, int frames) noexcept;
+               int outStart, int frames, float fade0, float fade1) noexcept;
 
     Setup setup_;
     int field_{16};  // channels of the field at the plan's order
@@ -123,9 +130,10 @@ private:
     LivePlayhead playhead_;
     live::TransportProjector* clock_{nullptr};
     std::int64_t sample_{0};
-    enum class Fade { None, Out, In };
-    Fade fade_{Fade::None};  // the audio thread's, with `faded_`: samples of the fade played
+    enum class Fade { None, Out, Hold, In };
+    Fade fade_{Fade::None};  // the audio thread's, with `faded_`: samples of the phase played
     int faded_{0};
+    int hold_{0};  // samples of silence held between the fade out and the swap
 };
 
 }  // namespace bambi::livehost

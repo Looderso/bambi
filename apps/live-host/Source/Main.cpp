@@ -20,6 +20,8 @@
 namespace {
 
 constexpr int kPairs = 7;  ///< the loop device's 16 channels: 7 pairs for tracks, the eighth for the return
+//  the engine refers to the loop device's channels in a buffer, which allocates past 32 of them
+static_assert(2 * (kPairs + 1) < 32);
 
 //  What the host hears from Live, in a few short lines, and what went wrong if something did.
 bambi::livehost::Rail::Status describe(const bambi::live::DeviceSession& s, bool listening, const std::string& error,

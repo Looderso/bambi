@@ -45,6 +45,7 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
     for (const live::Op& op : compiled.ops) {
         Line l;
         if (op.step == live::Step::Add && op.delay > 0) {
+            p->longest = std::max(p->longest, op.delay);
             l.length = op.delay;
             l.memory.setSize(field_, op.delay);
             l.memory.clear();
@@ -53,11 +54,6 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
     }
     p->levelCount = std::max(levels, 0);
     p->levels = std::make_unique<Program::Level[]>(static_cast<std::size_t>(p->levelCount));
-    for (juce::AudioProcessor* plugin : slots)
-        if (plugin != nullptr) {
-            plugin->setNonRealtime(false);
-            plugin->setPlayHead(&playhead_);
-        }
     return p;
 }
 
@@ -67,6 +63,7 @@ bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::Aud
     field_ = (setup.order + 1) * (setup.order + 1);
     auto p = build(compiled, slots, levels, error, std::move(keep));
     if (p == nullptr) return false;
+    for (juce::AudioProcessor* plugin : slots) ready(plugin);  // no audio runs yet
     latest_ = p.get();
     handoff_.begin(std::move(p));
     midi_.ensureSize(256);
@@ -83,6 +80,12 @@ bool Runner::swap(const live::Compiled& compiled, const std::vector<juce::AudioP
     latest_ = p.get();
     (void)handoff_.post(std::move(p));  // one posted and never taken goes here, on this thread
     return true;
+}
+
+void Runner::ready(juce::AudioProcessor* plugin) {
+    if (plugin == nullptr) return;
+    plugin->setNonRealtime(false);
+    plugin->setPlayHead(&playhead_);
 }
 
 void Runner::setLevel(int entry, float level) noexcept {
@@ -107,21 +110,33 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
             fade_ = Fade::Out;
             faded_ = 0;
         }
-        //  a piece ends where a fade does, so the swap falls between two pieces, and at a grid point, where the
-        //  sends take their levels
+        //  a piece ends where a phase of the fade does, so the swap falls between two pieces, and at a grid point,
+        //  where the sends take their levels
         int n = std::min({frames - done, setup_.maxBlock, kLevelGrid - static_cast<int>(sample_ % kLevelGrid)});
-        if (fade_ != Fade::None) n = std::min(n, kFade - faded_);
-        piece(*handoff_.current(), loop, done, output, done, n);
+        const int length = fade_ == Fade::Hold ? hold_ : kFade;
+        if (fade_ != Fade::None) n = std::min(n, length - faded_);
+        float g0 = 1.0f, g1 = 1.0f;  // the fade's gain at the piece's first sample, and just after its last
+        const auto ramp = [&](int at) { return static_cast<float>(at) / static_cast<float>(kFade); };
+        if (fade_ == Fade::Out) {
+            g0 = 1.0f - ramp(faded_);
+            g1 = 1.0f - ramp(faded_ + n);
+        } else if (fade_ == Fade::Hold) {
+            g0 = g1 = 0.0f;
+        } else if (fade_ == Fade::In) {
+            g0 = ramp(faded_);
+            g1 = ramp(faded_ + n);
+        }
+        piece(*handoff_.current(), loop, done, output, done, n, g0, g1);
         if (fade_ != Fade::None) {
-            const float from = static_cast<float>(faded_) / kFade, to = static_cast<float>(faded_ + n) / kFade;
-            if (fade_ == Fade::Out)
-                output.applyGainRamp(done, n, 1.0f - from, 1.0f - to);
-            else
-                output.applyGainRamp(done, n, from, to);
+            output.applyGainRamp(done, n, g0, g1);
             faded_ += n;
-            if (faded_ == kFade) {
+            if (faded_ == length) {
                 faded_ = 0;
-                if (fade_ == Fade::Out) {
+                if (fade_ == Fade::Out && handoff_.current()->longest > 0) {
+                    //  silence through the old program's longest delay, so the lines it drops hold nothing
+                    fade_ = Fade::Hold;
+                    hold_ = handoff_.current()->longest;
+                } else if (fade_ == Fade::Out || fade_ == Fade::Hold) {
                     //  the new program, faded in -- or, with no room to retire the old one, the old one again
                     if (const Program* next = handoff_.adopt())
                         for (int i = 0; i < next->levelCount; ++i) {
@@ -140,7 +155,7 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
 }
 
 void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int loopStart,
-                   juce::AudioBuffer<float>& output, int outStart, int frames) noexcept {
+                   juce::AudioBuffer<float>& output, int outStart, int frames, float fade0, float fade1) noexcept {
     if (clock_ != nullptr) playhead_.set(clock_->reading(sample_), setup_.rate);
     const int offset = static_cast<int>(sample_ % kLevelGrid);
     if (offset == 0)
@@ -158,9 +173,11 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
                 auto& s = p.scratch[static_cast<std::size_t>(op.slot)];
                 s.setSize(s.getNumChannels(), frames, false, false, true);
                 s.clear(0, frames);  // the sidechain stays silent
+                //  faded with the output through a swap, so no insert or line kept across it hears a step
                 for (int ch = 0; ch < 2; ++ch)
                     if (2 * op.from + ch < loop.getNumChannels())
-                        s.copyFrom(ch, 0, loop, 2 * op.from + ch, loopStart, frames);
+                        s.copyFromWithRamp(ch, 0, loop.getReadPointer(2 * op.from + ch, loopStart), frames, fade0,
+                                           fade1);
                 run(p, op.slot, s);
                 for (int ch = 0; ch < field_; ++ch)
                     p.buffers[static_cast<std::size_t>(op.to)].copyFrom(ch, 0, s, ch, 0, frames);
