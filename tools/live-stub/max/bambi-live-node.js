@@ -7,8 +7,9 @@
 //    - the host answering `busy` (another device has it): the v8 script is told once, and this one waits
 //      five seconds between tries rather than flickering connected and gone.
 //
-//  The host started here is, for now, the stand-in: build/bambi-live-stub of this worktree, logging to
-//  ~/Library/Logs/bambi-live-stub.log and quitting ten seconds after its last device has gone.
+//  The host started here is the one built in this folder, build-plugin's bambi live host app; without it, the
+//  stand-in, build/bambi-live-stub, logging to ~/Library/Logs/bambi-live-stub.log and quitting ten seconds after
+//  its last device has gone.
 
 const maxApi = require("max-api");
 const net = require("net");
@@ -18,7 +19,9 @@ const os = require("os");
 const {spawn} = require("child_process");
 
 const PORT = 9461;
-const HOST = path.resolve(__dirname, "../../../build/bambi-live-stub");
+const APP = path.resolve(__dirname,
+                         "../../../build-plugin/apps/live-host/bambi-live-host_artefacts/Release/bambi live host.app");
+const STUB = path.resolve(__dirname, "../../../build/bambi-live-stub");
 const LOG = path.join(os.homedir(), "Library/Logs/bambi-live-stub.log");
 
 let socket = null;
@@ -28,12 +31,17 @@ let started = false;   // the host was started since the last connection made
 let pending = "";
 
 function startHost() {
-    if (started || !fs.existsSync(HOST)) return;
-    started = true;
-    const log = fs.openSync(LOG, "a");
-    const child = spawn(HOST, ["--quit-when-alone", "10"], {detached: true, stdio: ["ignore", log, log]});
-    child.unref();
-    maxApi.post("bambi: started " + HOST + ", log in " + LOG);
+    if (started) return;
+    if (fs.existsSync(APP)) {
+        started = true;
+        spawn("open", [APP], {detached: true, stdio: "ignore"}).unref();
+        maxApi.post("bambi: started " + APP);
+    } else if (fs.existsSync(STUB)) {
+        started = true;
+        const log = fs.openSync(LOG, "a");
+        spawn(STUB, ["--quit-when-alone", "10"], {detached: true, stdio: ["ignore", log, log]}).unref();
+        maxApi.post("bambi: no host built; started the stand-in " + STUB + ", log in " + LOG);
+    }
 }
 
 function connect() {

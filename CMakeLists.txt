@@ -67,6 +67,7 @@ endif()
 enable_testing()
 add_subdirectory(third_party)
 add_subdirectory(core)
+add_subdirectory(platform)
 add_subdirectory(tools)
 
 # The plugin is opt-in. core/ and tools/ build in seconds with no JUCE at all, and that is where

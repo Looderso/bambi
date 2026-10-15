@@ -39,6 +39,9 @@ function light(state) {
 const PROTOCOL = 1;
 const MAIN = ["Main", "Master"];  // Live 12 says Main, earlier versions Master
 const GRACE_MS = 5000;
+const RETURN_IN = "15/16";   // the host's binaural mix: the loop device's pair after the tracks' seven
+const RETURN_NAME = "bambi";
+const MONITOR_IN = 0;
 
 let store = null;      // the dict the set keeps
 let ready = false;     // loaded; a press before that is a parameter being restored
@@ -234,9 +237,13 @@ function start() {
     lastTree = "";
     lastValue = {};
     outlet(1, "set", 1);
+    const listening = makeReturn();
     send({type: "bambi", on: 1});
     sendTree();
     observe();
+    if (!listening)
+        notice("the bambi track cannot hear Ext. In " + RETURN_IN + ": enable it as a stereo pair in Live's " +
+               "Input Config, with the bambi bridge as the input device");
 }
 
 function stop() {
@@ -246,6 +253,7 @@ function stop() {
     identify();
     post("bambi: off, restoring " + remembered().length + " tracks\n");
     const back = restoreAll();
+    removeReturn();
     outlet(1, "set", 0);
     send({type: "bambi", on: 0});
     info = {};
@@ -263,11 +271,59 @@ function show() {
 
 // ---- which track is which -------------------------------------------------------------------------------------
 
+// ---- the bambi track: the host's binaural mix back in Live -----------------------------------------------------
+
+//  The track that plays the host's mix: it listens to the loop device's return pair. Known by that rather than by
+//  its name, so a set reopened with bambi on finds the one it has.
+function isReturn(path) {
+    const t = new LiveAPI(path);
+    try {
+        const type = read(t, "input_routing_type"), channel = read(t, "input_routing_channel");
+        return type !== null && type !== undefined && type.display_name === "Ext. In" && channel !== null &&
+               channel !== undefined && channel.display_name === RETURN_IN;
+    } catch (e) {
+        return false;  // a group has no input
+    }
+}
+
+function returnIndices() {
+    const set = new LiveAPI("live_set");
+    const out = [];
+    for (let i = 0; i < set.getcount("tracks"); ++i)
+        if (isReturn("live_set tracks " + i)) out.push(i);
+    return out;
+}
+
+//  Makes the bambi track unless the set has it: last, listening to the return pair, monitoring In, playing to
+//  Main. False when it cannot hear that pair.
+function makeReturn() {
+    if (returnIndices().length > 0) return true;
+    const set = new LiveAPI("live_set");
+    const view = new LiveAPI("live_set view");
+    const selected = view.get("selected_track");  // a new track takes the selection; it goes back after
+    set.call("create_audio_track", -1);
+    const t = new LiveAPI("live_set tracks " + (set.getcount("tracks") - 1));
+    t.set("name", RETURN_NAME);
+    const listening = chooseNamed(t, "input_routing_type", "Ext. In") &&
+                      chooseNamed(t, "input_routing_channel", RETURN_IN);
+    t.set("current_monitoring_state", MONITOR_IN);
+    chooseNamed(t, "output_routing_type", MAIN);
+    if (Number(selected[1]) > 0) view.set("selected_track", "id", Number(selected[1]));
+    stale();
+    return listening;
+}
+
+function removeReturn() {
+    const set = new LiveAPI("live_set");
+    for (const i of returnIndices().reverse()) set.call("delete_track", i);
+    stale();
+}
+
 function nodes() {
     const set = new LiveAPI("live_set");
     const out = [];
     for (let i = 0; i < set.getcount("tracks"); ++i)
-        out.push({path: "live_set tracks " + i, index: i, ret: false});
+        if (!isReturn("live_set tracks " + i)) out.push({path: "live_set tracks " + i, index: i, ret: false});
     for (let i = 0; i < set.getcount("return_tracks"); ++i)
         out.push({path: "live_set return_tracks " + i, index: i, ret: true});
     return out;
@@ -408,10 +464,23 @@ function watchLightly(path, prop, then) {
     lightObservers.push(o);
 }
 
+//  The set's tracks and returns, in order, by id: what a rebuild of the observers follows.
+let shape = "";
+function shapeNow() {
+    const s = new LiveAPI("live_set");
+    return s.get("tracks").join(" ") + "|" + s.get("return_tracks").join(" ");
+}
+
 function observeLightly() {
     for (const o of lightObservers) o.property = "";
     lightObservers = [];
+    shape = shapeNow();
+    //  The list observers report once as they are set up, the list unchanged: only a list that did change
+    //  rebuilds, or every rebuild would schedule the next.
     const rebuild = () => {
+        const now = shapeNow();
+        if (now === shape) return;
+        shape = now;
         stale();
         reshaped = true;
         softly();
