@@ -35,6 +35,10 @@ public:
     /// A part of what the set keeps for the host, sent to the device at once when one is connected.
     void keep(std::string_view name, Json value);
 
+    /// The user's new shape: the field laid out again over the set, its routing and the state with it sent to the
+    /// device at once when one is connected, the loop device's channels named again.
+    void reshape(live::Shape shape);
+
     using Stamp = std::int64_t;  ///< nanoseconds of std::chrono::steady_clock, when a line was read
 
     std::function<void()> changed;                                        ///< something the session knows has changed

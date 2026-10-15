@@ -72,6 +72,14 @@ void DeviceServer::keep(std::string_view name, Json value) {
     if (device_ != 0) server_.send(device_, live::serialise(session_.save()));
 }
 
+void DeviceServer::reshape(live::Shape shape) {
+    const auto answers = session_.reshape(std::move(shape));
+    if (device_ != 0)
+        for (const live::Message& answer : answers) server_.send(device_, live::serialise(answer));
+    if (!answers.empty()) (void)loop::nameChannels(session_.channelNames());
+    if (changed) changed();
+}
+
 void DeviceServer::gone(net::LineServer::Connection from) {
     if (from != device_) return;
     device_ = 0;

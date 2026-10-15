@@ -133,6 +133,7 @@ add_library(bambi-live STATIC
   src/live/protocol.cpp
   src/live/session.cpp
   src/live/field.cpp
+  src/live/page.cpp
   src/live/arrival.cpp
 )
 target_include_directories(bambi-live PUBLIC include)
@@ -233,6 +234,7 @@ add_executable(bambi-tests
   tests/live/test_protocol.cpp
   tests/live/test_session.cpp
   tests/live/test_field.cpp
+  tests/live/test_page.cpp
   tests/live/test_arrival.cpp
 )
 target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode bambi-live)
