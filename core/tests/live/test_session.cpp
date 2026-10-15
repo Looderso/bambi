@@ -156,3 +156,45 @@ TEST_CASE("the button, open host and the transport are remembered; a device gone
     CHECK_FALSE(s.transport().has_value());
     CHECK(pairOf(s, 1) == 0);
 }
+
+TEST_CASE("what the host keeps beside the pairs goes into every save and comes back with a restore") {
+    //  Catches: a part kept but never saved, a restore that drops it, or one that keeps a part from before it --
+    //  a reopened set's plugins would come back as new, or as another set's.
+    DeviceSession first;
+    first.keep("plugins", Json("encoder states"));
+    first.answer(Tree{{node(1)}});
+    const Save save = first.save();
+    REQUIRE(save.state.find("plugins") != nullptr);
+
+    DeviceSession second;
+    second.keep("plugins", Json("older"));
+    second.keep("other", Json(1.0));
+    second.answer(Restore{save.state});
+    REQUIRE(second.kept("plugins") != nullptr);
+    CHECK(second.kept("plugins")->stringOr("") == "encoder states");
+    CHECK(second.kept("other") == nullptr);
+    second.answer(Tree{{node(1)}});
+    CHECK(pairOf(second, 1) == 0);
+}
+
+TEST_CASE("a part named like the pairs never replaces them") {
+    //  Catches: a kept part that overwrites the pairs in the save.
+    DeviceSession s;
+    s.answer(Tree{{node(4)}});
+    s.keep("pairs", Json("not pairs"));
+    const Save save = s.save();
+    const Json* pairs = save.state.find("pairs");
+    REQUIRE(pairs != nullptr);
+    CHECK(pairs->isArray());
+}
+
+TEST_CASE("the track on a pair, as the tree has it now") {
+    //  Catches: the node of another pair, a node for an empty pair, or a name from before a rename.
+    DeviceSession s({3, true, 0.0, 48000.0});
+    s.answer(Tree{{node(1), node(2)}});
+    s.answer(Value{2, "track 2", "name", Json("bass")});
+    REQUIRE(s.trackOn(1) != nullptr);
+    CHECK(s.trackOn(1)->id == 2);
+    CHECK(s.trackOn(1)->name == "bass");
+    CHECK(s.trackOn(2) == nullptr);
+}

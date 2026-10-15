@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "bambi/live/pairs.hpp"
@@ -17,6 +18,9 @@
  *  never, a node inside a group never (its group carries it), a track playing elsewhere never -- each keeping the
  *  pair it had; then the session's state to keep with the set, and what the host says about the mix. A restore
  *  gives back the state an earlier session kept. A change of a value is taken into the tree.
+ *
+ *  What the set keeps for the host is the pairs and the parts the host gives the session by name -- its plugins'
+ *  states -- each sent again whenever the host asks, and all of it given back by a restore.
  *
  *  The loop device's channels, named for the pairs: "<track> L" and "<track> R" on a pair's two, the binaural
  *  return on the pair past the last.
@@ -55,6 +59,17 @@ public:
     const std::optional<TransportMessage>& transport() const { return transport_; }
     int shows() const { return shows_; }  ///< times "open host" was pressed
 
+    /// A part of what the set keeps, beside the pairs, replacing the one of that name. One named "pairs" is
+    /// never saved: the pairs are the session's own.
+    void keep(std::string_view name, Json value);
+    /// The part of that name, as kept or restored; none when there is none.
+    const Json* kept(std::string_view name) const { return kept_.find(name); }
+    /// What the set should keep now.
+    Save save() const { return Save{state()}; }
+
+    /// The node on a pair, as the tree has it now; none when no track is on it.
+    const Node* trackOn(int pair) const;
+
     /// The loop device's channel names, channel 1 first: 2 x (pairCount + 1) of them, unnamed ones empty.
     std::vector<std::string> channelNames() const;
 
@@ -71,6 +86,7 @@ private:
     Tree tree_;
     std::vector<TrackPair> pairs_;
     std::vector<TrackId> unassigned_;
+    Json kept_ = Json::object();
     Routed routed_;
     std::optional<TransportMessage> transport_;
     int shows_{0};

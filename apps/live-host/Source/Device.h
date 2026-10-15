@@ -5,6 +5,7 @@
 #include <functional>
 #include <juce_events/juce_events.h>
 #include <string>
+#include <string_view>
 
 #include "bambi/live/session.hpp"
 #include "lines.hpp"
@@ -31,11 +32,15 @@ public:
     const live::DeviceSession& session() const { return session_; }
     void setLatency(double ms, double rate) { session_.setLatency(ms, rate); }
 
+    /// A part of what the set keeps for the host, sent to the device at once when one is connected.
+    void keep(std::string_view name, Json value);
+
     using Stamp = std::int64_t;  ///< nanoseconds of std::chrono::steady_clock, when a line was read
 
     std::function<void()> changed;                                        ///< something the session knows has changed
     std::function<void()> show;                                           ///< "open host" was pressed on the device
     std::function<void(const live::TransportMessage&, Stamp)> transport;  ///< Live's transport, as it came
+    std::function<void()> restored;  ///< the set gave back what it kept: session().kept() has it
 
 private:
     void run() override;

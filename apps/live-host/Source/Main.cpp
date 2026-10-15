@@ -2,8 +2,11 @@
 //
 //  bambi live host: the app that plays a Live set's tracks through the suite's own plugins. It opens the loop
 //  device, plays every pair through an Encoder of its own and the Decoder, answers the bambi Live device and gives
-//  the plugins Live's transport. The window shows one plugin at a time, chosen above it.
+//  the plugins Live's transport, and each Encoder its track's name and colour. The plugins' states are kept with
+//  the set, through the device, and given back when the set returns them. The window shows one plugin at a time,
+//  chosen above it.
 
+#include <array>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -29,16 +32,47 @@ juce::String describe(const bambi::live::DeviceSession& s, bool listening, const
     return line;
 }
 
-//  The track on a pair, by its name in Live; empty when none is.
-juce::String trackOn(const bambi::live::DeviceSession& s, int pair) {
-    for (const auto& p : s.pairs())
-        if (p.pair == pair)
-            for (const auto& n : s.tree().nodes)
-                if (n.id == p.track) return n.name;
-    return {};
+//  The plugins' states as the set keeps them: each as its own base64, the Encoders by pair.
+bambi::Json statesOf(const bambi::livehost::Engine& engine, int pairs) {
+    const auto state = [](juce::AudioProcessor* p) {
+        juce::MemoryBlock block;
+        if (p != nullptr) p->getStateInformation(block);
+        return bambi::Json(block.toBase64Encoding().toStdString());
+    };
+    bambi::Json encoders = bambi::Json::array();
+    for (int pair = 0; pair < pairs; ++pair) encoders.push(state(engine.encoder(pair)));
+    bambi::Json all = bambi::Json::object();
+    all.set("encoders", std::move(encoders));
+    all.set("decoder", state(engine.decoder()));
+    return all;
 }
 
-class Content final : public juce::Component {
+//  The states the set gave back, into the plugins; one missing or unreadable leaves its plugin as it is.
+void restoreStates(const bambi::livehost::Engine& engine, int pairs, const bambi::Json& states) {
+    const auto restore = [](juce::AudioProcessor* p, const bambi::Json* state) {
+        juce::MemoryBlock block;
+        if (p == nullptr || state == nullptr || !state->isString() ||
+            !block.fromBase64Encoding(juce::String(std::string(state->stringOr("")))) || block.getSize() == 0)
+            return;
+        p->setStateInformation(block.getData(), static_cast<int>(block.getSize()));
+    };
+    if (const bambi::Json* encoders = states.find("encoders"); encoders != nullptr && encoders->isArray())
+        for (int pair = 0; pair < pairs && pair < static_cast<int>(encoders->items().size()); ++pair)
+            restore(engine.encoder(pair), &encoders->items()[static_cast<std::size_t>(pair)]);
+    restore(engine.decoder(), states.find("decoder"));
+}
+
+//  A track's name and colour as a plugin takes them; nothing for a pair no track is on.
+juce::AudioProcessor::TrackProperties propertiesOf(const bambi::live::Node* track) {
+    juce::AudioProcessor::TrackProperties p;
+    if (track == nullptr) return p;
+    p.name = juce::String(track->name);
+    if (track->colour.size() == 7 && track->colour[0] == '#')
+        p.colourARGB = 0xff000000u | static_cast<juce::uint32>(juce::String(track->colour.substr(1)).getHexValue32());
+    return p;
+}
+
+class Content final : public juce::Component, private juce::Timer {
 public:
     Content() : device_({kPairs, bambi::loop::installed(), 0.0, 48000.0}) {
         //  The port first: the device starts the stand-in host when nothing answers there, and loading the
@@ -47,6 +81,12 @@ public:
             engine_.transport(m, stamp);
         };
         device_.changed = [this] { update(); };
+        device_.restored = [this] {
+            if (const bambi::Json* states = device_.session().kept("plugins")) {
+                restoreStates(engine_, kPairs, *states);
+                kept_ = states->dump(0);
+            }
+        };
         device_.show = [this] {
             if (auto* top = getTopLevelComponent()) top->toFront(true);
             juce::Process::makeForegroundProcess();
@@ -66,6 +106,7 @@ public:
         update();
         choice_.setSelectedId(kDecoderId, juce::dontSendNotification);
         showEditor(kDecoderId);
+        startTimer(1000);
     }
 
     ~Content() override { editor_.reset(); }  // the window before the instance it shows
@@ -81,14 +122,33 @@ public:
 private:
     static constexpr int kRow = 24, kDecoderId = 1;  // a pair's id is 2 + the pair
 
+    //  The plugins' states, kept with the set when they changed. Only while bambi is on: a device sends what the set
+    //  kept before it switches on, and the defaults must not be kept over it.
+    void timerCallback() override {
+        if (!device_.session().on()) return;
+        bambi::Json states = statesOf(engine_, kPairs);
+        std::string text = states.dump(0);
+        if (text == kept_) return;
+        kept_ = std::move(text);
+        device_.keep("plugins", std::move(states));
+    }
+
     void update() {
         live_.setText(describe(device_.session(), listening_, error_), juce::dontSendNotification);
+        for (int pair = 0; pair < kPairs; ++pair) {
+            const auto* track = device_.session().trackOn(pair);
+            const juce::String now = track == nullptr ? juce::String() : juce::String(track->name + track->colour);
+            if (now == named_[static_cast<std::size_t>(pair)]) continue;
+            named_[static_cast<std::size_t>(pair)] = now;
+            if (auto* encoder = engine_.encoder(pair)) encoder->updateTrackProperties(propertiesOf(track));
+        }
         const int selected = choice_.getSelectedId();
         choice_.clear(juce::dontSendNotification);
         choice_.addItem("Decoder", kDecoderId);
         for (int pair = 0; pair < kPairs; ++pair) {
-            const juce::String track = trackOn(device_.session(), pair);
-            choice_.addItem("Encoder, pair " + juce::String(pair + 1) + (track.isEmpty() ? "" : " -- " + track),
+            const auto* track = device_.session().trackOn(pair);
+            choice_.addItem("Encoder, pair " + juce::String(pair + 1) +
+                                (track == nullptr ? "" : " -- " + juce::String(track->name)),
                             2 + pair);
         }
         choice_.setSelectedId(selected, juce::dontSendNotification);
@@ -111,7 +171,9 @@ private:
     juce::ComboBox choice_;
     bool listening_{false};
     std::string error_;
-    bambi::livehost::DeviceServer device_;  ///< last: gone first, before what its events touch
+    std::string kept_;                          ///< the plugins' states as last kept or restored
+    std::array<juce::String, kPairs> named_{};  ///< each Encoder's track name and colour as last given
+    bambi::livehost::DeviceServer device_;      ///< last: gone first, before what its events touch
 };
 
 class Window final : public juce::DocumentWindow {

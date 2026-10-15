@@ -33,11 +33,8 @@ bool Engine::start(const Settings& settings, juce::String& status) {
     const int channels = 2 * (s_.pairs + 1);
     returnChannel_ = 2 * s_.pairs;
 
-    //  The device first: the plugins are prepared at what it runs at.
-    if (const juce::String error = devices_.initialiseWithDefaultDevices(channels, channels); error.isNotEmpty()) {
-        status = "no audio: " + error;
-        return false;
-    }
+    //  The device first: the plugins are prepared at what it runs at. Opened by name, never the system's default,
+    //  which may be one -- a Bluetooth headset -- that takes its time, or hangs, to open.
     juce::String opened;
     for (const char* name : {"bambi", "BlackHole 16ch"}) {
         juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -47,8 +44,8 @@ bool Engine::start(const Settings& settings, juce::String& status) {
         setup.useDefaultInputChannels = setup.useDefaultOutputChannels = false;
         setup.inputChannels.setRange(0, channels, true);
         setup.outputChannels.setRange(0, channels, true);
-        if (devices_.setAudioDeviceSetup(setup, true).isEmpty() && devices_.getCurrentAudioDevice() != nullptr &&
-            devices_.getCurrentAudioDevice()->getName() == name) {
+        if (devices_.initialise(channels, channels, nullptr, false, {}, &setup).isEmpty() &&
+            devices_.getCurrentAudioDevice() != nullptr && devices_.getCurrentAudioDevice()->getName() == name) {
             opened = name;
             break;
         }
@@ -128,7 +125,8 @@ juce::AudioProcessor* Engine::decoder() const {
 }
 
 void Engine::audioDeviceAboutToStart(juce::AudioIODevice* device) {
-    playable_.store(device != nullptr && std::abs(device->getCurrentSampleRate() - s_.rate) < 0.5, std::memory_order_relaxed);
+    playable_.store(device != nullptr && std::abs(device->getCurrentSampleRate() - s_.rate) < 0.5,
+                    std::memory_order_relaxed);
     faded_ = 0;
 }
 

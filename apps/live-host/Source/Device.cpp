@@ -62,8 +62,14 @@ void DeviceServer::handle(net::LineServer::Connection from, const std::string& l
     if (std::holds_alternative<live::Tree>(*message) || (value != nullptr && value->what == "name"))
         (void)loop::nameChannels(session_.channelNames());
     if (const auto* t = std::get_if<live::TransportMessage>(&*message); t != nullptr && transport) transport(*t, stamp);
+    if (std::holds_alternative<live::Restore>(*message) && restored) restored();
     if (session_.shows() != shows && show) show();
     if (changed) changed();
+}
+
+void DeviceServer::keep(std::string_view name, Json value) {
+    session_.keep(name, std::move(value));
+    if (device_ != 0) server_.send(device_, live::serialise(session_.save()));
 }
 
 void DeviceServer::gone(net::LineServer::Connection from) {

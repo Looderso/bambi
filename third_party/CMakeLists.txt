@@ -11,6 +11,9 @@ target_include_directories(dr_libs INTERFACE dr_libs)
 add_library(yyjson STATIC yyjson/yyjson.c)
 target_include_directories(yyjson PUBLIC yyjson)
 target_compile_options(yyjson PRIVATE -w)
+# Linked into every plugin: none of it visible outside, as nothing of ours is. It marks its functions visible
+# unless told how to mark them.
+target_compile_definitions(yyjson PUBLIC yyjson_api=)
 
 # zlib — zlib licence; the inflate half only, which libmysofa needs for a SOFA file's compressed datasets.
 # Vendored rather than found, so the core builds the same on a bare Windows runner as everywhere else.

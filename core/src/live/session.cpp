@@ -43,9 +43,19 @@ Json DeviceSession::state() const {
         t.set("pair", Json(p.pair));
         pairs.push(std::move(t));
     }
-    Json state = Json::object();
+    Json state = kept_;
     state.set("pairs", std::move(pairs));
     return state;
+}
+
+void DeviceSession::keep(std::string_view name, Json value) { kept_.set(name, std::move(value)); }
+
+const Node* DeviceSession::trackOn(int pair) const {
+    for (const TrackPair& p : pairs_)
+        if (p.pair == pair)
+            for (const Node& n : tree_.nodes)
+                if (n.id == p.track) return &n;
+    return nullptr;
 }
 
 std::vector<Message> DeviceSession::onTree(const Tree& t) {
@@ -67,6 +77,9 @@ std::vector<Message> DeviceSession::answer(const Message& in) {
     if (const auto* t = std::get_if<Tree>(&in)) return onTree(*t);
     if (const auto* r = std::get_if<Restore>(&in)) {
         pairs_.clear();
+        kept_ = Json::object();
+        if (r->state.isObject())
+            for (const auto& [name, value] : r->state.members()) keep(name, value);
         if (const Json* pairs = r->state.find("pairs"); pairs != nullptr && pairs->isArray())
             for (const Json& p : pairs->items()) {
                 const Json* id = p.find("id");
