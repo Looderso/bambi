@@ -35,7 +35,7 @@
 namespace bambi::live {
 
 struct SessionSettings {
-    int pairCount{7};       ///< the loop device's pairs for tracks; the one past them carries the binaural return
+    int pairCount{31};      ///< the loop device's pairs for tracks, after Live's Main's on its first two channels
     bool loop{true};        ///< the loop device is there
     double latencyMs{0.0};  ///< the spatial mix behind a dry track, as the host's plan has it
     double rate{48000.0};
@@ -83,7 +83,8 @@ public:
     /// The node on a pair, as the tree has it now; none when no track is on it.
     const Node* trackOn(int pair) const;
 
-    /// The loop device's channel names, channel 1 first: 2 x (pairCount + 1) of them, unnamed ones empty.
+    /// The loop device's channel names, channel 1 first: 2 x (pairCount + 1) of them -- Main's, then the tracks' --
+    /// unnamed ones empty.
     std::vector<std::string> channelNames() const;
 
     /// The device went away: what it said is forgotten, the pairs are kept for when it comes back.

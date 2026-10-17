@@ -13,8 +13,8 @@
 #include "bambi/live/transport.hpp"
 
 /*  Plays a compiled plan: the steps bambi-live's graph turned the host's shape into, run in order every block over
- *  the plugin instances the plan's slots name. The loop device's channels come in -- pair p is channels 2p and
- *  2p + 1 -- and the decoders' go out along the routes a program is given, each onto an output channel of its own,
+ *  the plugin instances the plan's slots name. The input row comes in -- the loop device's channels, Live's Main on
+ *  the first two and a track's pair after them, then the chosen devices' inputs -- and the decoders' go out along the routes a program is given, each onto an output channel of its own,
  *  late by its delay, beside Live's Main as it came in. A program given no routes at all -- a check's -- plays the
  *  first decoder straight out; one given an empty list plays nothing.
  *
@@ -102,9 +102,22 @@ public:
     /// the next grid point.
     void setLevel(int entry, float level) noexcept;
 
-    /// `frames` of the input row in, the decoder's and Main's out, played in pieces of at most `maxBlock`. Output
+    /// The input row as the device hands it over: its channels referred to where they are, never copied; a null
+    /// channel is silent.
+    struct Inputs {
+        const float* const* channels{nullptr};
+        int count{0};
+        const float* at(int channel, int start) const noexcept {
+            return channel < count && channels[channel] != nullptr ? channels[channel] + start : nullptr;
+        }
+    };
+
+    /// `frames` of the input row in, the decoders' and Main's out, played in pieces of at most `maxBlock`. Output
     /// channels nothing is routed to are silent.
-    void process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<float>& output, int frames) noexcept;
+    void process(const Inputs& in, juce::AudioBuffer<float>& output, int frames) noexcept;
+    void process(const juce::AudioBuffer<float>& in, juce::AudioBuffer<float>& output, int frames) noexcept {
+        process(Inputs{in.getArrayOfReadPointers(), in.getNumChannels()}, output, frames);
+    }
 
 private:
     struct Line {  // one delayed step's memory: `length` samples per channel, the oldest at `at`
@@ -139,14 +152,14 @@ private:
                                    std::optional<std::vector<Route>> routes);
     static std::vector<Route> mainOf(const std::vector<Route>& routes);
     /// Main into its lines, and out along the program's routes, at a gain ramping from `g0` to `g1`.
-    void main(const Program& p, const juce::AudioBuffer<float>& in, int inStart, juce::AudioBuffer<float>& output,
+    void main(const Program& p, const Inputs& in, int inStart, juce::AudioBuffer<float>& output,
               int outStart, int frames, float g0, float g1) noexcept;
     void run(const Program& p, int slot, juce::AudioBuffer<float>& scratch) noexcept;
     /// A send's gain at `offset` samples into the current grid interval.
     static float gainAt(const Program::Level& l, int offset) noexcept {
         return l.from + (l.to - l.from) * static_cast<float>(offset) / static_cast<float>(kLevelGrid);
     }
-    void piece(const Program& p, const juce::AudioBuffer<float>& loop, int loopStart, juce::AudioBuffer<float>& output,
+    void piece(const Program& p, const Inputs& loop, int loopStart, juce::AudioBuffer<float>& output,
                int outStart, int frames, float fade0, float fade1) noexcept;
 
     Setup setup_;

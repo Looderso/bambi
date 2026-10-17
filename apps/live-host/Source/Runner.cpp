@@ -11,18 +11,16 @@ namespace {
 
 //  `width` channels of the input row from `from` onto two of `scratch` from `first`, faded as the sources are: a
 //  pair as it is, one channel on both sides.
-void arrive(juce::AudioBuffer<float>& scratch, int first, const juce::AudioBuffer<float>& in, int from, int width,
-            int inStart, int frames, float fade0, float fade1) noexcept {
-    for (int ch = 0; ch < 2 && first + ch < scratch.getNumChannels(); ++ch) {
-        const int source = from + (width == 2 ? ch : 0);
-        if (source < in.getNumChannels())
-            scratch.copyFromWithRamp(first + ch, 0, in.getReadPointer(source, inStart), frames, fade0, fade1);
-    }
+void arrive(juce::AudioBuffer<float>& scratch, int first, const Runner::Inputs& in, int from, int width, int inStart,
+            int frames, float fade0, float fade1) noexcept {
+    for (int ch = 0; ch < 2 && first + ch < scratch.getNumChannels(); ++ch)
+        if (const float* source = in.at(from + (width == 2 ? ch : 0), inStart))
+            scratch.copyFromWithRamp(first + ch, 0, source, frames, fade0, fade1);
 }
 
 //  A slot's sidechain, the two channels after its main input's from `first`; silent, as the scratch was cleared,
 //  for a step that names none.
-void sidechain(const live::Op& op, juce::AudioBuffer<float>& scratch, int first, const juce::AudioBuffer<float>& in,
+void sidechain(const live::Op& op, juce::AudioBuffer<float>& scratch, int first, const Runner::Inputs& in,
                int inStart, int frames, float fade0, float fade1) noexcept {
     if (op.sidechain >= 0)
         arrive(scratch, first, in, op.sidechain, op.sidechainWidth, inStart, frames, fade0, fade1);
@@ -172,7 +170,7 @@ void Runner::run(const Program& p, int slot, juce::AudioBuffer<float>& scratch) 
     p.slots[static_cast<std::size_t>(slot)]->processBlock(scratch, midi_);
 }
 
-void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<float>& output, int frames) noexcept {
+void Runner::process(const Inputs& loop, juce::AudioBuffer<float>& output, int frames) noexcept {
     //  the runner's own sums and delays, as flushed as the plugins' processing
     ScopedFlushDenormals noDenormals;
     const SnapshotCensus::InAudioBlock inBlock;
@@ -238,7 +236,7 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
     }
 }
 
-void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int loopStart,
+void Runner::piece(const Program& p, const Inputs& loop, int loopStart,
                    juce::AudioBuffer<float>& output, int outStart, int frames, float fade0, float fade1) noexcept {
     if (clock_ != nullptr) playhead_.set(clock_->reading(sample_), setup_.rate);
     const int offset = static_cast<int>(sample_ % kLevelGrid);
@@ -349,14 +347,15 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
     sample_ += frames;
 }
 
-void Runner::main(const Program& p, const juce::AudioBuffer<float>& in, int inStart, juce::AudioBuffer<float>& output,
+void Runner::main(const Program& p, const Inputs& in, int inStart, juce::AudioBuffer<float>& output,
                   int outStart, int frames, float g0, float g1) noexcept {
     const int capacity = mainLines_.getNumSamples();
-    if (setup_.mainInput < 0 || setup_.mainInput + 1 >= in.getNumChannels() || capacity < frames) return;
+    if (setup_.mainInput < 0 || setup_.mainInput + 1 >= in.count || capacity < frames) return;
     for (int ch = 0; ch < 2; ++ch) {
-        const float* src = in.getReadPointer(setup_.mainInput + ch, inStart);
+        const float* src = in.at(setup_.mainInput + ch, inStart);
         float* line = mainLines_.getWritePointer(ch);
-        for (int i = 0, at = mainAt_; i < frames; ++i, at = at + 1 == capacity ? 0 : at + 1) line[at] = src[i];
+        for (int i = 0, at = mainAt_; i < frames; ++i, at = at + 1 == capacity ? 0 : at + 1)
+            line[at] = src != nullptr ? src[i] : 0.0f;
     }
     const float step = (g1 - g0) / static_cast<float>(frames);
     for (const Route& r : p.routes) {

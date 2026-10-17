@@ -6,7 +6,8 @@
 //
 //  On: the tree goes to the host, observers report every change, and the host's `route` is applied -- each
 //  track's routing remembered first. Off: every remembered routing is put back. A pair p is the loop device's
-//  channels 2p+1/2p+2, which on the "bambi bridge" aggregate are Live's outputs 2p+3/2p+4, the speakers being 1/2.
+//  channels 2p+3/2p+4: 1/2 carry Live's Main, where Live sends its Master, and the bambi track's input -- the
+//  host's copy back to Live -- comes in on them too.
 //
 //  Everything that must outlive the session -- each track's key with its place and name, the remembered routings,
 //  the host's state -- lives in the device's unnamed dict, a parameter, whose contents Live saves with the set and
@@ -39,7 +40,7 @@ function light(state) {
 const PROTOCOL = 1;
 const MAIN = ["Main", "Master"];  // Live 12 says Main, earlier versions Master
 const GRACE_MS = 5000;
-const RETURN_IN = "15/16";   // the host's binaural mix: the loop device's pair after the tracks' seven
+const RETURN_IN = "1/2";     // the host's copy back to Live: the loop device's first pair, as Main's goes out
 const RETURN_NAME = "bambi";
 const MONITOR_IN = 0;
 const RETURN_START_DB = -12;  // the bambi track starts low: the decoded mix of every track bambi plays can reach full scale

@@ -13,7 +13,7 @@ cd "$(dirname "$0")"
 
 REPO=https://github.com/ExistentialAudio/BlackHole
 PIN=561d934
-CHANNELS=16
+CHANNELS=${CHANNELS:-64}  # a test build with fewer: CHANNELS=16 driver/build.sh
 FACTORY=a4a6767e-e526-4017-ac46-d7d2b53dbfa1  # bambi's own: a stock BlackHole built from source has the source's
 
 if [ ! -d BlackHole ]; then
@@ -56,7 +56,9 @@ fi
 
 echo "built $PWD/build/bambi.driver ($CHANNELS channels)"
 if [ "${1:-}" = install ]; then
-    echo "to install, as an administrator:"
+    echo "to install, as an administrator -- the old bundle removed first: a signed binary copied over another"
+    echo "in place keeps the old one's signature, and Core Audio's driver helper is killed loading it"
+    echo "  sudo rm -rf /Library/Audio/Plug-Ins/HAL/bambi.driver"
     echo "  sudo cp -R \"$PWD/build/bambi.driver\" /Library/Audio/Plug-Ins/HAL/"
     echo "  sudo killall coreaudiod"
 fi

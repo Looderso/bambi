@@ -124,7 +124,7 @@ struct Arrival {
     int width{2};
     friend bool operator==(const Arrival&, const Arrival&) = default;
 };
-/// Live's tracks as they arrive: each on its pair of the loop device, the row's first channels.
+/// Live's tracks as they arrive: each on its pair of the loop device, after Live's Main's.
 std::vector<Arrival> arrivalsOf(const std::vector<TrackPair>& pairs);
 
 /// The plan that plays a field: a node per source that arrives, encoded by an Encoder slot of its own, slots

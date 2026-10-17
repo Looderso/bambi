@@ -102,7 +102,7 @@ TEST_CASE("the plan for a field: a node per source with a pair, its own Encoder,
     REQUIRE(fp.plan.nodes.size() == 5);
     CHECK(fp.encoders == std::vector<TrackId>{2, 4, 5});
     CHECK(fp.plan.nodes[0].input == -1);
-    CHECK(fp.plan.nodes[1].input == 8);
+    CHECK(fp.plan.nodes[1].input == 10);
     CHECK(fp.plan.nodes[1].encoder == 0);
     CHECK(fp.plan.nodes[1].parent == 0);
     CHECK(fp.plan.nodes[3].parent == 2);
@@ -260,7 +260,7 @@ TEST_CASE("an insert's sidechain hears its source's pair, and silence once the s
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 6}}));  // track 4 is in group 3, encoded whole with it
     REQUIRE(fp.effects.size() == 4);
     const auto heard = [&](std::size_t e) { return fp.plan.slots[fp.encoders.size() + e].sidechain; };
-    CHECK(heard(0) == 12);                    // track 3's pair, 6
+    CHECK(heard(0) == 14);                    // track 3's pair, 6, after Main's two
     CHECK(heard(1) == -1);                    // track 5 stays in Live
     CHECK(heard(2) == -1);                    // 1 is a bus
     CHECK(heard(3) == -1);                    // 4 plays inside group 3, which the field takes whole
@@ -283,7 +283,7 @@ TEST_CASE("a source's Encoder hears the pair of the track its sidechain names; n
     const Field f = layOut(set(), shape);  // bus 1 { 2, 3 }, 5; group 3 holds 4
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 6}, {5, 1}}));
     REQUIRE(fp.encoders == std::vector<TrackId>{2, 3, 5});
-    CHECK(fp.plan.slots[0].sidechain == 12);  // 2 hears 3, on pair 6
+    CHECK(fp.plan.slots[0].sidechain == 14);  // 2 hears 3, on pair 6, after Main's two
     CHECK(fp.plan.slots[1].sidechain == -1);  // 3 named itself
     CHECK(fp.plan.slots[2].sidechain == -1);  // 5 hears 4, which has no pair of its own
     CHECK(fp.plan.slots[3].sidechain == -1);  // the decoder

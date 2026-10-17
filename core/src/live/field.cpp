@@ -77,7 +77,7 @@ Field layOut(const Tree& tree, const Shape& shape) {
 
 std::vector<Arrival> arrivalsOf(const std::vector<TrackPair>& pairs) {
     std::vector<Arrival> out;
-    for (const TrackPair& p : pairs) out.push_back({p.track, 2 * p.pair, 2});
+    for (const TrackPair& p : pairs) out.push_back({p.track, kFirstTrackChannel + 2 * p.pair, 2});
     return out;
 }
 

@@ -22,11 +22,11 @@
 
 /*  The host's audio: a private aggregate of the loop device and the devices this computer's settings choose, opened
  *  as the host's own -- the loop device alone while none is chosen -- an Encoder for every track on one of its
- *  pairs and the Decoder, played by the runner. Live's tracks arrive on the pairs, Live's Main on the pair past
- *  them. The Decoder's bus is the chosen devices' outputs, channel for channel; the host asks it, through its remote
+ *  pairs and the Decoders, played by the runner. Live's Main arrives on the loop device's first pair, where Live
+ *  sends its Master, and the tracks on the pairs after it. The Decoder's bus is the chosen devices' outputs, channel for channel; the host asks it, through its remote
  *  interface, to place its outputs as the settings keep them, then plays them out with Main and every copy, each
- *  in step with the slowest device and Main late by the field. A copy back to Live goes out on the pair past the
- *  tracks', where Live's bambi track records it. A track keeps its Encoder, and what it is set to, for as long as it is on
+ *  in step with the slowest device and Main late by the field. A copy back to Live goes out on the loop device's
+ *  first pair, where Live's bambi track records it. A track keeps its Encoder, and what it is set to, for as long as it is on
  *  a pair; one new to a pair gets one loaded, and one gone lets go of its own -- each change a new program for the
  *  runner, swapped in with a short fade.
  *
@@ -185,7 +185,8 @@ private:
     };
     Program program_;
     juce::String opened_;  ///< the device's name
-    juce::AudioBuffer<float> in_, out_;  ///< the callback's copies of the device's channels
+    std::vector<const float*> inAt_;  ///< the callback's pointers into the device's inputs, one per channel
+    juce::AudioBuffer<float> out_;    ///< the callback's output, copied to the device's
     int prepared_{0};      ///< the block the plugins are prepared for
     devices::Aggregate aggregate_;
     live::Row row_;           ///< the chosen devices' outputs: the Decoder's bus
@@ -195,7 +196,7 @@ private:
     int loopChannels_{16};    ///< the loop device's channels the host opens, each way
     int inputChannels_{16};   ///< the input row: the loop device's, then the devices' inputs
     int outputChannels_{16};  ///< the loop device's, then the row
-    int returnChannel_{14};   ///< the pair past the tracks': Live's Main in, the copy back to Live out
+    int mainChannel_{0};      ///< the loop device's first pair: Live's Main in, the copy back to Live out
     double latencyMs_{0.0};
     int deviceLatency_{0};               ///< the loop device both ways, and its buffer
     std::atomic<bool> playable_{false};  ///< the device runs at the rate the plugins were prepared for

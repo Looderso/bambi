@@ -148,11 +148,11 @@ std::vector<std::string> DeviceSession::channelNames() const {
         const auto node =
             std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& n) { return n.id == p.track; });
         if (node == tree_.nodes.end()) continue;
-        names[static_cast<std::size_t>(2 * p.pair)] = node->name + " L";
-        names[static_cast<std::size_t>(2 * p.pair + 1)] = node->name + " R";
+        names[static_cast<std::size_t>(kFirstTrackChannel + 2 * p.pair)] = node->name + " L";
+        names[static_cast<std::size_t>(kFirstTrackChannel + 2 * p.pair + 1)] = node->name + " R";
     }
-    names[static_cast<std::size_t>(2 * s_.pairCount)] = "bambi return L";
-    names[static_cast<std::size_t>(2 * s_.pairCount + 1)] = "bambi return R";
+    names[0] = "main L";
+    names[1] = "main R";
     return names;
 }
 

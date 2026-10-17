@@ -4,13 +4,13 @@
 //  host. A local TCP server around bambi-live's DeviceSession -- the host's own answers -- which prints what the
 //  device says and measures how often Live reports the song position while playing.
 //
-//    bambi-live-stub [--port 9461] [--pairs 7] [--quit-when-alone SECONDS]
+//    bambi-live-stub [--port 9461] [--pairs 31] [--quit-when-alone SECONDS]
 //    bambi-live-stub --names       sets test names on the loop device, reads them back, and exits
 //    bambi-live-stub --devices     lists the system's devices, makes the host's private aggregate of the loop device
 //                                  and the ones offered, says what it holds, and removes it
 //
-//  Seven pairs by default: the loop device's channels 1-14, with 15/16 left for the binaural return. With bambi's
-//  own loop device installed, every assignment names its channels after the tracks. A second device is answered
+//  31 pairs by default: bambi's 64 channels after Live's Main on 1/2. With bambi's own loop device installed, every
+//  assignment names its channels after the tracks. A second device is answered
 //  busy. Started by the device, it quits SECONDS after its last device has gone.
 
 #include <algorithm>
@@ -148,15 +148,16 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--devices") return listDevices();
     if (argc > 1 && std::string(argv[1]) == "--names") {
         std::vector<std::string> names;
-        for (int c = 1; c <= 16; ++c) names.push_back("test " + std::to_string(c));
+        const int channels = bambi::devices::loopChannels() > 0 ? bambi::devices::loopChannels() : 16;
+        for (int c = 1; c <= channels; ++c) names.push_back("test " + std::to_string(c));
         if (!bambi::loop::nameChannels(names)) {
             std::printf("no bambi loop device, or it refused the names\n");
             return 1;
         }
-        for (int c = 1; c <= 16; ++c) std::printf("channel %2d: %s\n", c, bambi::loop::channelName(c).c_str());
+        for (int c = 1; c <= channels; ++c) std::printf("channel %2d: %s\n", c, bambi::loop::channelName(c).c_str());
         return 0;
     }
-    int port = 9461, quitAfter = -1, pairs = 7;  // quitAfter: seconds alone before quitting; never by default
+    int port = 9461, quitAfter = -1, pairs = 31;  // quitAfter: seconds alone before quitting; never by default
     for (int i = 1; i + 1 < argc; i += 2) {
         const std::string key = argv[i];
         if (key == "--port")

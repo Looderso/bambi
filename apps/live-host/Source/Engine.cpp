@@ -76,7 +76,7 @@ std::shared_ptr<juce::AudioPluginInstance> Engine::loadDecoder(juce::String& sta
 std::vector<Runner::Route> Engine::routesFor(int fieldLatency) const {
     std::vector<Runner::Route> out;
     for (const live::OutputRoute& r : live::planOutputs(s_.audio, row_, playing(), fieldLatency).routes) {
-        const int to = r.to == live::OutputRoute::To::Row ? loopChannels_ + r.dest - 1 : returnChannel_ + r.dest - 1;
+        const int to = r.to == live::OutputRoute::To::Row ? loopChannels_ + r.dest - 1 : mainChannel_ + r.dest - 1;
         if (to >= 0 && to < outputChannels_)
             out.push_back({r.from == live::OutputRoute::From::Main, r.decoder, r.channel - 1, to, r.delay});
     }
@@ -144,19 +144,19 @@ bool Engine::open(juce::String& status) {
     //  the callback's buffers, while no audio runs: a device may hand over more than its buffer at once, played in
     //  pieces of these
     const int piece = std::max(block_, 1024);
-    in_.setSize(inputChannels_, piece);
+    inAt_.assign(static_cast<std::size_t>(inputChannels_), nullptr);
     out_.setSize(outputChannels_, piece);
     deviceLatency_ = device->getInputLatencyInSamples() + device->getOutputLatencyInSamples() + block_;
     return true;
 }
 
 Runner::Setup Engine::runnerSetup() const {
-    return {s_.order, block_, inputChannels_, outputChannels_, s_.rate, returnChannel_, static_cast<int>(s_.rate)};
+    return {s_.order, block_, inputChannels_, outputChannels_, s_.rate, mainChannel_, static_cast<int>(s_.rate)};
 }
 
 bool Engine::start(const Settings& settings, juce::String& status) {
     s_ = settings;
-    returnChannel_ = 2 * s_.pairs;
+    mainChannel_ = 0;
     //  the device first: the plugins are prepared at what it runs at
     if (!open(status)) return false;
     auto first = loadDecoder(status);
@@ -504,20 +504,18 @@ void Engine::audioDeviceIOCallbackWithContext(const float* const* inputs, int in
     for (Timed t; queue_.pop(t);)
         projector_.receive(t.message, arrivals_->at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
 
-    //  The device's channels copied into the host's own buffers, made before it started: a buffer referring to
-    //  this many channels would allocate. A device giving fewer plays nothing.
+    //  The output copied out of the host's own buffer, made before it started: a buffer referring to this many
+    //  channels would allocate. A device giving fewer plays nothing.
     if (inputCount < inputChannels_) return;
     for (int ch = 0; ch < outputChannels_; ++ch)
         if (outputs[ch] == nullptr) return;
     const auto began = juce::Time::getHighResolutionTicks();
     for (int done = 0; done < frames;) {
-        const int n = std::min(frames - done, in_.getNumSamples());
+        const int n = std::min(frames - done, out_.getNumSamples());
+        //  the device's inputs read where they are: pointers to this piece of each, made before audio ran
         for (int ch = 0; ch < inputChannels_; ++ch)
-            if (inputs[ch] != nullptr)
-                in_.copyFrom(ch, 0, inputs[ch] + done, n);
-            else
-                in_.clear(ch, 0, n);
-        runner_.process(in_, out_, n);
+            inAt_[static_cast<std::size_t>(ch)] = inputs[ch] != nullptr ? inputs[ch] + done : nullptr;
+        runner_.process(Runner::Inputs{inAt_.data(), inputChannels_}, out_, n);
         if (faded_ < kFadeIn) {
             const int f = static_cast<int>(std::min<std::int64_t>(n, kFadeIn - faded_));
             const float from = static_cast<float>(faded_) / kFadeIn, to = static_cast<float>(faded_ + f) / kFadeIn;

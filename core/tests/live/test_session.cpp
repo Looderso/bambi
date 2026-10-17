@@ -109,19 +109,19 @@ TEST_CASE("the mix's latency and rate go out as the host last set them") {
     CHECK(i.rate == 44100.0);
 }
 
-TEST_CASE("the loop device's channels are named for the pairs, the return on the pair past them") {
-    //  Catches: a name one channel off, or the return on a track's pair.
+TEST_CASE("the loop device's channels are named for Main first, then the pairs") {
+    //  Catches: a name one channel off, a track named over Main's channels, Main named after the tracks.
     DeviceSession s({3, true, 0.0, 48000.0});
     s.answer(Tree{{node(1), node(2)}});
     const auto names = s.channelNames();
     REQUIRE(names.size() == 8);
-    CHECK(names[0] == "track 1 L");
-    CHECK(names[1] == "track 1 R");
-    CHECK(names[2] == "track 2 L");
-    CHECK(names[3] == "track 2 R");
-    CHECK(names[4].empty());
-    CHECK(names[6] == "bambi return L");
-    CHECK(names[7] == "bambi return R");
+    CHECK(names[0] == "main L");
+    CHECK(names[1] == "main R");
+    CHECK(names[2] == "track 1 L");
+    CHECK(names[3] == "track 1 R");
+    CHECK(names[4] == "track 2 L");
+    CHECK(names[5] == "track 2 R");
+    CHECK(names[6].empty());
 }
 
 TEST_CASE("a value the device observed is taken into the tree, and a rename into the channel names") {
@@ -136,7 +136,7 @@ TEST_CASE("a value the device observed is taken into the tree, and a rename into
     REQUIRE(s.tree().nodes[0].sends.size() == 2);
     CHECK(s.tree().nodes[0].sends[1] == -12.0);
     CHECK(s.tree().nodes[0].mute);
-    CHECK(s.channelNames()[0] == "kick L");
+    CHECK(s.channelNames()[2] == "kick L");
 }
 
 TEST_CASE("the button, open host and the transport are remembered; a device gone forgets them, not the pairs") {

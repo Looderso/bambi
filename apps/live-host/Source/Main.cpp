@@ -7,6 +7,7 @@
 //  views to switch between, and what it hears from Live -- beside the plugin the view shows, whole, with its own
 //  header and tabs: the encoder view one track's Encoder, whose tabs reach the others.
 
+#include <algorithm>
 #include <array>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -23,9 +24,14 @@
 
 namespace {
 
-constexpr int kPairs = 7;  ///< the loop device's 16 channels: 7 pairs for tracks, the eighth for the return
-//  the engine refers to the loop device's channels in a buffer, which allocates past 32 of them
-static_assert(2 * (kPairs + 1) < 32);
+constexpr int kPairs = 31;  ///< the most track pairs: bambi's 64 channels less Live's Main's pair
+
+//  The track pairs the loop device has here: its channels less Main's pair, at most kPairs; BlackHole 16ch's 7 when
+//  bambi's own is not installed.
+int pairsHere() {
+    const int channels = bambi::devices::loopChannels();
+    return std::clamp((channels > 0 ? channels : 16) / 2 - 1, 1, kPairs);
+}
 
 //  What the host hears from Live, in a few short lines, and what went wrong if something did.
 bambi::livehost::Rail::Status describe(const bambi::live::DeviceSession& s, bool listening, const std::string& error,
@@ -55,7 +61,7 @@ juce::AudioProcessor::TrackProperties propertiesOf(const bambi::live::Node* trac
 
 class Content final : public juce::Component, private juce::Timer {
 public:
-    Content() : device_({kPairs, bambi::loop::installed(), 0.0, 48000.0}) {
+    Content() : pairs_(pairsHere()), device_({pairs_, bambi::loop::installed(), 0.0, 48000.0}) {
         //  The port first: the device starts the stand-in host when nothing answers there, and loading the
         //  plugins takes seconds.
         device_.transport = [this](const bambi::live::TransportMessage& m, std::int64_t stamp) {
@@ -73,7 +79,7 @@ public:
             juce::Process::makeForegroundProcess();
         };
         listening_ = device_.start(&error_);
-        running_ = engine_.start({3, kPairs, 64, 48000.0, 0, bambi::livehost::loadAudioSettings()}, started_);
+        running_ = engine_.start({3, pairs_, 64, 48000.0, 0, bambi::livehost::loadAudioSettings()}, started_);
         device_.setLatency(engine_.latencyMs(), 48000.0);
 
         addAndMakeVisible(rail_);
@@ -166,7 +172,7 @@ private:
             }
         }
         engine_.setSends(session.field(), session.tree());
-        for (int pair = 0; pair < kPairs; ++pair) {
+        for (int pair = 0; pair < pairs_; ++pair) {
             const auto* track = device_.session().trackOn(pair);
             const juce::String now = track == nullptr ? juce::String() : juce::String(track->name + track->colour);
             if (now == named_[static_cast<std::size_t>(pair)]) continue;
@@ -284,6 +290,7 @@ private:
         update();
     }
 
+    int pairs_;  ///< the loop device's track pairs here: before everything sized by them
     bambi::livehost::Engine engine_;
     bool running_{false};
     juce::String started_;  ///< what the engine said when it started, or why it did not
