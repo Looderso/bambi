@@ -431,7 +431,6 @@ namespace presets
 // ---- a question over the whole window: the one thing an undo does not bring back -----------------
 namespace confirm
 {
-    inline constexpr float scrim = 0.35f;   ///< how far the window dims under it
     inline constexpr float width = 320.0f;
     inline constexpr float pad   = 18.0f;
     inline constexpr float line  = 20.0f;   ///< the question, and the note under it
@@ -445,6 +444,42 @@ namespace tooltip
     inline constexpr float padY    = 3.0f;
     inline constexpr float below   = 18.0f;  ///< from the pointer to the tooltip's top edge
 } // namespace tooltip
+
+// ---- a sheet over the window: the live host's audio sheet, and the menus on it ------------------
+namespace sheet
+{
+    inline constexpr float scrim     = 0.35f;    ///< how far the window dims under a sheet, a question's among them
+    inline constexpr float width     = 880.0f;   ///< at most; never past the window less an inset either side
+    inline constexpr float height    = 600.0f;
+    inline constexpr float inset     = 24.0f;    ///< from the window's edge, at the least
+    inline constexpr float pad       = 20.0f;    ///< inside its frame
+    inline constexpr float head      = 36.0f;    ///< the title and the tabs
+    inline constexpr float line      = 24.0f;    ///< a row of a list
+    inline constexpr float gap       = 16.0f;    ///< between blocks
+    inline constexpr float cell      = 22.0f;    ///< a channel of the map
+    inline constexpr float cellGap   = 2.0f;
+    inline constexpr float groupGap  = 10.0f;    ///< between two devices on the map
+    inline constexpr float barWidth  = 180.0f;   ///< the level, the load
+    inline constexpr float menuWidth = 300.0f;
+    inline constexpr float menuLine  = 22.0f;
+    inline constexpr float menuPad   = 6.0f;
+    inline constexpr float control   = 20.0f;    ///< every button, chip and segment on a sheet
+    inline constexpr float noteLine  = 18.0f;    ///< a line of small text: a note, a device's name over the map
+    //  the columns of a row, from its left
+    inline constexpr float nameColumn   = 260.0f;  ///< a device's name
+    inline constexpr float ioColumn     = 120.0f;  ///< its channels
+    inline constexpr float roleColumn   = 110.0f;  ///< the clock, or drift corrected
+    inline constexpr float latencyColumn = 70.0f;
+    inline constexpr float labelColumn  = 120.0f;  ///< a setting's name, before its control
+    inline constexpr float wideLabel    = 200.0f;  ///< a longer one: the load
+    inline constexpr float valueColumn  = 120.0f;  ///< a value after its bar
+    inline constexpr float outputName   = 90.0f;
+    inline constexpr float outputWhere  = 130.0f;
+    inline constexpr float inputName    = 120.0f;
+    inline constexpr float inputWhere   = 150.0f;
+    inline constexpr float layoutsWidth = 520.0f;
+    inline constexpr int   layoutColumns = 5;
+} // namespace sheet
 
 // ---- the live host's column, left of the plugin it shows ---------------------------------------
 namespace rail
@@ -464,6 +499,7 @@ namespace routing
     inline constexpr float boxWidth   = 132.0f;
     inline constexpr float boxHeight  = 22.0f;
     inline constexpr float mainWidth  = 70.0f;
+    inline constexpr float decoderWidth = 96.0f;   ///< room for "decoder 2" and its cross
     inline constexpr float left       = 16.0f;   ///< the page's inset, either side
     inline constexpr float top        = 14.0f;   ///< from the band to the first row
     inline constexpr float gutter      = 40.0f;  ///< between a column's widest node and the next column: the connectors

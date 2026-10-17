@@ -36,7 +36,7 @@ TEST_CASE("unshaped, every node at the top is a source, a group with all it hold
 
 TEST_CASE("a split group is a bus, and what plays into it is laid out under it") {
     //  Catches: the bus left out, a child under the wrong bus, or a bus after what plays into it.
-    const Field f = layOut(set(), Shape{{1}, {}, {}, {}, {}, {}});
+    const Field f = layOut(set(), Shape{{1}, {}, {}, {}, {}, {}, {}});
     REQUIRE(f.parts.size() == 4);
     CHECK(f.parts[0] == Part{1, true, -1, {}, 0});
     CHECK(f.parts[1] == Part{2, false, 0, {}, 0});
@@ -46,7 +46,7 @@ TEST_CASE("a split group is a bus, and what plays into it is laid out under it")
 
 TEST_CASE("a group split inside a split group is a bus inside the bus") {
     //  Catches: nested groups flattened onto the outer bus, or the inner bus kept as a source too.
-    const Field f = layOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}});
+    const Field f = layOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}, {}});
     CHECK(f.sources() == std::vector<TrackId>{2, 4, 5});
     REQUIRE(f.parts.size() == 5);
     CHECK(f.parts[2] == Part{3, true, 0, {}, 0});
@@ -55,7 +55,7 @@ TEST_CASE("a group split inside a split group is a bus inside the bus") {
 
 TEST_CASE("a node at the top left in Live is not in the field; below the top the mark means nothing") {
     //  Catches: a node left in Live still given a pair, or a child of a split group dropped by a mark it ignores.
-    const Field f = layOut(set(), Shape{{1}, {5, 2}, {}, {}, {}, {}});
+    const Field f = layOut(set(), Shape{{1}, {5, 2}, {}, {}, {}, {}, {}});
     CHECK(f.sources() == std::vector<TrackId>{2, 3});
 }
 
@@ -71,19 +71,19 @@ TEST_CASE("under a split group, only what plays into it with audio; an empty bus
     quiet.audio = false;
     t.nodes.push_back(quiet);
     t.nodes.push_back(node(4));
-    const Field f = layOut(t, Shape{{1}, {}, {}, {}, {}, {}});
+    const Field f = layOut(t, Shape{{1}, {}, {}, {}, {}, {}, {}});
     REQUIRE(f.parts.size() == 1);
     CHECK(f.parts[0] == Part{4, false, -1, {}, 0});
 }
 
 TEST_CASE("split on a track means nothing") {
     //  Catches: a track made a bus with nothing in it, which would take it out of the field.
-    CHECK(layOut(set(), Shape{{5}, {}, {}, {}, {}, {}}).sources() == std::vector<TrackId>{1, 5});
+    CHECK(layOut(set(), Shape{{5}, {}, {}, {}, {}, {}, {}}).sources() == std::vector<TrackId>{1, 5});
 }
 
 TEST_CASE("the shape the set keeps reads back as it was, and nonsense in it is left out") {
     //  Catches: a list written under one key and read under another, or an id that is not one read as 0.
-    const Shape shape{{3, 1}, {5}, {}, {}, {}, {}};
+    const Shape shape{{3, 1}, {5}, {}, {}, {}, {}, {}};
     CHECK(shapeFrom(toJson(shape)) == shape);
     Json odd = toJson(shape);
     Json split = Json::array();
@@ -97,7 +97,7 @@ TEST_CASE("the shape the set keeps reads back as it was, and nonsense in it is l
 TEST_CASE("the plan for a field: a node per source with a pair, its own Encoder, and every bus") {
     //  Catches: a source encoded from another's pair, two sources on one Encoder slot, a bus's child left
     //  under Main, or a decoder slot that is an Encoder's.
-    const Field f = layOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}});  // bus 1 { 2, bus 3 { 4 } }, 5
+    const Field f = layOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}, {}});  // bus 1 { 2, bus 3 { 4 } }, 5
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 4}, {4, 0}, {5, 6}}));
     REQUIRE(fp.plan.nodes.size() == 5);
     CHECK(fp.encoders == std::vector<TrackId>{2, 4, 5});
@@ -108,7 +108,7 @@ TEST_CASE("the plan for a field: a node per source with a pair, its own Encoder,
     CHECK(fp.plan.nodes[3].parent == 2);
     CHECK(fp.plan.nodes[3].encoder == 1);
     CHECK(fp.plan.nodes[4].parent == -1);
-    CHECK(fp.plan.decoder == 3);
+    CHECK(fp.plan.decoders == std::vector<int>{3});
     CHECK(fp.plan.slots.size() == 4);
     CHECK(compile(fp.plan).has_value());
 }
@@ -116,7 +116,7 @@ TEST_CASE("the plan for a field: a node per source with a pair, its own Encoder,
 TEST_CASE("a source without a pair is left out of the plan, and the parts after it keep their buses") {
     //  Catches: a node with no pair handed to the runner, or a child pointing at the wrong node once one is
     //  skipped before its bus.
-    const Field f = layOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}});
+    const Field f = layOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}, {}});
     const FieldPlan fp = planOf(f, arrivalsOf({{4, 1}, {5, 2}}));  // track 2 got none
     REQUIRE(fp.plan.nodes.size() == 4);
     CHECK(fp.encoders == std::vector<TrackId>{4, 5});
@@ -129,8 +129,8 @@ TEST_CASE("a source without a pair is left out of the plan, and the parts after 
 TEST_CASE("a node's chain goes with its part, Main's with the field, and one on a node not in the field nowhere") {
     //  Catches: a chain on the wrong part, Main's lost, or a chain on a node left in Live played anyway.
     const Shape shape{
-        {1}, {5}, {{2, {{7, Effect::Echo, 0}}}, {kMain, {{8, Effect::Reverb, 0}}}, {5, {{9, Effect::Echo, 0}}}},
-        {},  {},  {}};
+        {1}, {5}, {{2, {{7, Effect::Echo, 0}}}, {kMain, {{8, Effect::Reverb, 0}}}, {5, {{9, Effect::Echo, 0}}}}, {}, {},
+        {},  {}};
     const Field f = layOut(set(), shape);
     REQUIRE(f.parts.size() == 3);
     CHECK(f.parts[1].node == 2);
@@ -150,6 +150,7 @@ TEST_CASE("the plan's insert slots follow the Encoders, the parts' in order and 
                        {kMain, {{14, Effect::Echo, 0}}}},
                       {},
                       {},
+                      {},
                       {}};
     const Field f = layOut(set(), shape);                          // bus 1 { 2, 3 }, 5
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {5, 1}}));  // 3 got no pair
@@ -162,7 +163,7 @@ TEST_CASE("the plan's insert slots follow the Encoders, the parts' in order and 
     CHECK(fp.plan.nodes[1].inserts == std::vector<int>{3, 4});
     CHECK(fp.plan.nodes[2].inserts.empty());
     CHECK(fp.plan.main == std::vector<int>{5});
-    CHECK(fp.plan.decoder == 6);
+    CHECK(fp.plan.decoders == std::vector<int>{6});
     CHECK(fp.plan.slots.size() == 7);
     CHECK(compile(fp.plan).has_value());
 }
@@ -171,7 +172,8 @@ TEST_CASE("the chains the set keeps read back as they were, and an insert that i
     //  Catches: Main's chain lost because its node is 0, an insert's effect read as the other, or an insert with no
     //  id or an unknown effect read in.
     const Shape shape{{}, {}, {{kMain, {{3, Effect::Reverb, 0}}}, {4, {{5, Effect::Echo, 0}, {6, Effect::Reverb, 0}}}},
-                      {}, {}, {}};
+                      {}, {}, {},
+                      {}};
     CHECK(shapeFrom(toJson(shape)) == shape);
     const auto read = shapeFrom(Json::parse(R"({"chains":[{"node":4,"inserts":[{"id":0,"effect":"echo"},
         {"id":7,"effect":"phaser"},{"id":8,"effect":"echo"}]},{"inserts":[]}]})"));
@@ -200,7 +202,7 @@ Tree sending() {
 TEST_CASE("a return the shape takes is a return of the field, fed by its own knob, with its own chain") {
     //  Catches: a return fed by the knob of its place in the field rather than in Live, its chain lost, or a
     //  track's id taken as a return.
-    const Shape shape{{}, {}, {{11, {{20, Effect::Reverb, 0}}}}, {11, 3}, {}, {}};
+    const Shape shape{{}, {}, {{11, {{20, Effect::Reverb, 0}}}}, {11, 3}, {}, {}, {}};
     const Field f = layOut(sending(), shape);
     REQUIRE(f.returns.size() == 1);
     CHECK(f.returns[0].node == 11);
@@ -212,7 +214,8 @@ TEST_CASE("a return's chain is slotted after the parts' inserts and before Main'
     //  Catches: a return with no Return in the plan, or its chain on a slot of a part's or Main's insert.
     const Shape shape{
         {1},  {}, {{2, {{5, Effect::Echo, 0}}}, {10, {{6, Effect::Reverb, 0}}}, {kMain, {{7, Effect::Echo, 0}}}},
-        {10}, {}, {}};
+        {10}, {}, {},
+        {}};
     const Field f = layOut(sending(), shape);
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 1}}));
     CHECK(fp.encoders.size() == 2);
@@ -220,14 +223,14 @@ TEST_CASE("a return's chain is slotted after the parts' inserts and before Main'
     REQUIRE(fp.plan.returns.size() == 1);
     CHECK(fp.plan.returns[0].chain == std::vector<int>{3});
     CHECK(fp.plan.main == std::vector<int>{4});
-    CHECK(fp.plan.decoder == 5);
+    CHECK(fp.plan.decoders == std::vector<int>{5});
     CHECK(compile(fp.plan).has_value());
 }
 
 TEST_CASE("every send's level is its node's own knob in Live, as a gain, by node and return") {
     //  Catches: dB taken as a gain, a level on another node's or another return's entry, a bus without its group's
     //  knob, or a missing or silent knob heard at some level.
-    const Shape shape{{1}, {}, {}, {10, 11}, {}, {}};
+    const Shape shape{{1}, {}, {}, {10, 11}, {}, {}, {}};
     const Field f = layOut(sending(), shape);  // bus 1 { 2 }, 3; returns A, B
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 1}}));
     const auto levels = live::levels(fp, f, sending());
@@ -242,7 +245,7 @@ TEST_CASE("every send's level is its node's own knob in Live, as a gain, by node
 
 TEST_CASE("the returns the set keeps read back") {
     //  Catches: the field's returns written but never read, so a reopened set plays them in Live again.
-    const Shape shape{{}, {}, {}, {11, 10}, {}, {}};
+    const Shape shape{{}, {}, {}, {11, 10}, {}, {}, {}};
     CHECK(shapeFrom(toJson(shape)).returns == std::vector<TrackId>{11, 10});
 }
 
@@ -251,7 +254,8 @@ TEST_CASE("an insert's sidechain hears its source's pair, and silence once the s
     //  pair of its own -- or on a source the loop device had no pair for.
     const Shape shape{
         {1}, {5}, {{2, {{7, Effect::Reverb, 3}, {8, Effect::Echo, 5}, {9, Effect::Echo, 1}, {10, Effect::Echo, 4}}}},
-        {},  {},  {}};
+        {},  {},  {},
+        {}};
     const Field f = layOut(set(), shape);                          // bus 1 { 2, 3 }; 5 in Live
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 6}}));  // track 4 is in group 3, encoded whole with it
     REQUIRE(fp.effects.size() == 4);
@@ -265,7 +269,7 @@ TEST_CASE("an insert's sidechain hears its source's pair, and silence once the s
 
 TEST_CASE("a sidechain the set keeps reads back, and an insert without one has none") {
     //  Catches: a sidechain written but not read, or one read where none was written.
-    const Shape shape{{}, {}, {{2, {{7, Effect::Reverb, 3}, {8, Effect::Echo, 0}}}}, {}, {}, {}};
+    const Shape shape{{}, {}, {{2, {{7, Effect::Reverb, 3}, {8, Effect::Echo, 0}}}}, {}, {}, {}, {}};
     const Shape back = shapeFrom(toJson(shape));
     REQUIRE(back.chains.size() == 1);
     CHECK(back.chains[0].inserts[0].sidechain == 3);
@@ -275,7 +279,7 @@ TEST_CASE("a sidechain the set keeps reads back, and an insert without one has n
 TEST_CASE("a source's Encoder hears the pair of the track its sidechain names; never itself, silence without a pair") {
     //  Catches: an Encoder's sidechain on its own pair, on another source's, or on a pair when its track has none;
     //  or a source that names itself hearing itself.
-    const Shape shape{{1}, {}, {}, {}, {{2, 3}, {3, 3}, {5, 4}}, {}};
+    const Shape shape{{1}, {}, {}, {}, {{2, 3}, {3, 3}, {5, 4}}, {}, {}};
     const Field f = layOut(set(), shape);  // bus 1 { 2, 3 }, 5; group 3 holds 4
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 6}, {5, 1}}));
     REQUIRE(fp.encoders == std::vector<TrackId>{2, 3, 5});
@@ -287,7 +291,7 @@ TEST_CASE("a source's Encoder hears the pair of the track its sidechain names; n
 
 TEST_CASE("the Encoders' sidechains the set keeps read back") {
     //  Catches: a source's sidechain written but not read, or its two tracks swapped.
-    const Shape shape{{}, {}, {}, {}, {{2, 3}, {5, 2}}, {}};
+    const Shape shape{{}, {}, {}, {}, {{2, 3}, {5, 2}}, {}, {}};
     CHECK(shapeFrom(toJson(shape)).sidechains == shape.sidechains);
 }
 
@@ -299,7 +303,7 @@ TEST_CASE("a bus plays at its group's fader, and sends after it; a source at uni
     t.nodes[1].fader = -20.0;  // a source: Live has it already
     t.nodes[3].fader = -12.0;  // return A
     t.nodes[3].mute = true;    // as the device mutes it
-    const Shape shape{{1}, {}, {}, {10}, {}, {}};
+    const Shape shape{{1}, {}, {}, {10}, {}, {}, {}};
     const Field f = layOut(t, shape);
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 1}}));
     auto l = live::levels(fp, f, t);
@@ -342,4 +346,21 @@ TEST_CASE("the host's inputs are sources at the top, after Live's, heard where t
     CHECK((echo.sidechain == 20 && echo.sidechainWidth == 1));
 
     CHECK(shapeFrom(toJson(shape)).inputs == shape.inputs);
+}
+
+TEST_CASE("a set's Decoders each have a slot after the inserts, in order; a set naming none has one") {
+    //  Catches: a second Decoder left without a slot, two sharing one, the ids lost between the shape and the plan,
+    //  a set without decoders getting none, the decoders not kept by the set.
+    Shape shape;
+    const Field one = layOut(set(), shape);
+    CHECK(one.decoders == std::vector<std::uint64_t>{kFirstDecoder});
+    shape.decoders = {1, 7};
+    const Field two = layOut(set(), shape);
+    const FieldPlan fp = planOf(two, arrivalsOf({{1, 0}, {5, 1}}));
+    REQUIRE(fp.plan.decoders.size() == 2);
+    CHECK(fp.plan.decoders[0] == static_cast<int>(fp.encoders.size() + fp.effects.size()));
+    CHECK(fp.plan.decoders[1] == fp.plan.decoders[0] + 1);
+    CHECK(fp.decoders == std::vector<std::uint64_t>{1, 7});
+    CHECK(fp.plan.slots.size() == fp.encoders.size() + fp.effects.size() + 2);
+    CHECK(shapeFrom(toJson(shape)).decoders == shape.decoders);
 }

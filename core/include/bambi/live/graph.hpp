@@ -9,7 +9,8 @@
 
 /*  The host's one shape, as a plan and as the steps that play it. The plan says what the user built: sources, each a
  *  track encoded where it arrives; buses, the groups in the field, each summing what plays into it; the inserts on
- *  each; returns in bambi mode, which every node in the field sends to; the main chain; the one decoder. compile()
+ *  each; returns in bambi mode, which every node in the field sends to; the main chain; the decoders, each hearing
+ *  Main after its chain. compile()
  *  turns it into a list of steps a runner plays block by block, with every delay that makes the paths meet in step
  *  -- which is where the plan is tested to the sample, before any plugin is loaded.
  *
@@ -49,8 +50,8 @@ struct Plan {
     std::vector<Slot> slots;
     std::vector<FieldNode> nodes;
     std::vector<Return> returns;
-    std::vector<int> main;  ///< the main chain's slots, before the decoder
-    int decoder{-1};
+    std::vector<int> main;      ///< the main chain's slots, before the decoders
+    std::vector<int> decoders;  ///< one slot each; at least one
 };
 
 enum class Step {
@@ -58,7 +59,7 @@ enum class Step {
     Process,  ///< slot runs on buffer `to`, in place
     Clear,    ///< buffer `to` silent
     Add,      ///< buffer `to` += buffer `from`, delayed by `delay` samples, times the level `gain` names
-    Decode,   ///< slot reads buffer `from` and writes the output
+    Decode,   ///< slot reads buffer `from` and writes decoder `to`'s output, by its place in the plan's decoders
 };
 
 struct Op {
@@ -77,7 +78,9 @@ struct Op {
 struct Compiled {
     std::vector<Op> ops;
     int buffers{0};  ///< field buffers: one per node, then one per return, then Main's
-    int latency{0};  ///< samples from the input row to the output, the same on every path
+    /// Samples from the input row to the output, the same on every path through the slowest decoder; a quicker
+    /// one's output leads by the difference, which whoever plays them out makes up.
+    int latency{0};
     /// Entries in the runner's level table: a send's, node * returns + return; then each node's where it plays
     /// into its bus or Main, nodes * returns + node; then each return's into Main, nodes * returns + nodes + return.
     int levels{0};

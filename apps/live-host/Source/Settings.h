@@ -6,8 +6,8 @@
 #include "bambi/live/io.hpp"
 
 /*  Where the host plays and hears on this computer, kept beside the suite's presets in the user's Application
- *  Support as live-host.json. Without the file, no device is chosen and the headphones go back to Live, on the
- *  bambi track. Message thread.
+ *  Support as live-host.json. Without the file, no device is chosen and the first Decoder's headphones go back to
+ *  Live, on the bambi track. Message thread.
  */
 namespace bambi::livehost {
 

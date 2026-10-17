@@ -12,25 +12,19 @@ namespace cf = theme::confirm;
 namespace ctl = theme::controls;
 }  // namespace
 
-ConfirmBox::ConfirmBox() {
-    setWantsKeyboardFocus(true);
-    setVisible(false);
-}
+ConfirmBox::ConfirmBox() = default;
 
 void ConfirmBox::ask(juce::String question, juce::String note, juce::String yes, std::function<void()> confirmed) {
     question_ = std::move(question);
     note_ = std::move(note);
     yesLabel_ = std::move(yes);
     confirmed_ = std::move(confirmed);
-    setVisible(true);
-    toFront(true);
-    grabKeyboardFocus();  // return and escape answer it
-    repaint();
+    open();  // return and escape answer it
 }
 
 void ConfirmBox::answer(bool yes) {
-    if (!isVisible()) return;
-    setVisible(false);
+    if (!isOpen()) return;
+    close();
     auto confirmed = std::move(confirmed_);
     confirmed_ = nullptr;
     if (yes && confirmed) confirmed();
@@ -38,26 +32,17 @@ void ConfirmBox::answer(bool yes) {
 }
 
 bool ConfirmBox::keyPressed(const juce::KeyPress& key) {
-    if (key == juce::KeyPress::escapeKey)
-        answer(false);
-    else if (key == juce::KeyPress::returnKey)
+    if (key == juce::KeyPress::returnKey) {
         answer(true);
-    return true;  // nothing under the question takes a key either
+        return true;
+    }
+    return Sheet::keyPressed(key);
 }
 
 void ConfirmBox::paint(juce::Graphics& g) {
-    clearRegions();
-    const auto all = getLocalBounds().toFloat();
-    g.fillAll(colour::text.withAlpha(cf::scrim));
-    addClickArea(all, [this] { answer(false); });
-
     const auto height = 2.0f * cf::pad + 2.0f * cf::line + ctl::sectionGap + ctl::segmentHeight;
-    const auto box = juce::Rectangle<float>(cf::width, height).withCentre(all.getCentre());
-    g.setColour(colour::ground);
-    g.fillRect(box);
-    g.setColour(colour::ruleStrong);
-    g.drawRect(box, theme::stroke::rule);
-    addClickArea(box, [] {});  // a press on the box itself answers nothing
+    const auto box = juce::Rectangle<float>(cf::width, height).withCentre(getLocalBounds().toFloat().getCentre());
+    paintSheet(g, box);
 
     auto inner = box.reduced(cf::pad);
     text(g, question_, font(theme::type::body), colour::text, inner.removeFromTop(cf::line));

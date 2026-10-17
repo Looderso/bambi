@@ -45,9 +45,8 @@ TEST_CASE("the row: the chosen devices that play, in order, each whole, a channe
     CHECK(row.channel(6) == DeviceChannel{"i16", 2});
     CHECK(row.channel(21).none());
     CHECK(row.deviceOf(4) == 0);
-    CHECK(row.deviceOf(5) == 2);                                        // the interface, after the microphone
-    CHECK(row.deviceEnds() == std::vector<int>{4});                     // the microphone takes no output channel
-    CHECK(rowOf(joined, true).deviceEnds() == std::vector<int>{2, 3});  // the box's 2 inputs, the microphone's 1
+    CHECK(row.deviceOf(5) == 2);               // the interface, after the microphone
+    CHECK(rowOf(joined, true).width() == 19);  // the box's 2 inputs, the microphone's 1, the interface's 16
 
     std::vector<AudioDevice> wide = system();
     wide.push_back({"big", "Big", 48, 0, 100, 0, false});
@@ -56,81 +55,80 @@ TEST_CASE("the row: the chosen devices that play, in order, each whole, a channe
 }
 
 TEST_CASE("the settings read back as written, and an older file's missing fields take their defaults") {
-    //  Catches: a field written under one key and read under another, a copy's signal lost.
+    //  Catches: a field written under one key and read under another, a copy's or a placement's Decoder or output
+    //  lost, Main read back as a Decoder's output.
     AudioSettings s;
     s.devices = {"i16", "box"};
     s.buffer = 128;
     s.main = {"i16", 1};
-    s.headphones = {"box", 1};
-    s.speakersOn = true;
-    s.speakers = {"i16", 3};
-    s.layout = "4+7+0";
-    s.levelDb = -3.0;
-    s.copies = {
-        {Signal::Headphones, {"box", 3}, false}, {Signal::Headphones, {}, true}, {Signal::Main, {"i16", 15}, false}};
+    s.placed = {{{1, Output::Headphones}, {"box", 1}}, {{7, Output::Speakers}, {"i16", 3}}};
+    s.copies = {{{1, Output::Headphones}, {"box", 3}, false},
+                {{7, Output::Headphones}, {}, true},
+                {kLiveMain, {"i16", 15}, false}};
     CHECK(audioSettingsFrom(Json::parse(toJson(s).dump(0))) == s);
+    CHECK(s.at({7, Output::Speakers}) == DeviceChannel{"i16", 3});
+    CHECK(s.at({7, Output::Headphones}).none());
+    CHECK(s.at(kLiveMain) == s.main);
+    //  a file from when there was one Decoder
+    const AudioSettings one = audioSettingsFrom(Json::parse(
+        R"({"headphones": {"device": "box", "number": 1}, "copies": [{"of": "headphones", "toLive": true}]})"));
+    CHECK(one.at({kFirstDecoder, Output::Headphones}) == DeviceChannel{"box", 1});
+    REQUIRE(one.copies.size() == 1);
+    CHECK(one.copies[0].of == Out{kFirstDecoder, Output::Headphones});
     const AudioSettings old = audioSettingsFrom(Json::parse(R"({"devices": ["i16"]})"));
     CHECK(old.buffer == 64);
-    CHECK(old.headphonesOn);
+    CHECK(old.placed.empty());
     CHECK(old.copies.empty());
 }
 
-TEST_CASE("what the host asks of the Decoder: its outputs where kept, the host's channels and the devices") {
-    //  Catches: Main's pair or a copy's not kept, a speaker copy kept as a pair, an output on a device that has
-    //  gone left playing on whatever is there now.
+TEST_CASE("an output takes its bus channels as a block from where it is placed, within the row") {
+    //  Catches: a layout's gap closed up -- its LFE channel would land on a loudspeaker -- the block not moved to its
+    //  place, an output that is off taking channels, a channel past the row kept.
     const Row row = rowOf(aggregateOf({"i16", "box"}, system()));
-    AudioSettings s;
-    s.main = {"i16", 1};
-    s.headphones = {"box", 1};
-    s.speakersOn = true;
-    s.speakers = {"i16", 3};
-    s.layout = "0+5+0";
-    s.copies = {{Signal::Speakers, {"i16", 10}, false}, {Signal::Headphones, {}, true}};
-    const DecoderReport d = decoderWith(true, 17, true, 3, {3, 4, 5, 7, 8});  // 5.1, its LFE a gap
-    CHECK(keptChannels(s, row, d) == std::vector<int>{1, 2, 10, 11, 12, 14, 15});
-    DecoderRequest r = requestFor(s, row, d);
-    CHECK(r.headphoneChannel == 17);
-    CHECK(r.speakerFirstChannel == 3);
-    CHECK(r.layout == "0+5+0");
-    CHECK(r.deviceEnds == std::vector<int>{16});
-    CHECK((*r.headphonesOn && *r.speakersOn));
-
-    const Row without = rowOf(aggregateOf({"i16"}, system()));
-    r = requestFor(s, without, d);
-    CHECK_FALSE(*r.headphonesOn);
-    CHECK_FALSE(r.headphoneChannel.has_value());
+    const std::vector<PlayingDecoder> decoders{{1, decoderWith(true, 1, true, 3, {3, 4, 5, 7, 8}), 64}};
+    CHECK(takenBy({1, Output::Speakers}, {"i16", 9}, row, decoders) == std::vector<int>{9, 10, 11, 13, 14});
+    CHECK(takenBy({1, Output::Headphones}, {"box", 3}, row, decoders) == std::vector<int>{19, 20});
+    CHECK(takenBy({1, Output::Speakers}, {"box", 1}, row, decoders) == std::vector<int>{17, 18, 19});
+    CHECK(takenBy({2, Output::Headphones}, {"box", 1}, row, decoders).empty());
+    const std::vector<PlayingDecoder> quiet{{1, decoderWith(false, 1, false, 3, {3, 4}), 64}};
+    CHECK(takenBy({1, Output::Headphones}, {"box", 1}, row, quiet).empty());
 }
 
-TEST_CASE("the routes: every device heard with the slowest, Main later by the field, copies, clashes marked") {
-    //  Catches: the quicker device not held back, Main not delayed by the field, a copy at its source's channels,
-    //  a copy back to Live on the row, a Main copy sent to Live, an output that is off routed, a clash missed.
+TEST_CASE("the routes: two Decoders each where placed, every device with the slowest, Main late, clashes marked") {
+    //  Catches: the second Decoder's outputs routed from the first's bus, a quicker Decoder not held back to the
+    //  slowest, the quicker device not held back, Main not late by the field, a copy at its source's channels, a
+    //  copy back to Live on the row, Main sent back to Live, an output placed nowhere heard, a clash missed.
     const Row row = rowOf(aggregateOf({"i16", "box"}, system()));
     AudioSettings s;
     s.main = {"i16", 1};
-    s.copies = {{Signal::Headphones, {"i16", 15}, false},
-                {Signal::Headphones, {}, true},
-                {Signal::Main, {}, true},
-                {Signal::Main, {"box", 3}, false}};
-    const DecoderReport d = decoderWith(true, 17, false, 3, {3, 4});
-    const OutputPlan plan = planOutputs(s, row, d, 64);
-    CHECK(delayTo(plan, OutputRoute::From::Decoder, 17) == 40);  // the box, 80 against the interface's 120
-    CHECK(delayTo(plan, OutputRoute::From::Main, 1) == 64);
-    CHECK(delayTo(plan, OutputRoute::From::Main, 19) == 64 + 40);
-    CHECK(delayTo(plan, OutputRoute::From::Decoder, 15) == 0);
-    CHECK(delayTo(plan, OutputRoute::From::Decoder, 3) == -1);  // the speakers are off
+    s.placed = {{{1, Output::Headphones}, {"box", 1}}, {{2, Output::Headphones}, {"i16", 3}}};
+    s.copies = {
+        {{1, Output::Headphones}, {"i16", 15}, false}, {{2, Output::Headphones}, {}, true}, {kLiveMain, {}, true}};
+    const std::vector<PlayingDecoder> decoders{{1, decoderWith(true, 1, true, 3, {3, 4}), 64},
+                                               {2, decoderWith(true, 5, false, 1, {}), 40}};
+    const OutputPlan plan = planOutputs(s, row, decoders, 300);
+    const auto route = [&](int dest) {
+        for (const OutputRoute& r : plan.routes)
+            if (r.to == OutputRoute::To::Row && r.dest == dest) return r;
+        return OutputRoute{};
+    };
+    CHECK((route(17).decoder == 0 && route(17).channel == 1 && route(17).delay == 40));  // the box: 80 to 120
+    CHECK((route(3).decoder == 1 && route(3).channel == 5 && route(3).delay == 24));     // 64 against 40
+    CHECK((route(15).decoder == 0 && route(15).channel == 1 && route(15).delay == 0));
+    CHECK(delayTo(plan, OutputRoute::From::Main, 1) == 300);
+    CHECK(route(5).dest == 0);  // decoder 1's speakers play and are placed nowhere: not heard
     int toLive = 0;
     for (const OutputRoute& r : plan.routes)
         if (r.to == OutputRoute::To::Loop) {
             ++toLive;
-            CHECK(r.from == OutputRoute::From::Decoder);
-            CHECK(r.channel == 16 + r.dest);
+            CHECK((r.from == OutputRoute::From::Decoder && r.decoder == 1 && r.channel == 4 + r.dest));
         }
     CHECK(toLive == 2);
     CHECK(plan.clashes.empty());
 
     AudioSettings over = s;
-    over.main = {"box", 1};  // onto the headphones' pair
-    CHECK(planOutputs(over, row, d, 64).clashes == std::vector<int>{17, 18});
+    over.placed[1].at = {"box", 2};  // decoder 2's headphones onto the box's 2-3, over decoder 1's 1-2
+    CHECK(planOutputs(over, row, decoders, 300).clashes == std::vector<int>{18});
 }
 
 TEST_CASE("an input arrives after the loop device's channels, on the channel this computer keeps for it") {

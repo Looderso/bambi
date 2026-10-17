@@ -234,6 +234,47 @@ juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> 
     return box.expanded(theme::controls::closeGap / 2.0f);
 }
 
+void drawPlayMark(juce::Graphics& g, juce::Rectangle<float> box, bool plays, bool onBlock) {
+    namespace colour = theme::colour;
+    g.setColour(colour::textInverse);
+    g.fillRect(box);
+    g.setColour(onBlock ? colour::textInverse : colour::text);
+    g.drawRect(box, theme::stroke::toggle);
+    if (plays) {
+        g.setColour(colour::text);
+        g.fillRect(box.reduced(theme::header::toggleWell));
+    }
+}
+
+Menu drawMenu(juce::Graphics& g, juce::Point<float> topLeft, float width, const std::vector<MenuItem>& items,
+              const juce::String& foot) {
+    namespace colour = theme::colour;
+    namespace sh = theme::sheet;
+    const float footHeight = foot.isEmpty() ? 0.0f : sh::menuLine;
+    Menu menu;
+    menu.box = {topLeft.x, topLeft.y, width,
+                2.0f * sh::menuPad + sh::menuLine * static_cast<float>(items.size()) + footHeight};
+    g.setColour(colour::ground);
+    g.fillRect(menu.box);
+    g.setColour(colour::ruleStrong);
+    g.drawRect(menu.box, theme::stroke::rule);
+    auto inner = menu.box.reduced(sh::menuPad, sh::menuPad);
+    for (const MenuItem& item : items) {
+        const auto row = inner.removeFromTop(sh::menuLine);
+        const auto ink = item.offered ? colour::text : colour::inactive;
+        text(g, item.label, labelFont(), ink, row, juce::Justification::centredLeft);
+        text(g, item.note, smallFont(), item.offered ? colour::label : colour::inactive, row,
+             juce::Justification::centredRight);
+        menu.items.push_back(row);
+    }
+    if (!foot.isEmpty()) {
+        g.setColour(colour::rule);
+        g.drawHorizontalLine(static_cast<int>(inner.getY()), inner.getX(), inner.getRight());
+        text(g, foot, smallFont(), colour::label, inner.removeFromTop(footHeight), juce::Justification::centredLeft);
+    }
+    return menu;
+}
+
 float sceneToggleWidth(const juce::String& label) {
     return theme::scene::toggleBox + theme::scene::toggleGap + textWidth(labelFont(), label);
 }

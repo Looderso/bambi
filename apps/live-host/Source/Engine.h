@@ -13,6 +13,7 @@
 #include "bambi/link/spsc.hpp"
 #include "bambi/live/arrival.hpp"
 #include "bambi/live/field.hpp"
+#include "bambi/decode/remote.hpp"
 #include "bambi/live/io.hpp"
 #include "bambi/live/pairs.hpp"
 #include "devices.hpp"
@@ -68,8 +69,19 @@ public:
     /// sound a moment. False, with `status` saying why, when that fails. Message thread.
     bool setAudio(const live::AudioSettings& audio, juce::String& status);
     const live::AudioSettings& audio() const { return s_.audio; }
-    /// The chosen devices' outputs, as the Decoder's bus has them.
+    /// The routes again, from where the Decoders report their outputs now; the program swapped only when they
+    /// changed. True when they did. Message thread.
+    bool reroute();
+    /// Every Decoder as it plays now: where it reports its outputs -- a fresh Decoder's when it offers no
+    /// interface -- and its latency.
+    std::vector<live::PlayingDecoder> playing() const;
+    /// The chosen devices' outputs, as the Decoder's bus has them, and their inputs.
     const live::Row& row() const { return row_; }
+    const live::Row& inputRow() const { return inputRow_; }
+    double rate() const { return s_.rate; }
+    int order() const { return s_.order; }
+    /// The share of each block the host's processing takes, measured as it plays and smoothed; 0 before audio.
+    float load() const noexcept { return load_.load(std::memory_order_relaxed); }
 
     /// Live's transport, as the device sent it, stamped in steady-clock nanoseconds when its line was read.
     void transport(const live::TransportMessage& message, std::int64_t stampNs) noexcept;
@@ -77,7 +89,9 @@ public:
     /// The field as the shape lays it over Live's set, and the pairs its sources are on. Loads an Encoder for each
     /// source new to the field, lets go of each whose track has left it, and swaps the new program in. True when
     /// the program changed. Message thread; loading takes a moment per Encoder.
-    bool setField(const live::Field& field, const std::vector<live::TrackPair>& pairs, juce::String& status);
+    /// The host's inputs in the field arrive where this computer's settings keep them.
+    bool setField(const live::Field& field, const std::vector<live::TrackPair>& pairs,
+                  const std::vector<live::HostInput>& inputs, juce::String& status);
 
     /// Every level from Live, as `tree` has it now, for the field last set: the sends' knobs, a split group's fader
     /// on its bus, a field return's fader. Message thread; the runner ramps to them.
@@ -109,7 +123,9 @@ public:
     bool holds(const juce::AudioProcessor* p) const;
     /// The Encoder of the track on `pair`; none when no track is on it.
     juce::AudioProcessor* encoder(int pair) const;
-    juce::AudioProcessor* decoder() const { return decoder_.get(); }
+    /// The first Decoder, and the one with `id`; none when there is no such one.
+    juce::AudioProcessor* decoder() const { return decoders_.empty() ? nullptr : decoders_.front().plugin.get(); }
+    juce::AudioProcessor* decoderOf(std::uint64_t id) const;
 
 private:
     struct Fx {  // an insert, and the Echo or Reverb that plays it
@@ -129,7 +145,7 @@ private:
     };
 
     bool open(juce::String& status);
-    void place();  ///< the Decoder asked to place its outputs as the settings keep them
+    std::shared_ptr<juce::AudioPluginInstance> loadDecoder(juce::String& status);
     Runner::Setup runnerSetup() const;
     juce::String said() const;
     /// The routes out for the field `fieldLatency` samples late, from where the Decoder reports its outputs.
@@ -148,7 +164,12 @@ private:
     live::Plan plan_;                    ///< the plan the runner was last given, its latencies aside
     std::vector<live::Insert> playing_;  ///< the inserts it plays, in the order of their slots
     live::FieldPlan fieldPlan_;          ///< the plan with its Encoders and inserts, for the send levels
-    std::shared_ptr<juce::AudioPluginInstance> decoder_;
+    struct Dec {  // a Decoder, by the shape's id
+        std::uint64_t id{0};
+        std::shared_ptr<juce::AudioPluginInstance> plugin;
+    };
+    std::vector<Dec> decoders_;  ///< in the order of their slots, after the inserts
+    Json waitingDecoders_ = Json::object();  ///< restored Decoder states, by id, for Decoders not playing
     Json waiting_ = Json::object();         ///< restored Encoder states, by track, for tracks not yet on a pair
     Json waitingEffects_ = Json::object();  ///< restored insert states, by insert, for inserts not yet playing
     int block_{64};
@@ -168,6 +189,9 @@ private:
     int prepared_{0};      ///< the block the plugins are prepared for
     devices::Aggregate aggregate_;
     live::Row row_;           ///< the chosen devices' outputs: the Decoder's bus
+    live::Row inputRow_;      ///< their inputs, after the loop device's on the input row
+    std::vector<Runner::Route> routes_;  ///< the routes the runner was last given
+    std::atomic<float> load_{0.0f};
     int loopChannels_{16};    ///< the loop device's channels the host opens, each way
     int inputChannels_{16};   ///< the input row: the loop device's, then the devices' inputs
     int outputChannels_{16};  ///< the loop device's, then the row

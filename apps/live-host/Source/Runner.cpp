@@ -39,7 +39,10 @@ std::vector<Runner::Route> Runner::mainOf(const std::vector<Route>& routes) {
 
 std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
                                                const std::vector<juce::AudioProcessor*>& slots, int levels,
-                                               juce::String& error, Keep keep, std::vector<Route> routes) {
+                                               juce::String& error, Keep keep,
+                                               std::optional<std::vector<Route>> given) {
+    const bool straight = !given.has_value();
+    std::vector<Route> routes = given.value_or(std::vector<Route>{});
     //  every index a step names, checked here, so that process() can trust them
     const auto buffer = [&](int b) { return b >= 0 && b < compiled.buffers; };
     for (const live::Op& op : compiled.ops) {
@@ -63,12 +66,17 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
             return nullptr;
         }
     }
-    int decoderWidth = 0;
+    std::vector<int> decoderWidth;  // by the decoder's place among the plan's
     for (const live::Op& op : compiled.ops)
-        if (op.step == live::Step::Decode)
-            decoderWidth = slots[static_cast<std::size_t>(op.slot)]->getTotalNumOutputChannels();
+        if (op.step == live::Step::Decode) {
+            decoderWidth.resize(std::max(decoderWidth.size(), static_cast<std::size_t>(op.to) + 1), 0);
+            decoderWidth[static_cast<std::size_t>(op.to)] =
+                slots[static_cast<std::size_t>(op.slot)]->getTotalNumOutputChannels();
+        }
     for (const Route& r : routes) {
-        const bool from = r.main ? r.from == 0 || r.from == 1 : r.from >= 0 && r.from < decoderWidth;
+        const bool decoder = r.decoder >= 0 && r.decoder < static_cast<int>(decoderWidth.size());
+        const bool from = r.main ? r.from == 0 || r.from == 1
+                                 : decoder && r.from >= 0 && r.from < decoderWidth[static_cast<std::size_t>(r.decoder)];
         const bool late = r.delay >= 0 && (!r.main || r.delay <= setup_.maxMainDelay);
         const bool heard = !r.main || (setup_.mainInput >= 0 && setup_.mainInput + 1 < setup_.inputChannels);
         if (!from || !late || !heard || r.to < 0 || r.to >= setup_.outputChannels) {
@@ -107,13 +115,15 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
         p->routeLines.push_back(std::move(l));
     }
     p->routes = std::move(routes);
+    p->straight = straight;
     p->levelCount = std::max(levels, 0);
     p->levels = std::make_unique<Program::Level[]>(static_cast<std::size_t>(p->levelCount));
     return p;
 }
 
 bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                     const Setup& setup, juce::String& error, Keep keep, std::vector<Route> routes) {
+                     const Setup& setup, juce::String& error, Keep keep,
+                     std::optional<std::vector<Route>> routes) {
     setup_ = setup;
     field_ = (setup.order + 1) * (setup.order + 1);
     auto p = build(compiled, slots, levels, error, std::move(keep), std::move(routes));
@@ -132,7 +142,7 @@ bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::Aud
 }
 
 bool Runner::swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                  juce::String& error, Keep keep, std::vector<Route> routes) {
+                  juce::String& error, Keep keep, std::optional<std::vector<Route>> routes) {
     auto p = build(compiled, slots, levels, error, std::move(keep), std::move(routes));
     if (p == nullptr) return false;
     //  sticky while a program is still waiting: what the audio thread adopts must fade Main if any program posted since
@@ -306,7 +316,8 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
                 s.clear(0, frames);
                 for (int ch = 0; ch < field_; ++ch) s.copyFrom(ch, 0, b, ch, 0, frames);
                 run(p, op.slot, s);
-                if (p.routes.empty()) {
+                if (p.straight) {
+                    if (op.to != 0) break;  // the first decoder alone, straight out
                     const int channels =
                         std::min({output.getNumChannels(), setup_.outputChannels, s.getNumChannels()});
                     for (int ch = 0; ch < channels; ++ch) output.copyFrom(ch, outStart, s, ch, 0, frames);
@@ -314,7 +325,7 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
                 }
                 for (std::size_t r = 0; r < p.routes.size(); ++r) {
                     const Route& route = p.routes[r];
-                    if (route.main || route.to >= output.getNumChannels()) continue;
+                    if (route.main || route.decoder != op.to || route.to >= output.getNumChannels()) continue;
                     Line& line = p.routeLines[r];
                     if (line.length == 0) {
                         output.addFrom(route.to, outStart, s, route.from, 0, frames);

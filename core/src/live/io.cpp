@@ -44,25 +44,6 @@ int Row::deviceOf(int at) const {
     return -1;
 }
 
-std::vector<int> Row::deviceEnds() const {
-    std::vector<int> ends;
-    int offset = 0, last = 0;
-    for (const AudioDevice& d : devices) last += channelsOf(d, inputs);
-    for (const AudioDevice& d : devices) {
-        if (channelsOf(d, inputs) == 0) continue;
-        offset += channelsOf(d, inputs);
-        if (offset < last) ends.push_back(offset);
-    }
-    return ends;
-}
-
-OutputBus Row::bus(std::vector<int> kept) const {
-    OutputBus b(width());
-    b.kept = std::move(kept);
-    b.deviceEnds = deviceEnds();
-    return b;
-}
-
 std::vector<AudioDevice> aggregateOf(const std::vector<std::string>& chosen, const std::vector<AudioDevice>& system) {
     std::vector<AudioDevice> out;
     int outs = 0;
@@ -80,10 +61,6 @@ std::vector<AudioDevice> aggregateOf(const std::vector<std::string>& chosen, con
 Row rowOf(const std::vector<AudioDevice>& devices, bool inputs) { return {devices, inputs}; }
 
 namespace {
-
-const char* signalName(Signal s) {
-    return s == Signal::Main ? "main" : s == Signal::Headphones ? "headphones" : "speakers";
-}
 
 Json channelJson(const DeviceChannel& c) {
     Json j = Json::object();
@@ -105,22 +82,39 @@ bool boolAt(const Json& j, const char* key, bool fallback) {
     return v != nullptr ? v->boolOr(fallback) : fallback;
 }
 
-//  The Decoder's channels a signal plays on, as it reports them; Main's are its own two.
-std::vector<int> sourceChannels(Signal s, const DecoderReport& d) {
-    if (s == Signal::Main) return {1, 2};
-    if (s == Signal::Headphones)
-        return d.headphonesOn ? std::vector<int>{d.headphoneChannel, d.headphoneChannel + 1} : std::vector<int>{};
-    return d.speakersOn ? d.speakerChannels : std::vector<int>{};
+//  An output as the file names it: its Decoder's id, 0 for Main, and which of its outputs.
+void outInto(Json& j, const Out& o) {
+    j.set("decoder", Json(static_cast<double>(o.decoder)));
+    if (!o.main()) j.set("output", Json(outputName(o.which)));
+}
+Out outFrom(const Json& j) {
+    //  a file from when there was one Decoder: "of" names the output, Main among them
+    if (const Json* of = j.find("of"); of != nullptr && of->isString()) {
+        const std::string_view name = of->stringOr("");
+        if (name == "main") return kLiveMain;
+        return {kFirstDecoder, name == "speakers" ? Output::Speakers : Output::Headphones};
+    }
+    Out o;
+    if (const Json* d = j.find("decoder"); d != nullptr && d->numberOr(0.0) >= 1.0)
+        o.decoder = static_cast<std::uint64_t>(std::llround(d->numberOr(0.0)));
+    if (const Json* w = j.find("output"))
+        o.which = w->stringOr("") == "speakers" ? Output::Speakers : Output::Headphones;
+    return o;
 }
 
-//  The row channels starting at `start` that `channels` take, moved as a block from their first.
-std::vector<int> moved(const std::vector<int>& channels, int from, int start) {
-    std::vector<int> out;
-    for (const int c : channels) out.push_back(c - from + start);
-    return out;
+const PlayingDecoder* decoderOf(std::uint64_t id, const std::vector<PlayingDecoder>& decoders) {
+    const auto d = std::find_if(decoders.begin(), decoders.end(), [&](const PlayingDecoder& x) { return x.id == id; });
+    return d == decoders.end() ? nullptr : &*d;
 }
 
 }  // namespace
+
+DeviceChannel AudioSettings::at(const Out& out) const {
+    if (out.main()) return main;
+    for (const Placed& p : placed)
+        if (p.out == out) return p.at;
+    return {};
+}
 
 Json toJson(const AudioSettings& s) {
     Json j = Json::object();
@@ -129,16 +123,18 @@ Json toJson(const AudioSettings& s) {
     j.set("devices", std::move(devices));
     j.set("buffer", Json(s.buffer));
     j.set("main", channelJson(s.main));
-    j.set("headphonesOn", Json(s.headphonesOn));
-    j.set("headphones", channelJson(s.headphones));
-    j.set("speakersOn", Json(s.speakersOn));
-    j.set("speakers", channelJson(s.speakers));
-    j.set("layout", Json(s.layout));
-    j.set("levelDb", Json(s.levelDb));
+    Json placed = Json::array();
+    for (const Placed& p : s.placed) {
+        Json o = Json::object();
+        outInto(o, p.out);
+        o.set("at", channelJson(p.at));
+        placed.push(std::move(o));
+    }
+    j.set("placed", std::move(placed));
     Json copies = Json::array();
     for (const Copy& c : s.copies) {
         Json o = Json::object();
-        o.set("of", Json(signalName(c.of)));
+        outInto(o, c.of);
         o.set("at", channelJson(c.at));
         o.set("toLive", Json(c.toLive));
         copies.push(std::move(o));
@@ -162,22 +158,16 @@ AudioSettings audioSettingsFrom(const Json& j) {
             if (d.isString()) s.devices.emplace_back(d.stringOr(""));
     if (const Json* b = j.find("buffer")) s.buffer = std::max(1, static_cast<int>(std::lround(b->numberOr(64.0))));
     s.main = channelFrom(j.find("main"));
-    s.headphonesOn = boolAt(j, "headphonesOn", s.headphonesOn);
-    s.headphones = channelFrom(j.find("headphones"));
-    s.speakersOn = boolAt(j, "speakersOn", s.speakersOn);
-    s.speakers = channelFrom(j.find("speakers"));
-    if (const Json* l = j.find("layout")) s.layout = std::string(l->stringOr(""));
-    if (const Json* v = j.find("levelDb")) s.levelDb = v->numberOr(0.0);
+    //  a file from when there was one Decoder: its outputs' places
+    for (const Output which : {Output::Headphones, Output::Speakers})
+        if (const DeviceChannel at = channelFrom(j.find(outputName(which))); !at.none())
+            s.placed.push_back({{kFirstDecoder, which}, at});
+    if (const Json* list = j.find("placed"); list != nullptr && list->isArray())
+        for (const Json& o : list->items())
+            if (const Out out = outFrom(o); !out.main()) s.placed.push_back({out, channelFrom(o.find("at"))});
     if (const Json* list = j.find("copies"); list != nullptr && list->isArray())
-        for (const Json& o : list->items()) {
-            const Json* of = o.find("of");
-            const std::string_view name = of != nullptr ? of->stringOr("") : "";
-            const auto signal = name == "main"         ? std::optional<Signal>(Signal::Main)
-                                : name == "headphones" ? std::optional<Signal>(Signal::Headphones)
-                                : name == "speakers"   ? std::optional<Signal>(Signal::Speakers)
-                                                       : std::nullopt;
-            if (signal) s.copies.push_back({*signal, channelFrom(o.find("at")), boolAt(o, "toLive", false)});
-        }
+        for (const Json& o : list->items())
+            s.copies.push_back({outFrom(o), channelFrom(o.find("at")), boolAt(o, "toLive", false)});
     if (const Json* list = j.find("inputs"); list != nullptr && list->isArray())
         for (const Json& o : list->items()) {
             const Json* id = o.find("input");
@@ -188,40 +178,25 @@ AudioSettings audioSettingsFrom(const Json& j) {
     return s;
 }
 
-std::vector<int> takenBy(const Copy& c, const Row& row, const DecoderReport& decoder) {
-    const int start = row.at(c.at);
-    if (c.toLive || start == 0) return {};
-    std::vector<int> out;
-    if (c.of != Signal::Speakers)
-        out = {start, start + 1};
-    else
-        out = moved(decoder.speakerChannels, decoder.speakerFirstChannel, start);
-    out.erase(std::remove_if(out.begin(), out.end(), [&](int x) { return x < 1 || x > row.width(); }), out.end());
-    return out;
+std::vector<int> busChannels(const Out& out, const std::vector<PlayingDecoder>& decoders) {
+    if (out.main()) return {1, 2};
+    const PlayingDecoder* d = decoderOf(out.decoder, decoders);
+    if (d == nullptr) return {};
+    const DecoderReport& r = d->report;
+    if (out.which == Output::Headphones)
+        return r.headphonesOn ? std::vector<int>{r.headphoneChannel, r.headphoneChannel + 1} : std::vector<int>{};
+    return r.speakersOn ? r.speakerChannels : std::vector<int>{};
 }
 
-std::vector<int> keptChannels(const AudioSettings& s, const Row& row, const DecoderReport& decoder) {
-    std::vector<int> kept = takenBy({Signal::Main, s.main, false}, row, decoder);
-    for (const Copy& c : s.copies)
-        for (const int x : takenBy(c, row, decoder)) kept.push_back(x);
-    std::sort(kept.begin(), kept.end());
-    kept.erase(std::unique(kept.begin(), kept.end()), kept.end());
-    return kept;
-}
-
-DecoderRequest requestFor(const AudioSettings& s, const Row& row, const DecoderReport& decoder) {
-    DecoderRequest r;
-    //  an output whose device has gone stops, rather than play on whatever is now where it was
-    const int hp = row.at(s.headphones), sp = row.at(s.speakers);
-    r.headphonesOn = s.headphonesOn && hp != 0;
-    if (hp != 0) r.headphoneChannel = hp;
-    r.speakersOn = s.speakersOn && sp != 0;
-    if (sp != 0) r.speakerFirstChannel = sp;
-    if (!s.layout.empty()) r.layout = s.layout;
-    r.levelDb = s.levelDb;
-    r.kept = keptChannels(s, row, decoder);
-    r.deviceEnds = row.deviceEnds();
-    return r;
+std::vector<int> takenBy(const Out& out, const DeviceChannel& at, const Row& row,
+                         const std::vector<PlayingDecoder>& decoders) {
+    const int start = row.at(at);
+    const std::vector<int> bus = busChannels(out, decoders);
+    if (start == 0 || bus.empty()) return {};
+    std::vector<int> taken;
+    for (const int c : bus)
+        if (const int x = c - bus.front() + start; x >= 1 && x <= row.width()) taken.push_back(x);
+    return taken;
 }
 
 std::vector<Arrival> inputArrivals(const AudioSettings& s, const std::vector<HostInput>& inputs, const Row& row,
@@ -239,38 +214,49 @@ std::vector<Arrival> inputArrivals(const AudioSettings& s, const std::vector<Hos
     return out;
 }
 
-OutputPlan planOutputs(const AudioSettings& s, const Row& row, const DecoderReport& decoder, int fieldLatency) {
+OutputPlan planOutputs(const AudioSettings& s, const Row& row, const std::vector<PlayingDecoder>& decoders,
+                       int fieldLatency) {
     OutputPlan plan;
-    int slowest = 0;
+    int slowest = 0, slowestDecoder = 0;
     for (const AudioDevice& d : row.devices) slowest = std::max(slowest, d.outLatency);
+    for (const PlayingDecoder& d : decoders) slowestDecoder = std::max(slowestDecoder, d.latency);
     const auto align = [&](int at) {
         const int i = row.deviceOf(at);
         return i < 0 ? 0 : slowest - row.devices[static_cast<std::size_t>(i)].outLatency;
     };
-    const auto add = [&](OutputRoute::From from, const std::vector<int>& sources, OutputRoute::To to,
-                         const std::vector<int>& dests) {
+    //  `out`'s channels onto `dests` or the loop device's pair; Main late by the field, a quicker Decoder held back
+    const auto add = [&](const Out& out, OutputRoute::To to, const std::vector<int>& dests) {
+        const std::vector<int> sources = busChannels(out, decoders);
+        int index = 0, late = fieldLatency;
+        if (!out.main()) {
+            const auto d = std::find_if(decoders.begin(), decoders.end(),
+                                        [&](const PlayingDecoder& x) { return x.id == out.decoder; });
+            if (d == decoders.end()) return;
+            index = static_cast<int>(d - decoders.begin());
+            late = slowestDecoder - d->latency;
+        }
+        const auto from = out.main() ? OutputRoute::From::Main : OutputRoute::From::Decoder;
         for (std::size_t i = 0; i < sources.size() && i < dests.size(); ++i) {
             const int dest = dests[i];
             if (to == OutputRoute::To::Row && (dest < 1 || dest > row.width())) continue;
-            const int late = from == OutputRoute::From::Main ? fieldLatency : 0;
-            plan.routes.push_back({from, sources[i], to, dest, late + (to == OutputRoute::To::Row ? align(dest) : 0)});
+            plan.routes.push_back(
+                {from, index, sources[i], to, dest, late + (to == OutputRoute::To::Row ? align(dest) : 0)});
         }
     };
 
-    for (const Signal out : {Signal::Headphones, Signal::Speakers}) {
-        const std::vector<int> channels = sourceChannels(out, decoder);
-        add(OutputRoute::From::Decoder, channels, OutputRoute::To::Row, channels);
-    }
-    add(OutputRoute::From::Main, {1, 2}, OutputRoute::To::Row, takenBy({Signal::Main, s.main, false}, row, decoder));
+    for (const PlayingDecoder& d : decoders)
+        for (const Output which : {Output::Headphones, Output::Speakers}) {
+            const Out out{d.id, which};
+            add(out, OutputRoute::To::Row, takenBy(out, s.at(out), row, decoders));
+        }
+    add(kLiveMain, OutputRoute::To::Row, takenBy(kLiveMain, s.main, row, decoders));
     for (const Copy& c : s.copies) {
-        const std::vector<int> sources = sourceChannels(c.of, decoder);
-        const auto from = c.of == Signal::Main ? OutputRoute::From::Main : OutputRoute::From::Decoder;
         //  back to Live: a pair, and never Main, which Live has
         if (c.toLive) {
-            if (c.of != Signal::Main && sources.size() == 2) add(from, sources, OutputRoute::To::Loop, {1, 2});
+            if (!c.of.main() && busChannels(c.of, decoders).size() == 2) add(c.of, OutputRoute::To::Loop, {1, 2});
             continue;
         }
-        add(from, sources, OutputRoute::To::Row, takenBy(c, row, decoder));
+        add(c.of, OutputRoute::To::Row, takenBy(c.of, c.at, row, decoders));
     }
 
     std::vector<int> reached;

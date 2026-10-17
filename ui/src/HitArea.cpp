@@ -132,12 +132,20 @@ std::vector<juce::Rectangle<float>> HitArea::paintTabRow(juce::Graphics& g, floa
                                                          std::function<void(int)> select,
                                                          std::function<bool(int)> offered) {
     namespace ctl = theme::controls;
+    return paintTabRowAt(g, x, ctl::matrixTabsTop, ctl::tabBarHeight - ctl::matrixTabsTop, names, selected,
+                         std::move(select), std::move(offered));
+}
+
+std::vector<juce::Rectangle<float>> HitArea::paintTabRowAt(juce::Graphics& g, float x, float top, float height,
+                                                           std::span<const juce::String> names, int selected,
+                                                           std::function<void(int)> select,
+                                                           std::function<bool(int)> offered) {
+    namespace ctl = theme::controls;
     const auto tabFont = font(theme::type::body, theme::type::trackingTab);
-    const float height = ctl::tabBarHeight - ctl::matrixTabsTop;
     std::vector<juce::Rectangle<float>> boxes;
     for (std::size_t i = 0; i < names.size(); ++i) {
-        const juce::Rectangle<float> box{x - ctl::tabPadX, ctl::matrixTabsTop,
-                                         textWidth(tabFont, names[i]) + 2.0f * ctl::tabPadX, height};
+        const juce::Rectangle<float> box{x - ctl::tabPadX, top, textWidth(tabFont, names[i]) + 2.0f * ctl::tabPadX,
+                                         height};
         const int index = static_cast<int>(i);
         const bool open = !offered || offered(index);
         drawChoice(g, box, names[i], tabFont, index == selected, open);

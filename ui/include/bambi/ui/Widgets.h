@@ -105,6 +105,24 @@ Chip drawChip(juce::Graphics& g, juce::Point<float> topLeft, float height, const
               std::optional<juce::Colour> accent = std::nullopt, bool closable = false);
 /// How wide `drawChip` draws `label`, at `height`, with a bar and a cross or without.
 float chipWidth(const juce::String& label, float height, bool accent, bool closable);
+/// Whether an output plays, as the Decoder's tabs mark it: a light well, a dark square in it while it plays.
+/// `onBlock` draws its frame light, for a mark on a chosen block.
+void drawPlayMark(juce::Graphics& g, juce::Rectangle<float> box, bool plays, bool onBlock = false);
+
+/*  A menu: a list dropped from `topLeft`, framed, an item a line -- its name, and a note right of it -- and an
+    explanation under them all. An item not `offered` is greyed and is to take no press. Whoever draws it registers
+    the presses on the items it offers, and closes it on a press anywhere else. */
+struct MenuItem {
+    juce::String label, note;
+    bool offered{true};
+};
+struct Menu {
+    juce::Rectangle<float> box;
+    std::vector<juce::Rectangle<float>> items;
+};
+Menu drawMenu(juce::Graphics& g, juce::Point<float> topLeft, float width, const std::vector<MenuItem>& items,
+              const juce::String& foot);
+
 /// The cross that closes something temporary, in `box`. Returns the area a press on it should take.
 juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> box);
 

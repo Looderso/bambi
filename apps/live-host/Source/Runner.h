@@ -4,6 +4,7 @@
 #include <atomic>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "Playhead.h"
@@ -13,8 +14,9 @@
 
 /*  Plays a compiled plan: the steps bambi-live's graph turned the host's shape into, run in order every block over
  *  the plugin instances the plan's slots name. The loop device's channels come in -- pair p is channels 2p and
- *  2p + 1 -- and the decoder's go out: straight, or along the routes a program is given, each onto an output
- *  channel of its own, late by its delay, beside Live's Main as it came in.
+ *  2p + 1 -- and the decoders' go out along the routes a program is given, each onto an output channel of its own,
+ *  late by its delay, beside Live's Main as it came in. A program given no routes at all -- a check's -- plays the
+ *  first decoder straight out; one given an empty list plays nothing.
  *
  *  A plan and everything it plays with is one program: the steps, the instances, a field buffer per node, return
  *  and Main, for each slot a buffer as wide as the plugin's widest side -- an Encoder's or an insert's sidechain
@@ -54,9 +56,10 @@ public:
         int mainInput{-1};       ///< the input row's channel Live's Main's left arrives on, its right after; -1 none
         int maxMainDelay{0};     ///< samples Main may be delayed by
     };
-    /// A channel played out after the decoder: one of its own, or of Live's Main, onto an output channel.
+    /// A channel played out after the decoders: one of a decoder's, or of Live's Main, onto an output channel.
     struct Route {
-        bool main{false};  ///< Live's Main: `from` 0 its left, 1 its right; otherwise the decoder's channel, from 0
+        bool main{false};  ///< Live's Main: `from` 0 its left, 1 its right; otherwise a decoder's channel, from 0
+        int decoder{0};    ///< which decoder, by its place among the plan's
         int from{0};
         int to{0};  ///< the output channel, from 0
         int delay{0};
@@ -70,7 +73,7 @@ public:
     /// The first program, before any audio. False, with `error` set, when the plan names a slot it was given no
     /// instance for, or a buffer or pair it does not have.
     bool prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                 const Setup& setup, juce::String& error, Keep keep = {}, std::vector<Route> routes = {});
+                 const Setup& setup, juce::String& error, Keep keep = {}, std::optional<std::vector<Route>> routes = std::nullopt);
 
     /// An instance new to the runner, readied for it before it is in any program: the playhead it reads, and that
     /// it plays in real time. Message thread; prepare() readies the first program's itself.
@@ -79,7 +82,7 @@ public:
     /// A new program, while audio runs, at the setup prepare() was given; the same checks. Every instance it names
     /// not in a program before must have been readied.
     bool swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-              juce::String& error, Keep keep = {}, std::vector<Route> routes = {});
+              juce::String& error, Keep keep = {}, std::optional<std::vector<Route>> routes = std::nullopt);
 
     /// Frees what the audio thread has let go of. Message thread.
     void tidy() { handoff_.freeRetired(); }
@@ -127,11 +130,13 @@ private:
         int levelCount{0};
         int longest{0};  ///< samples: the longest delay line
         std::vector<Route> routes;
+        bool straight{false};  ///< given no routes: the first decoder straight out
         mutable std::vector<Line> routeLines;  // per route, one channel; Main's are the runner's
     };
 
     std::unique_ptr<Program> build(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots,
-                                   int levels, juce::String& error, Keep keep, std::vector<Route> routes);
+                                   int levels, juce::String& error, Keep keep,
+                                   std::optional<std::vector<Route>> routes);
     static std::vector<Route> mainOf(const std::vector<Route>& routes);
     /// Main into its lines, and out along the program's routes, at a gain ramping from `g0` to `g1`.
     void main(const Program& p, const juce::AudioBuffer<float>& in, int inStart, juce::AudioBuffer<float>& output,

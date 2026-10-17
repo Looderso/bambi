@@ -29,6 +29,7 @@
 #include <random>
 #include <vector>
 
+#include "../Source/AudioSheet.h"
 #include "../Source/Plugins.h"
 #include "../Source/Runner.h"
 #include "bambi/decode/remote.hpp"
@@ -96,7 +97,7 @@ live::Plan plan() {
     b.encoder = 1;
     p.nodes = {a, b};
     p.returns = {live::Return{{3}}};
-    p.decoder = 4;
+    p.decoders = {4};
     return p;
 }
 
@@ -244,7 +245,7 @@ juce::AudioBuffer<float> delayedThroughRunner(int block) {
     b.input = 2;
     b.encoder = 1;
     p.nodes = {a, b};
-    p.decoder = 3;
+    p.decoders = {3};
     const auto compiled = live::compile(p);
     if (!compiled) return {};
     livehost::Runner runner;
@@ -356,7 +357,7 @@ std::vector<live::Playhead> timedThroughRunner(int block, std::vector<std::int64
     a.encoder = 0;
     a.inserts = {1};
     p.nodes = {a};
-    p.decoder = 2;
+    p.decoders = {2};
     const auto compiled = live::compile(p);
     if (!compiled) return {};
     live::TransportProjector clock(clockSettings());
@@ -411,7 +412,7 @@ live::Plan encoding(std::vector<int> pairs) {
         n.encoder = static_cast<int>(i);
         p.nodes.push_back(n);
     }
-    p.decoder = 4;
+    p.decoders = {4};
     return p;
 }
 
@@ -525,7 +526,7 @@ std::vector<float> standInSwap(int block, bool swap, bool delayed) {
         slots.push_back(&b);
         slots.push_back(&delay);
     }
-    p.decoder = static_cast<int>(slots.size());
+    p.decoders = {static_cast<int>(slots.size())};
     slots.push_back(&out);
     p.slots.assign(slots.size(), {});
     if (delayed) p.slots[2].latency = kDelay;
@@ -594,7 +595,7 @@ std::vector<float> sidechained(int block, int pair, bool encoder = false) {
     p.nodes = {n};
     const int heard = pair < 0 ? -1 : 2 * pair;  // the pair's first channel
     p.slots = {{0, encoder ? heard : -1}, {0, encoder ? -1 : heard}, {0, -1}};
-    p.decoder = 2;
+    p.decoders = {2};
     const auto compiled = live::compile(p);
     livehost::Runner runner;
     juce::String why;
@@ -644,7 +645,7 @@ std::pair<float, float> arrivedAt(int first, int width) {
     n.encoder = 0;
     p.nodes = {n};
     p.slots = {{0, -1}, {0, -1}};
-    p.decoder = 1;
+    p.decoders = {1};
     const auto compiled = live::compile(p);
     livehost::Runner runner;
     juce::String why;
@@ -672,11 +673,11 @@ std::vector<std::vector<float>> routed(int block, int mainDelay, int swapAt, int
     n.encoder = 0;
     p.nodes = {n};
     p.slots = {{0, -1}, {0, -1}};
-    p.decoder = 1;
+    p.decoders = {1};
     const auto compiled = live::compile(p);
     const auto routes = [](int delay) {
         return std::vector<livehost::Runner::Route>{
-            {false, 0, 3, 10}, {false, 1, 0, 0}, {true, 0, 1, delay}, {true, 1, 2, delay}};
+            {false, 0, 0, 3, 10}, {false, 0, 1, 0, 0}, {true, 0, 0, 1, delay}, {true, 0, 1, 2, delay}};
     };
     livehost::Runner runner;
     juce::String why;
@@ -754,6 +755,101 @@ int aggregateOpens() {
     return ok ? 0 : 1;
 }
 
+//  A decoder that gives the field's first two channels out at half their level: a second listener's, told apart.
+class HalfOut final : public StandIn {
+public:
+    HalfOut()
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::ambisonic(kOrder))
+                      .withOutput("out", juce::AudioChannelSet::stereo())) {}
+    void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer&) override {
+        for (int ch = 0; ch < 2; ++ch) b.applyGain(ch, 0, b.getNumSamples(), 0.5f);
+    }
+};
+
+//  Two decoders hearing one field, each routed out on its own: the first's left onto output 0, the second's left
+//  onto output 1 and its right onto output 2. What the three outputs hold once the start's fade is over.
+std::vector<float> twoDecoders(int block) {
+    Pass a;
+    PassOut first;
+    HalfOut second;
+    live::Plan p;
+    live::FieldNode n;
+    n.track = 1;
+    n.input = 0;
+    n.encoder = 0;
+    p.nodes = {n};
+    p.slots = {{0, -1}, {0, -1}, {0, -1}};
+    p.decoders = {1, 2};
+    const auto compiled = live::compile(p);
+    livehost::Runner runner;
+    juce::String why;
+    const std::vector<livehost::Runner::Route> routes{{false, 0, 0, 0, 0}, {false, 1, 0, 1, 0}, {false, 1, 1, 2, 0}};
+    if (!compiled ||
+        !runner.prepare(*compiled, {&a, &first, &second}, compiled->levels, {kOrder, kMaxBlock, 4, 3, kRate}, why, {},
+                        routes)) {
+        std::printf("  the runner: %s\n", why.toRawUTF8());
+        return {};
+    }
+    juce::AudioBuffer<float> row(4, kDeviceBlock), out(3, kDeviceBlock);
+    for (int i = 0; i < kDeviceBlock; ++i) {
+        row.setSample(0, i, 0.4f);
+        row.setSample(1, i, 0.2f);
+        row.setSample(2, i, 0.0f);
+        row.setSample(3, i, 0.0f);
+    }
+    for (int at = 0; at < 4096; at += block) runner.process(row, out, std::min(block, 4096 - at));
+    const int last = (4096 - 1) % block;
+    return {out.getSample(0, last), out.getSample(1, last), out.getSample(2, last)};
+}
+
+//  The audio sheet with two devices, both outputs playing, a copy and an input: each tab painted, then pressed
+//  everywhere on a grid, painted again after each press. What it asks for is counted; nothing may fall over.
+int sheetHolds() {
+    livehost::AudioSheet sheet;
+    sheet.setSize(1100, 760);
+    livehost::AudioSheet::Shown s;
+    s.system = {{"a", "Interface", 16, 8, 120, 100, false}, {"b", "Box", 4, 2, 80, 70, false},
+                {"c", "AirPods", 2, 1, 7000, 7000, true}};
+    s.settings.devices = {"a", "b"};
+    s.settings.main = {"a", 1};
+    s.settings.placed = {{{1, Output::Headphones}, {"b", 1}}, {{1, Output::Speakers}, {"a", 3}},
+                         {{2, Output::Headphones}, {"a", 13}}};
+    s.settings.copies = {{{1, Output::Headphones}, {}, true}, {live::kLiveMain, {"b", 3}, false}};
+    s.settings.inputs = {{live::kFirstInput, {"a", 2}}};
+    DecoderReport one, two;
+    one.bus = 61;
+    one.headphonesOn = true;
+    one.headphoneChannel = 1;
+    one.speakersOn = true;
+    one.speakerFirstChannel = 3;
+    one.speakerChannels = {3, 4, 5, 7, 8};
+    one.layout = one.layoutName = "0+5+0";
+    two.bus = 61;
+    two.headphonesOn = true;
+    s.decoders = {{1, one, 64}, {2, two, 64}};
+    s.inputs = {{live::kFirstInput, "vox", 1}};
+    s.load = 0.3f;
+    int asked = 0;
+    sheet.change = [&](live::AudioSettings) { ++asked; };
+    sheet.changeInputs = [&](std::vector<live::HostInput>, live::AudioSettings) { ++asked; };
+    juce::Image image(juce::Image::RGB, sheet.getWidth(), sheet.getHeight(), true);
+    for (const auto tab : {livehost::AudioSheet::Tab::Interface, livehost::AudioSheet::Tab::Outputs,
+                           livehost::AudioSheet::Tab::Inputs}) {
+        for (int y = 0; y < sheet.getHeight(); y += 9)
+            for (int x = 0; x < sheet.getWidth(); x += 11) {
+                sheet.show(s);
+                sheet.showTab(tab);
+                juce::Graphics g(image);
+                sheet.paint(g);
+                sheet.clickAt({static_cast<float>(x), static_cast<float>(y)});
+            }
+    }
+    const bool ok = asked > 0;
+    std::printf("  three tabs, pressed everywhere: %d changes asked %s\n", asked, ok ? "" : "  FAIL");
+    return ok ? 0 : 1;
+}
+
 //  The swap's fade at `k` samples after it was asked for, with no delay to hold through: down, then up.
 double fadeAt(int k) {
     const int f = livehost::Runner::kFade;
@@ -778,7 +874,7 @@ std::vector<float> sendGains(int block, int swapAt = 0, float swapLevel = 0.0f) 
     a.encoder = 0;
     p.nodes = {a};
     p.returns = {live::Return{}};
-    p.decoder = 1;
+    p.decoders = {1};
     const auto compiled = live::compile(p);
     if (!compiled) return {};
     livehost::Runner runner;
@@ -943,25 +1039,6 @@ int remoteDecoder() {
     const DecoderReport refused = report();
     check(refused.headphoneChannel == 1 && refused.notice == "headphones cannot start on channel 2",
           "refused: headphones on an even channel, said");
-
-    //  Catches: channels the host keeps not reaching the Decoder's placement, or an output left playing on them.
-    auto kept = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, 26);
-    if (remote::IRemote* k = kept.plugin != nullptr ? livehost::remoteOf(*kept.plugin, kDecoderRemoteKind,
-                                                                         kDecoderRemoteVersion)
-                                                    : nullptr) {
-        DecoderRequest main;
-        main.kept = std::vector<int>{1, 2};
-        main.deviceEnds = std::vector<int>{16};
-        k->remoteRequest(toJson(main).dump(0).c_str());
-        const DecoderReport moved = reportFrom(Json::parse(livehost::remoteReport(*k)));
-        const std::vector<int> heardKept = decoderHeard(*kept.plugin, 26);
-        std::printf("    1-2 kept: heard on %s\n", channelList(heardKept).toRawUTF8());
-        check(moved.headphonesOn && moved.headphoneChannel == 3 && moved.kept == std::vector<int>{1, 2} &&
-                  heardKept == std::vector<int>{2, 3},
-              "1-2 kept for Main: the headphones moved to 3-4, and heard there");
-    } else {
-        check(false, "a third Decoder answers");
-    }
 
     //  Catches: a widest bus whose last channels -- the last speakers VST3 names -- do not reach the Decoder's.
     auto widest = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, kMaxVst3BusChannels);
@@ -1213,6 +1290,23 @@ int main() {
                     static_cast<double>(lateLow), static_cast<double>(step), static_cast<double>(lateStep),
                     ok ? "" : "  FAIL");
     }
+
+    std::printf("two decoders\n");
+    for (const int block : {1, 64, 500}) {
+        //  Catches: the second decoder's routes reading the first's output, a decoder without its step, one decoder
+        //  writing over the other's channel.
+        const auto got = twoDecoders(block);
+        const bool ok = got.size() == 3 && std::abs(got[0] - 0.4f) < 1e-6f && std::abs(got[1] - 0.2f) < 1e-6f &&
+                        std::abs(got[2] - 0.1f) < 1e-6f;
+        failed += ok ? 0 : 1;
+        std::printf("  block %4d: the first's left %.2f, the second's %.2f %.2f %s\n", block,
+                    got.size() == 3 ? static_cast<double>(got[0]) : -1.0,
+                    got.size() == 3 ? static_cast<double>(got[1]) : -1.0,
+                    got.size() == 3 ? static_cast<double>(got[2]) : -1.0, ok ? "" : "  FAIL");
+    }
+
+    std::printf("the audio sheet\n");
+    failed += sheetHolds();
 
     std::printf("the host's aggregate\n");
     if (const int a = aggregateOpens(); a < 0)

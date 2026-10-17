@@ -49,16 +49,36 @@ std::int64_t nowNs() noexcept {
 
 }  // namespace
 
+std::vector<live::PlayingDecoder> Engine::playing() const {
+    std::vector<live::PlayingDecoder> out;
+    for (const Dec& d : decoders_) {
+        DecoderReport report;
+        report.headphonesOn = true;  // a Decoder that offers no remote interface: its fresh outputs
+        if (auto* remote = remoteOf(*d.plugin, kDecoderRemoteKind, kDecoderRemoteVersion))
+            report = reportFrom(Json::parse(remoteReport(*remote)));
+        out.push_back({d.id, std::move(report), d.plugin->getLatencySamples()});
+    }
+    return out;
+}
+
+std::shared_ptr<juce::AudioPluginInstance> Engine::loadDecoder(juce::String& status) {
+    //  as wide as a VST3 bus is: the Decoder places its outputs on it by its own rules, and never runs out of room
+    auto loaded = loadInstalled("bambi Decoder", Role::Decoder, s_.order, s_.rate, block_, kMaxVst3BusChannels);
+    if (loaded.plugin == nullptr) {
+        status = loaded.status;
+        return nullptr;
+    }
+    std::shared_ptr<juce::AudioPluginInstance> plugin = shared(std::move(loaded.plugin));
+    runner_.ready(plugin.get());
+    return plugin;
+}
+
 std::vector<Runner::Route> Engine::routesFor(int fieldLatency) const {
-    DecoderReport report;
-    report.headphonesOn = true;  // a Decoder that offers no remote interface: its fresh outputs
-    if (auto* remote = decoder_ != nullptr ? remoteOf(*decoder_, kDecoderRemoteKind, kDecoderRemoteVersion) : nullptr)
-        report = reportFrom(Json::parse(remoteReport(*remote)));
     std::vector<Runner::Route> out;
-    for (const live::OutputRoute& r : live::planOutputs(s_.audio, row_, report, fieldLatency).routes) {
+    for (const live::OutputRoute& r : live::planOutputs(s_.audio, row_, playing(), fieldLatency).routes) {
         const int to = r.to == live::OutputRoute::To::Row ? loopChannels_ + r.dest - 1 : returnChannel_ + r.dest - 1;
         if (to >= 0 && to < outputChannels_)
-            out.push_back({r.from == live::OutputRoute::From::Main, r.channel - 1, to, r.delay});
+            out.push_back({r.from == live::OutputRoute::From::Main, r.decoder, r.channel - 1, to, r.delay});
     }
     return out;
 }
@@ -83,8 +103,9 @@ bool Engine::open(juce::String& status) {
     if (aggregated)
         for (juce::AudioIODeviceType* type : devices_.getAvailableDeviceTypes()) type->scanForDevices();
     row_ = aggregated ? live::rowOf(joined) : live::Row{};
+    inputRow_ = aggregated ? live::rowOf(joined, true) : live::Row{{}, true};
     loopChannels_ = aggregated ? loopWidth : channels;
-    inputChannels_ = loopChannels_ + (aggregated ? live::rowOf(joined, true).width() : 0);
+    inputChannels_ = loopChannels_ + inputRow_.width();
     outputChannels_ = loopChannels_ + row_.width();
     juce::String opened;
     std::vector<juce::String> names;
@@ -129,14 +150,6 @@ bool Engine::open(juce::String& status) {
     return true;
 }
 
-void Engine::place() {
-    if (row_.width() == 0 || decoder_ == nullptr) return;
-    if (auto* remote = remoteOf(*decoder_, kDecoderRemoteKind, kDecoderRemoteVersion)) {
-        const auto report = reportFrom(Json::parse(remoteReport(*remote)));
-        remote->remoteRequest(toJson(live::requestFor(s_.audio, row_, report)).dump(0).c_str());
-    }
-}
-
 Runner::Setup Engine::runnerSetup() const {
     return {s_.order, block_, inputChannels_, outputChannels_, s_.rate, returnChannel_, static_cast<int>(s_.rate)};
 }
@@ -146,26 +159,22 @@ bool Engine::start(const Settings& settings, juce::String& status) {
     returnChannel_ = 2 * s_.pairs;
     //  the device first: the plugins are prepared at what it runs at
     if (!open(status)) return false;
-    auto decoded = loadInstalled("bambi Decoder", Role::Decoder, s_.order, s_.rate, block_, std::max(2, row_.width()));
-    if (decoded.plugin == nullptr) {
-        status = decoded.status;
-        return false;
-    }
-    decoder_ = shared(std::move(decoded.plugin));
+    auto first = loadDecoder(status);
+    if (first == nullptr) return false;
+    decoders_ = {{live::kFirstDecoder, first}};
     prepared_ = block_;
-    place();
     live::Plan plan;
-    plan.slots = {{decoder_->getLatencySamples()}};
-    plan.decoder = 0;
+    plan.slots = {{first->getLatencySamples()}};
+    plan.decoders = {0};
     std::string error;
     const auto compiled = live::compile(plan, &error);
     juce::String why;
-    if (!compiled || !runner_.prepare(*compiled, {decoder_.get()}, 0, runnerSetup(), why, {decoder_},
-                                      routesFor(compiled->latency))) {
+    if (compiled) routes_ = routesFor(compiled->latency);
+    if (!compiled || !runner_.prepare(*compiled, {first.get()}, 0, runnerSetup(), why, {first}, routes_)) {
         status = "the first program: " + (compiled ? why : juce::String(error));
         return false;
     }
-    program_ = {*compiled, {decoder_.get()}, 0, {decoder_}};
+    program_ = {*compiled, {first.get()}, 0, {first}};
     projector_ = live::TransportProjector({s_.rate});
     arrivals_.emplace(s_.rate, s_.transportOffsetSamples);
     runner_.setClock(&projector_);
@@ -185,12 +194,7 @@ bool Engine::setAudio(const live::AudioSettings& audio, juce::String& status) {
     s_.audio = audio;
     juce::String why;
     if (!reopen) {
-        place();
-        if (!runner_.swap(program_.compiled, program_.slots, program_.levels, why, program_.keep,
-                          routesFor(program_.compiled.latency))) {
-            status = "the outputs: " + why;
-            return false;
-        }
+        reroute();
         status = said();
         return true;
     }
@@ -199,22 +203,13 @@ bool Engine::setAudio(const live::AudioSettings& audio, juce::String& status) {
     devices_.closeAudioDevice();
     aggregate_.destroy();
     if (!open(status)) return false;
-    decoder_->releaseResources();
-    auto layout = decoder_->getBusesLayout();
-    if (!layout.outputBuses.isEmpty()) layout.outputBuses.getReference(0) = speakerChannels(std::max(2, row_.width()));
-    if (!decoder_->setBusesLayout(layout)) {
-        status = "the Decoder would not take " + juce::String(row_.width()) + " outputs";
-        return false;
-    }
-    decoder_->prepareToPlay(s_.rate, std::max(block_, prepared_));
     if (block_ > prepared_) {
-        for (juce::AudioProcessor* plugin : program_.slots)
-            if (plugin != decoder_.get()) plugin->prepareToPlay(s_.rate, block_);
+        for (juce::AudioProcessor* plugin : program_.slots) plugin->prepareToPlay(s_.rate, block_);
         prepared_ = block_;
     }
-    place();
+    routes_ = routesFor(program_.compiled.latency);
     if (!runner_.prepare(program_.compiled, program_.slots, program_.levels, runnerSetup(), why, program_.keep,
-                         routesFor(program_.compiled.latency))) {
+                         routes_)) {
         status = "the program: " + why;
         return false;
     }
@@ -224,8 +219,21 @@ bool Engine::setAudio(const live::AudioSettings& audio, juce::String& status) {
     return true;
 }
 
-bool Engine::setField(const live::Field& field, const std::vector<live::TrackPair>& pairs, juce::String& status) {
-    live::FieldPlan fp = live::planOf(field, live::arrivalsOf(pairs));
+bool Engine::reroute() {
+    if (program_.slots.empty()) return false;
+    auto routes = routesFor(program_.compiled.latency);
+    if (routes == routes_) return false;  // a change the routes do not see is the Decoder's alone
+    juce::String why;
+    if (!runner_.swap(program_.compiled, program_.slots, program_.levels, why, program_.keep, routes)) return false;
+    routes_ = std::move(routes);
+    return true;
+}
+
+bool Engine::setField(const live::Field& field, const std::vector<live::TrackPair>& pairs,
+                      const std::vector<live::HostInput>& inputs, juce::String& status) {
+    auto arrivals = live::arrivalsOf(pairs);
+    for (const live::Arrival& a : live::inputArrivals(s_.audio, inputs, inputRow_, loopChannels_)) arrivals.push_back(a);
+    live::FieldPlan fp = live::planOf(field, arrivals);
     //  the restored states the new plugins took: given up only once the swap is made, so a change that fails part
     //  of the way leaves them for the next
     std::vector<std::string> restoredEncoders, restoredEffects;
@@ -273,12 +281,33 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
         restoredEffects.push_back(keyOf(insert.id));
         nextEffects.push_back({insert, std::move(plugin)});
     }
+    //  each Decoder: the one it had, or one loaded now
+    std::vector<Dec> nextDecoders;
+    std::vector<std::string> restoredDecoders;
+    for (const std::uint64_t id : fp.decoders) {
+        const auto had = std::find_if(decoders_.begin(), decoders_.end(), [&](const Dec& d) { return d.id == id; });
+        if (had != decoders_.end()) {
+            nextDecoders.push_back(*had);
+            continue;
+        }
+        auto plugin = loadDecoder(status);
+        if (plugin == nullptr) return false;
+        decode(plugin.get(), waitingDecoders_.find(keyOf(id)));
+        restoredDecoders.push_back(keyOf(id));
+        nextDecoders.push_back({id, std::move(plugin)});
+    }
+    const auto ids = [](const std::vector<Dec>& list) {
+        std::vector<std::uint64_t> out;
+        for (const Dec& d : list) out.push_back(d.id);
+        return out;
+    };
     const auto sidechains = [](const live::Plan& p) {
         std::vector<int> out;
         for (const live::Slot& slot : p.slots) out.push_back(slot.sidechain);
         return out;
     };
     if (fp.plan.nodes == plan_.nodes && fp.plan.main == plan_.main && fp.effects == playing_ &&
+        ids(nextDecoders) == ids(decoders_) &&
         sidechains(fp.plan) == sidechains(plan_) && fp.plan.returns.size() == plan_.returns.size() &&
         std::equal(fp.plan.returns.begin(), fp.plan.returns.end(), plan_.returns.begin(),
                    [](const live::Return& a, const live::Return& b) { return a.chain == b.chain; }))
@@ -293,19 +322,25 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     };
     for (const Voice& v : next) add(v.encoder);
     for (const Fx& f : nextEffects) add(f.plugin);
-    add(decoder_);
+    for (const Dec& d : nextDecoders) add(d.plugin);
 
     std::string error;
     const auto compiled = live::compile(fp.plan, &error);
     juce::String why;
-    if (!compiled || !runner_.swap(*compiled, slots, compiled->levels, why, keep, routesFor(compiled->latency))) {
+    auto routes = compiled ? routesFor(compiled->latency) : std::vector<Runner::Route>{};
+    if (!compiled || !runner_.swap(*compiled, slots, compiled->levels, why, keep, routes)) {
         status = "the plan: " + (compiled ? why : juce::String(error));
         return false;
     }
     program_ = {*compiled, slots, compiled->levels, std::move(keep)};
+    routes_ = std::move(routes);
     //  the Encoders only the old program plays stay alive in it until the audio thread lets go of it
     for (const auto& key : restoredEncoders) waiting_.erase(key);
     for (const auto& key : restoredEffects) waitingEffects_.erase(key);
+    for (const auto& key : restoredDecoders) waitingDecoders_.erase(key);
+    for (const Dec& d : decoders_)
+        if (std::none_of(nextDecoders.begin(), nextDecoders.end(), [&](const Dec& x) { return x.id == d.id; }))
+            waitingDecoders_.set(keyOf(d.id), Json(encoded(d.plugin.get()).toStdString()));
     //  a track that leaves the field, or an insert whose node does, keeps its state for when it comes back
     for (const Voice& v : voices_)
         if (std::none_of(next.begin(), next.end(), [&](const Voice& x) { return x.track == v.track; }))
@@ -316,14 +351,15 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
             waitingEffects_.set(keyOf(f.insert.id), Json(encoded(f.plugin.get()).toStdString()));
     voices_ = std::move(next);
     effects_ = std::move(nextEffects);
+    decoders_ = std::move(nextDecoders);
     playing_ = fp.effects;
     plan_ = fp.plan;
     fieldPlan_ = std::move(fp);
     latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
     int buses = 0;
     for (const live::FieldNode& n : plan_.nodes) buses += n.input < 0 ? 1 : 0;
-    status =
-        juce::String(static_cast<int>(voices_.size())) + " Encoders, " + juce::String(buses) + " buses and the Decoder";
+    status = juce::String(static_cast<int>(voices_.size())) + " Encoders, " + juce::String(buses) + " buses, " +
+             juce::String(static_cast<int>(decoders_.size())) + " Decoders";
     return true;
 }
 
@@ -346,6 +382,12 @@ void Engine::forget(const live::Tree& tree, const live::Shape& shape) {
                             [&](const live::Insert& i) { return keyOf(i.id) == id; }))
                 effects.set(id, state);
     waitingEffects_ = std::move(effects);
+    Json decoders = Json::object();
+    const auto kept = shape.decoders.empty() ? std::vector<std::uint64_t>{live::kFirstDecoder} : shape.decoders;
+    for (const auto& [id, state] : waitingDecoders_.members())
+        if (std::any_of(kept.begin(), kept.end(), [&](std::uint64_t d) { return keyOf(d) == id; }))
+            decoders.set(id, state);
+    waitingDecoders_ = std::move(decoders);
 }
 
 Json Engine::states() const {
@@ -356,7 +398,9 @@ Json Engine::states() const {
     Json all = Json::object();
     all.set("encoders", std::move(encoders));
     all.set("effects", std::move(effects));
-    all.set("decoder", Json(encoded(decoder_.get()).toStdString()));
+    Json decoders = waitingDecoders_;
+    for (const Dec& d : decoders_) decoders.set(keyOf(d.id), Json(encoded(d.plugin.get()).toStdString()));
+    all.set("decoders", std::move(decoders));
     return all;
 }
 
@@ -381,11 +425,27 @@ void Engine::restore(const Json& states) {
             else
                 waitingEffects_.set(id, state);
         }
-    decode(decoder_.get(), states.find("decoder"));
+    waitingDecoders_ = Json::object();
+    //  a set from before there could be several: its one Decoder is the first
+    if (const Json* one = states.find("decoder"))
+        if (states.find("decoders") == nullptr) waitingDecoders_.set(keyOf(live::kFirstDecoder), *one);
+    if (const Json* decoders = states.find("decoders"); decoders != nullptr && decoders->isObject())
+        for (const auto& [id, state] : decoders->members()) waitingDecoders_.set(id, state);
+    for (const Dec& d : decoders_)
+        if (const Json* state = waitingDecoders_.find(keyOf(d.id))) {
+            decode(d.plugin.get(), state);
+            waitingDecoders_.erase(keyOf(d.id));
+        }
 }
 
 void Engine::transport(const live::TransportMessage& message, std::int64_t stampNs) noexcept {
     (void)queue_.push({message, stampNs});
+}
+
+juce::AudioProcessor* Engine::decoderOf(std::uint64_t id) const {
+    for (const Dec& d : decoders_)
+        if (d.id == id) return d.plugin.get();
+    return nullptr;
 }
 
 juce::AudioProcessor* Engine::encoder(int pair) const {
@@ -420,7 +480,8 @@ juce::AudioProcessor* Engine::firstEffect(live::Effect effect) const {
 }
 
 bool Engine::holds(const juce::AudioProcessor* p) const {
-    if (p != nullptr && p == decoder_.get()) return true;
+    for (const Dec& d : decoders_)
+        if (p != nullptr && p == d.plugin.get()) return true;
     if (std::any_of(effects_.begin(), effects_.end(), [&](const Fx& f) { return f.plugin.get() == p; })) return true;
     return std::any_of(voices_.begin(), voices_.end(), [&](const Voice& v) { return v.encoder.get() == p; });
 }
@@ -448,6 +509,7 @@ void Engine::audioDeviceIOCallbackWithContext(const float* const* inputs, int in
     if (inputCount < inputChannels_) return;
     for (int ch = 0; ch < outputChannels_; ++ch)
         if (outputs[ch] == nullptr) return;
+    const auto began = juce::Time::getHighResolutionTicks();
     for (int done = 0; done < frames;) {
         const int n = std::min(frames - done, in_.getNumSamples());
         for (int ch = 0; ch < inputChannels_; ++ch)
@@ -466,6 +528,12 @@ void Engine::audioDeviceIOCallbackWithContext(const float* const* inputs, int in
             juce::FloatVectorOperations::copy(outputs[ch] + done, out_.getReadPointer(ch), n);
         done += n;
     }
+    //  the block's share of its own length, smoothed over about a second
+    const double took = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - began);
+    const double share = took * s_.rate / static_cast<double>(frames);
+    const float before = load_.load(std::memory_order_relaxed);
+    const float k = static_cast<float>(std::min(1.0, static_cast<double>(frames) / s_.rate));
+    load_.store(before + k * (static_cast<float>(share) - before), std::memory_order_relaxed);
 }
 
 }  // namespace bambi::livehost

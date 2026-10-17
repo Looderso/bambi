@@ -71,6 +71,7 @@ Field layOut(const Tree& tree, const Shape& shape) {
         field.parts.push_back({in.id, false, -1, shape.insertsOn(in.id), from == in.id ? 0 : from});
     }
     field.main = shape.insertsOn(kMain);
+    field.decoders = shape.decoders.empty() ? std::vector<std::uint64_t>{kFirstDecoder} : shape.decoders;
     return field;
 }
 
@@ -117,8 +118,11 @@ FieldPlan planOf(const Field& field, const std::vector<Arrival>& arrivals) {
         out.plan.returns.push_back(std::move(ret));
     }
     for (const Insert& insert : field.main) out.plan.main.push_back(slot(insert));
-    out.plan.decoder = static_cast<int>(out.encoders.size() + out.effects.size());
-    out.plan.slots.assign(static_cast<std::size_t>(out.plan.decoder) + 1, Slot{});
+    for (const std::uint64_t d : field.decoders) {
+        out.plan.decoders.push_back(static_cast<int>(out.encoders.size() + out.effects.size() + out.decoders.size()));
+        out.decoders.push_back(d);
+    }
+    out.plan.slots.assign(out.encoders.size() + out.effects.size() + out.decoders.size(), Slot{});
     //  only the field's sources arrive -- a bus, a node in Live, a track inside a whole group, no track (0) none
     const auto hear = [&](Slot& slot, TrackId from) {
         if (const Arrival* a = from != 0 ? arrivalOf(from) : nullptr) {
@@ -226,6 +230,7 @@ Json toJson(const Shape& shape) {
         inputs.push(std::move(o));
     }
     j.set("inputs", std::move(inputs));
+    if (!shape.decoders.empty()) j.set("decoders", ids(shape.decoders));
     return j;
 }
 
@@ -237,7 +242,7 @@ Shape shapeFrom(const Json& json) {
                 if (const auto v = idOf(id, 1.0)) out.push_back(*v);
         return out;
     };
-    Shape shape{ids("split"), ids("inLive"), {}, ids("returns"), {}, {}};
+    Shape shape{ids("split"), ids("inLive"), {}, ids("returns"), {}, {}, {}};
     if (const Json* list = json.find("sidechains"); list != nullptr && list->isArray())
         for (const Json& c : list->items()) {
             const Json* source = c.find("source");
@@ -264,6 +269,7 @@ Shape shapeFrom(const Json& json) {
                 }
             shape.chains.push_back(std::move(chain));
         }
+    shape.decoders = ids("decoders");
     if (const Json* inputs = json.find("inputs"); inputs != nullptr && inputs->isArray())
         for (const Json& o : inputs->items()) {
             const Json* id = o.find("id");

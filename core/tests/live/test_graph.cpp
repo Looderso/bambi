@@ -82,7 +82,7 @@ Plan randomPlan(std::mt19937& random) {
         p.returns.push_back(ret);
     }
     for (int i = count(random) % 3; i > 0; --i) p.main.push_back(slot());
-    p.decoder = slot();
+    p.decoders = {slot()};
     return p;
 }
 
@@ -94,7 +94,7 @@ Plan source(int latency) {
     n.input = 0;
     n.encoder = 0;
     p.nodes = {n};
-    p.decoder = 1;
+    p.decoders = {1};
     return p;
 }
 
@@ -160,7 +160,9 @@ TEST_CASE("whatever is read is finished: a send after its node's inserts, a bus 
         for (std::size_t k = 0; k < c->ops.size(); ++k) {
             const Op& read = c->ops[k];
             if (read.step != Step::Add && read.step != Step::Decode) continue;
-            for (std::size_t later = k + 1; later < c->ops.size(); ++later) CHECK(c->ops[later].to != read.from);
+            //  a decoder's step writes no buffer: its `to` is which decoder
+            for (std::size_t later = k + 1; later < c->ops.size(); ++later)
+                if (c->ops[later].step != Step::Decode) CHECK(c->ops[later].to != read.from);
         }
     }
 }
@@ -240,7 +242,7 @@ TEST_CASE("the shape the first delay compensation was checked on comes out the s
     }
     p.returns = {Return{{3}}, Return{{4}}, Return{{5}}};
     p.main = {6};
-    p.decoder = 7;
+    p.decoders = {7};
     const auto c = compile(p);
     REQUIRE(c.has_value());
     CHECK(c->latency == 64 + 300 + 64);
@@ -282,7 +284,7 @@ TEST_CASE("a plan that does not hold together is refused") {
     CHECK(error.find("cycle") != std::string::npos);
 
     p = source(0);
-    p.decoder = -1;
+    p.decoders = {-1};
     CHECK_FALSE(compile(p, &error).has_value());
 
     p = source(0);
@@ -303,7 +305,7 @@ TEST_CASE("an Encoder's and an insert's step name the pair their sidechain hears
     n.encoder = 0;
     n.inserts = {1, 2};
     p.nodes = {n};
-    p.decoder = 3;
+    p.decoders = {3};
     const auto c = compile(p);
     REQUIRE(c.has_value());
     int seen = 0;
@@ -329,7 +331,7 @@ TEST_CASE("a source's width reaches its step, and a source neither one nor two c
     n.width = 1;
     n.encoder = 0;
     p.nodes = {n};
-    p.decoder = 1;
+    p.decoders = {1};
     const auto c = compile(p);
     REQUIRE(c.has_value());
     const auto encode =
@@ -338,4 +340,29 @@ TEST_CASE("a source's width reaches its step, and a source neither one nor two c
     CHECK((encode->from == 20 && encode->width == 1 && encode->sidechain == 3 && encode->sidechainWidth == 1));
     p.nodes[0].width = 3;
     CHECK_FALSE(compile(p).has_value());
+}
+
+TEST_CASE("every decoder hears Main after its chain, each by its place, the plan as late as the slowest") {
+    //  Catches: a second decoder left without a step, two writing the same output, one before Main's chain,
+    //  the latency of the first decoder taken for all.
+    Plan p;
+    p.slots = {{0, -1}, {10, -1}, {64, -1}, {200, -1}};
+    FieldNode n;
+    n.track = 1;
+    n.input = 0;
+    n.encoder = 0;
+    p.nodes = {n};
+    p.main = {1};
+    p.decoders = {2, 3};
+    const auto c = compile(p);
+    REQUIRE(c.has_value());
+    std::vector<int> decoded;
+    for (const Op& op : c->ops)
+        if (op.step == Step::Decode) {
+            CHECK(op.from == c->mainBuffer());
+            decoded.push_back(op.to);
+        }
+    CHECK(decoded == std::vector<int>{0, 1});
+    CHECK(c->ops.back().step == Step::Decode);
+    CHECK(c->latency == 10 + 200);
 }

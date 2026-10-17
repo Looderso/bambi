@@ -9,9 +9,8 @@
 #include "bambi/patch/json.hpp"
 
 /*  Where the live host plays everything out, and hears its own inputs. The devices the user chose lie side by side as one row of output
- *  channels, the clock's first; the Decoder's bus is that row, channel for channel, so where it places an output is
- *  where it is heard. Live's Main and every copy of an output are the host's: it keeps their channels, the Decoder
- *  stays clear of them, and the host plays them itself, after the Decoder.
+ *  channels, the clock's first. Each Decoder places its outputs on its own bus; the host plays each, as a block,
+ *  onto the row where this computer's settings put it, and Live's Main and every copy of an output too.
  *
  *  Every route is delayed so that all of it is heard together: by how much sooner its device plays than the
  *  slowest chosen, and Live's Main further by the field's latency, so a track left in Live lines up with one the
@@ -27,7 +26,7 @@
  */
 namespace bambi::live {
 
-/// The most channels the row holds: the Decoder's bus is the row, and a VST3 bus stops here.
+/// The most channels the row holds, as a VST3 bus does.
 inline constexpr int kMaxRowChannels = kMaxVst3BusChannels;
 
 /// One of the system's audio devices, as the host finds it.
@@ -62,9 +61,6 @@ struct Row {
     int at(const DeviceChannel& c) const;  ///< its row channel, or 0 when its device is not on the row
     DeviceChannel channel(int at) const;   ///< the device channel at a row channel; none past the row
     int deviceOf(int at) const;            ///< the index of the device a row channel is on, or -1
-    std::vector<int> deviceEnds() const;   ///< each device's last row channel but the last's
-    /// What the Decoder's placement keeps to: the row's width and its devices, the channels given kept.
-    OutputBus bus(std::vector<int> kept) const;
 };
 /// The devices the host joins with the loop device: those `chosen`, in order, that the system has and offers, each
 /// once, while every one's outputs fit the output row -- one that would take it past kMaxRowChannels is left out,
@@ -73,30 +69,45 @@ std::vector<AudioDevice> aggregateOf(const std::vector<std::string>& chosen, con
 /// Their outputs, or their inputs, as a row; a device with none in that direction takes no channel of it.
 Row rowOf(const std::vector<AudioDevice>& devices, bool inputs = false);
 
-/// What the host plays out.
-enum class Signal { Main, Headphones, Speakers };
+/// What the host plays out: Live's Main, or one of a Decoder's outputs.
+struct Out {
+    std::uint64_t decoder{0};          ///< the Decoder's id; 0 for Live's Main
+    Output which{Output::Headphones};  ///< a Decoder's output; nothing for Main
+    bool main() const { return decoder == 0; }
+    friend bool operator==(const Out&, const Out&) = default;
+};
+inline constexpr Out kLiveMain{};
+
+/// A Decoder as it plays now: its id, where it reports its outputs on its own bus, and its latency.
+struct PlayingDecoder {
+    std::uint64_t id{0};
+    DecoderReport report;
+    int latency{0};
+};
 
 /// An output played again by the host on other channels: a second pair of headphones, or back to Live.
 struct Copy {
-    Signal of{Signal::Headphones};
+    Out of;
     DeviceChannel at;    ///< its first channel; unused for one back to Live
     bool toLive{false};  ///< onto the loop device's record pair, where Live's bambi track records it
 
     friend bool operator==(const Copy&, const Copy&) = default;
 };
 
-/// What this computer keeps of where the host plays and hears, by device channel: it wins over what a restored set's Decoder
-/// holds, since a set opened elsewhere meets other devices.
+/// Where a Decoder's output plays: its first channel, the rest after it as they lie on the Decoder's bus.
+struct Placed {
+    Out out;
+    DeviceChannel at;
+    friend bool operator==(const Placed&, const Placed&) = default;
+};
+
+/// What this computer keeps of where the host plays and hears, by device channel: a set opened elsewhere meets
+/// other devices. What a Decoder plays, and how, is the Decoder's and travels with the set.
 struct AudioSettings {
     std::vector<std::string> devices;  ///< the chosen devices' uids, the clock first
     int buffer{64};
-    DeviceChannel main;  ///< the first of Live's Main's pair
-    bool headphonesOn{true};
-    DeviceChannel headphones;  ///< the pair's first
-    bool speakersOn{false};
-    DeviceChannel speakers;  ///< where the layout's channel 1 plays
-    std::string layout;      ///< a built-in's name; empty: the Decoder's own
-    double levelDb{0.0};
+    DeviceChannel main;          ///< the first of Live's Main's pair
+    std::vector<Placed> placed;  ///< each Decoder output's place; one placed nowhere is not heard
     std::vector<Copy> copies;
     /// Where each of the field's inputs is heard: its first channel, by the input's id.
     struct InputAt {
@@ -106,21 +117,20 @@ struct AudioSettings {
     };
     std::vector<InputAt> inputs;
 
+    /// Where `out` is placed: Main's, or a Decoder output's; none when it is placed nowhere.
+    DeviceChannel at(const Out& out) const;
     friend bool operator==(const AudioSettings&, const AudioSettings&) = default;
 };
 Json toJson(const AudioSettings& s);
 AudioSettings audioSettingsFrom(const Json& j);
 
-/// The row channels a copy, or Main, takes: the pair from its first channel, or for the speakers the layout's
-/// channels moved to start there. Empty for one back to Live or on no device of the row.
-std::vector<int> takenBy(const Copy& c, const Row& row, const DecoderReport& decoder);
-/// Every row channel the host keeps for itself: Main's pair and every copy's, ascending, each once.
-std::vector<int> keptChannels(const AudioSettings& s, const Row& row, const DecoderReport& decoder);
-
-/// What the host asks of the Decoder for these settings on this row: its outputs where they are kept, the layout,
-/// the level, and the row's kept channels and devices. An output whose device is not on the row is left as the
-/// Decoder has it.
-DecoderRequest requestFor(const AudioSettings& s, const Row& row, const DecoderReport& decoder);
+/// The channels `out` plays on its Decoder's bus, as the Decoder reports them: the headphones' pair, the layout's
+/// channels; none while that output is off, or for a Decoder not among `decoders`. Main's are its own two.
+std::vector<int> busChannels(const Out& out, const std::vector<PlayingDecoder>& decoders);
+/// The row channels `out` takes from `at`: its bus channels moved as a block to start there, those past the row
+/// left out. Empty on no device of the row.
+std::vector<int> takenBy(const Out& out, const DeviceChannel& at, const Row& row,
+                         const std::vector<PlayingDecoder>& decoders);
 
 /// Where each input of the field arrives on the input row, the loop device's `loopChannels` before the input row's:
 /// on the channel kept for it, all of it on one device. One whose device is not chosen does not arrive.
@@ -132,7 +142,8 @@ struct OutputRoute {
     enum class From { Decoder, Main };
     enum class To { Row, Loop };
     From from{From::Decoder};
-    int channel{0};  ///< the Decoder's bus channel, or 1 and 2 for Main's left and right
+    int decoder{0};  ///< which Decoder, by its place among those given
+    int channel{0};  ///< that Decoder's bus channel, or 1 and 2 for Main's left and right
     To to{To::Row};
     int dest{0};   ///< a row channel, or the loop device's record channel, 1 or 2
     int delay{0};  ///< samples
@@ -143,8 +154,10 @@ struct OutputPlan {
     std::vector<OutputRoute> routes;
     std::vector<int> clashes;  ///< row channels two routes reach, ascending: both are heard there
 };
-/// The routes for these settings on this row, with the Decoder as it reports itself and the field `fieldLatency`
-/// samples late: the Decoder's outputs that play, on the same row channels; Main on its pair; every copy.
-OutputPlan planOutputs(const AudioSettings& s, const Row& row, const DecoderReport& decoder, int fieldLatency);
+/// The routes for these settings on this row, with the Decoders as they report themselves and the field
+/// `fieldLatency` samples late through the slowest of them: each Decoder output that plays and is placed, onto its
+/// place, a quicker Decoder's held back to the slowest; Main on its pair; every copy.
+OutputPlan planOutputs(const AudioSettings& s, const Row& row, const std::vector<PlayingDecoder>& decoders,
+                       int fieldLatency);
 
 }  // namespace bambi::live

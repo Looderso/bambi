@@ -15,7 +15,7 @@ live::AudioSettings loadAudioSettings() {
     const juce::File file = audioSettingsFile();
     if (!file.existsAsFile()) {
         live::AudioSettings fresh;
-        fresh.copies.push_back({live::Signal::Headphones, {}, true});
+        fresh.copies.push_back({{live::kFirstDecoder, Output::Headphones}, {}, true});
         return fresh;
     }
     return live::audioSettingsFrom(Json::parse(file.loadFileAsString().toStdString()));

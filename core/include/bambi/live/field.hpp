@@ -68,6 +68,7 @@ struct HostInput {
     friend bool operator==(const HostInput&, const HostInput&) = default;
 };
 inline constexpr TrackId kFirstInput = TrackId{1} << 40;
+inline constexpr std::uint64_t kFirstDecoder = 1;  ///< the Decoder a set that names none has
 inline bool isInput(TrackId id) { return id >= kFirstInput; }
 
 struct Shape {
@@ -77,6 +78,8 @@ struct Shape {
     std::vector<TrackId> returns;       ///< Live's returns the field plays, its own
     std::vector<Sidechain> sidechains;  ///< the sources whose Encoder's sidechain hears another track
     std::vector<HostInput> inputs;      ///< the host's own sources, after Live's in the field
+    /// The Decoders, by ids of their own, each its own instance hearing Main; none: one, kFirstDecoder
+    std::vector<std::uint64_t> decoders;
     friend bool operator==(const Shape&, const Shape&) = default;
 
     /// The inserts on `node`, kMain for Main's; none when it has no chain.
@@ -102,9 +105,10 @@ struct FieldReturn {
 };
 
 struct Field {
-    std::vector<Part> parts;           ///< a bus before everything in it
-    std::vector<FieldReturn> returns;  ///< in Live's order
-    std::vector<Insert> main;          ///< Main's chain, before the decoder
+    std::vector<Part> parts;              ///< a bus before everything in it
+    std::vector<FieldReturn> returns;     ///< in Live's order
+    std::vector<Insert> main;             ///< Main's chain, before the decoders
+    std::vector<std::uint64_t> decoders;  ///< at least one
     friend bool operator==(const Field&, const Field&) = default;
 
     /// The sources, in the order of the parts: what needs a pair.
@@ -125,14 +129,15 @@ std::vector<Arrival> arrivalsOf(const std::vector<TrackPair>& pairs);
 
 /// The plan that plays a field: a node per source that arrives, encoded by an Encoder slot of its own, slots
 /// 0, 1, ... in the order of the parts; a node per bus; a return per return of the field; then a slot per
-/// insert, the parts' in their order, the returns' and Main's last; the decoder the slot after them all. A source
+/// insert, the parts' in their order, the returns' and Main's last; then a slot per decoder, in the field's order. A source
 /// that does not arrive -- a track past the loop device's pairs, an input whose device is not chosen -- is left out
 /// with its inserts, and a bus keeps its place. An insert's slot names where its sidechain's source arrives.
 /// The slots' latencies are the caller's to fill.
 struct FieldPlan {
     Plan plan;
-    std::vector<TrackId> encoders;  ///< the track each Encoder slot encodes
-    std::vector<Insert> effects;    ///< the insert each slot after the Encoders plays
+    std::vector<TrackId> encoders;        ///< the track each Encoder slot encodes
+    std::vector<Insert> effects;          ///< the insert each slot after the Encoders plays
+    std::vector<std::uint64_t> decoders;  ///< the decoder each slot after the inserts plays
 };
 FieldPlan planOf(const Field& field, const std::vector<Arrival>& arrivals);
 

@@ -16,6 +16,8 @@
  *    - every node at the top, and every return: `live | bambi`, the chosen one a block;
  *    - a track inside a group the field takes whole: "encode here", which makes the group a bus; a bus: "encode
  *      whole", which takes it back;
+ *    - after Main's chain, the decoders, one under the other, each its own listener: a click shows one, "+ decoder"
+ *      adds one, a cross removes one after asking, never the last;
  *    - a node in the field, Main and a return in it: its inserts as chips, each with a cross that removes it after
  *      asking -- the host has no undo -- and "+ echo", "+ reverb" while the pointer is on its row;
  *    - what a row offers only under the pointer is on the line under its box, in place of the sends, so it never
@@ -46,7 +48,7 @@ public:
               const std::vector<live::TrackPair>& pairs);
 
     std::function<void(live::Shape)> reshape;                     ///< the user changed the shape
-    std::function<void()> showDecoder;                            ///< the decoder's node was clicked
+    std::function<void(std::uint64_t)> showDecoder;               ///< a decoder's node was clicked, by its id
     std::function<void(live::TrackId)> showSource;                ///< a source's box: its Encoder
     std::function<void(std::uint64_t, live::Effect)> showInsert;  ///< an insert's chip: its plugin
 
@@ -58,7 +60,7 @@ public:
 
 private:
     static constexpr live::TrackId kHoverMain = ~live::TrackId{0};         ///< Main's row under the pointer
-    static constexpr live::TrackId kHoverDecoder = ~live::TrackId{0} - 1;  ///< the decoder's box
+    static constexpr live::TrackId kHoverDecoder = ~live::TrackId{0} - 1;  ///< the first decoder's box; the next below
 
     void body(juce::Graphics& g, float top);
     float node(juce::Graphics& g, const live::Node& n, juce::Point<float> at);

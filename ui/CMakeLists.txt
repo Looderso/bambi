@@ -27,6 +27,7 @@ add_library(bambi-ui STATIC
   src/TextField.cpp
   src/PresetBrowser.cpp
   src/ConfirmBox.cpp
+  src/Sheet.cpp
   src/Tooltips.cpp
   src/Widgets.cpp
 )

@@ -84,9 +84,6 @@ public:
     /// Light or stop an output. Lighting one whose channels collide with another's stops that one and says so in
     /// `notice()`; one needing more channels than the bus has does not light and says how many it needs.
     void playOutput(Output which, bool on);
-    /// The bus the outputs are placed on: its width, and the channels and devices a host playing them asked for
-    /// through the remote interface -- held while the Decoder runs, never saved. Message thread.
-    bambi::OutputBus outputBus() const;
     /// Message thread: what the remote interface reports, and a request through it granted as the page grants it.
     bambi::DecoderReport remoteReport() const;
     void remoteRequest(const bambi::DecoderRequest& request);
@@ -271,7 +268,6 @@ private:
 
     Diagnostics diag_;
     juce::String notice_;
-    std::vector<int> hostKept_, hostDeviceEnds_;  ///< the remote host's, for `outputBus`; message thread
     bambi::host::RemoteAnswer remote_{
         bambi::kDecoderRemoteKind, bambi::kDecoderRemoteVersion,
         [this] { return bambi::toJson(remoteReport()).dump(0); },

@@ -43,8 +43,9 @@ bool valid(const Plan& p, std::string* error) {
             if (!use(s)) return fail(error, "a return's slot is out of range or used twice");
     for (const int s : p.main)
         if (!use(s)) return fail(error, "a main chain slot is out of range or used twice");
-    if (p.decoder < 0) return fail(error, "no decoder");
-    if (!use(p.decoder)) return fail(error, "the decoder's slot is out of range or used twice");
+    if (p.decoders.empty()) return fail(error, "no decoder");
+    for (const int d : p.decoders)
+        if (!use(d)) return fail(error, "a decoder's slot is out of range or used twice");
     for (const Slot& s : p.slots)
         if (s.sidechain >= 0 && s.sidechainWidth != 1 && s.sidechainWidth != 2)
             return fail(error, "a sidechain is one channel wide or two");
@@ -130,8 +131,12 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
             {Step::Add, -1, nodes + r, main, ready - returned[static_cast<std::size_t>(r)], levelOf(nodes + r)});
     for (const int s : p.main)
         c.ops.push_back({Step::Process, s, -1, main, 0, -1, sidechainOf(s), 2, sidechainWidthOf(s)});
-    c.ops.push_back({Step::Decode, p.decoder, main, -1, 0, -1});
-    c.latency = ready + chained(p.main) + latency(p.decoder);
+    int slowest = 0;
+    for (std::size_t k = 0; k < p.decoders.size(); ++k) {
+        c.ops.push_back({Step::Decode, p.decoders[k], main, static_cast<int>(k), 0, -1});
+        slowest = std::max(slowest, latency(p.decoders[k]));
+    }
+    c.latency = ready + chained(p.main) + slowest;
     c.levels = nodes * returns + nodes + returns;
     return c;
 }

@@ -607,34 +607,22 @@ bambi::DecoderState BambiDecoderProcessor::decoderState() const { return documen
 
 void BambiDecoderProcessor::playOutput(Output which, bool on) {
     const bambi::DecoderState now = decoderState();
-    bambi::Lit lit = bambi::lightOutput(now, which, on, outputBus());
+    bambi::Lit lit = bambi::lightOutput(now, which, on, getChannelCountOfBus(false, 0));
     notice_ = juce::String::fromUTF8(lit.notice.c_str());
     if (lit.state == now) return;
     const bambi::DecoderState next = std::move(lit.state);
     editDecoder(on ? "play output" : "stop output", [next](bambi::DecoderState& s) { s = next; });
 }
 
-bambi::OutputBus BambiDecoderProcessor::outputBus() const {
-    bambi::OutputBus bus(getChannelCountOfBus(false, 0));
-    bus.kept = hostKept_;
-    bus.deviceEnds = hostDeviceEnds_;
-    return bus;
-}
-
 bambi::DecoderReport BambiDecoderProcessor::remoteReport() const {
     const auto* level = hostParameter(bambi::decoderParam("output.level"));
-    return bambi::reportOf(decoderState(), outputBus(), level->convertFrom0to1(level->getValue()),
+    return bambi::reportOf(decoderState(), getChannelCountOfBus(false, 0), level->convertFrom0to1(level->getValue()),
                            notice_.toStdString());
 }
 
 void BambiDecoderProcessor::remoteRequest(const bambi::DecoderRequest& request) {
-    if (request.kept) hostKept_ = *request.kept;
-    if (request.deviceEnds) {
-        hostDeviceEnds_ = *request.deviceEnds;
-        std::sort(hostDeviceEnds_.begin(), hostDeviceEnds_.end());
-    }
     const bambi::DecoderState now = decoderState();
-    bambi::Lit lit = bambi::grant(now, request, outputBus());
+    bambi::Lit lit = bambi::grant(now, request, getChannelCountOfBus(false, 0));
     notice_ = juce::String::fromUTF8(lit.notice.c_str());
     if (lit.state != now) {
         const bambi::DecoderState next = std::move(lit.state);

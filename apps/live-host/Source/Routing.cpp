@@ -15,24 +15,12 @@ namespace colour = ui::theme::colour;
 namespace rt = ui::theme::routing;
 using live::Node;
 
-const juce::String kDot = juce::String::fromUTF8(" \xc2\xb7 ");
+using ui::kSeparator;
 
 juce::String nameOf(live::Effect e) { return e == live::Effect::Reverb ? "reverb" : "echo"; }
 
 juce::Colour colourOf(live::Effect e) {
     return colour::identity(e == live::Effect::Reverb ? Product::Reverb : Product::Echo);
-}
-
-//  A frame, solid or dashed as what Live plays outside the field is.
-void frame(juce::Graphics& g, juce::Rectangle<float> box, juce::Colour c, float weight, bool dashed) {
-    g.setColour(c);
-    if (!dashed) {
-        g.drawRect(box, weight);
-        return;
-    }
-    juce::Path p;
-    p.addRectangle(box);
-    ui::strokeDashed(g, p, ui::theme::stroke::outsideDash, juce::PathStrokeType(weight));
 }
 
 //  The ring round a node under the pointer, outside its frame.
@@ -181,7 +169,7 @@ void RoutingPage::attachTo(live::TrackId target) {
 //  What the band says while a slot waits.
 juce::String RoutingPage::picking() const {
     if (pick_.orphan != 0)
-        return "attach the orphaned chain" + kDot + "click a part of the field" + kDot + "esc cancels";
+        return "attach the orphaned chain" + kSeparator + "click a part of the field" + kSeparator + "esc cancels";
     juce::String what;
     if (pick_.source != 0) {
         const auto n =
@@ -199,7 +187,7 @@ juce::String RoutingPage::picking() const {
                                                      : juce::String());
                 }
     }
-    return "sidechain for " + what + kDot + "click a source" + kDot + "esc cancels";
+    return "sidechain for " + what + kSeparator + "click a source" + kSeparator + "esc cancels";
 }
 
 bool RoutingPage::keyPressed(const juce::KeyPress& key) {
@@ -246,7 +234,7 @@ void RoutingPage::band(juce::Graphics& g) {
     const int sources = static_cast<int>(field_.sources().size());
     const int paired = static_cast<int>(pairs_.size());
     const juce::String count =
-        juce::String(sources) + (sources == 1 ? " source" : " sources") + kDot + juce::String(paired) + " on pairs";
+        juce::String(sources) + (sources == 1 ? " source" : " sources") + kSeparator + juce::String(paired) + " on pairs";
     const juce::String toMain = juce::String("field ") + juce::String::fromUTF8("\xe2\x86\x92") + " main";
     const auto f = ui::labelFont();
     ui::text(g, "live", f, colour::label, {rt::left, 0.0f, ui::textWidth(f, "live") + 2.0f, h});
@@ -316,24 +304,58 @@ void RoutingPage::body(juce::Graphics& g, float top) {
             {{box.getX(), box.getY(),
               std::max(rt::mainWidth + chainWidth(live::kMain) + rt::gap * 3.0f, offersWidth(offers)), rt::row},
              kHoverMain});
-        frame(g, box, colour::ruleStrong, ui::theme::stroke::rule, false);
+        ui::drawFrame(g, box, colour::ruleStrong, ui::theme::stroke::rule, false);
         if (hover_ == kHoverMain) hoverRing(g, box);
         ui::text(g, "main", ui::labelFont(), colour::text, box.withTrimmedLeft(rt::padX));
         if (pick_.orphan != 0) addClickArea(box, [this] { attachTo(live::kMain); });
         float x = chain(g, live::kMain, box.getRight() + rt::gap * 2.0f, m.y);
         if (hover_ == kHoverMain) offer(g, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f, offers);
-        //  the decoder, a node of its own after Main's chain, in its plugin's colour; a click shows it
-        const float dx = std::min(x + rt::gutterLeast, w - rt::left - rt::mainWidth);
-        connect(g, {x - rt::gap, m.y}, {dx, m.y}, true);
-        const juce::Rectangle<float> decoder{dx, box.getY(), rt::mainWidth, rt::boxHeight};
-        g.setColour(colour::ground);
-        g.fillRect(decoder);
-        frame(g, decoder, colour::identity(Product::Decoder), ui::theme::stroke::rule, false);
-        rows_.push_back({decoder, kHoverDecoder});
-        if (hover_ == kHoverDecoder) hoverRing(g, decoder);
-        ui::text(g, "decoder", ui::labelFont(), colour::text, decoder.withTrimmedLeft(rt::padX));
-        addClickArea(decoder, [this] {
-            if (showDecoder) showDecoder();
+        //  the decoders, each a node of its own after Main's chain, in their plugin's colour, one under the other: a
+        //  click shows one, its cross removes it after asking -- never the last -- and "+ decoder" adds a listener
+        const float dx = std::min(x + rt::gutterLeast, w - rt::left - rt::decoderWidth);
+        const auto& decoders = field_.decoders;
+        float dy = box.getY();
+        for (std::size_t k = 0; k < decoders.size(); ++k) {
+            const std::uint64_t id = decoders[k];
+            const juce::Rectangle<float> decoder{dx, dy, rt::decoderWidth, rt::boxHeight};
+            connect(g, {x - rt::gap, m.y}, {dx, decoder.getCentreY()}, true);
+            g.setColour(colour::ground);
+            g.fillRect(decoder);
+            ui::drawFrame(g, decoder, colour::identity(Product::Decoder), ui::theme::stroke::rule, false);
+            const live::TrackId hover = kHoverDecoder - k;
+            rows_.push_back({decoder, hover});
+            if (hover_ == hover) hoverRing(g, decoder);
+            const juce::String name = decoders.size() > 1 ? "decoder " + juce::String(static_cast<int>(k) + 1)
+                                                          : juce::String("decoder");
+            ui::text(g, name, ui::labelFont(), colour::text, decoder.withTrimmedLeft(rt::padX));
+            addClickArea(decoder, [this, id] {
+                if (showDecoder) showDecoder(id);
+            });
+            if (decoders.size() > 1) {
+                const juce::Rectangle<float> cross{decoder.getRight() - rt::padX - ui::theme::controls::closeGlyph,
+                                                   decoder.getCentreY() - ui::theme::controls::closeGlyph / 2.0f,
+                                                   ui::theme::controls::closeGlyph, ui::theme::controls::closeGlyph};
+                addClickArea(ui::drawCloseCross(g, cross), [this, id, name] {
+                    confirm_.ask("remove " + name + "?", "its settings go with it; the host has no undo yet", "remove",
+                                 [this, id] {
+                                     change([this, id](live::Shape& s) {
+                                         if (s.decoders.empty()) s.decoders = field_.decoders;
+                                         s.decoders.erase(std::remove(s.decoders.begin(), s.decoders.end(), id),
+                                                          s.decoders.end());
+                                     });
+                                 });
+                });
+            }
+            dy += rt::boxHeight + rt::gap;
+        }
+        const auto add = ui::drawChip(g, {dx, dy}, rt::control, "+ decoder", colour::label);
+        addClickArea(add.box, [this] {
+            change([this](live::Shape& s) {
+                if (s.decoders.empty()) s.decoders = field_.decoders;
+                std::uint64_t next = live::kFirstDecoder;
+                for (const std::uint64_t d : s.decoders) next = std::max(next, d + 1);
+                s.decoders.push_back(next);
+            });
         });
     }
 
@@ -346,7 +368,7 @@ void RoutingPage::body(juce::Graphics& g, float top) {
         const float cy = y + rt::boxHeight / 2.0f;
         const juce::Rectangle<float> box{rt::left, y, rt::boxWidth, rt::boxHeight};
         rows_.push_back({{0.0f, y, w, rt::row}, r.id});
-        frame(g, box, field ? colour::ruleStrong : colour::rule, ui::theme::stroke::rule, !field);
+        ui::drawFrame(g, box, field ? colour::ruleStrong : colour::rule, ui::theme::stroke::rule, !field);
         if (hover_ == r.id) hoverRing(g, box);
         ui::text(g, juce::String(r.name), ui::labelFont(), colour::text, box.withTrimmedLeft(rt::padX));
         if (field && pick_.orphan != 0) {
@@ -440,7 +462,7 @@ float RoutingPage::node(juce::Graphics& g, const Node& n, juce::Point<float> at)
                            : part->bus             ? colour::ruleStrong
                            : unpaired              ? colour::inactive
                                                    : colour::identity(Product::Encoder);
-    frame(g, box, c, ui::theme::stroke::rule, part == nullptr);
+    ui::drawFrame(g, box, c, ui::theme::stroke::rule, part == nullptr);
     if (hovered && (!pick_.armed() || pickable)) hoverRing(g, box);
     ui::text(g, juce::String(n.name), ui::labelFont(), greyed ? colour::inactive : colour::text,
              box.withTrimmedLeft(rt::padX));

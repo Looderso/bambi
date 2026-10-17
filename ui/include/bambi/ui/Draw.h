@@ -56,6 +56,21 @@ inline void strokeDashed(juce::Graphics& g, const juce::Path& path, const float 
     g.fillPath(dashes);
 }
 
+/// The dot that parts two facts on one line: "16 out · 8 in".
+inline const juce::String kSeparator = juce::String::fromUTF8(" \xc2\xb7 ");
+
+/// A box's frame, solid or dashed as what the live host plays outside the field, or keeps for itself, is.
+inline void drawFrame(juce::Graphics& g, juce::Rectangle<float> box, juce::Colour c, float weight, bool dashed) {
+    g.setColour(c);
+    if (!dashed) {
+        g.drawRect(box, weight);
+        return;
+    }
+    juce::Path p;
+    p.addRectangle(box);
+    strokeDashed(g, p, theme::stroke::outsideDash, juce::PathStrokeType(weight));
+}
+
 inline void ruleH(juce::Graphics& g, float x0, float x1, float y, juce::Colour c) {
     g.setColour(c);
     g.fillRect(x0, y, x1 - x0, theme::stroke::rule);

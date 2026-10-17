@@ -204,12 +204,12 @@ TEST_CASE("a new shape lays the field out again: a split group's children get pa
     //  Catches: a shape that changes nothing until the next tree, or a group that keeps its pair beside its
     //  children's -- it would be heard twice.
     DeviceSession s;
-    CHECK(s.reshape(Shape{{1}, {}, {}, {}, {}, {}}).empty());  // no tree yet: nothing to route
+    CHECK(s.reshape(Shape{{1}, {}, {}, {}, {}, {}, {}}).empty());  // no tree yet: nothing to route
     s.reshape({});
     s.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(3)}});
     CHECK(pairOf(s, 1) == 0);
     CHECK(pairOf(s, 3) == 1);
-    const auto answers = s.reshape(Shape{{1}, {}, {}, {}, {}, {}});
+    const auto answers = s.reshape(Shape{{1}, {}, {}, {}, {}, {}, {}});
     REQUIRE(answers.size() == 3);
     (void)only<Route>(answers);
     CHECK(pairOf(s, 1) == -1);
@@ -222,11 +222,11 @@ TEST_CASE("a new shape lays the field out again: a split group's children get pa
 TEST_CASE("the shape goes into every save and comes back with a restore") {
     //  Catches: a shape the set never keeps, so a reopened set plays every group whole again.
     DeviceSession first;
-    first.reshape(Shape{{1}, {3}, {}, {}, {}, {}});
+    first.reshape(Shape{{1}, {3}, {}, {}, {}, {}, {}});
     first.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(3)}});
     DeviceSession second;
     second.answer(Restore{first.save().state});
-    CHECK(second.shape() == Shape{{1}, {3}, {}, {}, {}, {}});
+    CHECK(second.shape() == Shape{{1}, {3}, {}, {}, {}, {}, {}});
     second.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(3)}});
     CHECK(pairOf(second, 2) == pairOf(first, 2));
     CHECK(pairOf(second, 3) == -1);
@@ -236,7 +236,7 @@ TEST_CASE("the routing says which of Live's returns the field plays, so the devi
     //  Catches: a field return left playing in Live, heard twice; or one the field gave back left silent.
     DeviceSession s;
     s.answer(Tree{{node(1), node(7, Node::Kind::Return), node(8, Node::Kind::Return)}});
-    const auto taken = s.reshape(Shape{{}, {}, {}, {8}, {}, {}});
+    const auto taken = s.reshape(Shape{{}, {}, {}, {8}, {}, {}, {}});
     CHECK(only<Route>(taken).silent == std::vector<TrackId>{8});
     const auto given = s.reshape(Shape{});
     CHECK(only<Route>(given).silent.empty());
@@ -265,7 +265,7 @@ TEST_CASE("a group the user takes whole stays whole") {
     //  Catches: the user's "encode whole" undone by the very shape it makes, because its tracks were sources.
     DeviceSession s;
     s.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1})}});
-    s.reshape(Shape{{1}, {}, {}, {}, {}, {}});
+    s.reshape(Shape{{1}, {}, {}, {}, {}, {}, {}});
     REQUIRE(pairOf(s, 2) >= 0);
     s.reshape(Shape{});
     CHECK(s.shape().split.empty());
