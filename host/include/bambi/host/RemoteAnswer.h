@@ -26,13 +26,13 @@ public:
     //  object would stand in for the component itself.
     int32_t queryIAudioProcessor(const Steinberg::TUID iid, void** obj) override {
         *obj = Steinberg::FUnknownPrivate::iidEqual(iid, remote::kRemoteIid) ? static_cast<remote::IRemote*>(this)
-                                                                              : nullptr;
+                                                                             : nullptr;
         return *obj != nullptr ? Steinberg::kResultOk : Steinberg::kNoInterface;
     }
 
     Steinberg::tresult PLUGIN_API queryInterface(const Steinberg::TUID iid, void** obj) override {
         if (Steinberg::FUnknownPrivate::iidEqual(iid, remote::kRemoteIid) ||
-            Steinberg::FUnknownPrivate::iidEqual(iid, Steinberg::FUnknown::iid)) {
+            Steinberg::FUnknownPrivate::iidEqual(iid, Steinberg::FUnknown_iid)) {
             *obj = static_cast<remote::IRemote*>(this);
             return Steinberg::kResultOk;
         }

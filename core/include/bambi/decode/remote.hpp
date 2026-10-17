@@ -23,7 +23,9 @@ constexpr int kDecoderRemoteVersion = 1;
 
 /// What the Decoder tells a host.
 struct DecoderReport {
-    int bus{0};  ///< its output bus's channels
+    int bus{0};                   ///< its output bus's channels
+    std::vector<int> kept;        ///< the channels the host keeps, as it last asked
+    std::vector<int> deviceEnds;  ///< where the host's devices end, as it last asked
     bool headphonesOn{false};
     int headphoneChannel{1};  ///< the pair's first
     bool speakersOn{false};
@@ -37,7 +39,7 @@ struct DecoderReport {
 
     friend bool operator==(const DecoderReport&, const DecoderReport&) = default;
 };
-DecoderReport reportOf(const DecoderState& d, int bus, double levelDb, std::string notice);
+DecoderReport reportOf(const DecoderState& d, const OutputBus& bus, double levelDb, std::string notice);
 Json toJson(const DecoderReport& r);
 DecoderReport reportFrom(const Json& j);
 
@@ -47,14 +49,18 @@ struct DecoderRequest {
     std::optional<int> headphoneChannel, speakerFirstChannel;
     std::optional<std::string> layout;  ///< a built-in's name
     std::optional<double> levelDb;      ///< the Decoder's level parameter, set by the Decoder
+    /// The bus's shape under the host, held by the Decoder while it runs, never saved: the host asks again on load.
+    std::optional<std::vector<int>> kept, deviceEnds;
 
     friend bool operator==(const DecoderRequest&, const DecoderRequest&) = default;
 };
 Json toJson(const DecoderRequest& r);
 DecoderRequest requestFrom(const Json& j);
 
-/// A state after a request, but for the level: the layout, then the channels, each only where the bus holds it,
-/// then each output lit or stopped by `lightOutput`. The notice says what was refused or moved.
-Lit grant(DecoderState d, const DecoderRequest& r, int bus);
+/// A state after a request, but for the level and the bus's shape, which `bus` already holds: the layout, then
+/// the channels, each only where the output, put there, is clear of the kept channels and on one device, then
+/// each output lit or stopped by `lightOutput`, and last any output still playing where it has no room moved or
+/// stopped. The notice says what was refused, moved or stopped.
+Lit grant(DecoderState d, const DecoderRequest& r, const OutputBus& bus);
 
 }  // namespace bambi

@@ -191,11 +191,17 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
     //  one line only when the picture cannot say it: the host's bus is too narrow, or the other output has the
     //  same channels and would stop
     juce::String status;
-    const Placement p = placeOutput(d, output == OutputPage::Headphones ? Output::Headphones : Output::Speakers, bus);
+    const Placement p = placeOutput(d, output == OutputPage::Headphones ? Output::Headphones : Output::Speakers,
+                                    state_.processor.outputBus());
     const juce::String otherName = output == OutputPage::Headphones ? "speakers" : "headphones";
     const bool collide = p.collide;
     if (!mine.empty() && !p.fits)
         status = juce::String(p.needs) + " channels needed; the host gives " + juce::String(bus);
+    else if (p.blocked && !mine.empty())
+        status = playing   ? juce::String("on channels the host keeps, or across two of its devices")
+                 : p.moves ? "playing would move it to " + juce::String(p.movedTo) +
+                                 juce::String::fromUTF8("\xe2\x80\x93") + juce::String(p.movedTo + p.span - 1)
+                           : juce::String("no room clear of the host's channels, on one device");
     else if (p.otherOn && p.collide && !mine.empty())
         status = playing   ? "on the same channels as the " + otherName + ": both are heard there"
                  : p.moves ? "playing would move it to " + juce::String(p.movedTo) +
@@ -204,7 +210,7 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
     if (!status.isEmpty()) {
         y += ctl::segmentGap;
         const float lineH = noteLineHeight();
-        text(g, status, labelFont(), !p.fits || (playing && collide) ? colour::text : colour::label,
+        text(g, status, labelFont(), !p.fits || (playing && (collide || p.blocked)) ? colour::text : colour::label,
              {content.getX(), y, content.getWidth(), lineH}, juce::Justification::centredLeft);
         y += lineH;
     }

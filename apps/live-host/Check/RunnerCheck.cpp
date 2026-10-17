@@ -806,6 +806,25 @@ int remoteDecoder() {
     check(refused.headphoneChannel == 1 && refused.notice == "headphones cannot start on channel 2",
           "refused: headphones on an even channel, said");
 
+    //  Catches: channels the host keeps not reaching the Decoder's placement, or an output left playing on them.
+    auto kept = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, 26);
+    if (remote::IRemote* k = kept.plugin != nullptr ? livehost::remoteOf(*kept.plugin, kDecoderRemoteKind,
+                                                                         kDecoderRemoteVersion)
+                                                    : nullptr) {
+        DecoderRequest main;
+        main.kept = std::vector<int>{1, 2};
+        main.deviceEnds = std::vector<int>{16};
+        k->remoteRequest(toJson(main).dump(0).c_str());
+        const DecoderReport moved = reportFrom(Json::parse(livehost::remoteReport(*k)));
+        const std::vector<int> heardKept = decoderHeard(*kept.plugin, 26);
+        std::printf("    1-2 kept: heard on %s\n", channelList(heardKept).toRawUTF8());
+        check(moved.headphonesOn && moved.headphoneChannel == 3 && moved.kept == std::vector<int>{1, 2} &&
+                  heardKept == std::vector<int>{2, 3},
+              "1-2 kept for Main: the headphones moved to 3-4, and heard there");
+    } else {
+        check(false, "a third Decoder answers");
+    }
+
     //  Catches: a widest bus whose last channels -- the last speakers VST3 names -- do not reach the Decoder's.
     auto widest = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, kMaxVst3BusChannels);
     remote::IRemote* far = widest.plugin != nullptr ? livehost::remoteOf(*widest.plugin, kDecoderRemoteKind,

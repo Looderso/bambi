@@ -67,3 +67,41 @@ TEST_CASE(
     p = placeOutput(d, Output::Speakers, 8);
     CHECK_FALSE(p.fits);
 }
+
+TEST_CASE("an output takes no channel the host keeps and plays on one device, moving where there is room") {
+    //  Catches: a kept channel taken, an output spanning two devices, the search starting at channel 1 when room
+    //  is nearer, headphones moved onto an even pair, a blocked output reported as stopping the other.
+    OutputBus bus(26);
+    bus.kept = {1, 2};      // Live's Main
+    bus.deviceEnds = {16};  // an interface of 16, then one of 10
+    const DecoderState hp = withLayout("0+2+0", false, true, 1);
+    Placement p = placeOutput(hp, Output::Headphones, bus);
+    CHECK((p.blocked && p.moves && !p.stops && p.movedTo == 3));
+
+    DecoderState hpOn15 = withLayout("0+2+0", false, true, 15);
+    bus.kept = {};
+    p = placeOutput(hpOn15, Output::Headphones, bus);
+    CHECK_FALSE(p.blocked);  // 15-16 is the first device's last pair
+    hpOn15.headphoneChannel = 16;
+    p = placeOutput(hpOn15, Output::Headphones, bus);
+    CHECK((p.blocked && p.moves && p.movedTo == 17));  // 16-17 straddles; the next odd pair is the second device's
+
+    //  a layout of 12 from channel 9 crosses into the second device; it moves back to the first, which has room
+    DecoderState sp = withLayout("4+7+0", true, false, 1);
+    sp.speakerFirstChannel = 9;
+    p = placeOutput(sp, Output::Speakers, bus);
+    CHECK((p.blocked && p.moves && p.movedTo == 1));
+}
+
+TEST_CASE("an output with no room clear of the kept channels on one device does not light") {
+    //  Catches: lighting it anyway, or stopping the other in its place.
+    OutputBus bus(16);
+    bus.deviceEnds = {8};  // two devices of 8: a twelve-channel layout fits on neither
+    const DecoderState sp = withLayout("4+7+0", false, true, 15);
+    const Placement p = placeOutput(sp, Output::Speakers, bus);
+    CHECK((p.fits && p.blocked && p.noRoom && !p.moves && !p.stops));
+    const Lit lit = lightOutput(sp, Output::Speakers, true, bus);
+    CHECK_FALSE(lit.state.speakersPlay);
+    CHECK(lit.state.headphonesPlay);
+    CHECK(lit.notice == "no room for the speakers clear of the host's channels, on one device");
+}
