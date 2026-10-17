@@ -102,9 +102,9 @@ private:
         std::shared_ptr<juce::AudioPluginInstance> plugin;
     };
 
-    struct Voice {  // a track on a pair, and its Encoder
+    struct Voice {  // a source, and its Encoder
         live::TrackId track{0};
-        int pair{-1};
+        int pair{-1};  ///< a track's pair of the loop device; -1 for an input of the host
         std::shared_ptr<juce::AudioPluginInstance> encoder;
     };
 

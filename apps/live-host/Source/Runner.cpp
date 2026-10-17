@@ -9,14 +9,23 @@ namespace bambi::livehost {
 
 namespace {
 
-//  A slot's sidechain, the two channels after its main input's from `first`: the pair its step names, faded as the
-//  sources are; silent, as the scratch was cleared, for a step that names none.
-void sidechain(const live::Op& op, juce::AudioBuffer<float>& scratch, int first, const juce::AudioBuffer<float>& loop,
-               int loopStart, int frames, float fade0, float fade1) noexcept {
-    if (op.sidechain < 0) return;
-    for (int ch = 0; ch < 2 && first + ch < scratch.getNumChannels(); ++ch)
-        scratch.copyFromWithRamp(first + ch, 0, loop.getReadPointer(2 * op.sidechain + ch, loopStart), frames, fade0,
-                                 fade1);
+//  `width` channels of the input row from `from` onto two of `scratch` from `first`, faded as the sources are: a
+//  pair as it is, one channel on both sides.
+void arrive(juce::AudioBuffer<float>& scratch, int first, const juce::AudioBuffer<float>& in, int from, int width,
+            int inStart, int frames, float fade0, float fade1) noexcept {
+    for (int ch = 0; ch < 2 && first + ch < scratch.getNumChannels(); ++ch) {
+        const int source = from + (width == 2 ? ch : 0);
+        if (source < in.getNumChannels())
+            scratch.copyFromWithRamp(first + ch, 0, in.getReadPointer(source, inStart), frames, fade0, fade1);
+    }
+}
+
+//  A slot's sidechain, the two channels after its main input's from `first`; silent, as the scratch was cleared,
+//  for a step that names none.
+void sidechain(const live::Op& op, juce::AudioBuffer<float>& scratch, int first, const juce::AudioBuffer<float>& in,
+               int inStart, int frames, float fade0, float fade1) noexcept {
+    if (op.sidechain >= 0)
+        arrive(scratch, first, in, op.sidechain, op.sidechainWidth, inStart, frames, fade0, fade1);
 }
 
 }  // namespace
@@ -37,9 +46,9 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
         const bool readsBuffer = op.step == live::Step::Add || op.step == live::Step::Decode;
         const bool writesBuffer = op.step != live::Step::Decode;
         if ((readsBuffer && !buffer(op.from)) || (writesBuffer && !buffer(op.to)) ||
-            (op.step == live::Step::Encode && (op.from < 0 || 2 * op.from + 1 >= setup_.loopChannels)) ||
-            2 * op.sidechain + 1 >= setup_.loopChannels) {
-            error = "a step reads or writes a buffer or pair the plan does not have";
+            (op.step == live::Step::Encode && (op.from < 0 || op.from + op.width > setup_.inputChannels)) ||
+            op.sidechain + op.sidechainWidth > setup_.inputChannels) {
+            error = "a step reads or writes a buffer or input the plan does not have";
             return nullptr;
         }
         if (op.gain >= levels) {
@@ -189,10 +198,7 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
                 s.setSize(s.getNumChannels(), frames, false, false, true);
                 s.clear(0, frames);
                 //  faded with the output through a swap, so no insert or line kept across it hears a step
-                for (int ch = 0; ch < 2; ++ch)
-                    if (2 * op.from + ch < loop.getNumChannels())
-                        s.copyFromWithRamp(ch, 0, loop.getReadPointer(2 * op.from + ch, loopStart), frames, fade0,
-                                           fade1);
+                arrive(s, 0, loop, op.from, op.width, loopStart, frames, fade0, fade1);
                 sidechain(op, s, 2, loop, loopStart, frames, fade0, fade1);
                 run(p, op.slot, s);
                 for (int ch = 0; ch < field_; ++ch)

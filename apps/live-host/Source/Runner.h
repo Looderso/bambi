@@ -43,7 +43,7 @@ public:
     struct Setup {
         int order{3};
         int maxBlock{512};
-        int loopChannels{16};
+        int inputChannels{16};  ///< the input row: the loop device's channels, then the devices' inputs
         int outputChannels{2};
         double rate{48000.0};
     };

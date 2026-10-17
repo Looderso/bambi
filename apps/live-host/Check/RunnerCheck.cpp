@@ -86,11 +86,11 @@ live::Plan plan() {
     p.slots = {{0}, {0}, {0}, {0}, {0}};  // latencies, filled in from the instances
     live::FieldNode a, b;
     a.track = 1;
-    a.pair = 0;
+    a.input = 0;
     a.encoder = 0;
     a.inserts = {2};
     b.track = 2;
-    b.pair = 1;
+    b.input = 2;
     b.encoder = 1;
     p.nodes = {a, b};
     p.returns = {live::Return{{3}}};
@@ -235,11 +235,11 @@ juce::AudioBuffer<float> delayedThroughRunner(int block) {
     p.slots = {{0}, {0}, {kDelay}, {s.plugins[4]->getLatencySamples()}};
     live::FieldNode a, b;
     a.track = 1;
-    a.pair = 0;
+    a.input = 0;
     a.encoder = 0;
     a.inserts = {2};
     b.track = 2;
-    b.pair = 1;
+    b.input = 2;
     b.encoder = 1;
     p.nodes = {a, b};
     p.decoder = 3;
@@ -350,7 +350,7 @@ std::vector<live::Playhead> timedThroughRunner(int block, std::vector<std::int64
     p.slots = {{0}, {0}, {s.plugins[4]->getLatencySamples()}};
     live::FieldNode a;
     a.track = 1;
-    a.pair = 0;
+    a.input = 0;
     a.encoder = 0;
     a.inserts = {1};
     p.nodes = {a};
@@ -405,7 +405,7 @@ live::Plan encoding(std::vector<int> pairs) {
     for (std::size_t i = 0; i < pairs.size(); ++i) {
         live::FieldNode n;
         n.track = static_cast<live::TrackId>(i + 1);
-        n.pair = pairs[i];
+        n.input = 2 * pairs[i];
         n.encoder = static_cast<int>(i);
         p.nodes.push_back(n);
     }
@@ -509,14 +509,14 @@ std::vector<float> standInSwap(int block, bool swap, bool delayed) {
     live::Plan p;
     live::FieldNode first;
     first.track = 1;
-    first.pair = 0;
+    first.input = 0;
     first.encoder = 0;
     p.nodes = {first};
     std::vector<juce::AudioProcessor*> slots{&a};
     if (delayed) {
         live::FieldNode second;
         second.track = 2;
-        second.pair = 1;
+        second.input = 2;
         second.encoder = 1;
         second.inserts = {2};
         p.nodes.push_back(second);
@@ -586,11 +586,12 @@ std::vector<float> sidechained(int block, int pair, bool encoder = false) {
     live::Plan p;
     live::FieldNode n;
     n.track = 1;
-    n.pair = 0;
+    n.input = 0;
     n.encoder = 0;
     if (!encoder) n.inserts = {1};
     p.nodes = {n};
-    p.slots = {{0, encoder ? pair : -1}, {0, encoder ? -1 : pair}, {0, -1}};
+    const int heard = pair < 0 ? -1 : 2 * pair;  // the pair's first channel
+    p.slots = {{0, encoder ? heard : -1}, {0, encoder ? -1 : heard}, {0, -1}};
     p.decoder = 2;
     const auto compiled = live::compile(p);
     livehost::Runner runner;
@@ -616,6 +617,43 @@ std::vector<float> sidechained(int block, int pair, bool encoder = false) {
     return got;
 }
 
+//  An encoder that puts its track's two channels on the field's first two, where PassOut gives them out.
+class Pass final : public StandIn {
+public:
+    Pass()
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::stereo())
+                      .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))) {}
+    void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer&) override {
+        for (int ch = 2; ch < kField; ++ch) b.clear(ch, 0, b.getNumSamples());
+    }
+};
+
+//  One source arriving `width` channels wide from input row channel `first`, each of the row's four channels a
+//  constant of its own: what reaches the output's left and right once the start's fade is over.
+std::pair<float, float> arrivedAt(int first, int width) {
+    Pass a;
+    PassOut out;
+    live::Plan p;
+    live::FieldNode n;
+    n.track = 1;
+    n.input = first;
+    n.width = width;
+    n.encoder = 0;
+    p.nodes = {n};
+    p.slots = {{0, -1}, {0, -1}};
+    p.decoder = 1;
+    const auto compiled = live::compile(p);
+    livehost::Runner runner;
+    juce::String why;
+    if (!compiled || !runner.prepare(*compiled, {&a, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why))
+        return {-1.0f, -1.0f};
+    juce::AudioBuffer<float> row(4, 512), part(2, 512);
+    for (int ch = 0; ch < 4; ++ch) juce::FloatVectorOperations::fill(row.getWritePointer(ch), 0.1f * static_cast<float>(ch + 1), 512);
+    for (int k = 0; k < 8; ++k) runner.process(row, part, 512);
+    return {part.getSample(0, 511), part.getSample(1, 511)};
+}
+
 //  The swap's fade at `k` samples after it was asked for, with no delay to hold through: down, then up.
 double fadeAt(int k) {
     const int f = livehost::Runner::kFade;
@@ -636,7 +674,7 @@ std::vector<float> sendGains(int block, int swapAt = 0, float swapLevel = 0.0f) 
     p.slots = {{0}, {0}};
     live::FieldNode a;
     a.track = 1;
-    a.pair = 0;
+    a.input = 0;
     a.encoder = 0;
     p.nodes = {a};
     p.returns = {live::Return{}};
@@ -1024,6 +1062,19 @@ int main() {
     failed += wideDecoder();
     std::printf("the Decoder, remote-controlled\n");
     failed += remoteDecoder();
+
+    std::printf("a source where it arrives\n");
+    {
+        //  Catches: a source read from a pair's start instead of its own channel, a mono input heard on one side
+        //  only or with the channel beside it.
+        const auto [l1, r1] = arrivedAt(2, 1);
+        const auto [l2, r2] = arrivedAt(1, 2);
+        const bool ok = std::abs(l1 - 0.3f) < 1e-6f && std::abs(r1 - 0.3f) < 1e-6f && std::abs(l2 - 0.2f) < 1e-6f &&
+                        std::abs(r2 - 0.3f) < 1e-6f;
+        failed += ok ? 0 : 1;
+        std::printf("  mono from channel 3: %.2f %.2f; a pair from channel 2: %.2f %.2f %s\n", static_cast<double>(l1),
+                    static_cast<double>(r1), static_cast<double>(l2), static_cast<double>(r2), ok ? "" : "  FAIL");
+    }
 
     std::printf(failed == 0 ? "the runner plays both plans as the direct renders do, at every block size\n"
                             : "%d renders differ\n",

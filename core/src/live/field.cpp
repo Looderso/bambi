@@ -66,11 +66,25 @@ Field layOut(const Tree& tree, const Shape& shape) {
         if (has(shape.returns, n.id)) field.returns.push_back({n.id, send, shape.insertsOn(n.id)});
         ++send;
     }
+    for (const HostInput& in : shape.inputs) {
+        const TrackId from = shape.sidechainOf(in.id);
+        field.parts.push_back({in.id, false, -1, shape.insertsOn(in.id), from == in.id ? 0 : from});
+    }
     field.main = shape.insertsOn(kMain);
     return field;
 }
 
-FieldPlan planOf(const Field& field, const std::vector<TrackPair>& pairs) {
+std::vector<Arrival> arrivalsOf(const std::vector<TrackPair>& pairs) {
+    std::vector<Arrival> out;
+    for (const TrackPair& p : pairs) out.push_back({p.track, 2 * p.pair, 2});
+    return out;
+}
+
+FieldPlan planOf(const Field& field, const std::vector<Arrival>& arrivals) {
+    const auto arrivalOf = [&](TrackId t) {
+        const auto a = std::find_if(arrivals.begin(), arrivals.end(), [&](const Arrival& x) { return x.track == t; });
+        return a == arrivals.end() ? nullptr : &*a;
+    };
     FieldPlan out;
     std::vector<int> nodeOf(field.parts.size(), -1);  // a part's node in the plan; -1: left out
     std::vector<const std::vector<Insert>*> chains;   // each node's inserts, slotted once the Encoders are counted
@@ -80,10 +94,10 @@ FieldPlan planOf(const Field& field, const std::vector<TrackPair>& pairs) {
         n.track = part.node;
         n.parent = part.parent < 0 ? -1 : nodeOf[static_cast<std::size_t>(part.parent)];
         if (!part.bus) {
-            const auto p =
-                std::find_if(pairs.begin(), pairs.end(), [&](const TrackPair& tp) { return tp.track == part.node; });
-            if (p == pairs.end()) continue;
-            n.pair = p->pair;
+            const Arrival* a = arrivalOf(part.node);
+            if (a == nullptr) continue;
+            n.input = a->channel;
+            n.width = a->width;
             n.encoder = static_cast<int>(out.encoders.size());
             out.encoders.push_back(part.node);
         }
@@ -105,22 +119,21 @@ FieldPlan planOf(const Field& field, const std::vector<TrackPair>& pairs) {
     for (const Insert& insert : field.main) out.plan.main.push_back(slot(insert));
     out.plan.decoder = static_cast<int>(out.encoders.size() + out.effects.size());
     out.plan.slots.assign(static_cast<std::size_t>(out.plan.decoder) + 1, Slot{});
-    const auto pairOf = [&](TrackId t) {
-        const auto p = std::find_if(pairs.begin(), pairs.end(), [&](const TrackPair& tp) { return tp.track == t; });
-        return p == pairs.end() ? -1 : p->pair;
+    //  only the field's sources arrive -- a bus, a node in Live, a track inside a whole group, no track (0) none
+    const auto hear = [&](Slot& slot, TrackId from) {
+        if (const Arrival* a = from != 0 ? arrivalOf(from) : nullptr) {
+            slot.sidechain = a->channel;
+            slot.sidechainWidth = a->width;
+        }
     };
     for (const FieldNode& n : out.plan.nodes)
         if (n.encoder >= 0) {
             const auto part =
                 std::find_if(field.parts.begin(), field.parts.end(), [&](const Part& x) { return x.node == n.track; });
-            out.plan.slots[static_cast<std::size_t>(n.encoder)].sidechain = pairOf(part->sidechain);
+            hear(out.plan.slots[static_cast<std::size_t>(n.encoder)], part->sidechain);
         }
-    for (std::size_t e = 0; e < out.effects.size(); ++e) {
-        const TrackId from = out.effects[e].sidechain;
-        const auto p = std::find_if(pairs.begin(), pairs.end(), [&](const TrackPair& tp) { return tp.track == from; });
-        //  only the field's sources have pairs -- a bus, a node in Live, a track inside a whole group, no track (0) none
-        if (p != pairs.end()) out.plan.slots[out.encoders.size() + e].sidechain = p->pair;
-    }
+    for (std::size_t e = 0; e < out.effects.size(); ++e)
+        hear(out.plan.slots[out.encoders.size() + e], out.effects[e].sidechain);
     return out;
 }
 
@@ -137,7 +150,7 @@ std::vector<float> levels(const FieldPlan& plan, const Field& field, const Tree&
     for (std::size_t k = 0; k < nodes; ++k) {
         const FieldNode& fn = plan.plan.nodes[k];
         const Node* node = nodeOf(fn.track);
-        const bool bus = fn.pair < 0;
+        const bool bus = fn.input < 0;
         //  a bus at its group's fader, silent while muted; a source at unity
         const float fader = !bus ? 1.0f : node == nullptr || node->mute ? 0.0f : gain(node->fader);
         out[nodes * returns + k] = fader;
@@ -204,6 +217,15 @@ Json toJson(const Shape& shape) {
         sidechains.push(std::move(o));
     }
     j.set("sidechains", std::move(sidechains));
+    Json inputs = Json::array();
+    for (const HostInput& in : shape.inputs) {
+        Json o = Json::object();
+        o.set("id", Json(static_cast<double>(in.id)));
+        o.set("name", Json(in.name));
+        o.set("width", Json(in.width));
+        inputs.push(std::move(o));
+    }
+    j.set("inputs", std::move(inputs));
     return j;
 }
 
@@ -215,7 +237,7 @@ Shape shapeFrom(const Json& json) {
                 if (const auto v = idOf(id, 1.0)) out.push_back(*v);
         return out;
     };
-    Shape shape{ids("split"), ids("inLive"), {}, ids("returns"), {}};
+    Shape shape{ids("split"), ids("inLive"), {}, ids("returns"), {}, {}};
     if (const Json* list = json.find("sidechains"); list != nullptr && list->isArray())
         for (const Json& c : list->items()) {
             const Json* source = c.find("source");
@@ -241,6 +263,16 @@ Shape shapeFrom(const Json& json) {
                     if (n && e) chain.inserts.push_back({*n, *e, side.value_or(0)});
                 }
             shape.chains.push_back(std::move(chain));
+        }
+    if (const Json* inputs = json.find("inputs"); inputs != nullptr && inputs->isArray())
+        for (const Json& o : inputs->items()) {
+            const Json* id = o.find("id");
+            const auto at = id != nullptr ? idOf(*id, static_cast<double>(kFirstInput)) : std::nullopt;
+            const Json* name = o.find("name");
+            const Json* width = o.find("width");
+            if (at)
+                shape.inputs.push_back({*at, name != nullptr ? std::string(name->stringOr("")) : std::string(),
+                                        width != nullptr && width->numberOr(1.0) >= 2.0 ? 2 : 1});
         }
     return shape;
 }

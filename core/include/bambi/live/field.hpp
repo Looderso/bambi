@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "bambi/live/graph.hpp"
@@ -57,12 +58,25 @@ struct Sidechain {
     friend bool operator==(const Sidechain&, const Sidechain&) = default;
 };
 
+/*  An input of one of the host's devices played as a source of the field -- a microphone on stage -- at the top,
+ *  into Main, beside Live's tracks; with an Encoder, inserts and a sidechain as any source. The set keeps it, with
+ *  its chain; which device channel it is heard from is the computer's, since another has other devices. */
+struct HostInput {
+    TrackId id{0};  ///< kFirstInput and up: above any id Live gives, and exact as JSON's numbers are
+    std::string name;
+    int width{1};  ///< 1, or 2 for a stereo pair
+    friend bool operator==(const HostInput&, const HostInput&) = default;
+};
+inline constexpr TrackId kFirstInput = TrackId{1} << 40;
+inline bool isInput(TrackId id) { return id >= kFirstInput; }
+
 struct Shape {
     std::vector<TrackId> split;         ///< groups whose children the field takes one by one, the group their bus
     std::vector<TrackId> inLive;        ///< top-level nodes that stay in Live: nothing of them reaches the field
     std::vector<Chain> chains;          ///< one per node with inserts, Main's among them
     std::vector<TrackId> returns;       ///< Live's returns the field plays, its own
     std::vector<Sidechain> sidechains;  ///< the sources whose Encoder's sidechain hears another track
+    std::vector<HostInput> inputs;      ///< the host's own sources, after Live's in the field
     friend bool operator==(const Shape&, const Shape&) = default;
 
     /// The inserts on `node`, kMain for Main's; none when it has no chain.
@@ -99,17 +113,28 @@ struct Field {
 
 Field layOut(const Tree& tree, const Shape& shape);
 
-/// The plan that plays a field: a node per source with a pair, encoded by an Encoder slot of its own, slots
+/// Where a source arrives on the input row (graph.hpp): its first channel and its width.
+struct Arrival {
+    TrackId track{0};
+    int channel{0};
+    int width{2};
+    friend bool operator==(const Arrival&, const Arrival&) = default;
+};
+/// Live's tracks as they arrive: each on its pair of the loop device, the row's first channels.
+std::vector<Arrival> arrivalsOf(const std::vector<TrackPair>& pairs);
+
+/// The plan that plays a field: a node per source that arrives, encoded by an Encoder slot of its own, slots
 /// 0, 1, ... in the order of the parts; a node per bus; a return per return of the field; then a slot per
-/// insert, the parts' in their order, the returns' and Main's last; the decoder the slot after them all. A source without a pair -- one past the loop device's pairs --
-/// is left out with its inserts, and a bus keeps its place. An insert's slot names the pair its sidechain hears.
+/// insert, the parts' in their order, the returns' and Main's last; the decoder the slot after them all. A source
+/// that does not arrive -- a track past the loop device's pairs, an input whose device is not chosen -- is left out
+/// with its inserts, and a bus keeps its place. An insert's slot names where its sidechain's source arrives.
 /// The slots' latencies are the caller's to fill.
 struct FieldPlan {
     Plan plan;
     std::vector<TrackId> encoders;  ///< the track each Encoder slot encodes
     std::vector<Insert> effects;    ///< the insert each slot after the Encoders plays
 };
-FieldPlan planOf(const Field& field, const std::vector<TrackPair>& pairs);
+FieldPlan planOf(const Field& field, const std::vector<Arrival>& arrivals);
 
 /// Every level the plan plays at, as gains, by the runner's entries (graph.hpp's `Compiled::levels`):
 ///   - a part's send to a return: its node's send knob for that return in `tree`, in dB -- times the fader, for a

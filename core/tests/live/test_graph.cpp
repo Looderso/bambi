@@ -44,7 +44,7 @@ std::vector<int> arrivals(const Plan& p, const Compiled& c) {
 int paths(const Plan& p) {
     int n = 0;
     for (const FieldNode& node : p.nodes) {
-        if (node.pair < 0) continue;
+        if (node.input < 0) continue;
         int depth = 1;
         for (int at = node.parent; at >= 0; at = p.nodes[static_cast<std::size_t>(at)].parent) ++depth;
         n += 1 + depth * static_cast<int>(p.returns.size());
@@ -70,7 +70,7 @@ Plan randomPlan(std::mt19937& random) {
     for (int s = 0; s < sources; ++s) {
         FieldNode n;
         n.track = static_cast<TrackId>(100 + s);
-        n.pair = s;
+        n.input = 2 * s;
         n.encoder = slot();
         n.parent = buses == 0 || coin(random) ? -1 : std::uniform_int_distribution<int>(0, buses - 1)(random);
         for (int i = count(random) % 3; i > 0; --i) n.inserts.push_back(slot());
@@ -91,7 +91,7 @@ Plan source(int latency) {
     p.slots = {{latency}, {64}};
     FieldNode n;
     n.track = 1;
-    n.pair = 0;
+    n.input = 0;
     n.encoder = 0;
     p.nodes = {n};
     p.decoder = 1;
@@ -170,7 +170,7 @@ TEST_CASE("a send reads its node's level from the table, a node and a return the
     Plan p = source(0);
     FieldNode second = p.nodes[0];
     second.track = 2;
-    second.pair = 1;
+    second.input = 2;
     p.slots.push_back({0});
     second.encoder = 2;
     p.nodes.push_back(second);
@@ -208,7 +208,7 @@ TEST_CASE("a source added at the end leaves every other node's steps as they wer
         const auto before = compile(p);
         FieldNode added;
         added.track = 999;
-        added.pair = 31;
+        added.input = 62;
         p.slots.push_back({7});
         added.encoder = static_cast<int>(p.slots.size()) - 1;
         p.nodes.push_back(added);
@@ -234,7 +234,7 @@ TEST_CASE("the shape the first delay compensation was checked on comes out the s
     for (int s = 0; s < 3; ++s) {
         FieldNode n;
         n.track = static_cast<TrackId>(s + 1);
-        n.pair = s;
+        n.input = 2 * s;
         n.encoder = s;
         p.nodes.push_back(n);
     }
@@ -250,7 +250,7 @@ TEST_CASE("a plan that does not hold together is refused") {
     //  Catches: a plan played that would read a pair from nowhere, run one plugin in two places, or loop.
     std::string error;
     Plan p = source(0);
-    p.nodes[0].pair = -1;
+    p.nodes[0].input = -1;
     CHECK_FALSE(compile(p, &error).has_value());  // an encoder without a pair
 
     p = source(0);
@@ -299,7 +299,7 @@ TEST_CASE("an Encoder's and an insert's step name the pair their sidechain hears
         {0, 4}, {0, 5}, {0, -1}, {0, -1}};  // the encoder hearing pair 4, an insert pair 5, an insert, the decoder
     FieldNode n;
     n.track = 1;
-    n.pair = 0;
+    n.input = 0;
     n.encoder = 0;
     n.inserts = {1, 2};
     p.nodes = {n};
@@ -317,4 +317,25 @@ TEST_CASE("an Encoder's and an insert's step name the pair their sidechain hears
             ++seen;
         }
     CHECK(seen == 3);
+}
+
+TEST_CASE("a source's width reaches its step, and a source neither one nor two channels wide is refused") {
+    //  Catches: a mono input encoded as a pair -- the channel beside it would be heard -- or a width of 3 taken.
+    Plan p;
+    p.slots = {{0, 3, 1}, {0, -1}};
+    FieldNode n;
+    n.track = 1;
+    n.input = 20;
+    n.width = 1;
+    n.encoder = 0;
+    p.nodes = {n};
+    p.decoder = 1;
+    const auto c = compile(p);
+    REQUIRE(c.has_value());
+    const auto encode =
+        std::find_if(c->ops.begin(), c->ops.end(), [](const Op& op) { return op.step == Step::Encode; });
+    REQUIRE(encode != c->ops.end());
+    CHECK((encode->from == 20 && encode->width == 1 && encode->sidechain == 3 && encode->sidechainWidth == 1));
+    p.nodes[0].width = 3;
+    CHECK_FALSE(compile(p).has_value());
 }

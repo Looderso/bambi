@@ -22,13 +22,14 @@ bool valid(const Plan& p, std::string* error) {
     };
     for (int i = 0; i < nodes; ++i) {
         const FieldNode& n = p.nodes[static_cast<std::size_t>(i)];
-        const bool source = n.pair >= 0 || n.encoder >= 0;
-        if (source && (n.pair < 0 || n.encoder < 0)) return fail(error, "a source needs a pair and an encoder");
+        const bool source = n.input >= 0 || n.encoder >= 0;
+        if (source && (n.input < 0 || n.encoder < 0)) return fail(error, "a source needs an input and an encoder");
+        if (source && n.width != 1 && n.width != 2) return fail(error, "a source is one channel wide or two");
         if (source && !use(n.encoder)) return fail(error, "an encoder slot is out of range or used twice");
         for (const int s : n.inserts)
             if (!use(s)) return fail(error, "an insert slot is out of range or used twice");
         if (n.parent >= nodes || n.parent < -1) return fail(error, "a parent that does not exist");
-        if (n.parent >= 0 && p.nodes[static_cast<std::size_t>(n.parent)].pair >= 0)
+        if (n.parent >= 0 && p.nodes[static_cast<std::size_t>(n.parent)].input >= 0)
             return fail(error, "a parent that is a source, not a bus");
         //  every chain of parents reaches Main within as many steps as there are nodes
         int at = i;
@@ -44,6 +45,9 @@ bool valid(const Plan& p, std::string* error) {
         if (!use(s)) return fail(error, "a main chain slot is out of range or used twice");
     if (p.decoder < 0) return fail(error, "no decoder");
     if (!use(p.decoder)) return fail(error, "the decoder's slot is out of range or used twice");
+    for (const Slot& s : p.slots)
+        if (s.sidechain >= 0 && s.sidechainWidth != 1 && s.sidechainWidth != 2)
+            return fail(error, "a sidechain is one channel wide or two");
     return true;
 }
 
@@ -51,6 +55,7 @@ bool valid(const Plan& p, std::string* error) {
 
 std::optional<Compiled> compile(const Plan& p, std::string* error) {
     const auto sidechainOf = [&](int slot) { return p.slots[static_cast<std::size_t>(slot)].sidechain; };
+    const auto sidechainWidthOf = [&](int slot) { return p.slots[static_cast<std::size_t>(slot)].sidechainWidth; };
     if (!valid(p, error)) return std::nullopt;
     const int nodes = static_cast<int>(p.nodes.size()), returns = static_cast<int>(p.returns.size());
     //  a node's or a return's level, where it plays into its parent or Main: after the sends' entries, by buffer
@@ -80,8 +85,9 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
         const auto& kids = children[static_cast<std::size_t>(i)];
         for (const int k : kids) play(k);
         int ready = 0;
-        if (n.pair >= 0) {
-            c.ops.push_back({Step::Encode, n.encoder, n.pair, i, 0, -1, sidechainOf(n.encoder)});
+        if (n.input >= 0) {
+            c.ops.push_back({Step::Encode, n.encoder, n.input, i, 0, -1, sidechainOf(n.encoder), n.width,
+                             sidechainWidthOf(n.encoder)});
             ready = latency(n.encoder);
         } else {
             for (const int k : kids) ready = std::max(ready, out[static_cast<std::size_t>(k)]);
@@ -89,7 +95,8 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
             for (const int k : kids)
                 c.ops.push_back({Step::Add, -1, k, i, ready - out[static_cast<std::size_t>(k)], levelOf(k)});
         }
-        for (const int s : n.inserts) c.ops.push_back({Step::Process, s, -1, i, 0, -1, sidechainOf(s)});
+        for (const int s : n.inserts)
+            c.ops.push_back({Step::Process, s, -1, i, 0, -1, sidechainOf(s), 2, sidechainWidthOf(s)});
         out[static_cast<std::size_t>(i)] = ready + chained(n.inserts);
     };
     for (const int t : top) play(t);
@@ -105,7 +112,7 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
             c.ops.push_back(
                 {Step::Add, -1, i, buffer, slowestNode - out[static_cast<std::size_t>(i)], i * returns + r});
         for (const int s : p.returns[static_cast<std::size_t>(r)].chain)
-            c.ops.push_back({Step::Process, s, -1, buffer, 0, -1, sidechainOf(s)});
+            c.ops.push_back({Step::Process, s, -1, buffer, 0, -1, sidechainOf(s), 2, sidechainWidthOf(s)});
         returned[static_cast<std::size_t>(r)] =
             (nodes > 0 ? slowestNode : 0) + chained(p.returns[static_cast<std::size_t>(r)].chain);
     }
@@ -121,7 +128,8 @@ std::optional<Compiled> compile(const Plan& p, std::string* error) {
     for (int r = 0; r < returns; ++r)
         c.ops.push_back(
             {Step::Add, -1, nodes + r, main, ready - returned[static_cast<std::size_t>(r)], levelOf(nodes + r)});
-    for (const int s : p.main) c.ops.push_back({Step::Process, s, -1, main, 0, -1, sidechainOf(s)});
+    for (const int s : p.main)
+        c.ops.push_back({Step::Process, s, -1, main, 0, -1, sidechainOf(s), 2, sidechainWidthOf(s)});
     c.ops.push_back({Step::Decode, p.decoder, main, -1, 0, -1});
     c.latency = ready + chained(p.main) + latency(p.decoder);
     c.levels = nodes * returns + nodes + returns;

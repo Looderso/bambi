@@ -120,7 +120,7 @@ bool Engine::start(const Settings& settings, juce::String& status) {
 }
 
 bool Engine::setField(const live::Field& field, const std::vector<live::TrackPair>& pairs, juce::String& status) {
-    live::FieldPlan fp = live::planOf(field, pairs);
+    live::FieldPlan fp = live::planOf(field, live::arrivalsOf(pairs));
     //  the restored states the new plugins took: given up only once the swap is made, so a change that fails part
     //  of the way leaves them for the next
     std::vector<std::string> restoredEncoders, restoredEffects;
@@ -131,7 +131,8 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
         const live::TrackId track = fp.encoders[slot];
         const auto node = std::find_if(fp.plan.nodes.begin(), fp.plan.nodes.end(),
                                        [&](const live::FieldNode& n) { return n.encoder == static_cast<int>(slot); });
-        const int pair = node->pair;
+        const auto on = std::find_if(pairs.begin(), pairs.end(), [&](const live::TrackPair& p) { return p.track == track; });
+        const int pair = on == pairs.end() ? -1 : on->pair;  // an input of the host has none
         const auto had = std::find_if(voices_.begin(), voices_.end(), [&](const Voice& v) { return v.track == track; });
         if (had != voices_.end()) {
             next.push_back({track, pair, had->encoder});
@@ -216,7 +217,7 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     fieldPlan_ = std::move(fp);
     latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
     int buses = 0;
-    for (const live::FieldNode& n : plan_.nodes) buses += n.pair < 0 ? 1 : 0;
+    for (const live::FieldNode& n : plan_.nodes) buses += n.input < 0 ? 1 : 0;
     status =
         juce::String(static_cast<int>(voices_.size())) + " Encoders, " + juce::String(buses) + " buses and the Decoder";
     return true;
@@ -292,7 +293,7 @@ juce::AudioProcessor* Engine::encoder(int pair) const {
 juce::AudioProcessor* Engine::firstEncoder() const {
     const Voice* first = nullptr;
     for (const Voice& v : voices_)
-        if (first == nullptr || v.pair < first->pair) first = &v;
+        if (v.pair >= 0 && (first == nullptr || v.pair < first->pair)) first = &v;
     return first == nullptr ? nullptr : first->encoder.get();
 }
 
