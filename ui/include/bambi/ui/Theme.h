@@ -520,6 +520,9 @@ namespace timeline
     inline constexpr float pad       = 14.0f;   ///< the tree's inset
     inline constexpr float gap       = 3.0f;    ///< from a mark to its label: a bar's number, a locator's name
     inline constexpr int   frameMs   = 33;      ///< the playhead redrawn this often while Live plays
+    inline constexpr float lane      = 36.0f;   ///< an automation lane under its row
+    inline constexpr float laneInset = 6.0f;    ///< its curve inside it, above and below
+    inline constexpr float panel     = 230.0f;  ///< the chosen row's lanes, on the right
 } // namespace timeline
 
 // ---- the live host's routing page: Live's tracks, the field, Main ------------------------------

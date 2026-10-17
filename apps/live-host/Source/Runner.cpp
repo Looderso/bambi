@@ -2,6 +2,7 @@
 #include "Runner.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "bambi/math/denormals.hpp"
 
@@ -153,6 +154,30 @@ bool Runner::swap(const live::Compiled& compiled, const std::vector<juce::AudioP
     return true;
 }
 
+void Runner::setAutomation(std::vector<Driven> lanes, Keep keep) {
+    auto a = std::make_unique<Automation>();
+    a->last.assign(lanes.size(), -1.0f);  // nothing set yet: each lane sets its value at its first piece
+    a->lanes = std::move(lanes);
+    a->keep = std::move(keep);
+    (void)automation_.post(std::move(a));
+}
+
+//  Every lane's value where Live is, set on its parameter when it moved.
+void Runner::drive(const live::Playhead& at) noexcept {
+    if (automation_.pending()) (void)automation_.adopt();
+    const Automation* a = automation_.current();
+    if (a == nullptr) return;
+    for (std::size_t i = 0; i < a->lanes.size(); ++i) {
+        const Driven& d = a->lanes[i];
+        const auto v = live::valueAt(d.points, at.ppq);
+        if (!v) continue;
+        const auto value = static_cast<float>(std::clamp(*v, 0.0, 1.0));
+        if (std::abs(value - a->last[i]) < 1e-6f) continue;
+        a->last[i] = value;
+        d.parameter->setValue(value);
+    }
+}
+
 void Runner::ready(juce::AudioProcessor* plugin) {
     if (plugin == nullptr) return;
     plugin->setNonRealtime(false);
@@ -241,6 +266,7 @@ void Runner::piece(const Program& p, const Inputs& loop, int loopStart,
     if (clock_ != nullptr) {
         const live::Playhead reading = clock_->reading(sample_);
         playhead_.set(reading, setup_.rate);
+        drive(reading);
         shownPpq_.store(reading.ppq, std::memory_order_relaxed);
         shownBpm_.store(reading.bpm, std::memory_order_relaxed);
         shownPlaying_.store(reading.playing, std::memory_order_relaxed);

@@ -40,3 +40,21 @@ TEST_CASE("the playhead heard trails the one played by the samples to the speake
     CHECK(heardAt(10.0, 120.0, 48000.0, 24000) == 9.0);
     CHECK(heardAt(10.0, 120.0, 0.0, 24000) == 10.0);
 }
+
+TEST_CASE("a point snaps to its own track's clip edges and the locators within reach, else to the grid") {
+    //  Catches: another track's clip edge taken, an edge won from beyond its reach, the grid ignored.
+    Arrangement a;
+    a.tracks = {{1, {{10.0, 22.0, "a", "#000000", false}}}, {2, {{13.0, 14.0, "b", "#000000", false}}}};
+    a.locators = {{30.0, "verse"}};
+    CHECK(snapAt(12.6, edgesOf(a, 2), 4.0, 0.5) == 13.0);
+    CHECK(snapAt(12.6, edgesOf(a, 1), 4.0, 0.5) == 12.0);
+    CHECK(snapAt(21.7, edgesOf(a, 1), 4.0, 0.5) == 22.0);
+    CHECK(snapAt(29.6, edgesOf(a, 1), 1.0, 0.5) == 30.0);
+}
+
+TEST_CASE("the grid follows how wide a beat is drawn") {
+    //  Catches: a bar grid on a wide drawing, a sixteenth on a narrow one.
+    CHECK(gridFor(5.0) == 4.0);
+    CHECK(gridFor(20.0) == 1.0);
+    CHECK(gridFor(60.0) == 0.25);
+}

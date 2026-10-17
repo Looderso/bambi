@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "bambi/patch/json.hpp"
+
+/*  The live host's automation: a lane drives one parameter of one instance the host plays, against Live's song
+ *  position. The instance is named as the set names it -- an Encoder by its track, an insert or a Decoder by its
+ *  id -- and the parameter by its stable key, so a lane outlives the chain changing around it, and a value is kept
+ *  in the parameter's own units, not as a position on today's range.
+ *
+ *  Between two points the value runs straight; before the first it holds the first, after the last the last. A
+ *  lane without points drives nothing. Pure; for the message thread, which hands the audio thread its own copy.
+ */
+namespace bambi::live {
+
+enum class Instance { Encoder, Insert, Decoder };
+
+struct LanePoint {
+    double ppq{0.0};    ///< quarter notes from the song's start
+    double value{0.0};  ///< in the parameter's own units
+    friend bool operator==(const LanePoint&, const LanePoint&) = default;
+};
+
+struct Lane {
+    std::uint64_t id{0};  ///< > 0, the lane's own, never reused
+    Instance instance{Instance::Encoder};
+    std::uint64_t owner{0};         ///< the Encoder's track, the insert's id, the Decoder's id
+    std::string param;              ///< the parameter's stable key
+    std::vector<LanePoint> points;  ///< in time order, no two at one time
+    friend bool operator==(const Lane&, const Lane&) = default;
+};
+
+/// The value `points` give at `ppq`; none without points.
+std::optional<double> valueAt(const std::vector<LanePoint>& points, double ppq);
+
+/// A point put at its time, replacing one already there. Returns its index.
+std::size_t putPoint(Lane& lane, LanePoint p);
+/// Point `index` moved to `to`, its time held between its neighbours'. Returns its index.
+std::size_t movePoint(Lane& lane, std::size_t index, LanePoint to);
+void removePoint(Lane& lane, std::size_t index);
+
+/// The point within `reach` quarter notes and `valueReach` of the value at `ppq`, nearest in time; none else.
+std::optional<std::size_t> pointNear(const Lane& lane, double ppq, double value, double reach, double valueReach);
+
+/// The lanes as the set keeps them, and back; a lane unreadable is left out.
+Json toJson(const std::vector<Lane>& lanes);
+std::vector<Lane> lanesFrom(const Json& json);
+
+}  // namespace bambi::live

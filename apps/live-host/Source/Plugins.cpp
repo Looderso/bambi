@@ -2,6 +2,11 @@
 #include "Plugins.h"
 
 #include <iterator>
+
+#include "bambi/decode/params.hpp"
+#include "bambi/echo/params.hpp"
+#include "bambi/encode/params.hpp"
+#include "bambi/reverb/params.hpp"
 #include <pluginterfaces/vst/ivstcomponent.h>
 
 namespace bambi::livehost {
@@ -61,6 +66,12 @@ std::string remoteReport(remote::IRemote& remote) {
         }
         text.assign(static_cast<std::size_t>(length) + 1, '\0');
     }
+}
+
+const ParamManifest& manifestOf(live::Instance instance, live::Effect effect) {
+    if (instance == live::Instance::Encoder) return encodeParams();
+    if (instance == live::Instance::Decoder) return decodeParams();
+    return effect == live::Effect::Reverb ? reverbParams() : echoParams();
 }
 
 juce::String describe(const juce::AudioProcessor::BusesLayout& l) {

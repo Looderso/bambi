@@ -32,8 +32,13 @@
 #include "../Source/AudioSheet.h"
 #include "../Source/Plugins.h"
 #include "../Source/Timeline.h"
+#include "bambi/ui/Theme.h"
 #include "../Source/Runner.h"
+#include "bambi/decode/params.hpp"
 #include "bambi/decode/remote.hpp"
+#include "bambi/echo/params.hpp"
+#include "bambi/encode/params.hpp"
+#include "bambi/reverb/params.hpp"
 #include "devices.hpp"
 #include "bambi/live/graph.hpp"
 #include "bambi/live/transport.hpp"
@@ -804,6 +809,85 @@ std::vector<float> twoDecoders(int block) {
     return {out.getSample(0, last), out.getSample(1, last), out.getSample(2, last)};
 }
 
+//  A plugin with one parameter a lane can drive, 0 to 1, its value read plain.
+class Knob final : public StandIn {
+public:
+    Knob()
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::ambisonic(kOrder))
+                      .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))) {
+        //  a continuous range: the short constructor's steps of 0.01 would round what the lane sets
+        addParameter(depth = new juce::AudioParameterFloat(juce::ParameterID{"depth", 1}, "depth",
+                                                           juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    }
+    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override {}
+    juce::AudioParameterFloat* depth{nullptr};
+};
+
+//  A lane from 0 at the song's start to 1 at quarter note 4, Live playing at 120 bpm: after every block the
+//  parameter holds the lane's value where the last piece was played. The largest difference.
+double laneFollows(int block) {
+    Pass a;
+    Knob knob;
+    PassOut out;
+    live::Plan p;
+    live::FieldNode n;
+    n.track = 1;
+    n.input = 0;
+    n.encoder = 0;
+    n.inserts = {1};
+    p.nodes = {n};
+    p.slots = {{0, -1}, {0, -1}, {0, -1}};
+    p.decoders = {2};
+    const auto compiled = live::compile(p);
+    live::TransportProjector clock(clockSettings());
+    livehost::Runner runner;
+    juce::String why;
+    if (!compiled || !runner.prepare(*compiled, {&a, &knob, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate},
+                                     why))
+        return 1.0;
+    runner.setClock(&clock);
+    clock.receive({true, 0.0, 120.0}, 0);
+    const std::vector<live::LanePoint> points{{0.0, 0.0}, {4.0, 1.0}};
+    runner.setAutomation({{knob.depth, points}}, {});
+    juce::AudioBuffer<float> row(4, kDeviceBlock), part(2, kDeviceBlock);
+    row.clear();
+    double worst = 0.0;
+    for (int at = 0; at < 4 * 24000; at += block) {
+        runner.process(row, part, std::min(block, 4 * 24000 - at));
+        const double want = *live::valueAt(points, runner.shown().ppq);
+        worst = std::max(worst, std::abs(static_cast<double>(knob.depth->get()) - want));
+    }
+    return worst;
+}
+
+//  Every installed plugin's parameters as the host finds them: at their manifest's places, under its names. A
+//  lane names a parameter by key and is driven at the manifest's place; one listed otherwise would move another.
+int parametersWhereNamed() {
+    Set s = load();
+    if (!s.ok) return 1;
+    const std::pair<juce::AudioPluginInstance*, const ParamManifest*> plugins[] = {
+        {s.plugins[0].get(), &encodeParams()},
+        {s.plugins[2].get(), &echoParams()},
+        {s.plugins[3].get(), &reverbParams()},
+        {s.plugins[4].get(), &decodeParams()}};
+    int wrong = 0, checked = 0;
+    for (const auto& [plugin, manifest] : plugins) {
+        const auto& params = plugin->getParameters();
+        for (int i = 0; i < manifest->size(); ++i, ++checked)
+            if (i >= params.size() || params[i]->getName(256) != juce::String(std::string((*manifest)[i].name))) {
+                if (wrong < 5)
+                    std::printf("    %s: %s at %d, the host finds %s\n", plugin->getName().toRawUTF8(),
+                                std::string((*manifest)[i].name).c_str(), i,
+                                i < params.size() ? params[i]->getName(256).toRawUTF8() : "nothing");
+                ++wrong;
+            }
+    }
+    std::printf("  %d parameters of four plugins, %d not where the manifest has them %s\n", checked, wrong,
+                wrong == 0 ? "" : "  FAIL");
+    return wrong == 0 ? 0 : 1;
+}
+
 //  The timeline over a set of a group with two tracks and a return, clips, locators and a loop: painted, playing
 //  and stopped, then pressed everywhere on a grid. The commands it asks are counted, a ruler press must locate,
 //  and nothing may fall over.
@@ -846,7 +930,15 @@ int timelineHolds() {
     };
     bool playing = true;
     page.heard = [&] { return live::Playhead{playing, 0, 40.0, 120.0}; };
-    page.show(tree, a);
+    live::Shape shape;
+    shape.chains = {{2, {{7, live::Effect::Echo, 0}}}};
+    const live::Field field = live::layOut(tree, shape);
+    const std::vector<live::Lane> lanes{{1, live::Instance::Encoder, 2, "transform.yaw", {{0.0, -30.0}, {64.0, 30.0}}},
+                                        {2, live::Instance::Insert, 7, "output.wet", {}},
+                                        {3, live::Instance::Decoder, live::kFirstDecoder, "output.level", {}}};
+    int edits = 0;
+    page.lanesChanged = [&](std::vector<live::Lane>) { ++edits; };
+    page.show({tree, a, shape, field, lanes});
     juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
     for (const bool p : {true, false}) {
         playing = p;
@@ -858,18 +950,19 @@ int timelineHolds() {
             }
     }
     //  Catches: a ruler press locating anywhere but under it, or not to the locator beside it. The song is 160
-    //  quarter notes over the width right of the 200-pixel column, less the 14-pixel inset.
-    const float span = static_cast<float>(page.getWidth()) - 200.0f - 14.0f;
+    //  quarter notes over the width between the tree's column and the lanes' panel, less the inset between.
+    namespace tl = ui::theme::timeline;
+    const float span = static_cast<float>(page.getWidth()) - tl::tree - tl::panel - tl::pad;
     const auto locateUnder = [&](double ppq) {
         lastLocate = -1.0;
-        page.clickAt({200.0f + static_cast<float>(ppq / 160.0) * span, 60.0f});
+        page.clickAt({tl::tree + static_cast<float>(ppq / 160.0) * span, 60.0f});
         return lastLocate;
     };
     const bool placed = std::abs(locateUnder(51.2) - 51.0) < 1e-9 && std::abs(locateUnder(32.3) - 32.0) < 1e-9;
-    const bool ok = commands > 0 && locates > 0 && placed;
-    std::printf("  painted playing and stopped, pressed everywhere: %d commands, %d of them locates; a press locates "
-                "under it %s %s\n",
-                commands, locates, placed ? "yes" : "no", ok ? "" : "  FAIL");
+    const bool ok = commands > 0 && locates > 0 && placed && edits > 0;
+    std::printf("  painted playing and stopped, pressed everywhere: %d commands, %d of them locates, %d lane edits; a "
+                "press locates under it %s %s\n",
+                commands, locates, edits, placed ? "yes" : "no", ok ? "" : "  FAIL");
     return ok ? 0 : 1;
 }
 
@@ -1373,6 +1466,17 @@ int main() {
                     got.size() == 3 ? static_cast<double>(got[0]) : -1.0,
                     got.size() == 3 ? static_cast<double>(got[1]) : -1.0,
                     got.size() == 3 ? static_cast<double>(got[2]) : -1.0, ok ? "" : "  FAIL");
+    }
+
+    std::printf("automation\n");
+    failed += parametersWhereNamed();
+    for (const int block : {1, 64, 500}) {
+        //  Catches: a lane not driven, driven a piece late or from the wrong position, its value not normalised.
+        const double off = laneFollows(block);
+        const bool ok = off < 1e-6;
+        failed += ok ? 0 : 1;
+        std::printf("  a lane over four beats, block %4d: the parameter off by %.2g at most %s\n", block, off,
+                    ok ? "" : "  FAIL");
     }
 
     std::printf("the timeline\n");

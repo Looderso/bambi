@@ -354,6 +354,7 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     voices_ = std::move(next);
     effects_ = std::move(nextEffects);
     decoders_ = std::move(nextDecoders);
+    drive();  // the lanes onto the instances that play now
     playing_ = fp.effects;
     plan_ = fp.plan;
     fieldPlan_ = std::move(fp);
@@ -442,6 +443,61 @@ void Engine::restore(const Json& states) {
 
 void Engine::transport(const live::TransportMessage& message, std::int64_t stampNs) noexcept {
     (void)queue_.push({message, stampNs});
+}
+
+Engine::Target Engine::targetOf(live::Instance instance, std::uint64_t owner, std::string_view param) const {
+    Target t;
+    if (instance == live::Instance::Encoder) {
+        for (const Voice& v : voices_)
+            if (v.track == owner) t = {&manifestOf(instance), -1, v.encoder.get()};
+    } else if (instance == live::Instance::Insert) {
+        for (const Fx& f : effects_)
+            if (f.insert.id == owner)
+                t = {&manifestOf(instance, f.insert.effect), -1, f.plugin.get()};
+    } else {
+        for (const Dec& d : decoders_)
+            if (d.id == owner) t = {&manifestOf(instance), -1, d.plugin.get()};
+    }
+    if (t.plugin == nullptr) return {};
+    t.at = t.manifest->byKey(param);
+    //  the hosted parameter at the manifest's place, and by the manifest's name: a plugin that lists them otherwise
+    //  is driven nowhere rather than on the wrong one
+    const auto& params = t.plugin->getParameters();
+    if (t.at < 0 || t.at >= params.size() ||
+        params[t.at]->getName(256) != juce::String(std::string((*t.manifest)[t.at].name)))
+        return {};
+    return t;
+}
+
+void Engine::setLanes(std::vector<live::Lane> lanes) {
+    lanes_ = std::move(lanes);
+    drive();
+}
+
+void Engine::drive() {
+    std::vector<Runner::Driven> driven;
+    Runner::Keep keep;
+    const auto alive = [&](juce::AudioProcessor* p) -> std::shared_ptr<void> {
+        for (const Voice& v : voices_)
+            if (v.encoder.get() == p) return v.encoder;
+        for (const Fx& f : effects_)
+            if (f.plugin.get() == p) return f.plugin;
+        for (const Dec& d : decoders_)
+            if (d.plugin.get() == p) return d.plugin;
+        return nullptr;
+    };
+    for (const live::Lane& lane : lanes_) {
+        if (lane.points.empty()) continue;
+        const Target t = targetOf(lane.instance, lane.owner, lane.param);
+        if (t.plugin == nullptr) continue;
+        std::vector<live::LanePoint> points;
+        for (const live::LanePoint& p : lane.points)
+            points.push_back(
+                {p.ppq, toNormalised(*t.manifest, t.at, clampToRange(*t.manifest, t.at, static_cast<float>(p.value)))});
+        driven.push_back({t.plugin->getParameters()[t.at], std::move(points)});
+        keep.push_back(alive(t.plugin));
+    }
+    runner_.setAutomation(std::move(driven), std::move(keep));
 }
 
 live::Playhead Engine::heard() const noexcept {

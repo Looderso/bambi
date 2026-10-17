@@ -74,6 +74,11 @@ public:
                 engine_.restore(*states);
                 kept_ = states->dump(0);
             }
+            if (const bambi::Json* lanes = device_.session().kept("lanes")) {
+                lanes_ = bambi::live::lanesFrom(*lanes);
+                keptLanes_ = lanes->dump(0);
+                engine_.setLanes(lanes_);
+            }
         };
         device_.show = [this] {
             if (auto* top = getTopLevelComponent()) top->toFront(true);
@@ -88,6 +93,13 @@ public:
         addChildComponent(timeline_);
         timeline_.command = [this](const bambi::live::Command& c) { device_.command(c); };
         timeline_.heard = [this] { return engine_.heard(); };
+        timeline_.lanesChanged = [this](std::vector<bambi::live::Lane> lanes) {
+            lanes_ = std::move(lanes);
+            engine_.setLanes(lanes_);
+        };
+        timeline_.plays = [this](const bambi::live::Lane& l) {
+            return engine_.targetOf(l.instance, l.owner, l.param).plugin != nullptr;
+        };
         routing_.reshape = [this](bambi::live::Shape shape) { device_.reshape(std::move(shape)); };
         routing_.showDecoder = [this](std::uint64_t id) { showView(View::Decoder, engine_.decoderOf(id)); };
         routing_.showSource = [this](bambi::live::TrackId track) { showView(View::Encoder, engine_.encoderOf(track)); };
@@ -151,6 +163,11 @@ private:
         } else if (heard_ && ++alone_ >= kQuitAfterSeconds)
             juce::JUCEApplication::getInstance()->systemRequestedQuit();
         if (!device_.session().on()) return;
+        //  the lanes with the set, as the plugins' states are
+        if (bambi::Json lanes = bambi::live::toJson(lanes_); lanes.dump(0) != keptLanes_) {
+            keptLanes_ = lanes.dump(0);
+            device_.keep("lanes", std::move(lanes));
+        }
         bambi::Json states = engine_.states();
         std::string text = states.dump(0);
         if (text == kept_) return;
@@ -204,7 +221,7 @@ private:
         labels.push_back("timeline");
         views_.push_back(View::Timeline);
         if (view_ == View::Timeline) selected = static_cast<int>(views_.size()) - 1;
-        timeline_.show(session.tree(), session.arrangement());
+        timeline_.show({session.tree(), session.arrangement(), session.shape(), session.field(), lanes_});
         //  the audio sheet after another gap: over the window, never a view of its own
         labels.push_back({});
         views_.push_back(View::Gap);
@@ -313,6 +330,8 @@ private:
     bambi::livehost::TimelinePage timeline_;
     bambi::livehost::AudioSheet sheet_;
     juce::String audioProblem_;  ///< why the sheet's last change could not be played or kept
+    std::vector<bambi::live::Lane> lanes_;  ///< the host's automation, kept with the set
+    std::string keptLanes_;                 ///< the lanes as last kept
     bool rebuild_{false};  ///< the program to be built again at the next update, whatever changed
     std::vector<bambi::live::AudioDevice> shownSystem_;  ///< the system's devices, as the sheet last showed them
     std::vector<View> views_;

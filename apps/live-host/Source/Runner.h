@@ -10,6 +10,7 @@
 #include "Playhead.h"
 #include "bambi/link/handoff.hpp"
 #include "bambi/live/graph.hpp"
+#include "bambi/live/lanes.hpp"
 #include "bambi/live/transport.hpp"
 
 /*  Plays a compiled plan: the steps bambi-live's graph turned the host's shape into, run in order every block over
@@ -31,6 +32,10 @@
  *  Live's Main is played through delay lines of the runner's own, which a swap does not drop: it fades with the
  *  rest only when the program swapped in plays it with other delays or onto other channels, so a change to the
  *  field that keeps its latency is not heard on Main.
+ *
+ *  Automation is handed over apart from the program, so a lane edited fades nothing: each piece, every lane's value
+ *  at the song position the plugins are given is set on its parameter -- only when it changed, so a parameter
+ *  moved in its window stays where it was put until its lane moves.
  *
  *  A send's level changes only on the host's grid of kLevelGrid samples: at each grid point the level last set is
  *  taken, and the send ramps to it linearly over the next kLevelGrid samples, so a moving knob does not click and
@@ -67,6 +72,14 @@ public:
     };
     using Keep = std::vector<std::shared_ptr<void>>;  ///< what a program keeps alive while it may be played
 
+    /// A parameter a lane drives: its points' values normalised as the parameter takes them.
+    struct Driven {
+        juce::AudioProcessorParameter* parameter{nullptr};
+        std::vector<live::LanePoint> points;
+    };
+
+    Runner() { automation_.begin(std::make_unique<Automation>()); }
+
     static constexpr int kFade = 256;       ///< samples of the fade out before a swap, and of the fade in after
     static constexpr int kLevelGrid = 256;  ///< samples between the points where a send takes its new level
 
@@ -84,8 +97,15 @@ public:
     bool swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
               juce::String& error, Keep keep = {}, std::optional<std::vector<Route>> routes = std::nullopt);
 
+    /// The lanes to drive from the next piece, in place of those before; `keep` holds what their parameters
+    /// belong to. Message thread.
+    void setAutomation(std::vector<Driven> lanes, Keep keep);
+
     /// Frees what the audio thread has let go of. Message thread.
-    void tidy() { handoff_.freeRetired(); }
+    void tidy() {
+        handoff_.freeRetired();
+        automation_.freeRetired();
+    }
 
     /// Whether a swapped program is still waiting for the audio thread.
     bool swapping() const noexcept { return handoff_.pending(); }
@@ -157,6 +177,13 @@ private:
         mutable std::vector<Line> routeLines;  // per route, one channel; Main's are the runner's
     };
 
+    struct Automation : SnapshotCensus {
+        std::vector<Driven> lanes;
+        Keep keep;
+        mutable std::vector<float> last;  // per lane, the value last set; the audio thread's
+    };
+    void drive(const live::Playhead& at) noexcept;
+
     std::unique_ptr<Program> build(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots,
                                    int levels, juce::String& error, Keep keep,
                                    std::optional<std::vector<Route>> routes);
@@ -175,6 +202,7 @@ private:
     Setup setup_;
     int field_{16};  // channels of the field at the plan's order
     Handoff<Program> handoff_;
+    Handoff<Automation> automation_;
     Program* latest_{nullptr};  // the program last prepared or swapped: the message thread's
     juce::MidiBuffer midi_;
     LivePlayhead playhead_;

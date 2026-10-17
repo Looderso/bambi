@@ -11,7 +11,7 @@ target_compile_definitions(bambi-live-host PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_U
                                                    JUCE_APPLICATION_NAME_STRING="bambi live host"
                                                    JUCE_APPLICATION_VERSION_STRING="0.1.0")
 target_link_libraries(bambi-live-host
-    PRIVATE bambi-live bambi-loop bambi-net bambi-devices bambi-remote bambi-ui juce::juce_audio_processors juce::juce_audio_devices juce::juce_gui_basics
+    PRIVATE bambi-live bambi-encode bambi-echo bambi-reverb bambi-loop bambi-net bambi-devices bambi-remote bambi-ui juce::juce_audio_processors juce::juce_audio_devices juce::juce_gui_basics
             juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # macOS asks for the microphone again for every new signature, and holds the host's first input until it is
@@ -28,6 +28,6 @@ juce_add_console_app(bambi-live-host-check PRODUCT_NAME "bambi-live-host-check")
 target_sources(bambi-live-host-check PRIVATE Check/RunnerCheck.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/AudioSheet.cpp Source/Timeline.cpp)
 target_compile_definitions(bambi-live-host-check PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 target_link_libraries(bambi-live-host-check
-    PRIVATE bambi-live bambi-decode bambi-devices bambi-remote bambi-ui juce::juce_audio_processors juce::juce_audio_devices
+    PRIVATE bambi-live bambi-decode bambi-encode bambi-echo bambi-reverb bambi-devices bambi-remote bambi-ui juce::juce_audio_processors juce::juce_audio_devices
             juce::juce_gui_basics
             juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)

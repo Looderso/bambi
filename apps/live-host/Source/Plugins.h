@@ -7,6 +7,9 @@
 #include <string_view>
 
 #include "bambi/patch/layout.hpp"
+#include "bambi/live/field.hpp"
+#include "bambi/live/lanes.hpp"
+#include "bambi/patch/parameters.hpp"
 #include "bambi/remote/Remote.h"
 
 /*  The suite's installed plugins, loaded as the host loads them: its own VST3 bundles only -- never a scan of the
@@ -41,6 +44,10 @@ juce::AudioChannelSet speakerChannels(int channels);
 remote::IRemote* remoteOf(juce::AudioPluginInstance& plugin, std::string_view kind, int version);
 /// What it reports, as JSON text.
 std::string remoteReport(remote::IRemote& remote);
+
+/// The parameters an instance of the suite lists, as its manifest has them: an Encoder's, an Echo's or a
+/// Reverb's as `effect` says for an insert, a Decoder's.
+const ParamManifest& manifestOf(live::Instance instance, live::Effect effect = live::Effect::Echo);
 
 /// The layout an instance holds, as "in 2 · sidechain 2 · out 16".
 juce::String describe(const juce::AudioProcessor::BusesLayout& layout);

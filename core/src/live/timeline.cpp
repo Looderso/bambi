@@ -25,13 +25,32 @@ double songLength(const Arrangement& a, int least) {
     return std::max(bars, static_cast<double>(least)) * kBeatsPerBar;
 }
 
-double locateAt(double ppq, const Arrangement& a, double grid, double tolerance) {
-    const Locator* near = nullptr;
-    for (const Locator& l : a.locators)
-        if (std::abs(l.time - ppq) <= tolerance && (near == nullptr || std::abs(l.time - ppq) < std::abs(near->time - ppq)))
-            near = &l;
-    if (near != nullptr) return near->time;
+double snapAt(double ppq, const std::vector<double>& edges, double grid, double tolerance) {
+    const double* near = nullptr;
+    for (const double& e : edges)
+        if (std::abs(e - ppq) <= tolerance && (near == nullptr || std::abs(e - ppq) < std::abs(*near - ppq))) near = &e;
+    if (near != nullptr) return std::max(0.0, *near);
     return std::max(0.0, grid > 0.0 ? std::round(ppq / grid) * grid : ppq);
+}
+
+std::vector<double> edgesOf(const Arrangement& a, TrackId track) {
+    std::vector<double> edges;
+    for (const Locator& l : a.locators) edges.push_back(l.time);
+    for (const TrackClips& t : a.tracks)
+        if (track != 0 && t.id == track)
+            for (const Clip& c : t.clips) {
+                edges.push_back(c.start);
+                edges.push_back(c.end);
+            }
+    return edges;
+}
+
+double locateAt(double ppq, const Arrangement& a, double grid, double tolerance) {
+    return snapAt(ppq, edgesOf(a, 0), grid, tolerance);
+}
+
+double gridFor(double pixelsPerBeat) {
+    return pixelsPerBeat >= 48.0 ? 0.25 : pixelsPerBeat >= 12.0 ? 1.0 : static_cast<double>(kBeatsPerBar);
 }
 
 double heardAt(double ppq, double bpm, double rate, int samplesLate) {

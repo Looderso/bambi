@@ -15,6 +15,8 @@
 #include "bambi/live/field.hpp"
 #include "bambi/decode/remote.hpp"
 #include "bambi/live/io.hpp"
+#include "bambi/live/lanes.hpp"
+#include "bambi/patch/parameters.hpp"
 #include "bambi/live/pairs.hpp"
 #include "devices.hpp"
 #include "bambi/live/transport.hpp"
@@ -95,6 +97,18 @@ public:
     /// The host's inputs in the field arrive where this computer's settings keep them.
     bool setField(const live::Field& field, const std::vector<live::TrackPair>& pairs,
                   const std::vector<live::HostInput>& inputs, juce::String& status);
+
+    /// The lanes to drive, each on its instance's parameter as the set names it; a lane whose instance does not play,
+    /// or whose parameter the instance does not have, waits. Message thread; driven again whenever what plays changes.
+    void setLanes(std::vector<live::Lane> lanes);
+    /// A parameter of an instance the engine plays, as a lane names it: its manifest and place there; none when
+    /// it does not play.
+    struct Target {
+        const ParamManifest* manifest{nullptr};
+        int at{-1};
+        juce::AudioProcessor* plugin{nullptr};
+    };
+    Target targetOf(live::Instance instance, std::uint64_t owner, std::string_view param) const;
 
     /// Every level from Live, as `tree` has it now, for the field last set: the sends' knobs, a split group's fader
     /// on its bus, a field return's fader. Message thread; the runner ramps to them.
@@ -195,6 +209,8 @@ private:
     live::Row row_;           ///< the chosen devices' outputs: the Decoder's bus
     live::Row inputRow_;      ///< their inputs, after the loop device's on the input row
     std::vector<Runner::Route> routes_;  ///< the routes the runner was last given
+    std::vector<live::Lane> lanes_;      ///< the lanes last given, driven where their instances play
+    void drive();
     std::atomic<float> load_{0.0f};
     int loopChannels_{16};    ///< the loop device's channels the host opens, each way
     int inputChannels_{16};   ///< the input row: the loop device's, then the devices' inputs
