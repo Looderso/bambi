@@ -37,7 +37,9 @@ struct AudioDevice {
     int outs{0}, ins{0};
     int outLatency{0};  ///< from a sample handed over to its sound, as the device reports it
     int inLatency{0};   ///< from a sound to its sample handed over
-    bool bluetooth{false};   ///< listed, never offered: its latency, and its rate moving when a microphone opens
+    /// Bluetooth, or a phone's microphone over the air: listed, never offered -- its latency, and a Bluetooth
+    /// device's rate moving when its microphone opens.
+    bool wireless{false};
 
     friend bool operator==(const AudioDevice&, const AudioDevice&) = default;
 };
@@ -56,11 +58,11 @@ struct Row {
     std::vector<AudioDevice> devices;  ///< as chosen, the clock first
     bool inputs{false};                ///< a row of the devices' inputs; otherwise of their outputs
 
-    int width() const;                          ///< every device's channels
-    int at(const DeviceChannel& c) const;       ///< its row channel, or 0 when its device is not on the row
-    DeviceChannel channel(int at) const;        ///< the device channel at a row channel; none past the row
-    int deviceOf(int at) const;                 ///< the index of the device a row channel is on, or -1
-    std::vector<int> deviceEnds() const;        ///< each device's last row channel but the last's
+    int width() const;                     ///< every device's channels
+    int at(const DeviceChannel& c) const;  ///< its row channel, or 0 when its device is not on the row
+    DeviceChannel channel(int at) const;   ///< the device channel at a row channel; none past the row
+    int deviceOf(int at) const;            ///< the index of the device a row channel is on, or -1
+    std::vector<int> deviceEnds() const;   ///< each device's last row channel but the last's
     /// What the Decoder's placement keeps to: the row's width and its devices, the channels given kept.
     OutputBus bus(std::vector<int> kept) const;
 };
@@ -77,8 +79,8 @@ enum class Signal { Main, Headphones, Speakers };
 /// An output played again by the host on other channels: a second pair of headphones, or back to Live.
 struct Copy {
     Signal of{Signal::Headphones};
-    DeviceChannel at;     ///< its first channel; unused for one back to Live
-    bool toLive{false};   ///< onto the loop device's record pair, where Live's bambi track records it
+    DeviceChannel at;    ///< its first channel; unused for one back to Live
+    bool toLive{false};  ///< onto the loop device's record pair, where Live's bambi track records it
 
     friend bool operator==(const Copy&, const Copy&) = default;
 };

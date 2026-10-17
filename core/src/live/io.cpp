@@ -68,7 +68,7 @@ std::vector<AudioDevice> aggregateOf(const std::vector<std::string>& chosen, con
     int outs = 0;
     for (const std::string& uid : chosen) {
         const auto d = std::find_if(system.begin(), system.end(), [&](const AudioDevice& x) { return x.uid == uid; });
-        if (d == system.end() || d->bluetooth) continue;
+        if (d == system.end() || d->wireless) continue;
         if (std::any_of(out.begin(), out.end(), [&](const AudioDevice& x) { return x.uid == uid; })) continue;
         if (outs + d->outs > kMaxRowChannels) break;
         outs += d->outs;
@@ -108,8 +108,8 @@ bool boolAt(const Json& j, const char* key, bool fallback) {
 //  The Decoder's channels a signal plays on, as it reports them; Main's are its own two.
 std::vector<int> sourceChannels(Signal s, const DecoderReport& d) {
     if (s == Signal::Main) return {1, 2};
-    if (s == Signal::Headphones) return d.headphonesOn ? std::vector<int>{d.headphoneChannel, d.headphoneChannel + 1}
-                                                       : std::vector<int>{};
+    if (s == Signal::Headphones)
+        return d.headphonesOn ? std::vector<int>{d.headphoneChannel, d.headphoneChannel + 1} : std::vector<int>{};
     return d.speakersOn ? d.speakerChannels : std::vector<int>{};
 }
 

@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <random>
 #include <vector>
@@ -31,6 +32,7 @@
 #include "../Source/Plugins.h"
 #include "../Source/Runner.h"
 #include "bambi/decode/remote.hpp"
+#include "devices.hpp"
 #include "bambi/live/graph.hpp"
 #include "bambi/live/transport.hpp"
 
@@ -654,6 +656,104 @@ std::pair<float, float> arrivedAt(int first, int width) {
     return {part.getSample(0, 511), part.getSample(1, 511)};
 }
 
+//  One source, a pair on input channels 0 and 1 at 0.1 and 0.2, Live's Main on channels 2 and 3 at 0.5 and 0.25, played out along routes:
+//  the decoder's left onto output 3, 10 samples late, its right onto output 0; Main's left onto output 1,
+//  `mainDelay` samples late, and its right onto output 2. At sample `swapAt` a program the same but for Main's delay,
+//  `swappedDelay`, is swapped in, and with `laterAt` another, Main at `laterDelay`. Each output channel, sample by
+//  sample.
+std::vector<std::vector<float>> routed(int block, int mainDelay, int swapAt, int swappedDelay, int laterAt = -1,
+                                       int laterDelay = 0) {
+    Pass a;
+    PassOut out;
+    live::Plan p;
+    live::FieldNode n;
+    n.track = 1;
+    n.input = 0;
+    n.encoder = 0;
+    p.nodes = {n};
+    p.slots = {{0, -1}, {0, -1}};
+    p.decoder = 1;
+    const auto compiled = live::compile(p);
+    const auto routes = [](int delay) {
+        return std::vector<livehost::Runner::Route>{
+            {false, 0, 3, 10}, {false, 1, 0, 0}, {true, 0, 1, delay}, {true, 1, 2, delay}};
+    };
+    livehost::Runner runner;
+    juce::String why;
+    livehost::Runner::Setup setup{kOrder, kMaxBlock, 4, 4, kRate};
+    setup.mainInput = 2;
+    setup.maxMainDelay = 1000;
+    if (!compiled || !runner.prepare(*compiled, {&a, &out}, compiled->levels, setup, why, {}, routes(mainDelay))) {
+        std::printf("  the runner: %s\n", why.toRawUTF8());
+        return {};
+    }
+    std::vector<std::vector<float>> got(4);
+    juce::AudioBuffer<float> row(4, kDeviceBlock), part(4, kDeviceBlock);
+    for (int i = 0; i < kDeviceBlock; ++i) {
+        row.setSample(0, i, 0.1f);
+        row.setSample(1, i, 0.2f);
+        row.setSample(2, i, 0.5f);
+        row.setSample(3, i, 0.25f);
+    }
+    bool swapped = false, later = laterAt < 0;
+    for (int at = 0; at < 8192; at += block) {
+        if (!swapped && at >= swapAt) {
+            swapped = runner.swap(*compiled, {&a, &out}, compiled->levels, why, {}, routes(swappedDelay));
+            if (!swapped) return {};
+        }
+        if (!later && at >= laterAt) {
+            later = runner.swap(*compiled, {&a, &out}, compiled->levels, why, {}, routes(laterDelay));
+            if (!later) return {};
+        }
+        const int frames = std::min(block, 8192 - at);
+        runner.process(row, part, frames);
+        for (int ch = 0; ch < 4; ++ch)
+            for (int i = 0; i < frames; ++i) got[static_cast<std::size_t>(ch)].push_back(part.getSample(ch, i));
+    }
+    return got;
+}
+
+//  The host's private aggregate of the loop device and every wired device, opened as the engine opens it, and
+//  closed again before any audio runs: whether Core Audio and JUCE give it with every channel. 0 for a pass, 1 for
+//  a failure, -1 when there is no loop device to make it of.
+int aggregateOpens() {
+    if (devices::loopChannels() == 0) return -1;
+    const auto joined = [] {
+        std::vector<std::string> uids;
+        for (const auto& d : devices::system())
+            if (!d.wireless) uids.push_back(d.uid);
+        return live::aggregateOf(uids, devices::system());
+    }();
+    std::vector<std::string> uids;
+    for (const auto& d : joined) uids.push_back(d.uid);
+    devices::Aggregate aggregate;
+    std::string error;
+    if (!aggregate.create(uids, &error)) {
+        std::printf("  no aggregate: %s\n", error.c_str());
+        return 1;
+    }
+    juce::AudioDeviceManager manager;
+    for (juce::AudioIODeviceType* type : manager.getAvailableDeviceTypes()) type->scanForDevices();
+    const int ins = devices::loopChannels() + live::rowOf(joined, true).width();
+    const int outs = devices::loopChannels() + live::rowOf(joined).width();
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = setup.outputDeviceName = devices::Aggregate::kName;
+    setup.useDefaultInputChannels = setup.useDefaultOutputChannels = false;
+    setup.inputChannels.setRange(0, ins, true);
+    setup.outputChannels.setRange(0, outs, true);
+    const juce::String why = manager.initialise(ins, outs, nullptr, false, {}, &setup);
+    auto* device = manager.getCurrentAudioDevice();
+    const bool ok = why.isEmpty() && device != nullptr && device->getName() == devices::Aggregate::kName &&
+                    device->getActiveInputChannels().countNumberOfSetBits() == ins &&
+                    device->getActiveOutputChannels().countNumberOfSetBits() == outs;
+    std::printf("  %zu devices and the loop device: %s, %d in, %d out %s\n", joined.size(),
+                device != nullptr ? device->getName().toRawUTF8() : why.toRawUTF8(),
+                device != nullptr ? device->getActiveInputChannels().countNumberOfSetBits() : 0,
+                device != nullptr ? device->getActiveOutputChannels().countNumberOfSetBits() : 0, ok ? "" : "  FAIL");
+    manager.closeAudioDevice();
+    return ok ? 0 : 1;
+}
+
 //  The swap's fade at `k` samples after it was asked for, with no delay to hold through: down, then up.
 double fadeAt(int k) {
     const int f = livehost::Runner::kFade;
@@ -1075,6 +1175,50 @@ int main() {
         std::printf("  mono from channel 3: %.2f %.2f; a pair from channel 2: %.2f %.2f %s\n", static_cast<double>(l1),
                     static_cast<double>(r1), static_cast<double>(l2), static_cast<double>(r2), ok ? "" : "  FAIL");
     }
+
+    std::printf("the routes out\n");
+    for (const int block : {1, 64, 500}) {
+        //  Catches: a decoder route on the wrong channel or without its delay, Main not delayed by its own, Main
+        //  dipping through a swap that keeps its delays, or not faded through one that changes them.
+        const auto kept = routed(block, 64, 4096, 64);
+        const auto moved = routed(block, 64, 4096, 128);
+        //  a swap keeping Main's delay, and while the field fades for it one changing it
+        const auto late = routed(block, 64, 4096, 64, 4096 + 100, 128);
+        if (kept.size() != 4 || moved.size() != 4 || late.size() != 4) return 1;
+        const auto at = [](const std::vector<std::vector<float>>& g, int ch, int i) {
+            return g[static_cast<std::size_t>(ch)][static_cast<std::size_t>(i)];
+        };
+        //  the start fades in over kFade; past it, every route at its level, Main and the decoder's left late
+        const int settled = livehost::Runner::kFade + 200;
+        bool placed = std::abs(at(kept, 0, settled) - 0.2f) < 1e-6f && std::abs(at(kept, 3, settled) - 0.1f) < 1e-6f &&
+                      std::abs(at(kept, 1, settled) - 0.5f) < 1e-6f && std::abs(at(kept, 2, settled) - 0.25f) < 1e-6f;
+        placed = placed && at(kept, 1, 63) == 0.0f && at(kept, 1, 64) > 0.0f && at(kept, 3, 9) == 0.0f;
+        float keptLow = 1.0f, movedLow = 1.0f, lateLow = 1.0f, step = 0.0f, lateStep = 0.0f;
+        for (int i = 4096; i < 4096 + 6 * livehost::Runner::kFade; ++i) {
+            keptLow = std::min(keptLow, at(kept, 1, i));
+            movedLow = std::min(movedLow, at(moved, 1, i));
+            lateLow = std::min(lateLow, at(late, 1, i));
+            //  no step on the decoder's delayed route, nor on Main where it moves late
+            step = std::max(step, std::abs(at(kept, 3, i) - at(kept, 3, i - 1)));
+            lateStep = std::max(lateStep, std::abs(at(late, 1, i) - at(late, 1, i - 1)));
+        }
+        const float smooth = 0.5f / static_cast<float>(livehost::Runner::kFade) + 1e-6f;
+        const bool steady = std::abs(keptLow - 0.5f) < 1e-6f && movedLow < 0.01f && lateLow < 0.01f &&
+                            step <= smooth && lateStep <= smooth;
+        const bool ok = placed && steady;
+        failed += ok ? 0 : 1;
+        std::printf("  block %4d: on their channels, late as asked %s; Main through a swap keeping its delay %.3f at "
+                    "least, changing it %.3f, changing it late %.3f; steps %.4f %.4f %s\n",
+                    block, placed ? "yes" : "no", static_cast<double>(keptLow), static_cast<double>(movedLow),
+                    static_cast<double>(lateLow), static_cast<double>(step), static_cast<double>(lateStep),
+                    ok ? "" : "  FAIL");
+    }
+
+    std::printf("the host's aggregate\n");
+    if (const int a = aggregateOpens(); a < 0)
+        std::printf("  no loop device here: not checked\n");
+    else
+        failed += a;
 
     std::printf(failed == 0 ? "the runner plays both plans as the direct renders do, at every block size\n"
                             : "%d renders differ\n",

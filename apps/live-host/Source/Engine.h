@@ -13,13 +13,19 @@
 #include "bambi/link/spsc.hpp"
 #include "bambi/live/arrival.hpp"
 #include "bambi/live/field.hpp"
+#include "bambi/live/io.hpp"
 #include "bambi/live/pairs.hpp"
+#include "devices.hpp"
 #include "bambi/live/transport.hpp"
 #include "bambi/patch/json.hpp"
 
-/*  The host's audio: the loop device opened as the host's own, an Encoder for every track on one of its pairs and
- *  the Decoder, played by the runner. Live's tracks arrive on the pairs; the decoded mix goes out on the pair past
- *  them, which Live's bambi return plays. A track keeps its Encoder, and what it is set to, for as long as it is on
+/*  The host's audio: a private aggregate of the loop device and the devices this computer's settings choose, opened
+ *  as the host's own -- the loop device alone while none is chosen -- an Encoder for every track on one of its
+ *  pairs and the Decoder, played by the runner. Live's tracks arrive on the pairs, Live's Main on the pair past
+ *  them. The Decoder's bus is the chosen devices' outputs, channel for channel; the host asks it, through its remote
+ *  interface, to place its outputs as the settings keep them, then plays them out with Main and every copy, each
+ *  in step with the slowest device and Main late by the field. A copy back to Live goes out on the pair past the
+ *  tracks', where Live's bambi track records it. A track keeps its Encoder, and what it is set to, for as long as it is on
  *  a pair; one new to a pair gets one loaded, and one gone lets go of its own -- each change a new program for the
  *  runner, swapped in with a short fade.
  *
@@ -47,14 +53,23 @@ public:
         int bufferSize{64};
         double rate{48000.0};
         std::int64_t transportOffsetSamples{0};  ///< by how much Live's audio for a position follows its report
+        live::AudioSettings audio;               ///< where it plays and hears, on this computer
     };
 
     Engine() = default;
     ~Engine() override;
 
-    /// Opens the loop device -- bambi's own, else BlackHole 16ch -- loads the plugins and starts. False, with
-    /// `status` saying why, when any of that fails; otherwise `status` says what runs.
+    /// Opens the aggregate, or the loop device -- bambi's own, else BlackHole 16ch -- loads the plugins and starts.
+    /// False, with `status` saying why, when any of that fails; otherwise `status` says what runs.
     bool start(const Settings& settings, juce::String& status);
+
+    /// Where it plays and hears, changed: the outputs asked of the Decoder again and played along new routes; with
+    /// other devices or another buffer, the device opened again and the plugins laid out for it, which stops the
+    /// sound a moment. False, with `status` saying why, when that fails. Message thread.
+    bool setAudio(const live::AudioSettings& audio, juce::String& status);
+    const live::AudioSettings& audio() const { return s_.audio; }
+    /// The chosen devices' outputs, as the Decoder's bus has them.
+    const live::Row& row() const { return row_; }
 
     /// Live's transport, as the device sent it, stamped in steady-clock nanoseconds when its line was read.
     void transport(const live::TransportMessage& message, std::int64_t stampNs) noexcept;
@@ -113,6 +128,13 @@ private:
         std::int64_t stampNs{0};
     };
 
+    bool open(juce::String& status);
+    void place();  ///< the Decoder asked to place its outputs as the settings keep them
+    Runner::Setup runnerSetup() const;
+    juce::String said() const;
+    /// The routes out for the field `fieldLatency` samples late, from where the Decoder reports its outputs.
+    std::vector<Runner::Route> routesFor(int fieldLatency) const;
+
     void audioDeviceIOCallbackWithContext(const float* const* inputs, int inputCount, float* const* outputs,
                                           int outputCount, int frames,
                                           const juce::AudioIODeviceCallbackContext& context) override;
@@ -134,8 +156,22 @@ private:
     live::TransportProjector projector_;
     std::optional<live::Arrivals> arrivals_;
     SpscQueue<Timed, 256> queue_;  ///< full only while no block runs; a message then is dropped
-    int loopChannels_{16};
-    int returnChannel_{14};
+    struct Program {  // what the runner was last given, to give it again with other routes or another device
+        live::Compiled compiled;
+        std::vector<juce::AudioProcessor*> slots;
+        int levels{0};
+        Runner::Keep keep;
+    };
+    Program program_;
+    juce::String opened_;  ///< the device's name
+    juce::AudioBuffer<float> in_, out_;  ///< the callback's copies of the device's channels
+    int prepared_{0};      ///< the block the plugins are prepared for
+    devices::Aggregate aggregate_;
+    live::Row row_;           ///< the chosen devices' outputs: the Decoder's bus
+    int loopChannels_{16};    ///< the loop device's channels the host opens, each way
+    int inputChannels_{16};   ///< the input row: the loop device's, then the devices' inputs
+    int outputChannels_{16};  ///< the loop device's, then the row
+    int returnChannel_{14};   ///< the pair past the tracks': Live's Main in, the copy back to Live out
     double latencyMs_{0.0};
     int deviceLatency_{0};               ///< the loop device both ways, and its buffer
     std::atomic<bool> playable_{false};  ///< the device runs at the rate the plugins were prepared for

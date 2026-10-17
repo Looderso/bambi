@@ -30,9 +30,16 @@ void sidechain(const live::Op& op, juce::AudioBuffer<float>& scratch, int first,
 
 }  // namespace
 
+std::vector<Runner::Route> Runner::mainOf(const std::vector<Route>& routes) {
+    std::vector<Route> out;
+    for (const Route& r : routes)
+        if (r.main) out.push_back(r);
+    return out;
+}
+
 std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
                                                const std::vector<juce::AudioProcessor*>& slots, int levels,
-                                               juce::String& error, Keep keep) {
+                                               juce::String& error, Keep keep, std::vector<Route> routes) {
     //  every index a step names, checked here, so that process() can trust them
     const auto buffer = [&](int b) { return b >= 0 && b < compiled.buffers; };
     for (const live::Op& op : compiled.ops) {
@@ -56,6 +63,19 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
             return nullptr;
         }
     }
+    int decoderWidth = 0;
+    for (const live::Op& op : compiled.ops)
+        if (op.step == live::Step::Decode)
+            decoderWidth = slots[static_cast<std::size_t>(op.slot)]->getTotalNumOutputChannels();
+    for (const Route& r : routes) {
+        const bool from = r.main ? r.from == 0 || r.from == 1 : r.from >= 0 && r.from < decoderWidth;
+        const bool late = r.delay >= 0 && (!r.main || r.delay <= setup_.maxMainDelay);
+        const bool heard = !r.main || (setup_.mainInput >= 0 && setup_.mainInput + 1 < setup_.inputChannels);
+        if (!from || !late || !heard || r.to < 0 || r.to >= setup_.outputChannels) {
+            error = "a route reads or writes a channel the host does not have, or is later than Main may be";
+            return nullptr;
+        }
+    }
     auto p = std::make_unique<Program>();
     p->compiled = compiled;
     p->slots = slots;
@@ -76,16 +96,27 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
         }
         p->lines.push_back(std::move(l));
     }
+    for (const Route& r : routes) {
+        Line l;
+        if (!r.main) p->longest = std::max(p->longest, r.delay);
+        if (!r.main && r.delay > 0) {
+            l.length = r.delay;
+            l.memory.setSize(1, r.delay);
+            l.memory.clear();
+        }
+        p->routeLines.push_back(std::move(l));
+    }
+    p->routes = std::move(routes);
     p->levelCount = std::max(levels, 0);
     p->levels = std::make_unique<Program::Level[]>(static_cast<std::size_t>(p->levelCount));
     return p;
 }
 
 bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                     const Setup& setup, juce::String& error, Keep keep) {
+                     const Setup& setup, juce::String& error, Keep keep, std::vector<Route> routes) {
     setup_ = setup;
     field_ = (setup.order + 1) * (setup.order + 1);
-    auto p = build(compiled, slots, levels, error, std::move(keep));
+    auto p = build(compiled, slots, levels, error, std::move(keep), std::move(routes));
     if (p == nullptr) return false;
     for (juce::AudioProcessor* plugin : slots) ready(plugin);  // no audio runs yet
     latest_ = p.get();
@@ -94,13 +125,21 @@ bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::Aud
     playhead_.set({}, setup.rate);
     sample_ = 0;
     fade_ = Fade::None;
+    mainLines_.setSize(2, std::max(1, setup.maxMainDelay + setup.maxBlock));
+    mainLines_.clear();
+    mainAt_ = 0;
     return true;
 }
 
 bool Runner::swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                  juce::String& error, Keep keep) {
-    auto p = build(compiled, slots, levels, error, std::move(keep));
+                  juce::String& error, Keep keep, std::vector<Route> routes) {
+    auto p = build(compiled, slots, levels, error, std::move(keep), std::move(routes));
     if (p == nullptr) return false;
+    //  sticky while a program is still waiting: what the audio thread adopts must fade Main if any program posted since
+    //  it last adopted plays Main otherwise; published to it by the post below
+    const bool differs = latest_ == nullptr || mainOf(latest_->routes) != mainOf(p->routes);
+    mainMoves_.store(differs || (handoff_.pending() && mainMoves_.load(std::memory_order_relaxed)),
+                     std::memory_order_release);
     latest_ = p.get();
     (void)handoff_.post(std::move(p));  // one posted and never taken goes here, on this thread
     return true;
@@ -133,26 +172,32 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
         if (fade_ == Fade::None && handoff_.pending()) {
             fade_ = Fade::Out;
             faded_ = 0;
+            mainFading_ = mainMoves_.load(std::memory_order_acquire);
         }
         //  a piece ends where a phase of the fade does, so the swap falls between two pieces, and at a grid point,
         //  where the sends take their levels
         int n = std::min({frames - done, setup_.maxBlock, kLevelGrid - static_cast<int>(sample_ % kLevelGrid)});
         const int length = fade_ == Fade::Hold ? hold_ : kFade;
         if (fade_ != Fade::None) n = std::min(n, length - faded_);
-        float g0 = 1.0f, g1 = 1.0f;  // the fade's gain at the piece's first sample, and just after its last
+        //  the fade's gains at the piece's first sample, and just after its last: the field's, and Main's
+        float g0 = 1.0f, g1 = 1.0f, m0 = 1.0f, m1 = 1.0f;
         const auto ramp = [&](int at) { return static_cast<float>(at) / static_cast<float>(kFade); };
-        if (fade_ == Fade::Out) {
-            g0 = 1.0f - ramp(faded_);
-            g1 = 1.0f - ramp(faded_ + n);
+        if (fade_ == Fade::Out || fade_ == Fade::MainOut) {
+            m0 = 1.0f - ramp(faded_);
+            m1 = 1.0f - ramp(faded_ + n);
+            g0 = fade_ == Fade::Out ? m0 : 0.0f;
+            g1 = fade_ == Fade::Out ? m1 : 0.0f;
         } else if (fade_ == Fade::Hold) {
-            g0 = g1 = 0.0f;
+            g0 = g1 = m0 = m1 = 0.0f;
         } else if (fade_ == Fade::In) {
-            g0 = ramp(faded_);
-            g1 = ramp(faded_ + n);
+            g0 = m0 = ramp(faded_);
+            g1 = m1 = ramp(faded_ + n);
         }
         piece(*handoff_.current(), loop, done, output, done, n, g0, g1);
+        if (fade_ != Fade::None) output.applyGainRamp(done, n, g0, g1);
+        const bool mainFades = fade_ != Fade::None && mainFading_;
+        main(*handoff_.current(), loop, done, output, done, n, mainFades ? m0 : 1.0f, mainFades ? m1 : 1.0f);
         if (fade_ != Fade::None) {
-            output.applyGainRamp(done, n, g0, g1);
             faded_ += n;
             if (faded_ == length) {
                 faded_ = 0;
@@ -160,7 +205,12 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
                     //  silence through the old program's longest delay, so the lines it drops hold nothing
                     fade_ = Fade::Hold;
                     hold_ = handoff_.current()->longest;
-                } else if (fade_ == Fade::Out || fade_ == Fade::Hold) {
+                } else if ((fade_ == Fade::Out || fade_ == Fade::Hold) && !mainFading_ &&
+                           mainMoves_.load(std::memory_order_acquire)) {
+                    //  a program posted while the field faded plays Main otherwise: Main fades out too, first
+                    fade_ = Fade::MainOut;
+                    mainFading_ = true;
+                } else if (fade_ == Fade::Out || fade_ == Fade::Hold || fade_ == Fade::MainOut) {
                     //  the new program, faded in -- or, with no room to retire the old one, the old one again
                     if (const Program* next = handoff_.adopt())
                         for (int i = 0; i < next->levelCount; ++i) {
@@ -256,13 +306,60 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
                 s.clear(0, frames);
                 for (int ch = 0; ch < field_; ++ch) s.copyFrom(ch, 0, b, ch, 0, frames);
                 run(p, op.slot, s);
-                const int channels = std::min({output.getNumChannels(), setup_.outputChannels, s.getNumChannels()});
-                for (int ch = 0; ch < channels; ++ch) output.copyFrom(ch, outStart, s, ch, 0, frames);
+                if (p.routes.empty()) {
+                    const int channels =
+                        std::min({output.getNumChannels(), setup_.outputChannels, s.getNumChannels()});
+                    for (int ch = 0; ch < channels; ++ch) output.copyFrom(ch, outStart, s, ch, 0, frames);
+                    break;
+                }
+                for (std::size_t r = 0; r < p.routes.size(); ++r) {
+                    const Route& route = p.routes[r];
+                    if (route.main || route.to >= output.getNumChannels()) continue;
+                    Line& line = p.routeLines[r];
+                    if (line.length == 0) {
+                        output.addFrom(route.to, outStart, s, route.from, 0, frames);
+                        continue;
+                    }
+                    float* mem = line.memory.getWritePointer(0);
+                    const float* in = s.getReadPointer(route.from);
+                    float* dst = output.getWritePointer(route.to, outStart);
+                    int at = line.at;
+                    for (int i = 0; i < frames; ++i) {
+                        dst[i] += mem[at];
+                        mem[at] = in[i];
+                        if (++at == line.length) at = 0;
+                    }
+                    line.at = at;
+                }
                 break;
             }
         }
     }
     sample_ += frames;
+}
+
+void Runner::main(const Program& p, const juce::AudioBuffer<float>& in, int inStart, juce::AudioBuffer<float>& output,
+                  int outStart, int frames, float g0, float g1) noexcept {
+    const int capacity = mainLines_.getNumSamples();
+    if (setup_.mainInput < 0 || setup_.mainInput + 1 >= in.getNumChannels() || capacity < frames) return;
+    for (int ch = 0; ch < 2; ++ch) {
+        const float* src = in.getReadPointer(setup_.mainInput + ch, inStart);
+        float* line = mainLines_.getWritePointer(ch);
+        for (int i = 0, at = mainAt_; i < frames; ++i, at = at + 1 == capacity ? 0 : at + 1) line[at] = src[i];
+    }
+    const float step = (g1 - g0) / static_cast<float>(frames);
+    for (const Route& r : p.routes) {
+        if (!r.main || r.to >= output.getNumChannels()) continue;
+        const float* line = mainLines_.getReadPointer(r.from);
+        float* dst = output.getWritePointer(r.to, outStart);
+        int at = mainAt_ - r.delay;
+        if (at < 0) at += capacity;
+        for (int i = 0; i < frames; ++i) {
+            dst[i] += (g0 + step * static_cast<float>(i)) * line[at];
+            if (++at == capacity) at = 0;
+        }
+    }
+    mainAt_ = (mainAt_ + frames) % capacity;
 }
 
 }  // namespace bambi::livehost

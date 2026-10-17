@@ -6,6 +6,8 @@
 //
 //    bambi-live-stub [--port 9461] [--pairs 7] [--quit-when-alone SECONDS]
 //    bambi-live-stub --names       sets test names on the loop device, reads them back, and exits
+//    bambi-live-stub --devices     lists the system's devices, makes the host's private aggregate of the loop device
+//                                  and the ones offered, says what it holds, and removes it
 //
 //  Seven pairs by default: the loop device's channels 1-14, with 15/16 left for the binaural return. With bambi's
 //  own loop device installed, every assignment names its channels after the tracks. A second device is answered
@@ -20,6 +22,7 @@
 
 #include "bambi/live/protocol.hpp"
 #include "bambi/live/session.hpp"
+#include "devices.hpp"
 #include "lines.hpp"
 #include "loop.hpp"
 
@@ -113,7 +116,36 @@ void report(Stub& s) {
 
 }  // namespace
 
+namespace {
+
+int listDevices() {
+    const auto system = bambi::devices::system();
+    std::vector<std::string> offered;
+    std::printf("the loop device: %d channels each way\n", bambi::devices::loopChannels());
+    for (const auto& d : system) {
+        std::printf("  %-36s %2d out, %2d in, latency %4d out, %4d in%s   %s\n", d.name.c_str(), d.outs, d.ins,
+                    d.outLatency, d.inLatency, d.wireless ? ", wireless: not offered" : "", d.uid.c_str());
+        if (!d.wireless) offered.push_back(d.uid);
+    }
+    bambi::devices::Aggregate aggregate;
+    std::string error;
+    if (!aggregate.create(offered, &error)) {
+        std::printf("no aggregate: %s\n", error.c_str());
+        return 1;
+    }
+    const auto joined = bambi::live::aggregateOf(offered, system);
+    const auto outs = bambi::live::rowOf(joined), ins = bambi::live::rowOf(joined, true);
+    std::printf("the aggregate \"%s\": the loop device, then %zu devices; the row %d out, %d in\n",
+                bambi::devices::Aggregate::kName, joined.size(), outs.width(), ins.width());
+    aggregate.destroy();
+    std::printf("removed\n");
+    return 0;
+}
+
+}  // namespace
+
 int main(int argc, char** argv) {
+    if (argc > 1 && std::string(argv[1]) == "--devices") return listDevices();
     if (argc > 1 && std::string(argv[1]) == "--names") {
         std::vector<std::string> names;
         for (int c = 1; c <= 16; ++c) names.push_back("test " + std::to_string(c));

@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include "Plugins.h"
+#include "bambi/decode/remote.hpp"
 #include "bambi/live/graph.hpp"
 #include "loop.hpp"
 
@@ -48,33 +49,59 @@ std::int64_t nowNs() noexcept {
 
 }  // namespace
 
+std::vector<Runner::Route> Engine::routesFor(int fieldLatency) const {
+    DecoderReport report;
+    report.headphonesOn = true;  // a Decoder that offers no remote interface: its fresh outputs
+    if (auto* remote = decoder_ != nullptr ? remoteOf(*decoder_, kDecoderRemoteKind, kDecoderRemoteVersion) : nullptr)
+        report = reportFrom(Json::parse(remoteReport(*remote)));
+    std::vector<Runner::Route> out;
+    for (const live::OutputRoute& r : live::planOutputs(s_.audio, row_, report, fieldLatency).routes) {
+        const int to = r.to == live::OutputRoute::To::Row ? loopChannels_ + r.dest - 1 : returnChannel_ + r.dest - 1;
+        if (to >= 0 && to < outputChannels_)
+            out.push_back({r.from == live::OutputRoute::From::Main, r.channel - 1, to, r.delay});
+    }
+    return out;
+}
+
 Engine::~Engine() {
     devices_.removeAudioCallback(this);
     devices_.closeAudioDevice();
 }
 
-bool Engine::start(const Settings& settings, juce::String& status) {
-    s_ = settings;
+bool Engine::open(juce::String& status) {
     const int channels = 2 * (s_.pairs + 1);
-    returnChannel_ = 2 * s_.pairs;
-
-    //  The device first: the plugins are prepared at what it runs at. Opened by name, never the system's default,
-    //  which may be one -- a Bluetooth headset -- that takes its time, or hangs, to open.
-    //  the loop device Live reaches, through the aggregate it plays on; failing that, bambi's own, else BlackHole
+    //  Opened by name, never the system's default, which may be one -- a Bluetooth headset -- that takes its time,
+    //  or hangs, to open: the aggregate of the loop device and the chosen devices; while none is chosen, or it cannot
+    //  be made, the loop device Live reaches, through the aggregate it plays on; failing that, bambi's own, else
+    //  BlackHole
+    const auto joined = live::aggregateOf(s_.audio.devices, devices::system());
+    std::vector<std::string> uids;
+    for (const live::AudioDevice& d : joined) uids.push_back(d.uid);
+    std::string aggregateError;
+    const int loopWidth = devices::loopChannels();
+    const bool aggregated = !joined.empty() && loopWidth >= channels && aggregate_.create(uids, &aggregateError);
+    if (aggregated)
+        for (juce::AudioIODeviceType* type : devices_.getAvailableDeviceTypes()) type->scanForDevices();
+    row_ = aggregated ? live::rowOf(joined) : live::Row{};
+    loopChannels_ = aggregated ? loopWidth : channels;
+    inputChannels_ = loopChannels_ + (aggregated ? live::rowOf(joined, true).width() : 0);
+    outputChannels_ = loopChannels_ + row_.width();
     juce::String opened;
     std::vector<juce::String> names;
-    if (const auto held = loop::inAggregate(); !held.empty()) names.push_back(juce::String(held));
+    if (aggregated) names.push_back(devices::Aggregate::kName);
+    if (const auto held = loop::inAggregate(); !aggregated && !held.empty()) names.push_back(juce::String(held));
     for (const char* name : {"bambi", "BlackHole 16ch"})
-        if (std::find(names.begin(), names.end(), juce::String(name)) == names.end()) names.push_back(name);
+        if (!aggregated && std::find(names.begin(), names.end(), juce::String(name)) == names.end())
+            names.push_back(name);
     for (const juce::String& name : names) {
         juce::AudioDeviceManager::AudioDeviceSetup setup;
         setup.inputDeviceName = setup.outputDeviceName = name;
         setup.sampleRate = s_.rate;
-        setup.bufferSize = s_.bufferSize;
+        setup.bufferSize = s_.audio.buffer;
         setup.useDefaultInputChannels = setup.useDefaultOutputChannels = false;
-        setup.inputChannels.setRange(0, channels, true);
-        setup.outputChannels.setRange(0, channels, true);
-        if (devices_.initialise(channels, channels, nullptr, false, {}, &setup).isEmpty() &&
+        setup.inputChannels.setRange(0, inputChannels_, true);
+        setup.outputChannels.setRange(0, outputChannels_, true);
+        if (devices_.initialise(inputChannels_, outputChannels_, nullptr, false, {}, &setup).isEmpty() &&
             devices_.getCurrentAudioDevice() != nullptr && devices_.getCurrentAudioDevice()->getName() == name) {
             opened = name;
             break;
@@ -82,40 +109,118 @@ bool Engine::start(const Settings& settings, juce::String& status) {
     }
     auto* device = devices_.getCurrentAudioDevice();
     if (opened.isEmpty() || device == nullptr) {
-        status = "no loop device: neither bambi nor BlackHole 16ch could be opened";
+        status = aggregated ? juce::String("the host's aggregate of its devices could not be opened")
+                 : !aggregateError.empty()
+                     ? "no aggregate: " + juce::String(aggregateError)
+                     : juce::String("no loop device: neither bambi nor BlackHole 16ch could be opened");
         devices_.closeAudioDevice();
+        aggregate_.destroy();
         return false;
     }
     s_.rate = device->getCurrentSampleRate();
     block_ = device->getCurrentBufferSizeSamples();
+    opened_ = opened;
+    //  the callback's buffers, while no audio runs: a device may hand over more than its buffer at once, played in
+    //  pieces of these
+    const int piece = std::max(block_, 1024);
+    in_.setSize(inputChannels_, piece);
+    out_.setSize(outputChannels_, piece);
+    deviceLatency_ = device->getInputLatencyInSamples() + device->getOutputLatencyInSamples() + block_;
+    return true;
+}
 
-    auto decoded = loadInstalled("bambi Decoder", Role::Decoder, s_.order, s_.rate, block_, 2);
+void Engine::place() {
+    if (row_.width() == 0 || decoder_ == nullptr) return;
+    if (auto* remote = remoteOf(*decoder_, kDecoderRemoteKind, kDecoderRemoteVersion)) {
+        const auto report = reportFrom(Json::parse(remoteReport(*remote)));
+        remote->remoteRequest(toJson(live::requestFor(s_.audio, row_, report)).dump(0).c_str());
+    }
+}
+
+Runner::Setup Engine::runnerSetup() const {
+    return {s_.order, block_, inputChannels_, outputChannels_, s_.rate, returnChannel_, static_cast<int>(s_.rate)};
+}
+
+bool Engine::start(const Settings& settings, juce::String& status) {
+    s_ = settings;
+    returnChannel_ = 2 * s_.pairs;
+    //  the device first: the plugins are prepared at what it runs at
+    if (!open(status)) return false;
+    auto decoded = loadInstalled("bambi Decoder", Role::Decoder, s_.order, s_.rate, block_, std::max(2, row_.width()));
     if (decoded.plugin == nullptr) {
         status = decoded.status;
         return false;
     }
     decoder_ = shared(std::move(decoded.plugin));
+    prepared_ = block_;
+    place();
     live::Plan plan;
     plan.slots = {{decoder_->getLatencySamples()}};
     plan.decoder = 0;
     std::string error;
     const auto compiled = live::compile(plan, &error);
     juce::String why;
-    if (!compiled ||
-        !runner_.prepare(*compiled, {decoder_.get()}, 0, {s_.order, block_, channels, 2, s_.rate}, why, {decoder_})) {
+    if (!compiled || !runner_.prepare(*compiled, {decoder_.get()}, 0, runnerSetup(), why, {decoder_},
+                                      routesFor(compiled->latency))) {
         status = "the first program: " + (compiled ? why : juce::String(error));
         return false;
     }
+    program_ = {*compiled, {decoder_.get()}, 0, {decoder_}};
     projector_ = live::TransportProjector({s_.rate});
     arrivals_.emplace(s_.rate, s_.transportOffsetSamples);
     runner_.setClock(&projector_);
-    loopChannels_ = channels;
-
-    deviceLatency_ = device->getInputLatencyInSamples() + device->getOutputLatencyInSamples() + block_;
     latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
     devices_.addAudioCallback(this);
-    status = opened + ", " + juce::String(s_.rate / 1000.0) + " kHz, " + juce::String(block_) + " samples, order " +
-             juce::String(s_.order) + ": the Decoder, " + juce::String(latencyMs_, 1) + " ms here";
+    status = said();
+    return true;
+}
+
+juce::String Engine::said() const {
+    return opened_ + ", " + juce::String(s_.rate / 1000.0) + " kHz, " + juce::String(block_) + " samples, order " +
+           juce::String(s_.order) + ": " + juce::String(latencyMs_, 1) + " ms here";
+}
+
+bool Engine::setAudio(const live::AudioSettings& audio, juce::String& status) {
+    const bool reopen = audio.devices != s_.audio.devices || audio.buffer != s_.audio.buffer;
+    s_.audio = audio;
+    juce::String why;
+    if (!reopen) {
+        place();
+        if (!runner_.swap(program_.compiled, program_.slots, program_.levels, why, program_.keep,
+                          routesFor(program_.compiled.latency))) {
+            status = "the outputs: " + why;
+            return false;
+        }
+        status = said();
+        return true;
+    }
+    //  the device again, and every plugin laid out or prepared for it, while no audio runs
+    devices_.removeAudioCallback(this);
+    devices_.closeAudioDevice();
+    aggregate_.destroy();
+    if (!open(status)) return false;
+    decoder_->releaseResources();
+    auto layout = decoder_->getBusesLayout();
+    if (!layout.outputBuses.isEmpty()) layout.outputBuses.getReference(0) = speakerChannels(std::max(2, row_.width()));
+    if (!decoder_->setBusesLayout(layout)) {
+        status = "the Decoder would not take " + juce::String(row_.width()) + " outputs";
+        return false;
+    }
+    decoder_->prepareToPlay(s_.rate, std::max(block_, prepared_));
+    if (block_ > prepared_) {
+        for (juce::AudioProcessor* plugin : program_.slots)
+            if (plugin != decoder_.get()) plugin->prepareToPlay(s_.rate, block_);
+        prepared_ = block_;
+    }
+    place();
+    if (!runner_.prepare(program_.compiled, program_.slots, program_.levels, runnerSetup(), why, program_.keep,
+                         routesFor(program_.compiled.latency))) {
+        status = "the program: " + why;
+        return false;
+    }
+    latencyMs_ = 1000.0 * (deviceLatency_ + program_.compiled.latency) / s_.rate;
+    devices_.addAudioCallback(this);
+    status = said();
     return true;
 }
 
@@ -129,8 +234,6 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     std::vector<int> drop;  // nodes whose Encoder could not be loaded
     for (std::size_t slot = 0; slot < fp.encoders.size(); ++slot) {
         const live::TrackId track = fp.encoders[slot];
-        const auto node = std::find_if(fp.plan.nodes.begin(), fp.plan.nodes.end(),
-                                       [&](const live::FieldNode& n) { return n.encoder == static_cast<int>(slot); });
         const auto on = std::find_if(pairs.begin(), pairs.end(), [&](const live::TrackPair& p) { return p.track == track; });
         const int pair = on == pairs.end() ? -1 : on->pair;  // an input of the host has none
         const auto had = std::find_if(voices_.begin(), voices_.end(), [&](const Voice& v) { return v.track == track; });
@@ -195,10 +298,11 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     std::string error;
     const auto compiled = live::compile(fp.plan, &error);
     juce::String why;
-    if (!compiled || !runner_.swap(*compiled, slots, compiled->levels, why, std::move(keep))) {
+    if (!compiled || !runner_.swap(*compiled, slots, compiled->levels, why, keep, routesFor(compiled->latency))) {
         status = "the plan: " + (compiled ? why : juce::String(error));
         return false;
     }
+    program_ = {*compiled, slots, compiled->levels, std::move(keep)};
     //  the Encoders only the old program plays stay alive in it until the audio thread lets go of it
     for (const auto& key : restoredEncoders) waiting_.erase(key);
     for (const auto& key : restoredEffects) waitingEffects_.erase(key);
@@ -333,24 +437,34 @@ void Engine::audioDeviceIOCallbackWithContext(const float* const* inputs, int in
                                               int outputCount, int frames, const juce::AudioIODeviceCallbackContext&) {
     for (int ch = 0; ch < outputCount; ++ch)
         if (outputs[ch] != nullptr) juce::FloatVectorOperations::clear(outputs[ch], frames);
-    if (!playable_.load(std::memory_order_relaxed) || outputCount < returnChannel_ + 2) return;
+    if (!playable_.load(std::memory_order_relaxed) || outputCount < outputChannels_) return;
 
     const std::int64_t now = nowNs();
     for (Timed t; queue_.pop(t);)
         projector_.receive(t.message, arrivals_->at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
 
-    //  The device's own channels, referred to rather than copied. A device giving fewer plays nothing.
-    if (inputCount < loopChannels_) return;
-    const juce::AudioBuffer<float> loop(const_cast<float* const*>(inputs), loopChannels_, frames);
-    float* pair[2] = {outputs[returnChannel_], outputs[returnChannel_ + 1]};
-    juce::AudioBuffer<float> out(pair, 2, frames);
-    runner_.process(loop, out, frames);
-
-    if (faded_ < kFadeIn) {
-        const int n = static_cast<int>(std::min<std::int64_t>(frames, kFadeIn - faded_));
-        const float from = static_cast<float>(faded_) / kFadeIn, to = static_cast<float>(faded_ + n) / kFadeIn;
-        out.applyGainRamp(0, n, from, to);
-        faded_ += n;
+    //  The device's channels copied into the host's own buffers, made before it started: a buffer referring to
+    //  this many channels would allocate. A device giving fewer plays nothing.
+    if (inputCount < inputChannels_) return;
+    for (int ch = 0; ch < outputChannels_; ++ch)
+        if (outputs[ch] == nullptr) return;
+    for (int done = 0; done < frames;) {
+        const int n = std::min(frames - done, in_.getNumSamples());
+        for (int ch = 0; ch < inputChannels_; ++ch)
+            if (inputs[ch] != nullptr)
+                in_.copyFrom(ch, 0, inputs[ch] + done, n);
+            else
+                in_.clear(ch, 0, n);
+        runner_.process(in_, out_, n);
+        if (faded_ < kFadeIn) {
+            const int f = static_cast<int>(std::min<std::int64_t>(n, kFadeIn - faded_));
+            const float from = static_cast<float>(faded_) / kFadeIn, to = static_cast<float>(faded_ + f) / kFadeIn;
+            out_.applyGainRamp(0, f, from, to);
+            faded_ += f;
+        }
+        for (int ch = 0; ch < outputChannels_; ++ch)
+            juce::FloatVectorOperations::copy(outputs[ch] + done, out_.getReadPointer(ch), n);
+        done += n;
     }
 }
 

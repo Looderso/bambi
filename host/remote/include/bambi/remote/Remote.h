@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow-field-in-constructor"
+#endif
 #include <pluginterfaces/base/funknown.h>
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 /*  How a host that knows the suite sets one of its plugins without touching the plugin's parameters or its saved
  *  state: an interface only the suite's plugins answer, asked for on the VST3 component by `kRemoteIid`. The plugin

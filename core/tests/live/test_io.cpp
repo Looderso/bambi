@@ -45,8 +45,8 @@ TEST_CASE("the row: the chosen devices that play, in order, each whole, a channe
     CHECK(row.channel(6) == DeviceChannel{"i16", 2});
     CHECK(row.channel(21).none());
     CHECK(row.deviceOf(4) == 0);
-    CHECK(row.deviceOf(5) == 2);  // the interface, after the microphone
-    CHECK(row.deviceEnds() == std::vector<int>{4});  // the microphone takes no output channel
+    CHECK(row.deviceOf(5) == 2);                                        // the interface, after the microphone
+    CHECK(row.deviceEnds() == std::vector<int>{4});                     // the microphone takes no output channel
     CHECK(rowOf(joined, true).deviceEnds() == std::vector<int>{2, 3});  // the box's 2 inputs, the microphone's 1
 
     std::vector<AudioDevice> wide = system();
@@ -66,7 +66,8 @@ TEST_CASE("the settings read back as written, and an older file's missing fields
     s.speakers = {"i16", 3};
     s.layout = "4+7+0";
     s.levelDb = -3.0;
-    s.copies = {{Signal::Headphones, {"box", 3}, false}, {Signal::Headphones, {}, true}, {Signal::Main, {"i16", 15}, false}};
+    s.copies = {
+        {Signal::Headphones, {"box", 3}, false}, {Signal::Headphones, {}, true}, {Signal::Main, {"i16", 15}, false}};
     CHECK(audioSettingsFrom(Json::parse(toJson(s).dump(0))) == s);
     const AudioSettings old = audioSettingsFrom(Json::parse(R"({"devices": ["i16"]})"));
     CHECK(old.buffer == 64);
@@ -138,7 +139,9 @@ TEST_CASE("an input arrives after the loop device's channels, on the channel thi
     const Row row = rowOf(aggregateOf({"i16", "box", "mic"}, system()), true);  // 16 + 2 + 1 inputs
     CHECK(row.width() == 19);
     AudioSettings s;
-    s.inputs = {{kFirstInput, {"mic", 1}}, {kFirstInput + 1, {"i16", 3}}, {kFirstInput + 2, {"box", 2}},
+    s.inputs = {{kFirstInput, {"mic", 1}},
+                {kFirstInput + 1, {"i16", 3}},
+                {kFirstInput + 2, {"box", 2}},
                 {kFirstInput + 3, {"bt", 1}}};
     const std::vector<HostInput> inputs{{kFirstInput, "vox", 1},
                                         {kFirstInput + 1, "keys", 2},

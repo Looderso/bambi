@@ -13,7 +13,8 @@
 
 /*  Plays a compiled plan: the steps bambi-live's graph turned the host's shape into, run in order every block over
  *  the plugin instances the plan's slots name. The loop device's channels come in -- pair p is channels 2p and
- *  2p + 1 -- and the decoder's go out.
+ *  2p + 1 -- and the decoder's go out: straight, or along the routes a program is given, each onto an output
+ *  channel of its own, late by its delay, beside Live's Main as it came in.
  *
  *  A plan and everything it plays with is one program: the steps, the instances, a field buffer per node, return
  *  and Main, for each slot a buffer as wide as the plugin's widest side -- an Encoder's or an insert's sidechain
@@ -24,6 +25,10 @@
  *  program takes over, and both fade back in -- so no insert or line kept across the swap hears a step. The program it replaced, and every instance only it
  *  kept, is freed on the message thread -- by the next swap(), or by tidy(). process() allocates, frees and locks
  *  nothing, so it runs on the audio thread.
+ *
+ *  Live's Main is played through delay lines of the runner's own, which a swap does not drop: it fades with the
+ *  rest only when the program swapped in plays it with other delays or onto other channels, so a change to the
+ *  field that keeps its latency is not heard on Main.
  *
  *  A send's level changes only on the host's grid of kLevelGrid samples: at each grid point the level last set is
  *  taken, and the send ramps to it linearly over the next kLevelGrid samples, so a moving knob does not click and
@@ -46,6 +51,16 @@ public:
         int inputChannels{16};  ///< the input row: the loop device's channels, then the devices' inputs
         int outputChannels{2};
         double rate{48000.0};
+        int mainInput{-1};       ///< the input row's channel Live's Main's left arrives on, its right after; -1 none
+        int maxMainDelay{0};     ///< samples Main may be delayed by
+    };
+    /// A channel played out after the decoder: one of its own, or of Live's Main, onto an output channel.
+    struct Route {
+        bool main{false};  ///< Live's Main: `from` 0 its left, 1 its right; otherwise the decoder's channel, from 0
+        int from{0};
+        int to{0};  ///< the output channel, from 0
+        int delay{0};
+        friend bool operator==(const Route&, const Route&) = default;
     };
     using Keep = std::vector<std::shared_ptr<void>>;  ///< what a program keeps alive while it may be played
 
@@ -55,7 +70,7 @@ public:
     /// The first program, before any audio. False, with `error` set, when the plan names a slot it was given no
     /// instance for, or a buffer or pair it does not have.
     bool prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                 const Setup& setup, juce::String& error, Keep keep = {});
+                 const Setup& setup, juce::String& error, Keep keep = {}, std::vector<Route> routes = {});
 
     /// An instance new to the runner, readied for it before it is in any program: the playhead it reads, and that
     /// it plays in real time. Message thread; prepare() readies the first program's itself.
@@ -64,7 +79,7 @@ public:
     /// A new program, while audio runs, at the setup prepare() was given; the same checks. Every instance it names
     /// not in a program before must have been readied.
     bool swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-              juce::String& error, Keep keep = {});
+              juce::String& error, Keep keep = {}, std::vector<Route> routes = {});
 
     /// Frees what the audio thread has let go of. Message thread.
     void tidy() { handoff_.freeRetired(); }
@@ -84,8 +99,8 @@ public:
     /// the next grid point.
     void setLevel(int entry, float level) noexcept;
 
-    /// `frames` of the loop device in, the decoder's out, played in pieces of at most `maxBlock`. Output channels
-    /// past the decoder's are silent.
+    /// `frames` of the input row in, the decoder's and Main's out, played in pieces of at most `maxBlock`. Output
+    /// channels nothing is routed to are silent.
     void process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<float>& output, int frames) noexcept;
 
 private:
@@ -111,10 +126,16 @@ private:
         std::unique_ptr<Level[]> levels;
         int levelCount{0};
         int longest{0};  ///< samples: the longest delay line
+        std::vector<Route> routes;
+        mutable std::vector<Line> routeLines;  // per route, one channel; Main's are the runner's
     };
 
     std::unique_ptr<Program> build(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots,
-                                   int levels, juce::String& error, Keep keep);
+                                   int levels, juce::String& error, Keep keep, std::vector<Route> routes);
+    static std::vector<Route> mainOf(const std::vector<Route>& routes);
+    /// Main into its lines, and out along the program's routes, at a gain ramping from `g0` to `g1`.
+    void main(const Program& p, const juce::AudioBuffer<float>& in, int inStart, juce::AudioBuffer<float>& output,
+              int outStart, int frames, float g0, float g1) noexcept;
     void run(const Program& p, int slot, juce::AudioBuffer<float>& scratch) noexcept;
     /// A send's gain at `offset` samples into the current grid interval.
     static float gainAt(const Program::Level& l, int offset) noexcept {
@@ -131,10 +152,14 @@ private:
     LivePlayhead playhead_;
     live::TransportProjector* clock_{nullptr};
     std::int64_t sample_{0};
-    enum class Fade { None, Out, Hold, In };
+    enum class Fade { None, Out, Hold, MainOut, In };
     Fade fade_{Fade::None};  // the audio thread's, with `faded_`: samples of the phase played
     int faded_{0};
     int hold_{0};  // samples of silence held between the fade out and the swap
+    juce::AudioBuffer<float> mainLines_;  // Main's left and right, `maxMainDelay + maxBlock` samples
+    int mainAt_{0};                       // where Main's next sample goes
+    std::atomic<bool> mainMoves_{false};  // the program posted last plays Main otherwise than the one before
+    bool mainFading_{false};              // the audio thread's: Main fades through this swap
 };
 
 }  // namespace bambi::livehost

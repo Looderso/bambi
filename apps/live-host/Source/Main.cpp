@@ -15,6 +15,7 @@
 #include "Engine.h"
 #include "Rail.h"
 #include "Routing.h"
+#include "Settings.h"
 #include "bambi/ui/Theme.h"
 #include "loop.hpp"
 
@@ -70,7 +71,7 @@ public:
             juce::Process::makeForegroundProcess();
         };
         listening_ = device_.start(&error_);
-        running_ = engine_.start({3, kPairs, 64, 48000.0, 0}, started_);
+        running_ = engine_.start({3, kPairs, 64, 48000.0, 0, bambi::livehost::loadAudioSettings()}, started_);
         device_.setLatency(engine_.latencyMs(), 48000.0);
 
         addAndMakeVisible(rail_);
