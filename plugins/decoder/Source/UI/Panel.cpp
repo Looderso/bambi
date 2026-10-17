@@ -159,10 +159,9 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
             if (bySp) g.drawRect(box, stroke::toggle);
             if (own && !playing) {
                 //  this output's own, not playing: dashed, as the scene draws what is not placed
-                juce::Path edge, dashed;
+                juce::Path edge;
                 edge.addRectangle(box.reduced(stroke::toggle / 2.0f));
-                juce::PathStrokeType(stroke::toggle).createDashedStroke(dashed, edge, stroke::unplacedDash, 2);
-                g.fillPath(dashed);
+                bambi::ui::strokeDashed(g, edge, stroke::unplacedDash, juce::PathStrokeType(stroke::toggle));
             }
             text(g, juce::String(ch), smallFont(),
                  byHp   ? colour::textInverse

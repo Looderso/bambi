@@ -19,11 +19,11 @@ THEME=ui/include/bambi/ui/Theme.h
 # rectangle given a numeric radius
 PATTERN='Colour[[:space:]]*[({][[:space:]]*0x|Colours::|Colour::fromRGB|Colour::fromString|FontOptions[[:space:]]*\([^)]*[0-9]+(\.[0-9]*)?f|withHeight[[:space:]]*\([[:space:]]*[0-9]|RoundedRectangle[[:space:]]*\([^;]*,[[:space:]]*[0-9]+(\.[0-9]*)?f?[[:space:]]*\)'
 
-hits=$(grep -rnE "$PATTERN" ui editor plugins --include='*.h' --include='*.cpp' | grep -v "^$THEME:")
+hits=$(grep -rnE "$PATTERN" ui editor plugins apps --include='*.h' --include='*.cpp' | grep -v "^$THEME:")
 
 if [ -n "$hits" ]; then
     echo "style: literal style values outside $THEME -- name them there and use the name:"
     echo "$hits"
     exit 1
 fi
-echo "style: every colour, type size and corner radius in ui/, editor/ and plugins/ comes from $THEME"
+echo "style: every colour, type size and corner radius in ui/, editor/, plugins/ and apps/ comes from $THEME"

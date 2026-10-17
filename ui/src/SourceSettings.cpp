@@ -280,15 +280,13 @@ float paintTrigger(ParameterPage& page, juce::Graphics& g, juce::Rectangle<float
                                             learnTile.getY() + ctl::tileNameHeight + ctl::tileValueGap,
                                             learnTile.getWidth(), ctl::buttonHeight};
         if (listening) {
-            g.setColour(colour::learning);
-            g.fillRect(button);
+            drawWaiting(g, button, "play a note", font(theme::type::body));
         } else {
             g.setColour(canLearn ? colour::chosen : colour::inactive);
             g.drawRect(button, theme::stroke::rule);
+            text(g, "listen", font(theme::type::body), canLearn ? colour::text : colour::inactive, button,
+                 juce::Justification::centred);
         }
-        const auto ink = listening ? colour::textInverse : (canLearn ? colour::text : colour::inactive);
-        text(g, listening ? "play a note" : "listen", font(theme::type::body), ink, button,
-             juce::Justification::centred);
         page.noteNamedArea("learn note", button, canLearn);  // for a check: where it is, and whether it is live
         if (canLearn)
             page.addClickArea(button, [&page, envelope, listening] {

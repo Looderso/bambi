@@ -1,0 +1,156 @@
+diff --git a/BlackHole/BlackHole.c b/BlackHole/BlackHole.c
+index 143af9d..fa2f27d 100644
+--- a/BlackHole/BlackHole.c
++++ b/BlackHole/BlackHole.c
+@@ -253,6 +253,12 @@ struct ObjectInfo {
+ #endif
+ 
+ static pthread_mutex_t              gPlugIn_StateMutex                  = PTHREAD_MUTEX_INITIALIZER;
++
++//	bambi: each channel's name, set from outside through the custom property kBambi_ChannelNames -- a CFArray
++//	of CFStrings, channel 1 first -- and read back as the channels' element names. The input and output
++//	channels of one number carry one signal, so they share a name. NULL is unnamed: the channel's number.
++#define                             kBambi_ChannelNames                 'bnam'
++static CFStringRef                  gBambi_ChannelNames[kNumber_Of_Channels] = { NULL };
+ static UInt32                       gPlugIn_RefCount                    = 0;
+ static AudioServerPlugInHostRef     gPlugIn_Host                        = NULL;
+ 
+@@ -2207,6 +2213,16 @@ static Boolean	BlackHole_HasDeviceProperty(AudioServerPlugInDriverRef inDriver,
+ 		case kAudioDevicePropertyPreferredChannelLayout:
+ 			theAnswer = (inAddress->mScope == kAudioObjectPropertyScopeInput) || (inAddress->mScope == kAudioObjectPropertyScopeOutput);
+ 			break;
++
++		case kAudioObjectPropertyCustomPropertyInfoList:
++		case kBambi_ChannelNames:
++			theAnswer = true;
++			break;
++
++		case kAudioObjectPropertyElementName:
++			theAnswer = ((inAddress->mScope == kAudioObjectPropertyScopeInput) || (inAddress->mScope == kAudioObjectPropertyScopeOutput)) &&
++						(inAddress->mElement >= 1) && (inAddress->mElement <= kNumber_Of_Channels);
++			break;
+ 	};
+ 
+ Done:
+@@ -2265,6 +2281,15 @@ static OSStatus	BlackHole_IsDevicePropertySettable(AudioServerPlugInDriverRef in
+ 		case kAudioDevicePropertyNominalSampleRate:
+ 			*outIsSettable = true;
+ 			break;
++
++		case kAudioObjectPropertyCustomPropertyInfoList:
++		case kAudioObjectPropertyElementName:
++			*outIsSettable = false;
++			break;
++
++		case kBambi_ChannelNames:
++			*outIsSettable = true;
++			break;
+ 		
+ 		default:
+ 			theAnswer = kAudioHardwareUnknownPropertyError;
+@@ -2295,6 +2320,18 @@ static OSStatus	BlackHole_GetDevicePropertyDataSize(AudioServerPlugInDriverRef i
+ 	//	property in the BlackHole_GetDevicePropertyData() method.
+ 	switch(inAddress->mSelector)
+ 	{
++		case kAudioObjectPropertyCustomPropertyInfoList:
++			*outDataSize = sizeof(AudioServerPlugInCustomPropertyInfo);
++			break;
++
++		case kBambi_ChannelNames:
++			*outDataSize = sizeof(CFPropertyListRef);
++			break;
++
++		case kAudioObjectPropertyElementName:
++			*outDataSize = sizeof(CFStringRef);
++			break;
++
+ 		case kAudioObjectPropertyBaseClass:
+ 			*outDataSize = sizeof(AudioClassID);
+ 			break;
+@@ -2431,6 +2468,47 @@ static OSStatus	BlackHole_GetDevicePropertyData(AudioServerPlugInDriverRef inDri
+ 	//	it is necessary to lock the state mutex.
+ 	switch(inAddress->mSelector)
+ 	{
++		case kAudioObjectPropertyCustomPropertyInfoList:
++		{
++			//	bambi: the one custom property, the channels' names as a property list
++			FailWithAction(inDataSize < sizeof(AudioServerPlugInCustomPropertyInfo), theAnswer = kAudioHardwareBadPropertySizeError, Done, "BlackHole_GetDevicePropertyData: not enough space for the custom property list");
++			AudioServerPlugInCustomPropertyInfo* theInfo = (AudioServerPlugInCustomPropertyInfo*)outData;
++			theInfo->mSelector = kBambi_ChannelNames;
++			theInfo->mPropertyDataType = kAudioServerPlugInCustomPropertyDataTypeCFPropertyList;
++			theInfo->mQualifierDataType = kAudioServerPlugInCustomPropertyDataTypeNone;
++			*outDataSize = sizeof(AudioServerPlugInCustomPropertyInfo);
++			break;
++		}
++
++		case kBambi_ChannelNames:
++		{
++			//	bambi: every channel's name, an unnamed one as an empty string; the caller releases the array
++			FailWithAction(inDataSize < sizeof(CFPropertyListRef), theAnswer = kAudioHardwareBadPropertySizeError, Done, "BlackHole_GetDevicePropertyData: not enough space for the channel names");
++			CFMutableArrayRef theNames = CFArrayCreateMutable(NULL, kNumber_Of_Channels, &kCFTypeArrayCallBacks);
++			pthread_mutex_lock(&gPlugIn_StateMutex);
++			for(UInt32 i = 0; i < kNumber_Of_Channels; ++i)
++				CFArrayAppendValue(theNames, gBambi_ChannelNames[i] != NULL ? gBambi_ChannelNames[i] : CFSTR(""));
++			pthread_mutex_unlock(&gPlugIn_StateMutex);
++			*((CFPropertyListRef*)outData) = theNames;
++			*outDataSize = sizeof(CFPropertyListRef);
++			break;
++		}
++
++		case kAudioObjectPropertyElementName:
++		{
++			//	bambi: a channel's name as set, or its number; the caller releases it
++			FailWithAction(inDataSize < sizeof(CFStringRef), theAnswer = kAudioHardwareBadPropertySizeError, Done, "BlackHole_GetDevicePropertyData: not enough space for an element name");
++			FailWithAction(inAddress->mElement < 1 || inAddress->mElement > kNumber_Of_Channels, theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_GetDevicePropertyData: no such channel");
++			pthread_mutex_lock(&gPlugIn_StateMutex);
++			CFStringRef theName = gBambi_ChannelNames[inAddress->mElement - 1];
++			*((CFStringRef*)outData) = theName != NULL && CFStringGetLength(theName) > 0
++				? (CFStringRef)CFRetain(theName)
++				: CFStringCreateWithFormat(NULL, NULL, CFSTR("%u"), (unsigned int)inAddress->mElement);
++			pthread_mutex_unlock(&gPlugIn_StateMutex);
++			*outDataSize = sizeof(CFStringRef);
++			break;
++		}
++
+ 		case kAudioObjectPropertyBaseClass:
+ 			//	The base class for kAudioDeviceClassID is kAudioObjectClassID
+ 			FailWithAction(inDataSize < sizeof(AudioClassID), theAnswer = kAudioHardwareBadPropertySizeError, Done, "BlackHole_GetDevicePropertyData: not enough space for the return value of kAudioObjectPropertyBaseClass for the device");
+@@ -2899,6 +2977,38 @@ static OSStatus	BlackHole_SetDevicePropertyData(AudioServerPlugInDriverRef inDri
+ 			}
+ 			break;
+ 		
++		case kBambi_ChannelNames:
++		{
++			//	bambi: a CFArray of CFStrings, channel 1 first; channels past its end become unnamed, and
++			//	anything not a string is taken as unnamed
++			FailWithAction(inDataSize != sizeof(CFPropertyListRef), theAnswer = kAudioHardwareBadPropertySizeError, Done, "BlackHole_SetDevicePropertyData: wrong size for the channel names");
++			CFPropertyListRef theList = *((const CFPropertyListRef*)inData);
++			FailWithAction(theList == NULL || CFGetTypeID(theList) != CFArrayGetTypeID(), theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_SetDevicePropertyData: the channel names are not an array");
++			CFArrayRef theNames = (CFArrayRef)theList;
++			CFIndex theCount = CFArrayGetCount(theNames);
++			pthread_mutex_lock(&gPlugIn_StateMutex);
++			for(UInt32 i = 0; i < kNumber_Of_Channels; ++i)
++			{
++				if(gBambi_ChannelNames[i] != NULL) CFRelease(gBambi_ChannelNames[i]);
++				gBambi_ChannelNames[i] = NULL;
++				if((CFIndex)i < theCount)
++				{
++					CFTypeRef theName = CFArrayGetValueAtIndex(theNames, (CFIndex)i);
++					if(theName != NULL && CFGetTypeID(theName) == CFStringGetTypeID())
++						gBambi_ChannelNames[i] = CFStringCreateCopy(NULL, (CFStringRef)theName);
++				}
++			}
++			pthread_mutex_unlock(&gPlugIn_StateMutex);
++			*outNumberPropertiesChanged = 2;
++			outChangedAddresses[0].mSelector = kAudioObjectPropertyElementName;
++			outChangedAddresses[0].mScope = kAudioObjectPropertyScopeOutput;
++			outChangedAddresses[0].mElement = kAudioObjectPropertyElementWildcard;
++			outChangedAddresses[1].mSelector = kAudioObjectPropertyElementName;
++			outChangedAddresses[1].mScope = kAudioObjectPropertyScopeInput;
++			outChangedAddresses[1].mElement = kAudioObjectPropertyElementWildcard;
++			break;
++		}
++
+ 		default:
+ 			theAnswer = kAudioHardwareUnknownPropertyError;
+ 			break;

@@ -19,7 +19,7 @@ LAYERS=(
     "dsp path region"  # 1  the FFT and features; trajectories and their shape; regions
     "patch"            # 2  parameters, state, undo, identity, json -- a patch contains a trajectory
     "mod"              # 3  the modulation matrix, over the patch and the path
-    "link scene encode echo reverb decode"  # 4  the bus, the scene's geometry, an engine
+    "link scene encode echo reverb decode live"  # 4  the bus, the scene's geometry, an engine, Live's side of the host
 )
 
 layer_of() {
@@ -68,6 +68,14 @@ above() {
 above core   'ui|host|editor'
 above ui     'host|editor'
 above host   'ui|editor'
+
+#  An app sits above everything: no library of the suite may reach into it.
+apps=$(grep -rnE '#include "[^"]*apps/' core ui host editor plugins tools --include='*.h' --include='*.hpp' --include='*.cpp' || true)
+if [ -n "$apps" ]; then
+    echo "$apps"
+    echo "layers: nothing in the suite includes an app"
+    fail=1
+fi
 
 if [ "$fail" -ne 0 ]; then
     echo "layers: core's layering is what keeps it from going flat again. Move the type, do not add the include."

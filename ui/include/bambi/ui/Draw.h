@@ -36,6 +36,26 @@ inline void text(juce::Graphics& g, const juce::String& s, const juce::Font& f, 
     g.drawText(s, box, j, false);
 }
 
+/// One label of a switch: the chosen one on an ink block, `block`, as an open tab stands; the others plain. The
+/// header's instance switch draws its labels with this, and so does the live host's column of views.
+inline void switchLabel(juce::Graphics& g, const juce::String& s, juce::Rectangle<float> box,
+                        juce::Rectangle<float> block, bool chosen,
+                        juce::Justification j = juce::Justification::centredLeft) {
+    if (chosen) {
+        g.setColour(theme::colour::chosen);
+        g.fillRect(block);
+    }
+    text(g, s, labelFont(), chosen ? theme::colour::textInverse : theme::colour::text, box, j);
+}
+
+/// `path` in dashes, `dash` the on and off lengths, drawn in the current colour with `stroke`'s weight and ends.
+inline void strokeDashed(juce::Graphics& g, const juce::Path& path, const float (&dash)[2],
+                         const juce::PathStrokeType& stroke) {
+    juce::Path dashes;
+    stroke.createDashedStroke(dashes, path, dash, 2);
+    g.fillPath(dashes);
+}
+
 inline void ruleH(juce::Graphics& g, float x0, float x1, float y, juce::Colour c) {
     g.setColour(c);
     g.fillRect(x0, y, x1 - x0, theme::stroke::rule);

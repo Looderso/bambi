@@ -24,6 +24,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Every library ends up inside a plugin, which is a shared library, and on Linux all its code must then be
 # position-independent. macOS compiles that way anyway; Windows has no such thing.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+# Nothing a plugin is built from is visible outside it but its entry points, which the formats mark themselves.
+# A symbol left visible is one the system's loader may share between the plugins in one process -- every one of
+# them carries its own JUCE -- so that one plugin frees what another made.
+set(CMAKE_C_VISIBILITY_PRESET hidden)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_OBJC_VISIBILITY_PRESET hidden)
+set(CMAKE_OBJCXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 # Falling off the end of a function that returns a value is undefined behaviour, and at -O3 the
 # compiler is free to run on into whatever comes next. It was a warning nobody read.
@@ -67,6 +75,7 @@ endif()
 enable_testing()
 add_subdirectory(third_party)
 add_subdirectory(core)
+add_subdirectory(platform)
 add_subdirectory(tools)
 
 # The plugin is opt-in. core/ and tools/ build in seconds with no JUCE at all, and that is where

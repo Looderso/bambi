@@ -70,6 +70,8 @@ void drawChoice(juce::Graphics& g, juce::Rectangle<float> cell, const juce::Stri
 std::vector<juce::Rectangle<float>> drawSegments(juce::Graphics& g, juce::Rectangle<float> area,
                                                  const std::vector<juce::String>& names, int selected, bool enabled,
                                                  int unavailable = -1);
+/// How wide `drawSegments` wants to be for `names`: as many equal cells as names, each fitting the widest.
+float segmentsWidth(const std::vector<juce::String>& names);
 /// The same row wrapped: `columns` cells a line, the lines touching, so the cells stand in one grid.
 /// `columns` <= 0 or >= the count draws one line.
 std::vector<juce::Rectangle<float>> drawSegmentLines(juce::Graphics& g, float x, float y, float width,
@@ -89,6 +91,20 @@ float drawGroupHeading(juce::Graphics& g, float x, float y, float width, const j
 /// A fact: its name on the left and what it is on the right, a divider under it. `set` false greys the value.
 void drawFactRow(juce::Graphics& g, juce::Rectangle<float> row, const juce::String& name, const juce::String& value,
                  bool set = true);
+/// Something waiting for the user's next act -- learn listening for a note, the live host's sidechain slot waiting
+/// for a source: a block in the learning colour, its label in the ground's.
+void drawWaiting(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& label, const juce::Font& f);
+/*  A chip: a small framed label, a thing offered or held for a click -- a preset's folder, an insert on the live host's
+    page. `accent`, when given, is a bar on its left in its owner's colour; `closable` puts a cross at its right,
+    whose area is returned. */
+struct Chip {
+    juce::Rectangle<float> box;
+    juce::Rectangle<float> cross;  ///< empty when not closable
+};
+Chip drawChip(juce::Graphics& g, juce::Point<float> topLeft, float height, const juce::String& label, juce::Colour ink,
+              std::optional<juce::Colour> accent = std::nullopt, bool closable = false);
+/// How wide `drawChip` draws `label`, at `height`, with a bar and a cross or without.
+float chipWidth(const juce::String& label, float height, bool accent, bool closable);
 /// The cross that closes something temporary, in `box`. Returns the area a press on it should take.
 juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> box);
 

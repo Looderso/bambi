@@ -92,3 +92,9 @@ add_subdirectory(echo)
 add_subdirectory(reverb)
 add_subdirectory(decoder)
 add_subdirectory(${PROJECT_SOURCE_DIR}/tests ${CMAKE_BINARY_DIR}/tests)
+
+# The app that plays a Live set through the installed plugins: opt-in, beside the plugins because it needs JUCE.
+option(BAMBI_BUILD_HOST "Build bambi live host, the app the Ableton Live helper plays through" OFF)
+if(BAMBI_BUILD_HOST)
+  add_subdirectory(${PROJECT_SOURCE_DIR}/apps/live-host ${CMAKE_BINARY_DIR}/apps/live-host)
+endif()

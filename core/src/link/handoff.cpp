@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "bambi/host/Handoff.h"
+#include "bambi/link/handoff.hpp"
 
-namespace bambi::host {
+namespace bambi {
 
 namespace {
 std::atomic<int> gLive{0};
@@ -22,4 +22,4 @@ int SnapshotCensus::freedOnAudioThread() noexcept { return gFreedOnAudioThread.l
 SnapshotCensus::InAudioBlock::InAudioBlock() noexcept { tlInsideAudioBlock = true; }
 SnapshotCensus::InAudioBlock::~InAudioBlock() { tlInsideAudioBlock = false; }
 
-}  // namespace bambi::host
+}  // namespace bambi

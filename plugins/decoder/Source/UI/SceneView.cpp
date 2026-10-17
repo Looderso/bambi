@@ -200,9 +200,7 @@ void DecoderSceneView::paintSpeakers(juce::Graphics& g, const Viewport& vp, floa
         if (s.imaginary) {
             juce::Path outline;
             outline.addRectangle(box);
-            juce::Path dashed;
-            juce::PathStrokeType(stroke::toggle).createDashedStroke(dashed, outline, stroke::unplacedDash, 2);
-            g.fillPath(dashed);
+            bambi::ui::strokeDashed(g, outline, stroke::unplacedDash, juce::PathStrokeType(stroke::toggle));
         } else {
             g.drawRect(box, stroke::toggle);
         }
@@ -254,9 +252,7 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
         juce::Path line;
         line.startNewSubPath(static_cast<float>(vp.cx), static_cast<float>(vp.cy));
         line.lineTo(static_cast<float>(tip.x), static_cast<float>(tip.y));
-        juce::Path dashed;
-        juce::PathStrokeType(stroke::rule).createDashedStroke(dashed, line, stroke::otherPathDash, 2);
-        g.fillPath(dashed);
+        bambi::ui::strokeDashed(g, line, stroke::otherPathDash, juce::PathStrokeType(stroke::rule));
         g.setColour(colour::ground.withAlpha(alpha));
         g.fillEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r);
         g.setColour(colour::text.withAlpha(alpha));

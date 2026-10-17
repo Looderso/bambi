@@ -282,11 +282,10 @@ void MatrixView::paint(juce::Graphics& g) {
 
         ruleH(g, inset, width - inset, row.getBottom() - theme::stroke::rule, colour::rowDivider);
         if (ghost && id == model_.provisionalRow()) {
-            juce::Path outline, dashes;
+            juce::Path outline;
             outline.addRectangle(row);
-            juce::PathStrokeType(theme::stroke::rule).createDashedStroke(dashes, outline, ctl::provisionalDash, 2);
             g.setColour(colour::provisional);
-            g.fillPath(dashes);
+            strokeDashed(g, outline, ctl::provisionalDash, juce::PathStrokeType(theme::stroke::rule));
         }
         y += rowHeight;
     }

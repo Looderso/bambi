@@ -273,9 +273,9 @@ void Header::paint(juce::Graphics& g) {
             const juce::String& label = switchLabels_[static_cast<std::size_t>(i)];
             const auto w = textWidth(labelFont(), label) + 2.0f;
             const juce::Rectangle<float> box{right - w, 0.0f, w, h};
-            const bool on = i == switchSelected_;
-            if (on) openBlock(box.getX(), box.getRight());
-            text(g, label, labelFont(), on ? colour::textInverse : colour::text, box);
+            const juce::Rectangle<float> block{box.getX() - hdr::togglePadX, hdr::tabTop, w + 2.0f * hdr::togglePadX,
+                                               h - theme::stroke::identityRule - hdr::tabTop};
+            switchLabel(g, label, box, block, i == switchSelected_);
             switchAreas_[static_cast<std::size_t>(i)] = box.expanded(hdr::togglePadX, 0.0f);
             right = box.getX() - hdr::gap;
         }
