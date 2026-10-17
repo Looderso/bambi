@@ -30,6 +30,7 @@
 
 #include "../Source/Plugins.h"
 #include "../Source/Runner.h"
+#include "bambi/decode/remote.hpp"
 #include "bambi/live/graph.hpp"
 #include "bambi/live/transport.hpp"
 
@@ -690,6 +691,143 @@ float expectedGain(int sample) {
     return from + (to - from) * static_cast<float>(sample - start) / static_cast<float>(grid);
 }
 
+//  The Decoder on `outputs` channels, fed low noise in W for a quarter second: the channels that carry sound, or
+//  none when it would not be laid out that wide.
+std::vector<int> decoderHeard(juce::AudioPluginInstance& decoder, int outputs) {
+    if (decoder.getTotalNumOutputChannels() != outputs) return {};
+    juce::AudioBuffer<float> b(std::max(kField, outputs), 512);
+    juce::MidiBuffer midi;
+    std::mt19937 random(9);
+    std::uniform_real_distribution<float> noise(-0.1f, 0.1f);
+    std::vector<float> loudest(static_cast<std::size_t>(outputs), 0.0f);
+    for (int block = 0; block < 24; ++block) {
+        b.clear();
+        for (int i = 0; i < b.getNumSamples(); ++i) b.setSample(0, i, noise(random));
+        decoder.processBlock(b, midi);
+        for (int ch = 0; ch < outputs; ++ch)
+            loudest[static_cast<std::size_t>(ch)] =
+                std::max(loudest[static_cast<std::size_t>(ch)], b.getMagnitude(ch, 0, b.getNumSamples()));
+    }
+    std::vector<int> heard;
+    for (int ch = 0; ch < outputs; ++ch)
+        if (loudest[static_cast<std::size_t>(ch)] > 1e-4f) heard.push_back(ch);
+    return heard;
+}
+
+juce::String channelList(const std::vector<int>& channels) {
+    juce::StringArray s;
+    for (const int ch : channels) s.add(juce::String(ch + 1));
+    return s.isEmpty() ? juce::String("none") : s.joinIntoString(" ");
+}
+
+//  The Decoder on a bus wider than a pair, as the host asks for one to play speakers beside the headphones.
+int wideDecoder() {
+    int failed = 0;
+    const auto report = [&](const juce::String& what, juce::AudioPluginInstance* decoder, int outputs) {
+        const auto heard = decoder != nullptr ? decoderHeard(*decoder, outputs) : std::vector<int>{};
+        //  the headphones are the first pair until the Decoder is told otherwise
+        const bool ok = heard.size() >= 2 && heard[0] == 0 && heard[1] == 1;
+        failed += ok ? 0 : 1;
+        std::printf("  %s: sound on %s %s\n", what.toRawUTF8(), channelList(heard).toRawUTF8(), ok ? "" : "  FAIL");
+    };
+    //  Catches: a wide bus asked for as discrete channels -- JUCE names no VST3 speaker for any past the first, and
+    //  the Decoder is refused -- and a bus wider than VST3 has speakers for.
+    for (const int outputs : {2, 26, kMaxVst3BusChannels}) {
+        auto loaded = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, outputs);
+        report(juce::String(outputs) + " out, " + loaded.status, loaded.plugin.get(), outputs);
+    }
+    //  Catches: a layout changed on a prepared instance without releasing it first, or not prepared again after.
+    auto loaded = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, 2);
+    if (loaded.plugin != nullptr) {
+        loaded.plugin->releaseResources();
+        auto layout = loaded.plugin->getBusesLayout();
+        layout.outputBuses.getReference(0) = livehost::speakerChannels(26);
+        const bool took = loaded.plugin->setBusesLayout(layout);
+        loaded.plugin->prepareToPlay(kRate, kMaxBlock);
+        report(juce::String("2 out, laid out again as 26") + (took ? "" : " -- refused"), loaded.plugin.get(), 26);
+    } else {
+        report("2 out, to lay out again", nullptr, 26);
+    }
+    return failed;
+}
+
+//  The Decoder set through its remote interface, as the audio sheet sets it: what it reports, a request it grants,
+//  one it refuses, and the outputs heard where the report says.
+int remoteDecoder() {
+    int failed = 0;
+    const auto check = [&](bool ok, const char* what) {
+        failed += ok ? 0 : 1;
+        std::printf("  %s %s\n", what, ok ? "" : "  FAIL");
+    };
+    auto loaded = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, 26);
+    auto echo = livehost::loadInstalled("bambi Echo", Role::Effect, kOrder, kRate, kMaxBlock);
+    if (loaded.plugin == nullptr || echo.plugin == nullptr) {
+        check(false, "the Decoder and the Echo load");
+        return failed;
+    }
+    //  Catches: an interface the plugin does not answer, one answered by a plugin that does not offer it, a version
+    //  not checked.
+    remote::IRemote* decoder = livehost::remoteOf(*loaded.plugin, kDecoderRemoteKind, kDecoderRemoteVersion);
+    check(decoder != nullptr, "the Decoder answers the remote interface");
+    check(livehost::remoteOf(*echo.plugin, kDecoderRemoteKind, kDecoderRemoteVersion) == nullptr, "the Echo does not");
+    check(livehost::remoteOf(*loaded.plugin, kDecoderRemoteKind, kDecoderRemoteVersion + 1) == nullptr &&
+              livehost::remoteOf(*loaded.plugin, "echo", kDecoderRemoteVersion) == nullptr,
+          "a payload or a version the Decoder does not speak finds nothing");
+    if (decoder == nullptr) return failed;
+    const auto report = [&] { return reportFrom(Json::parse(livehost::remoteReport(*decoder))); };
+    const DecoderReport fresh = report();
+    check(fresh.bus == 26 && fresh.headphonesOn && fresh.headphoneChannel == 1 && !fresh.speakersOn,
+          "fresh: a bus of 26, the headphones on 1-2, the speakers off");
+
+    //  Catches: a request that does not reach the Decoder's state, a layout not designed after it, the level not
+    //  set on the parameter, a granted move not reported.
+    DecoderRequest request;
+    request.layout = "9+10+3";
+    request.speakersOn = true;
+    request.levelDb = -6.0;
+    check(decoder->remoteRequest(toJson(request).dump(0).c_str()) == Steinberg::kResultOk, "a request is read");
+    const DecoderReport granted = report();
+    std::vector<int> want{1, 2};
+    for (const int c : granted.speakerChannels) want.push_back(c);
+    check(granted.speakersOn && granted.layout == "9+10+3" && granted.speakerFirstChannel == 3 &&
+              granted.speakerChannels.size() == 22 && granted.speakerChannels.back() == 26 &&
+              std::abs(granted.levelDb + 6.0) < 0.01 && !granted.notice.empty(),
+          "granted: 9+10+3 lit from channel 3, past the headphones, at -6 dB, the move said");
+    std::vector<int> heard = decoderHeard(*loaded.plugin, 26);
+    std::printf("    heard on %s\n", channelList(heard).toRawUTF8());
+    for (int& c : heard) ++c;
+    check(heard == want, "heard on the channels the report gives");
+
+    //  Catches: a refused request applied anyway, or refused without a word.
+    DecoderRequest wrong;
+    wrong.headphoneChannel = 2;
+    decoder->remoteRequest(toJson(wrong).dump(0).c_str());
+    const DecoderReport refused = report();
+    check(refused.headphoneChannel == 1 && refused.notice == "headphones cannot start on channel 2",
+          "refused: headphones on an even channel, said");
+
+    //  Catches: a widest bus whose last channels -- the last speakers VST3 names -- do not reach the Decoder's.
+    auto widest = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, kMaxVst3BusChannels);
+    remote::IRemote* far = widest.plugin != nullptr ? livehost::remoteOf(*widest.plugin, kDecoderRemoteKind,
+                                                                         kDecoderRemoteVersion)
+                                                    : nullptr;
+    if (far == nullptr) {
+        check(false, "the widest Decoder answers");
+        return failed;
+    }
+    DecoderRequest last;
+    last.layout = "9+10+3";
+    last.speakerFirstChannel = kMaxVst3BusChannels - 23;
+    last.speakersOn = true;
+    far->remoteRequest(toJson(last).dump(0).c_str());
+    const std::vector<int> heardFar = decoderHeard(*widest.plugin, kMaxVst3BusChannels);
+    std::printf("    widest: heard on %s\n", channelList(heardFar).toRawUTF8());
+    check(!heardFar.empty() && heardFar.back() == kMaxVst3BusChannels - 1 &&
+              heardFar.size() == 2 + reportFrom(Json::parse(livehost::remoteReport(*far))).speakerChannels.size(),
+          "widest: 9+10+3 heard up to channel 61");
+    return failed;
+}
+
 }  // namespace
 
 int main() {
@@ -862,6 +1000,11 @@ int main() {
         std::printf("the sidechains, block %4d: an Encoder's and an insert's their pair within %.3g, none silent %s\n",
                     block, static_cast<double>(off), ok ? "" : "  FAIL");
     }
+
+    std::printf("the Decoder, wide\n");
+    failed += wideDecoder();
+    std::printf("the Decoder, remote-controlled\n");
+    failed += remoteDecoder();
 
     std::printf(failed == 0 ? "the runner plays both plans as the direct renders do, at every block size\n"
                             : "%d renders differ\n",

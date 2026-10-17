@@ -121,6 +121,7 @@ add_library(bambi-decode STATIC
   src/decode/orientation.cpp
   src/decode/params.cpp
   src/decode/outputs.cpp
+  src/decode/remote.cpp
 )
 target_link_libraries(bambi-decode PUBLIC bambi-core PRIVATE convhull_3d libmysofa)
 bambi_warnings(bambi-decode PEDANTIC)
@@ -217,6 +218,7 @@ add_executable(bambi-tests
   tests/decode/test_sofafile.cpp
   tests/decode/test_layoutfile.cpp
   tests/decode/test_outputs.cpp
+  tests/decode/test_remote.cpp
   tests/dsp/test_resample.cpp
   tests/decode/test_binaural.cpp
   tests/decode/test_convolver.cpp

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "Plugins.h"
 
+#include <iterator>
+#include <pluginterfaces/vst/ivstcomponent.h>
+
 namespace bambi::livehost {
 
 namespace {
@@ -12,6 +15,53 @@ juce::File installed(const juce::String& name) {
 }
 
 }  // namespace
+
+juce::AudioChannelSet speakerChannels(int channels) {
+    using T = juce::AudioChannelSet::ChannelType;
+    //  every type JUCE maps to a VST3 speaker, in JUCE's own order, so a set's channel i is the i-th of these
+    static constexpr T kSpeakers[] = {
+        T::left, T::right, T::centre, T::LFE, T::leftSurround, T::rightSurround, T::leftCentre, T::rightCentre,
+        T::centreSurround, T::leftSurroundSide, T::rightSurroundSide, T::topMiddle, T::topFrontLeft,
+        T::topFrontCentre, T::topFrontRight, T::topRearLeft, T::topRearCentre, T::topRearRight, T::LFE2,
+        T::leftSurroundRear, T::rightSurroundRear, T::wideLeft, T::wideRight, T::ambisonicACN0, T::ambisonicACN1,
+        T::ambisonicACN2, T::ambisonicACN3, T::topSideLeft, T::topSideRight, T::ambisonicACN4, T::ambisonicACN5,
+        T::ambisonicACN6, T::ambisonicACN7, T::ambisonicACN8, T::ambisonicACN9, T::ambisonicACN10, T::ambisonicACN11,
+        T::ambisonicACN12, T::ambisonicACN13, T::ambisonicACN14, T::ambisonicACN15, T::ambisonicACN16,
+        T::ambisonicACN17, T::ambisonicACN18, T::ambisonicACN19, T::ambisonicACN20, T::ambisonicACN21,
+        T::ambisonicACN22, T::ambisonicACN23, T::ambisonicACN24, T::bottomFrontLeft, T::bottomFrontCentre,
+        T::bottomFrontRight, T::proximityLeft, T::proximityRight, T::bottomSideLeft, T::bottomSideRight,
+        T::bottomRearLeft, T::bottomRearCentre, T::bottomRearRight, T::discreteChannel0};
+    static_assert(std::size(kSpeakers) == kMaxVst3BusChannels);
+    if (channels < 1 || channels > kMaxVst3BusChannels) return {};
+    juce::AudioChannelSet set;
+    for (int i = 0; i < channels; ++i) set.addChannel(kSpeakers[i]);
+    return set;
+}
+
+remote::IRemote* remoteOf(juce::AudioPluginInstance& plugin, std::string_view kind, int version) {
+    auto* client = plugin.getVST3Client();
+    auto* component = client != nullptr ? client->getIComponentPtr() : nullptr;
+    void* found = nullptr;
+    if (component == nullptr || component->queryInterface(remote::kRemoteIid, &found) != Steinberg::kResultOk ||
+        found == nullptr)
+        return nullptr;
+    auto* r = static_cast<remote::IRemote*>(found);
+    const char* spoken = r->remoteKind();
+    return spoken != nullptr && kind == spoken && r->remoteVersion() == version ? r : nullptr;
+}
+
+std::string remoteReport(remote::IRemote& remote) {
+    std::string text(4096, '\0');
+    for (;;) {
+        const auto length = remote.remoteReport(text.data(), static_cast<Steinberg::int32>(text.size()));
+        if (length < 0) return {};
+        if (static_cast<std::size_t>(length) < text.size()) {
+            text.resize(static_cast<std::size_t>(length));
+            return text;
+        }
+        text.assign(static_cast<std::size_t>(length) + 1, '\0');
+    }
+}
 
 juce::String describe(const juce::AudioProcessor::BusesLayout& l) {
     juce::StringArray parts;
@@ -45,9 +95,7 @@ Loaded loadInstalled(const juce::String& name, Role role, int order, double rate
     auto& outs = layout.outputBuses;
     if (ins.size() > 0) ins.getReference(0) = role == Role::Encoder ? juce::AudioChannelSet::stereo() : field;
     if (ins.size() > 1) ins.getReference(1) = juce::AudioChannelSet::stereo();  // the sidechain; the Decoder has none
-    if (outs.size() > 0)
-        outs.getReference(0) = role == Role::Decoder ? juce::AudioChannelSet::discreteChannels(outputs) : field;
-    if (role == Role::Decoder && outputs == 2) outs.getReference(0) = juce::AudioChannelSet::stereo();
+    if (outs.size() > 0) outs.getReference(0) = role == Role::Decoder ? speakerChannels(outputs) : field;
 
     const bool took = out.plugin->setBusesLayout(layout);
     out.plugin->prepareToPlay(rate, maxBlock);
