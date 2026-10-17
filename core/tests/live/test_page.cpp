@@ -2,6 +2,8 @@
 //
 //  Where the routing page puts Live's tracks and groups.
 
+#include <algorithm>
+
 #include "bambi/live/page.hpp"
 #include "doctest.h"
 

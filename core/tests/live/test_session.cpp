@@ -2,6 +2,7 @@
 //
 //  The host's side of the conversation with the bambi Live device: what it answers, and what it keeps.
 
+#include <algorithm>
 #include <variant>
 #include <vector>
 

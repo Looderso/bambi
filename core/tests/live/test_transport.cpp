@@ -2,6 +2,7 @@
 //
 //  Live's timeline as the host's engines read it: messages in, a playhead out.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>

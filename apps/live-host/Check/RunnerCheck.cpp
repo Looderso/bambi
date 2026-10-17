@@ -21,6 +21,7 @@
 //
 //  The direct renders are wired by hand here, without the runner, so the two can disagree.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <juce_audio_processors/juce_audio_processors.h>
