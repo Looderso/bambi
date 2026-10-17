@@ -2,3 +2,4 @@
 	path = third_party/JUCE
 	url = https://github.com/juce-framework/JUCE.git
 	shallow = true
+	ignore = dirty
