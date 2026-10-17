@@ -78,6 +78,35 @@ struct Restore {
     Json state;
 };
 
+/*  Live's arrangement, as guidance for placing automation: every track's clips, read-only here; the locators; the
+ *  loop. Sent when bambi turns on and again when a track's clips change -- never while it plays. Times in quarter
+ *  notes from the song's start. */
+struct Clip {
+    double start{0.0}, end{0.0};
+    std::string name;
+    std::string colour;  ///< "#rrggbb"
+    bool midi{false};
+    friend bool operator==(const Clip&, const Clip&) = default;
+};
+struct TrackClips {
+    TrackId id{0};
+    std::vector<Clip> clips;  ///< in time order
+    friend bool operator==(const TrackClips&, const TrackClips&) = default;
+};
+struct Locator {
+    double time{0.0};
+    std::string name;
+    friend bool operator==(const Locator&, const Locator&) = default;
+};
+struct Arrangement {
+    std::vector<TrackClips> tracks;
+    std::vector<Locator> locators;  ///< in time order
+    bool loopOn{false};
+    double loopStart{0.0}, loopLength{0.0};
+    double readMs{0.0};  ///< how long reading it held Live up, as the device timed it
+    friend bool operator==(const Arrangement&, const Arrangement&) = default;
+};
+
 struct Routed {
     struct Track {
         TrackId id{0};
@@ -134,8 +163,16 @@ struct CreateReturn {
     friend bool operator==(const CreateReturn&, const CreateReturn&) = default;
 };
 
-using Message = std::variant<Hello, Switched, Tree, Value, TransportMessage, Restore, Routed, Show, Welcome, Route,
-                             Save, Info, Status, Busy, CreateReturn>;
+/// Live's transport, asked from the host: Live stays the clock, and reports back what it did as any transport.
+struct Command {
+    enum class Action { Play, Stop, Continue, Locate };
+    Action action{Action::Play};
+    double ppq{0.0};  ///< Locate's: where to, quarter notes from the song's start
+    friend bool operator==(const Command&, const Command&) = default;
+};
+
+using Message = std::variant<Hello, Switched, Tree, Value, TransportMessage, Restore, Arrangement, Routed, Show,
+                             Welcome, Route, Save, Info, Status, Busy, CreateReturn, Command>;
 
 /// A line as a message, or none with `error` set when it is not a JSON object or its type is unknown.
 std::optional<Message> parse(std::string_view line, std::string* error = nullptr);

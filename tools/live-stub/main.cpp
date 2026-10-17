@@ -86,6 +86,12 @@ struct Print {
     }
     void operator()(const live::Show&) const { std::printf("show: the host's window would come to the front\n"); }
     void operator()(const live::Switched& b) const { std::printf("bambi %s\n", b.on ? "on" : "off"); }
+    void operator()(const live::Arrangement& a) const {
+        std::size_t clips = 0;
+        for (const auto& t : a.tracks) clips += t.clips.size();
+        std::printf("arrangement: %zu tracks, %zu clips, %zu locators, loop %s; read in %.0f ms\n", a.tracks.size(),
+                    clips, a.locators.size(), a.loopOn ? "on" : "off", a.readMs);
+    }
     template <typename Other>
     void operator()(const Other&) const {
         std::printf("a message only the host sends, from the device\n");

@@ -123,6 +123,9 @@ struct Menu {
 Menu drawMenu(juce::Graphics& g, juce::Point<float> topLeft, float width, const std::vector<MenuItem>& items,
               const juce::String& foot);
 
+/// A live host page's band, along its top: the ground, a rule under it. Returns the room inside its insets.
+juce::Rectangle<float> drawPageBand(juce::Graphics& g, float width);
+
 /// The cross that closes something temporary, in `box`. Returns the area a press on it should take.
 juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> box);
 

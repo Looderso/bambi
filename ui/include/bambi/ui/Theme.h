@@ -126,6 +126,17 @@ namespace colour
     // a source's settings: sources · generators
     inline const juce::Colour envelopeGrid  = palette::grey4;    ///< its axis, and a line at each stage's edge
 
+    /// Where Live is heard now, on the live host's timeline: what happens now is grey
+    inline const juce::Colour playhead    = now;
+
+    /// A colour that is data, not the theme's -- a Live track's or clip's, "#rrggbb" -- opaque; `otherwise` when
+    /// the text is not one.
+    inline juce::Colour ofLive(const juce::String& hex, juce::Colour otherwise)
+    {
+        if (hex.length() != 7 || !hex.startsWithChar('#')) return otherwise;
+        return juce::Colour::fromString("ff" + hex.substring(1));
+    }
+
     /*  Which plugin this is: the rule under the header and the rule over the footer, and what modulates,
         in the plugin's own colour. The encoder, where sound comes in, wears the incoming orange; the
         decoder, where it goes out, the added blue. */
@@ -492,6 +503,25 @@ namespace rail
     inline constexpr int   problemLines = 8;  ///< what went wrong, wrapped this far at most
 } // namespace rail
 
+// ---- the live host's timeline: Live's arrangement, as guidance --------------------------------
+namespace timeline
+{
+    inline constexpr float tree      = 200.0f;  ///< the column of Live's tracks, the rows' headers
+    inline constexpr float ruler     = 28.0f;
+    inline constexpr float row       = 40.0f;   ///< a track's clips
+    inline constexpr float indent    = 14.0f;   ///< a track inside a group
+    inline constexpr float clipInset = 4.0f;    ///< a clip's block inside its row, above and below
+    inline constexpr float clipBar   = 3.0f;    ///< its colour along its top
+    inline constexpr float clipFill  = 0.45f;   ///< how strongly its colour fills it
+    inline constexpr float locator   = 5.0f;    ///< a locator's mark
+    inline constexpr float loopBrace = 4.0f;    ///< the loop's band at the ruler's top
+    inline constexpr float reach     = 6.0f;    ///< pixels within which a click finds a locator
+    inline constexpr float barLabel  = 40.0f;   ///< the least room between two numbered bars
+    inline constexpr float pad       = 14.0f;   ///< the tree's inset
+    inline constexpr float gap       = 3.0f;    ///< from a mark to its label: a bar's number, a locator's name
+    inline constexpr int   frameMs   = 33;      ///< the playhead redrawn this often while Live plays
+} // namespace timeline
+
 // ---- the live host's routing page: Live's tracks, the field, Main ------------------------------
 namespace routing
 {
@@ -573,6 +603,7 @@ namespace metrics
     inline constexpr int windowWidth   = 1020;
     inline constexpr int windowHeight  = 600;   ///< the matrix scrolls under its heads
     inline constexpr int headerHeight  = 44;
+    inline constexpr float bandInset   = 16.0f; ///< a live host page's band: its text from either side
     inline constexpr int sceneTop      = 8;     ///< from the header to the scene panels
     inline constexpr int footerHeight  = 22;    ///< the matrix's global amount; the panel's switches and readout
     inline constexpr int leftColumn    = 620;   ///< scene above, matrix below: two panels and their insets

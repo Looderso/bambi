@@ -118,6 +118,20 @@ TEST_CASE("every message comes back from the wire as it went") {
     CHECK(again(i) == i);
     CHECK(again(Status{"busy"}) == Status{"busy"});
     CHECK(again(CreateReturn{"bambi · Plate"}) == CreateReturn{"bambi · Plate"});
+    //  Catches: a command's action or a locate's place lost, a clip's field or the loop dropped.
+    for (const auto a : {Command::Action::Play, Command::Action::Stop, Command::Action::Continue})
+        CHECK(again(Command{a, 0.0}) == Command{a, 0.0});
+    CHECK(again(Command{Command::Action::Locate, 64.5}) == Command{Command::Action::Locate, 64.5});
+    const Arrangement ar{
+        {{3, {{0.0, 16.0, "intro", "#d9a441", false}, {32.0, 96.0, "bass verse", "#c05a4a", true}}}, {8, {}}},
+        {{0.0, "intro"}, {32.0, "verse"}},
+        true,
+        96.0,
+        64.0,
+        4.5};
+    CHECK(again(ar) == ar);
+    std::string why;
+    CHECK_FALSE(parse(R"({"type": "command", "action": "rewind"})", &why).has_value());
     (void)again(Busy{});
     (void)again(Show{});
 

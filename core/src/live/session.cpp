@@ -104,6 +104,10 @@ std::vector<Message> DeviceSession::answer(const Message& in) {
         return {Welcome{kProtocol, s_.loop}};
     }
     if (const auto* t = std::get_if<Tree>(&in)) return onTree(*t, true);
+    if (const auto* a = std::get_if<Arrangement>(&in)) {
+        arrangement_ = *a;
+        return {};
+    }
     if (const auto* r = std::get_if<Restore>(&in)) {
         pairs_.clear();
         kept_ = Json::object();

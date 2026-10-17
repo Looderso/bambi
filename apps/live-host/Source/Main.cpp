@@ -18,6 +18,7 @@
 #include "Rail.h"
 #include "Routing.h"
 #include "Settings.h"
+#include "Timeline.h"
 #include "bambi/ui/Theme.h"
 #include "devices.hpp"
 #include "loop.hpp"
@@ -84,6 +85,9 @@ public:
 
         addAndMakeVisible(rail_);
         addChildComponent(routing_);
+        addChildComponent(timeline_);
+        timeline_.command = [this](const bambi::live::Command& c) { device_.command(c); };
+        timeline_.heard = [this] { return engine_.heard(); };
         routing_.reshape = [this](bambi::live::Shape shape) { device_.reshape(std::move(shape)); };
         routing_.showDecoder = [this](std::uint64_t id) { showView(View::Decoder, engine_.decoderOf(id)); };
         routing_.showSource = [this](bambi::live::TrackId track) { showView(View::Encoder, engine_.encoderOf(track)); };
@@ -123,11 +127,12 @@ public:
         rail_.setBounds(area.removeFromLeft(bambi::ui::theme::rail::width));
         if (editor_ != nullptr) editor_->setBounds(area.withSize(editor_->getWidth(), editor_->getHeight()));
         routing_.setBounds(area);
+        timeline_.setBounds(area);
         sheet_.setBounds(getLocalBounds());
     }
 
 private:
-    enum class View { Encoder, Echo, Reverb, Decoder, Routing, Audio, Gap };  ///< Gap: between the rail's groups
+    enum class View { Encoder, Echo, Reverb, Decoder, Routing, Timeline, Audio, Gap };  ///< Gap: between the rail's groups
 
     //  The plugins' states, kept with the set when they changed. Only while bambi is on: a device sends what the set
     //  kept before it switches on, and the defaults must not be kept over it.
@@ -168,7 +173,8 @@ private:
                 named_.fill({});
                 device_.setLatency(engine_.latencyMs(), 48000.0);
                 //  a window on an Encoder let go of closes before that Encoder can be freed
-                if (view_ != View::Routing && !engine_.holds(shownPlugin_)) showView(view_);
+                if (view_ != View::Routing && view_ != View::Timeline && !engine_.holds(shownPlugin_))
+                    showView(view_);
             }
         }
         engine_.setSends(session.field(), session.tree());
@@ -195,6 +201,10 @@ private:
         labels.push_back("routing");
         views_.push_back(View::Routing);
         if (view_ == View::Routing) selected = static_cast<int>(views_.size()) - 1;
+        labels.push_back("timeline");
+        views_.push_back(View::Timeline);
+        if (view_ == View::Timeline) selected = static_cast<int>(views_.size()) - 1;
+        timeline_.show(session.tree(), session.arrangement());
         //  the audio sheet after another gap: over the window, never a view of its own
         labels.push_back({});
         views_.push_back(View::Gap);
@@ -250,6 +260,7 @@ private:
             case View::Reverb: return engine_.firstEffect(bambi::live::Effect::Reverb);
             case View::Decoder: return engine_.decoder();
             case View::Routing:
+            case View::Timeline:
             case View::Audio:
             case View::Gap: return nullptr;
         }
@@ -263,6 +274,7 @@ private:
             case View::Reverb: return "reverb";
             case View::Decoder: return "decoder";
             case View::Routing: return "routing";
+            case View::Timeline: return "timeline";
             case View::Audio: return "audio";
             case View::Gap: return "";
         }
@@ -273,9 +285,10 @@ private:
     void showView(View v, juce::AudioProcessor* which = nullptr) {
         if (editor_ != nullptr) removeChildComponent(editor_.get());
         editor_.reset();
-        if (v != View::Routing && which == nullptr && pluginOf(v) == nullptr) v = View::Decoder;
+        if (v != View::Routing && v != View::Timeline && which == nullptr && pluginOf(v) == nullptr) v = View::Decoder;
         auto* plugin = which != nullptr ? which : pluginOf(v);
         routing_.setVisible(v == View::Routing);
+        timeline_.setVisible(v == View::Timeline);
         view_ = v;
         shownPlugin_ = plugin;
         if (plugin != nullptr) editor_.reset(plugin->createEditorAndMakeActive());
@@ -297,6 +310,7 @@ private:
     juce::String problem_;  ///< why the last change to what it plays could not be made
     bambi::livehost::Rail rail_;
     bambi::livehost::RoutingPage routing_;
+    bambi::livehost::TimelinePage timeline_;
     bambi::livehost::AudioSheet sheet_;
     juce::String audioProblem_;  ///< why the sheet's last change could not be played or kept
     bool rebuild_{false};  ///< the program to be built again at the next update, whatever changed

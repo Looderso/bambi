@@ -286,3 +286,15 @@ TEST_CASE("before a tree has come, the session says it has none rather than an e
     s.disconnected();
     CHECK(s.hasTree());  // the set is as it was until a new tree says otherwise
 }
+
+TEST_CASE("the arrangement the device sends is kept as sent, the last one standing") {
+    //  Catches: an arrangement dropped, answered as if it asked something, or a later one not replacing it.
+    DeviceSession s;
+    Arrangement a;
+    a.tracks = {{1, {{0.0, 8.0, "intro", "#ffffff", false}}}};
+    CHECK(s.answer(a).empty());
+    CHECK(s.arrangement() == a);
+    a.locators = {{16.0, "verse"}};
+    s.answer(a);
+    CHECK(s.arrangement().locators.size() == 1);
+}

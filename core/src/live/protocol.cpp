@@ -8,6 +8,16 @@ namespace bambi::live {
 
 namespace {
 
+const char* actionName(Command::Action a) {
+    switch (a) {
+        case Command::Action::Play: return "play";
+        case Command::Action::Stop: return "stop";
+        case Command::Action::Continue: return "continue";
+        case Command::Action::Locate: return "locate";
+    }
+    return "play";
+}
+
 const Json* member(const Json& o, std::string_view key) { return o.find(key); }
 
 double number(const Json& o, std::string_view key, double fallback = 0.0) {
@@ -199,6 +209,48 @@ struct Writer {
         o.set("name", Json(m.name));
         return o;
     }
+    Json operator()(const Command& m) const {
+        Json o = typed("command");
+        o.set("action", Json(actionName(m.action)));
+        if (m.action == Command::Action::Locate) o.set("ppq", Json(m.ppq));
+        return o;
+    }
+    Json operator()(const Arrangement& m) const {
+        Json o = typed("arrangement");
+        Json tracks = Json::array();
+        for (const TrackClips& t : m.tracks) {
+            Json clips = Json::array();
+            for (const Clip& c : t.clips) {
+                Json j = Json::object();
+                j.set("start", Json(c.start));
+                j.set("end", Json(c.end));
+                j.set("name", Json(c.name));
+                j.set("colour", Json(c.colour));
+                j.set("midi", Json(c.midi));
+                clips.push(std::move(j));
+            }
+            Json tr = Json::object();
+            tr.set("id", number(t.id));
+            tr.set("clips", std::move(clips));
+            tracks.push(std::move(tr));
+        }
+        o.set("tracks", std::move(tracks));
+        Json locators = Json::array();
+        for (const Locator& l : m.locators) {
+            Json j = Json::object();
+            j.set("time", Json(l.time));
+            j.set("name", Json(l.name));
+            locators.push(std::move(j));
+        }
+        o.set("locators", std::move(locators));
+        Json loop = Json::object();
+        loop.set("on", Json(m.loopOn));
+        loop.set("start", Json(m.loopStart));
+        loop.set("length", Json(m.loopLength));
+        o.set("loop", std::move(loop));
+        o.set("readMs", Json(m.readMs));
+        return o;
+    }
 };
 
 }  // namespace
@@ -264,6 +316,40 @@ std::optional<Message> parse(std::string_view line, std::string* error) {
     if (type == "status") return Status{text(o, "text")};
     if (type == "busy") return Busy{};
     if (type == "createReturn") return CreateReturn{text(o, "name")};
+    if (type == "command") {
+        const std::string action = text(o, "action");
+        const auto a = action == "stop"       ? Command::Action::Stop
+                       : action == "continue" ? Command::Action::Continue
+                       : action == "locate"   ? Command::Action::Locate
+                       : action == "play"     ? Command::Action::Play
+                                              : std::optional<Command::Action>{};
+        if (!a) {
+            if (error != nullptr) *error = "no transport command \"" + action + "\"";
+            return std::nullopt;
+        }
+        return Command{*a, number(o, "ppq")};
+    }
+    if (type == "arrangement") {
+        Arrangement a;
+        if (const Json* tracks = member(o, "tracks"); tracks != nullptr && tracks->isArray())
+            for (const Json& t : tracks->items()) {
+                TrackClips tc{id(t), {}};
+                if (const Json* clips = member(t, "clips"); clips != nullptr && clips->isArray())
+                    for (const Json& c : clips->items())
+                        tc.clips.push_back({number(c, "start"), number(c, "end"), text(c, "name"), text(c, "colour"),
+                                            flag(c, "midi")});
+                if (tc.id != 0) a.tracks.push_back(std::move(tc));
+            }
+        if (const Json* locators = member(o, "locators"); locators != nullptr && locators->isArray())
+            for (const Json& l : locators->items()) a.locators.push_back({number(l, "time"), text(l, "name")});
+        if (const Json* loop = member(o, "loop"); loop != nullptr && loop->isObject()) {
+            a.loopOn = flag(*loop, "on");
+            a.loopStart = number(*loop, "start");
+            a.loopLength = number(*loop, "length");
+        }
+        a.readMs = number(o, "readMs");
+        return a;
+    }
     if (error != nullptr) *error = "no message of type \"" + type + "\"";
     return std::nullopt;
 }

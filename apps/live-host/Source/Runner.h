@@ -94,6 +94,16 @@ public:
     /// runs; none: stopped.
     void setClock(live::TransportProjector* clock) noexcept { clock_ = clock; }
 
+    /// Where Live was at the last piece the plugins played, for a window to draw. Any thread; each value on its own,
+    /// so a reading may mix two pieces', which a drawing does not see.
+    live::Playhead shown() const noexcept {
+        live::Playhead p;
+        p.playing = shownPlaying_.load(std::memory_order_relaxed);
+        p.ppq = shownPpq_.load(std::memory_order_relaxed);
+        p.bpm = shownBpm_.load(std::memory_order_relaxed);
+        return p;
+    }
+
     /// The host's sample the next piece starts at.
     std::int64_t sample() const noexcept { return sample_; }
 
@@ -170,6 +180,8 @@ private:
     LivePlayhead playhead_;
     live::TransportProjector* clock_{nullptr};
     std::int64_t sample_{0};
+    std::atomic<double> shownPpq_{0.0}, shownBpm_{120.0};
+    std::atomic<bool> shownPlaying_{false};
     enum class Fade { None, Out, Hold, MainOut, In };
     Fade fade_{Fade::None};  // the audio thread's, with `faded_`: samples of the phase played
     int faded_{0};

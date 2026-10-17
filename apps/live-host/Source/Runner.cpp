@@ -238,7 +238,13 @@ void Runner::process(const Inputs& loop, juce::AudioBuffer<float>& output, int f
 
 void Runner::piece(const Program& p, const Inputs& loop, int loopStart,
                    juce::AudioBuffer<float>& output, int outStart, int frames, float fade0, float fade1) noexcept {
-    if (clock_ != nullptr) playhead_.set(clock_->reading(sample_), setup_.rate);
+    if (clock_ != nullptr) {
+        const live::Playhead reading = clock_->reading(sample_);
+        playhead_.set(reading, setup_.rate);
+        shownPpq_.store(reading.ppq, std::memory_order_relaxed);
+        shownBpm_.store(reading.bpm, std::memory_order_relaxed);
+        shownPlaying_.store(reading.playing, std::memory_order_relaxed);
+    }
     const int offset = static_cast<int>(sample_ % kLevelGrid);
     if (offset == 0)
         for (int i = 0; i < p.levelCount; ++i) {

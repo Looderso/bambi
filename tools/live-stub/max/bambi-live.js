@@ -255,7 +255,18 @@ function fromhost(sent) {
         showList();
     } else if (m.type === "status") {
         status(m.text);
+    } else if (m.type === "command") {
+        command(m);
     }
+}
+
+//  Live's transport, as the host asks for it: Live stays the clock, and its observers report back what it did.
+function command(m) {
+    const set = new LiveAPI("live_set");
+    if (m.action === "play") set.call("start_playing");
+    else if (m.action === "stop") set.call("stop_playing");
+    else if (m.action === "continue") set.call("continue_playing");
+    else if (m.action === "locate") set.set("current_song_time", Math.max(0, Number(m.ppq) || 0));
 }
 
 // ---- the button ------------------------------------------------------------------------------------------------
@@ -275,12 +286,14 @@ function enable() {
 function start() {
     on = true;
     lastTree = "";
+    lastArrangement = "";
     lastValue = {};
     outlet(1, "set", 1);
     const listening = makeReturn();
     send({type: "bambi", on: 1});
     sendTree();
     observe();
+    sendArrangement();
     if (!listening)
         notice("the bambi track cannot hear Ext. In " + RETURN_IN + ": enable it as a stereo pair in Live's " +
                "Input Config, with the bambi bridge as the input device");
@@ -558,6 +571,55 @@ function observeLightly() {
 }
 const relight = new Task(() => observeLightly());
 
+// ---- the arrangement, as guidance --------------------------------------------------------------------------
+
+//  Every track's arrangement clips, the locators and the loop, read in one go and timed: what reading them holds Live
+//  up is sent along, measured rather than guessed. A group and a return have no clips of their own.
+const ARRANGEMENT_SETTLE_MS = 300;  // edits come in bursts: read once they stop
+let lastArrangement = "";
+let arrangementStale = false;
+const arrangementLater = new Task(() => sendArrangement());
+
+function arrangementChanged() {
+    arrangementStale = true;
+    if (Number(new LiveAPI("live_set").get("is_playing"))) return;  // read once Live stops
+    arrangementLater.cancel();
+    arrangementLater.schedule(ARRANGEMENT_SETTLE_MS);
+}
+
+function sendArrangement() {
+    arrangementStale = false;
+    const began = Date.now();
+    const set = new LiveAPI("live_set");
+    const tracks = [];
+    for (const n of identify()) {
+        if (n.path.startsWith("live_set return_tracks") || Number(n.api.get("is_foldable")) === 1) continue;
+        const clips = [];
+        for (let i = 0; i < n.api.getcount("arrangement_clips"); ++i) {
+            const c = new LiveAPI(n.path + " arrangement_clips " + i);
+            clips.push({start: Number(c.get("start_time")), end: Number(c.get("end_time")), name: text(c, "name"),
+                        colour: hex(c.get("color")), midi: Number(c.get("is_midi_clip")) === 1});
+        }
+        clips.sort((a, b) => a.start - b.start);
+        tracks.push({id: n.key, clips: clips});
+    }
+    const locators = [];
+    for (let i = 0; i < set.getcount("cue_points"); ++i) {
+        const c = new LiveAPI("live_set cue_points " + i);
+        locators.push({time: Number(c.get("time")), name: text(c, "name")});
+    }
+    locators.sort((a, b) => a.time - b.time);
+    const message = {type: "arrangement", tracks: tracks, locators: locators,
+                     loop: {on: Number(set.get("loop")) === 1, start: Number(set.get("loop_start")),
+                            length: Number(set.get("loop_length"))},
+                     readMs: Date.now() - began};
+    const same = JSON.stringify([tracks, locators, message.loop]);
+    if (same === lastArrangement) return;
+    lastArrangement = same;
+    post("bambi: the arrangement read in " + message.readMs + " ms\n");
+    send(message);
+}
+
 // ---- the set as the host sees it ----------------------------------------------------------------------------
 
 function sendTree() {
@@ -692,13 +754,20 @@ function observe() {
     const all = identify();
     for (const n of all) set_[n.key] = routingOf(n.api);  // what the routing is now is the device's own
     watch(song, "current_song_time", transport);
-    watch(song, "is_playing", transport);
+    watch(song, "is_playing", v => {
+        transport();
+        if (!Number(v[0]) && arrangementStale) arrangementLater.schedule(ARRANGEMENT_SETTLE_MS);
+    });
     watch(song, "tempo", transport);
+    //  the arrangement, sent again when it changes -- never while Live plays, where reading it could stall
+    for (const prop of ["cue_points", "loop", "loop_start", "loop_length"]) watch(song, prop, arrangementChanged);
     //  names, colours and the track list come with the tree, which the light observers' refresh sends
 
     for (const n of all) {
         const t = n.api, key = n.key, name = n.name;
         const value = (what, v) => sendValue(key, name, what, v);
+        if (!n.path.startsWith("live_set return_tracks") && Number(t.get("is_foldable")) !== 1)
+            watch(n.path, "arrangement_clips", arrangementChanged);
         watch(n.path, "mute", v => value("mute", Number(v[0])));  // also the track's on/off button
         watch(n.path, "solo", v => value("solo", Number(v[0])));
         watch(n.path, "output_routing_type", () => {

@@ -8,6 +8,7 @@
 #include "Plugins.h"
 #include "bambi/decode/remote.hpp"
 #include "bambi/live/graph.hpp"
+#include "bambi/live/timeline.hpp"
 #include "loop.hpp"
 
 namespace bambi::livehost {
@@ -146,6 +147,7 @@ bool Engine::open(juce::String& status) {
     const int piece = std::max(block_, 1024);
     inAt_.assign(static_cast<std::size_t>(inputChannels_), nullptr);
     out_.setSize(outputChannels_, piece);
+    outputLatency_ = device->getOutputLatencyInSamples() + block_;
     deviceLatency_ = device->getInputLatencyInSamples() + device->getOutputLatencyInSamples() + block_;
     return true;
 }
@@ -440,6 +442,13 @@ void Engine::restore(const Json& states) {
 
 void Engine::transport(const live::TransportMessage& message, std::int64_t stampNs) noexcept {
     (void)queue_.push({message, stampNs});
+}
+
+live::Playhead Engine::heard() const noexcept {
+    live::Playhead p = runner_.shown();
+    const int late = program_.compiled.latency + outputLatency_;
+    if (p.playing) p.ppq = live::heardAt(p.ppq, p.bpm, s_.rate, late);
+    return p;
 }
 
 juce::AudioProcessor* Engine::decoderOf(std::uint64_t id) const {

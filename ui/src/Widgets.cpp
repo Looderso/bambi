@@ -275,6 +275,15 @@ Menu drawMenu(juce::Graphics& g, juce::Point<float> topLeft, float width, const 
     return menu;
 }
 
+juce::Rectangle<float> drawPageBand(juce::Graphics& g, float width) {
+    const auto h = static_cast<float>(theme::metrics::headerHeight);
+    g.setColour(theme::colour::ground);
+    g.fillRect(0.0f, 0.0f, width, h);
+    g.setColour(theme::colour::rule);
+    g.fillRect(0.0f, h - theme::stroke::rule, width, theme::stroke::rule);
+    return {theme::metrics::bandInset, 0.0f, width - 2.0f * theme::metrics::bandInset, h};
+}
+
 float sceneToggleWidth(const juce::String& label) {
     return theme::scene::toggleBox + theme::scene::toggleGap + textWidth(labelFont(), label);
 }

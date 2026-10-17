@@ -31,6 +31,7 @@
 
 #include "../Source/AudioSheet.h"
 #include "../Source/Plugins.h"
+#include "../Source/Timeline.h"
 #include "../Source/Runner.h"
 #include "bambi/decode/remote.hpp"
 #include "devices.hpp"
@@ -803,6 +804,75 @@ std::vector<float> twoDecoders(int block) {
     return {out.getSample(0, last), out.getSample(1, last), out.getSample(2, last)};
 }
 
+//  The timeline over a set of a group with two tracks and a return, clips, locators and a loop: painted, playing
+//  and stopped, then pressed everywhere on a grid. The commands it asks are counted, a ruler press must locate,
+//  and nothing may fall over.
+int timelineHolds() {
+    livehost::TimelinePage page;
+    page.setSize(1100, 760);
+    live::Tree tree;
+    live::Node drums;
+    drums.id = 1;
+    drums.kind = live::Node::Kind::Group;
+    drums.name = "Drums";
+    live::Node kick;
+    kick.id = 2;
+    kick.parent = 1;
+    kick.name = "Kick";
+    live::Node bass;
+    bass.id = 3;
+    bass.name = "Bass";
+    live::Node plate;
+    plate.id = 4;
+    plate.kind = live::Node::Kind::Return;
+    plate.name = "A Plate";
+    tree.nodes = {drums, kick, bass, plate};
+    live::Arrangement a;
+    a.tracks = {{2, {{0.0, 64.0, "kick", "#e0b552", false}, {96.0, 160.0, "kick chorus", "#e0b552", false}}},
+                {3, {{32.0, 96.0, "bass", "#c05a4a", true}}}};
+    a.locators = {{0.0, "intro"}, {32.0, "verse"}, {96.0, "chorus"}};
+    a.loopOn = true;
+    a.loopStart = 96.0;
+    a.loopLength = 32.0;
+    a.readMs = 12.0;
+    int commands = 0, locates = 0;
+    double lastLocate = -1.0;
+    page.command = [&](const live::Command& c) {
+        ++commands;
+        if (c.action == live::Command::Action::Locate) {
+            ++locates;
+            lastLocate = c.ppq;
+        }
+    };
+    bool playing = true;
+    page.heard = [&] { return live::Playhead{playing, 0, 40.0, 120.0}; };
+    page.show(tree, a);
+    juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
+    for (const bool p : {true, false}) {
+        playing = p;
+        for (int y = 0; y < page.getHeight(); y += 9)
+            for (int x = 0; x < page.getWidth(); x += 11) {
+                juce::Graphics g(image);
+                page.paint(g);
+                page.clickAt({static_cast<float>(x), static_cast<float>(y)});
+            }
+    }
+    //  Catches: a ruler press locating anywhere but under it, or not to the locator beside it. The song is 160
+    //  quarter notes over the width right of the 200-pixel column, less the 14-pixel inset.
+    const float span = static_cast<float>(page.getWidth()) - 200.0f - 14.0f;
+    const auto locateUnder = [&](double ppq) {
+        lastLocate = -1.0;
+        page.clickAt({200.0f + static_cast<float>(ppq / 160.0) * span, 60.0f});
+        return lastLocate;
+    };
+    const bool placed = std::abs(locateUnder(51.2) - 51.0) < 1e-9 && std::abs(locateUnder(32.3) - 32.0) < 1e-9;
+    const bool ok = commands > 0 && locates > 0 && placed;
+    std::printf("  painted playing and stopped, pressed everywhere: %d commands, %d of them locates; a press locates "
+                "under it %s %s\n",
+                commands, locates, placed ? "yes" : "no", ok ? "" : "  FAIL");
+    return ok ? 0 : 1;
+}
+
 //  The audio sheet with two devices, both outputs playing, a copy and an input: each tab painted, then pressed
 //  everywhere on a grid, painted again after each press. What it asks for is counted; nothing may fall over.
 int sheetHolds() {
@@ -1304,6 +1374,9 @@ int main() {
                     got.size() == 3 ? static_cast<double>(got[1]) : -1.0,
                     got.size() == 3 ? static_cast<double>(got[2]) : -1.0, ok ? "" : "  FAIL");
     }
+
+    std::printf("the timeline\n");
+    failed += timelineHolds();
 
     std::printf("the audio sheet\n");
     failed += sheetHolds();

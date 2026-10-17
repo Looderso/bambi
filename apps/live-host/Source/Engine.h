@@ -80,6 +80,9 @@ public:
     const live::Row& inputRow() const { return inputRow_; }
     double rate() const { return s_.rate; }
     int order() const { return s_.order; }
+    /// Where Live is heard now: the position the plugins played, less the samples from them to the speakers.
+    live::Playhead heard() const noexcept;
+
     /// The share of each block the host's processing takes, measured as it plays and smoothed; 0 before audio.
     float load() const noexcept { return load_.load(std::memory_order_relaxed); }
 
@@ -198,7 +201,8 @@ private:
     int outputChannels_{16};  ///< the loop device's, then the row
     int mainChannel_{0};      ///< the loop device's first pair: Live's Main in, the copy back to Live out
     double latencyMs_{0.0};
-    int deviceLatency_{0};               ///< the loop device both ways, and its buffer
+    int deviceLatency_{0};
+    int outputLatency_{0};  ///< samples from the host's output to the speakers: the device's, and its buffer               ///< the loop device both ways, and its buffer
     std::atomic<bool> playable_{false};  ///< the device runs at the rate the plugins were prepared for
     std::int64_t faded_{0};              ///< samples of the fade-in played
 };

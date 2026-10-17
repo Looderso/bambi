@@ -77,6 +77,8 @@ public:
     void keep(std::string_view name, Json value);
     /// The part of that name, as kept or restored; none when there is none.
     const Json* kept(std::string_view name) const { return kept_.find(name); }
+    /// Live's arrangement as the device last sent it: empty before it has.
+    const Arrangement& arrangement() const { return arrangement_; }
     /// What the set should keep now.
     Save save() const { return Save{state()}; }
 
@@ -104,6 +106,7 @@ private:
     std::vector<TrackPair> pairs_;
     std::vector<TrackId> unassigned_;
     Json kept_ = Json::object();
+    Arrangement arrangement_;
     Routed routed_;
     std::optional<TransportMessage> transport_;
     int shows_{0};

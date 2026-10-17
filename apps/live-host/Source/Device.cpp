@@ -80,6 +80,10 @@ void DeviceServer::reshape(live::Shape shape) {
     if (changed) changed();
 }
 
+void DeviceServer::command(const live::Command& c) {
+    if (device_ != 0) server_.send(device_, live::serialise(c));
+}
+
 void DeviceServer::gone(net::LineServer::Connection from) {
     if (from != device_) return;
     device_ = 0;

@@ -227,24 +227,20 @@ void RoutingPage::paint(juce::Graphics& g) {
 }
 
 void RoutingPage::band(juce::Graphics& g) {
-    const auto w = static_cast<float>(getWidth());
-    const auto h = static_cast<float>(ui::theme::metrics::headerHeight);
-    g.setColour(colour::ground);
-    g.fillRect(0.0f, 0.0f, w, h);
+    const auto inner = ui::drawPageBand(g, static_cast<float>(getWidth()));
+    const float h = inner.getHeight();
     const int sources = static_cast<int>(field_.sources().size());
     const int paired = static_cast<int>(pairs_.size());
     const juce::String count =
         juce::String(sources) + (sources == 1 ? " source" : " sources") + kSeparator + juce::String(paired) + " on pairs";
     const juce::String toMain = juce::String("field ") + juce::String::fromUTF8("\xe2\x86\x92") + " main";
     const auto f = ui::labelFont();
-    ui::text(g, "live", f, colour::label, {rt::left, 0.0f, ui::textWidth(f, "live") + 2.0f, h});
+    ui::text(g, "live", f, colour::label, {inner.getX(), 0.0f, ui::textWidth(f, "live") + 2.0f, h});
     const juce::String middle = pick_.armed() ? picking() : count;
     ui::text(g, middle, f, pick_.armed() ? colour::text : colour::label,
-             {rt::left + rt::boxWidth, 0.0f, ui::textWidth(f, middle) + 2.0f, h});
+             {inner.getX() + rt::boxWidth, 0.0f, ui::textWidth(f, middle) + 2.0f, h});
     const float tw = ui::textWidth(f, toMain) + 2.0f;
-    ui::text(g, toMain, f, colour::label, {w - rt::left - tw, 0.0f, tw, h});
-    g.setColour(colour::rule);
-    g.fillRect(0.0f, h - ui::theme::stroke::rule, w, ui::theme::stroke::rule);
+    ui::text(g, toMain, f, colour::label, {inner.getRight() - tw, 0.0f, tw, h});
 }
 
 void RoutingPage::body(juce::Graphics& g, float top) {
