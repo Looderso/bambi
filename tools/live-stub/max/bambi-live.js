@@ -34,13 +34,14 @@ outlets = 4;  // 0: "send", "status", "detail", "meta", "saved", "notice" with t
 //  for a host that is starting, or one that went away -- red when it failed, grey when another device has it.
 const LIGHT = {connected: [0.494, 0.643, 0.494, 1], waiting: [0.98, 0.69, 0.23, 1],
                failed: [0.86, 0.27, 0.23, 1], busy: [0.45, 0.45, 0.45, 1]};
+let protocolNote = "";  // the host speaks another protocol: what the device says until it is replaced
 let failed = false;  // the host did not come back, or has no loop device: red until it connects again
 
 function light(state) {
     outlet(3, "bgfillcolor", LIGHT[state]);
 }
 
-const PROTOCOL = 1;
+const PROTOCOL = 2;  // with the host's (core/live/protocol.hpp): bumped when a message or its meaning changes
 const MAIN = ["Main", "Master"];  // Live 12 says Main, earlier versions Master
 const GRACE_MS = 5000;
 const RETURN_IN = "1/2";     // the host's copy back to Live: the loop device's first pair, as Main's goes out
@@ -108,6 +109,11 @@ function bang() {
 
 //  The status when nothing is happening.
 function idle() {
+    if (protocolNote !== "") {  // not a state to leave by itself: the host is deaf to this device until it is replaced
+        light("failed");
+        status("old device", protocolNote);
+        return;
+    }
     light(busy ? "busy" : failed ? "failed" : linked ? "connected" : "waiting");
     if (busy) status("busy", "another bambi device in this set has the host");
     else if (!linked) status("no host", "starting it… if it does not come, is bambi installed?");
@@ -210,6 +216,7 @@ function connected(flag) {
         idle();
         start();  // nothing moves until the host asks for it
     } else {
+        protocolNote = "";
         stopObserving();
         info = {};
         outlet(0, "meta", "");
@@ -248,8 +255,12 @@ function fromhost(sent) {
         return;
     }
     if (m.type === "welcome") {
-        if (m.protocol !== PROTOCOL) status("the host speaks protocol " + m.protocol + ", this device " + PROTOCOL);
-        else if (!m.loop) {
+        if (m.protocol !== PROTOCOL) {
+            //  a set keeps its device's own scripts, so this is an old device in a new host's session, or the other way about
+            protocolNote = "the host speaks protocol " + m.protocol + ", this device " + PROTOCOL +
+                           ": remove this device and add bambi again";
+            idle();
+        } else if (!m.loop) {
             failed = true;
             light("failed");
             status("no loop device", "the host found no bambi loop device; is it installed?");

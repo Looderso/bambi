@@ -33,8 +33,8 @@ T again(const T& m) {
 
 TEST_CASE("the device's own lines are read as it means them") {
     //  Catches: a field read under another name than the script writes, or Max's 0 and 1 not taken as flags.
-    const Hello h = read<Hello>(R"({"type":"hello","protocol":1,"live":"12.4","rate":0})");
-    CHECK(h.protocol == 1);
+    const Hello h = read<Hello>(R"({"type":"hello","protocol":2,"live":"12.4","rate":0})");
+    CHECK(h.protocol == 2);
     CHECK(h.live == "12.4");
     CHECK(accepts(h));
 
@@ -160,9 +160,10 @@ TEST_CASE("every message comes back from the wire as it went") {
 TEST_CASE("a hello in another protocol is read, and refused by accepts") {
     //  Catches: a version check that accepts anything, or one that makes the line unreadable -- the answer to a hello
     //  in the wrong protocol is still a welcome saying which this side speaks.
-    const Hello h = read<Hello>(R"({"type":"hello","protocol":2,"live":"13.0","rate":0})");
-    CHECK(h.protocol == 2);
+    const Hello h = read<Hello>(R"({"type":"hello","protocol":1,"live":"13.0","rate":0})");
+    CHECK(h.protocol == 1);
     CHECK_FALSE(accepts(h));
+    CHECK(accepts(read<Hello>(R"({"type":"hello","protocol":2,"live":"13.0","rate":0})")));
 }
 
 TEST_CASE("an unknown type, or a line that is no object, is refused; an unknown field is not") {

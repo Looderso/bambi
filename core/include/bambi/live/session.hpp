@@ -62,6 +62,9 @@ public:
 
     bool connected() const { return hello_.has_value(); }
     const std::optional<Hello>& hello() const { return hello_; }
+    /// The device speaks this host's protocol -- or has not said, and is taken to. A device that does not is welcomed once, in
+    /// the host's, and its other messages are not answered or acted on.
+    bool compatible() const { return !hello_.has_value() || accepts(*hello_); }
     bool on() const { return on_; }
     const Tree& tree() const { return tree_; }
     /// Whether a tree has come: before it, tree() says nothing of the set, not that it is empty.

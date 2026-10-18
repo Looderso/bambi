@@ -116,6 +116,8 @@ std::vector<Message> DeviceSession::answer(const Message& in) {
         hello_ = *h;
         return {Welcome{kProtocol, s_.loop}};
     }
+    //  another protocol's messages mean something else: not answered, and nothing taken from them
+    if (!compatible()) return {};
     if (const auto* t = std::get_if<Tree>(&in)) return onTree(*t, true);
     if (const auto* a = std::get_if<Arrangement>(&in)) {
         arrangement_ = *a;

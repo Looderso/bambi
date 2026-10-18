@@ -3,7 +3,8 @@
 //  The bambi Live device's connection to the host, in Node for Max. One TCP connection, one JSON object per
 //  line, kept open and reopened every second while the host is not there. It carries messages only -- the Live
 //  API is the v8 script's -- with two exceptions that are about the connection itself:
-//    - nobody answering: the host is started, once, until a connection has been made and lost again;
+//    - nobody answering: the host is started, and again every RELAUNCH_MS while still nobody answers -- a launch can fail,
+//      or race with a host that is quitting, and a device that gave up after one would wait for ever;
 //    - the host answering `busy` (another device has it): the v8 script is told once, and this one waits
 //      five seconds between tries rather than flickering connected and gone.
 //
@@ -42,17 +43,25 @@ function pieces(line) {
 let socket = null;
 let open = false;
 let refused = false;   // the host said busy on this connection
-let started = false;   // the host was started since the last connection made
+let startedAt = 0;     // when the host was last started since a connection was made; 0 when it was not
 let pending = "";
 
+const RELAUNCH_MS = 10000;  // how long a started host is given to answer before it is started again
+
+//  Whether a refused connection should start the host now: never started since a connection, or not for RELAUNCH_MS.
+function launchDue(now, lastStart) {
+    return lastStart === 0 || now - lastStart >= RELAUNCH_MS;
+}
+
 function startHost() {
-    if (started) return;
+    const now = Date.now();
+    if (!launchDue(now, startedAt)) return;
     if (fs.existsSync(APP)) {
-        started = true;
+        startedAt = now;
         spawn("open", [APP], {detached: true, stdio: "ignore"}).unref();
         maxApi.post("bambi: started " + APP);
     } else if (fs.existsSync(STUB)) {
-        started = true;
+        startedAt = now;
         const log = fs.openSync(LOG, "a");
         spawn(STUB, ["--quit-when-alone", "10"], {detached: true, stdio: ["ignore", log, log]}).unref();
         maxApi.post("bambi: no host built; started the stand-in " + STUB + ", log in " + LOG);
@@ -62,7 +71,7 @@ function startHost() {
 function connect() {
     socket = net.createConnection({host: "127.0.0.1", port: PORT}, () => {
         open = true;
-        started = false;
+        startedAt = 0;
         //  a busy host says so at once: give it that moment before telling the script it is connected
         setTimeout(() => {
             if (open && !refused) maxApi.outlet("connected", 1);

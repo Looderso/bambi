@@ -61,10 +61,31 @@ int pairOf(const DeviceSession& s, TrackId t) {
 TEST_CASE("a hello is welcomed in the host's protocol, saying whether the loop device is there") {
     //  Catches: a welcome that always says the loop device is there, or answers in the device's protocol.
     DeviceSession s = taking({7, false, 0.0, 48000.0});
-    const Welcome w = only<Welcome>(s.answer(Hello{2, "12.4", 0.0}));
+    const Welcome w = only<Welcome>(s.answer(Hello{kProtocol, "12.4", 0.0}));
     CHECK(w.protocol == kProtocol);
     CHECK_FALSE(w.loop);
     CHECK(s.connected());
+}
+
+TEST_CASE("a device in another protocol is welcomed once, in the host's, and then not heard") {
+    /*  Catches: a device from an older build acted on as if it spoke this one -- a set saved with an old device keeps its
+        scripts -- or one refused so that it is told nothing, or one never heard again after it has been replaced. */
+    DeviceSession s = taking();
+    const Welcome w = only<Welcome>(s.answer(Hello{kProtocol - 1, "12.4", 0.0}));
+    CHECK(w.protocol == kProtocol);
+    CHECK_FALSE(s.compatible());
+    Tree t;
+    t.nodes.push_back(node(1, Node::Kind::Track));
+    CHECK(s.answer(t).empty());  // no pairs, no save: nothing taken from a tree it cannot read
+    CHECK(s.pairs().empty());
+
+    //  the device is replaced: it hellos again, in this protocol, and is heard
+    s.disconnected();
+    CHECK(s.compatible());
+    (void)s.answer(Hello{kProtocol, "12.4", 0.0});
+    CHECK(s.compatible());
+    CHECK_FALSE(s.answer(t).empty());
+    CHECK(s.pairs().size() == 1);
 }
 
 TEST_CASE("a pair for every node at the top that plays to Main with audio, and for nothing else") {

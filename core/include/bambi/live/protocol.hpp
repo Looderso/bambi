@@ -26,7 +26,11 @@
  */
 namespace bambi::live {
 
-inline constexpr int kProtocol = 1;
+/*  Bump whenever a message, or what one means, changes so that a device and a host of different builds would misread each other.
+ *  A saved Live set keeps the device's own copy of its scripts, so an old device meets a new host: it is told by the welcome and
+ *  heard no more, rather than left to misbehave. 2: the transport and clips asked of Live, the host deciding which tracks play
+ *  in bambi, the routing in groups and returns. */
+inline constexpr int kProtocol = 2;
 
 //  ---- the device to the host ------------------------------------------------------------------------------------
 

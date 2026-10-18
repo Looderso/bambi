@@ -31,6 +31,9 @@ echo "core"
 step "build"                cmake --build build
 step "tests"                ./build/bambi-tests
 step "goldens"              tools/golden.sh
+if command -v node >/dev/null 2>&1; then
+    step "device scripts"   bash -c 'node tools/live-stub/max/test-match.js && node tools/live-stub/max/test-launch.js'
+fi
 step "style"                tools/check-style.sh
 step "layers"               tools/check-layers.sh
 [ -x tools/check-docs.sh ] && step "docs" tools/check-docs.sh  # the private docs, where they are checked out
