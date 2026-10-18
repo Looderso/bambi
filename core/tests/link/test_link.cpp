@@ -1740,3 +1740,93 @@ TEST_CASE("an instance's undo and redo names cross the bus with its controls") {
     CHECK(got->undoNameString().empty());
     CHECK(got->redoNameString().empty());
 }
+
+TEST_CASE("a preset's name fits the bus exactly or is refused, never cut") {
+    /*  Catches: a name cut at the field's width, which names no file; the boundary off by one, so a name one
+        character short of the field loses its terminator or one at the field's width is let in. */
+    LinkPreset p;
+    const PresetRef longest{true, std::string(kLinkPresetBytes - 1, 'f'), std::string(kLinkPresetBytes - 1, 'n')};
+    REQUIRE(p.set(longest));
+    CHECK(p.get() == longest);
+
+    LinkPreset q;
+    CHECK_FALSE(q.set({false, std::string(kLinkPresetBytes, 'f'), "n"}));
+    CHECK_FALSE(q.set({false, "", std::string(kLinkPresetBytes, 'n')}));
+    CHECK(q.get().none());  // a refused set left it as it was
+
+    REQUIRE(q.set({false, "", "short"}));
+    CHECK_FALSE(q.set({false, "", std::string(kLinkPresetBytes, 'n')}));
+    CHECK(q.get().name == "short");
+
+    REQUIRE(q.set({false, "", ""}));  // no preset at all
+    CHECK(q.get().none());
+}
+
+TEST_CASE("a loaded preset crosses the bus whole: every parameter, the patch and the preset's name") {
+    /*  Catches: the parameters left out of the edit (the target would keep its own), only some of them copied, the
+        preset's name or its factory flag dropped, or the whole flag lost on the way. */
+    Session s;
+    const Uuid targetId = Uuid::generate();
+    LinkBus target, sender;
+    REQUIRE(target.open(s.id, targetId, Product::Reverb));
+    REQUIRE(sender.open(s.id, Uuid::generate(), Product::Reverb));
+
+    auto edit = std::make_unique<LinkPatchEdit>(), got = std::make_unique<LinkPatchEdit>();
+    edit->setName("load preset");
+    edit->flags = kLinkEditWhole;
+    edit->paramCount = kLinkMaxParams;
+    for (int i = 0; i < kLinkMaxParams; ++i) edit->params[i] = 0.25f * static_cast<float>(i) - 7.0f;
+    edit->patch.genParams[0] = 3.5;
+    const PresetRef ref{true, "Rooms", "cathedral"};
+    REQUIRE(edit->preset.set(ref));
+    REQUIRE(sender.sendPatchEdit(targetId, *edit) != 0);
+
+    std::uint32_t last = 0;
+    REQUIRE(target.takePatchEdit(*got, last));
+    CHECK(got->flags == kLinkEditWhole);
+    CHECK(got->paramCount == static_cast<std::uint32_t>(kLinkMaxParams));
+    for (int i = 0; i < kLinkMaxParams; ++i) CHECK(got->params[i] == 0.25f * static_cast<float>(i) - 7.0f);
+    CHECK(got->patch.genParams[0] == 3.5);
+    CHECK(got->preset.get() == ref);
+    CHECK(got->nameString() == "load preset");
+
+    //  a name alone is its own kind of edit, and carries no parameters
+    auto named = std::make_unique<LinkPatchEdit>();
+    named->flags = kLinkEditPresetOnly;
+    REQUIRE(named->preset.set({false, "", "mine"}));
+    REQUIRE(sender.sendPatchEdit(targetId, *named) != 0);
+    REQUIRE(target.takePatchEdit(*got, last));
+    CHECK(got->flags == kLinkEditPresetOnly);
+    CHECK(got->paramCount == 0);
+    CHECK(got->preset.get() == PresetRef{false, "", "mine"});
+}
+
+TEST_CASE("an instance's preset name crosses the bus with its controls") {
+    //  Catches: the name left out of the controls, so another window shows no preset for an instance that has one,
+    //  or kept after the instance has none.
+    Session s;
+    const Uuid writerId = Uuid::generate();
+    LinkBus writer, reader;
+    REQUIRE(writer.open(s.id, writerId, Product::Reverb));
+    REQUIRE(reader.open(s.id, Uuid::generate(), Product::Reverb));
+
+    auto sent = std::make_unique<LinkControls>(), got = std::make_unique<LinkControls>();
+    const auto readBack = [&] {
+        std::vector<LinkPeer> peers;
+        reader.poll(peers);
+        std::uint32_t gen = 0;
+        for (const auto& p : peers)
+            if (p.instance == writerId) return reader.readControls(p, *got, gen);
+        return false;
+    };
+
+    REQUIRE(sent->preset.set({false, "Mine", "dark hall"}));
+    writer.publishControls(*sent);
+    REQUIRE(readBack());
+    CHECK(got->preset.get() == PresetRef{false, "Mine", "dark hall"});
+
+    REQUIRE(sent->preset.set({}));
+    writer.publishControls(*sent);
+    REQUIRE(readBack());
+    CHECK(got->preset.get().none());
+}

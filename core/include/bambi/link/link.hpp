@@ -41,7 +41,7 @@ inline constexpr double kLinkPathStepRad = 1.0 * kDeg2Rad;
 int linkPathPointsFor(double lengthRad);
 inline constexpr int kLinkInboxReserved = 4;  ///< inbox slots only gesture begin/end may use
 /// Bump whenever the shared layout changes, so no instance ever maps a bus laid out another way.
-inline constexpr std::uint32_t kLinkVersion = 23;
+inline constexpr std::uint32_t kLinkVersion = 24;
 
 //  Which plugin an instance is: `patch/identity.hpp`, because the state format needs it too.
 
@@ -63,6 +63,11 @@ inline constexpr int kLinkEditNameBytes = 32;
 inline constexpr std::uint64_t kLinkEditLockStaleUs = 100'000;
 
 inline constexpr std::uint32_t kLinkEditEnd = 1;  ///< LinkPatchEdit::flags: the sender's drag has ended
+/// LinkPatchEdit::flags: a whole state -- the patch, every parameter and the preset's name -- applied as one undo step.
+inline constexpr std::uint32_t kLinkEditWhole = 2;
+/// LinkPatchEdit::flags: only the preset's name, set without an undo step (a save names what is already there).
+inline constexpr std::uint32_t kLinkEditPresetOnly = 4;
+inline constexpr int kLinkPresetBytes = 64;  ///< a preset's folder and its name, each, NUL-padded
 
 /// Commands that are not parameter edits. `param` holds one of these, outside every ParamId.
 inline constexpr std::uint32_t kLinkCommandUndo = 0x10000;
@@ -277,6 +282,19 @@ void packPatch(const PluginState& s, LinkPatch& out);
  *  count or a non-finite number refuses the whole patch; what can be repaired is (enums clamp, a bad cell drops). */
 bool unpackPatch(const ModManifest& m, const LinkPatch& p, PluginState& s);
 
+/*  Which preset a patch came from, as the bus carries it: the folder and the name, cut to kLinkPresetBytes. A name that
+ *  does not fit is refused by set() rather than cut, since a cut name would name no file. */
+struct LinkPreset {
+    std::uint8_t factory{0};
+    std::uint8_t reserved[7]{};
+    char folder[kLinkPresetBytes]{};
+    char name[kLinkPresetBytes]{};
+
+    bool set(const PresetRef& ref);
+    PresetRef get() const;
+    friend bool operator==(const LinkPreset&, const LinkPreset&) = default;
+};
+
 /*  Controls: what a window controlling this instance shows -- parameter values and patch. Written by the owner,
  *  generation-counted, published when something changes. */
 struct LinkControls {
@@ -289,6 +307,7 @@ struct LinkControls {
     std::uint32_t reserved2{0};
     char undoName[kLinkEditNameBytes]{};  ///< what undo would revert, NUL-padded; empty when nothing
     char redoName[kLinkEditNameBytes]{};
+    LinkPreset preset{};  ///< the preset the instance's patch came from, if any
     LinkPatch patch{};
 
     void setUndoNames(std::string_view undo, std::string_view redo);
@@ -297,13 +316,18 @@ struct LinkControls {
 };
 
 /*  An edit from another window: the whole patch after the edit, not the edit itself. Latest wins:
- *  nothing is lost when a newer one overwrites an older one, since it already contains it. */
+ *  nothing is lost when a newer one overwrites an older one, since it already contains it. A whole edit -- a preset
+ *  loaded -- also carries every parameter, which it sets before the patch lands, as a local load does. */
 struct LinkPatchEdit {
     Uuid from{};                      ///< stamped by sendPatchEdit
     std::uint32_t sequence{0};        ///< stamped by sendPatchEdit; 0 = none
     std::uint32_t flags{0};           ///< kLinkEditEnd
     char name[kLinkEditNameBytes]{};  ///< the undo step's name, NUL-padded
     char key[kLinkEditNameBytes]{};   ///< a drag's coalescing key; empty for a single edit
+    std::uint32_t paramCount{0};      ///< kLinkEditWhole: how many of `params` there are
+    std::uint32_t reserved{0};
+    LinkPreset preset{};             ///< kLinkEditWhole and kLinkEditPresetOnly
+    float params[kLinkMaxParams]{};  ///< kLinkEditWhole: every host parameter, plain values by ParamId
     LinkPatch patch{};
 
     void setName(std::string_view s);

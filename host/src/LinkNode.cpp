@@ -165,6 +165,13 @@ void LinkNode::publishControls() {
             controls_.setUndoNames(u.undoName(), u.redoName());
             any = true;
         }
+        //  a name that does not fit the bus is published as none, which the window reads as no preset
+        LinkPreset preset;
+        if (!preset.set(s.preset)) preset = {};
+        if (!(controls_.preset == preset)) {
+            controls_.preset = preset;
+            any = true;
+        }
         if (repack) {
             packPatch(s, controls_.patch);
             any = true;
@@ -181,15 +188,35 @@ void LinkNode::publishControls() {
 }
 
 void LinkNode::applyPatchEdit() {
+    //  A save naming what is already here: the name alone, and no step of history.
+    if ((incoming_.flags & kLinkEditPresetOnly) != 0) {
+        const auto ref = incoming_.preset.get();
+        host_.document().amend([&ref](PluginState& s) { s.preset = ref; });
+        return;
+    }
     //  Validated before it can become an undo step: it came from another process.
     PluginState probe{host_.manifest()};
     if (unpackPatch(host_.modManifest(), incoming_.patch, probe)) {
         const auto name = incoming_.nameString();
         const auto key = incoming_.keyString();
         const auto& mod = host_.modManifest();
+        const auto& manifest = host_.manifest();
         const auto& edit = incoming_;
         const auto change = [&mod, &edit](PluginState& s) { unpackPatch(mod, edit.patch, s); };
-        if (key.empty())
+        if ((edit.flags & kLinkEditWhole) != 0) {
+            //  A load: every parameter and the patch in one step, the parameters set first as a local load does
+            const auto count = std::min<std::size_t>(
+                {edit.paramCount, static_cast<std::size_t>(manifest.size()), static_cast<std::size_t>(kLinkMaxParams)});
+            host_.document().editWhole(name.empty() ? "load preset" : name, [&](PluginState& s) {
+                unpackPatch(mod, edit.patch, s);
+                for (std::size_t i = 0; i < count; ++i) {
+                    const float v = edit.params[i];
+                    s.params[i] = clampToRange(manifest, static_cast<int>(i),
+                                               std::isfinite(v) ? v : manifest[static_cast<int>(i)].def);
+                }
+                s.preset = edit.preset.get();
+            });
+        } else if (key.empty())
             host_.document().edit(name.empty() ? "remote edit" : name, change);
         else
             //  one window's drag, never another's
@@ -246,6 +273,28 @@ std::uint32_t LinkNode::sendPatchEdit(const Uuid& target, const LinkPatch& patch
     outgoing_.setName(name);
     outgoing_.setKey(key);
     outgoing_.flags = end ? kLinkEditEnd : 0;
+    outgoing_.paramCount = 0;
+    return bus_.sendPatchEdit(target, outgoing_);
+}
+
+std::uint32_t LinkNode::sendWholeEdit(const Uuid& target, const LinkPatch& patch, std::span<const float> params,
+                                      const PresetRef& preset, std::string_view name) {
+    if (!outgoing_.preset.set(preset)) return 0;
+    outgoing_.patch = patch;
+    outgoing_.setName(name);
+    outgoing_.setKey({});
+    outgoing_.flags = kLinkEditWhole;
+    outgoing_.paramCount = static_cast<std::uint32_t>(std::min<std::size_t>(params.size(), kLinkMaxParams));
+    std::copy_n(params.begin(), outgoing_.paramCount, outgoing_.params);
+    return bus_.sendPatchEdit(target, outgoing_);
+}
+
+std::uint32_t LinkNode::sendPresetName(const Uuid& target, const PresetRef& preset) {
+    if (!outgoing_.preset.set(preset)) return 0;
+    outgoing_.setName({});
+    outgoing_.setKey({});
+    outgoing_.flags = kLinkEditPresetOnly;
+    outgoing_.paramCount = 0;
     return bus_.sendPatchEdit(target, outgoing_);
 }
 

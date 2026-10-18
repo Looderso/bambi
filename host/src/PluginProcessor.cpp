@@ -186,6 +186,14 @@ bool PluginProcessor::loadPreset(const PresetRef& ref) {
     return true;
 }
 
+std::optional<PluginState> PluginProcessor::presetOver(const PresetRef& ref, const PluginState& base) {
+    const auto preset = presets().load(ref);
+    if (!preset.has_value()) return std::nullopt;
+    PluginState next = base;
+    adoptPreset(spec_.product, spec_.params, *preset, ref, next);
+    return next;
+}
+
 bool PluginProcessor::stepPreset(int delta) {
     return loadPreset(bambi::stepPreset(presets().all(), currentPreset(), delta));
 }

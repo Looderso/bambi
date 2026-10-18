@@ -2150,6 +2150,55 @@ int main() {
             check(speed != nullptr && std::abs(speed->convertFrom0to1(speed->getValue()) - 45.0f) < 0.01f,
                   "a parameter dragged in another window lands on the target's own host parameter");
 
+            {
+                //  A preset loaded from another window: every parameter and the patch, applied on the target as one
+                //  undo step of its own, and its name carried -- the load a local window makes, over the bus.
+                const bambi::PresetRef saved{false, "", "remote check"};
+                const bool wrote = first->savePreset(saved);  // the speed is 45 here
+                const auto speedNow = [&] {
+                    return speed != nullptr ? speed->convertFrom0to1(speed->getValue()) : -1.0f;
+                };
+                control.beginParameter(bambi::EncoderParam::MotionSpeed);
+                control.setParameter(bambi::EncoderParam::MotionSpeed,
+                                     static_cast<float>(bambi::ui::normalised(bambi::encodeParams(),
+                                                                              bambi::EncoderParam::MotionSpeed, 70.0)));
+                control.endParameter(bambi::EncoderParam::MotionSpeed);
+                control.setPreset(
+                    {false, "", "before"});  // not the name of what is loaded, so an undo has one to return to
+                tick({first.get(), second.get()}, 2);
+                follow();
+                const float before = speedNow();
+                const auto next = second->presetOver(saved, control.state());
+                const bool sentOk = next.has_value() && control.loadWhole("load preset", *next);
+                const bool shownAtOnce = sentOk && std::abs(control.state().params[speedAt] - 45.0f) < 0.01f &&
+                                         control.state().preset == saved;
+                tick({first.get(), second.get()}, 2);
+                follow();
+                check(wrote && std::abs(before - 70.0f) < 0.01f && shownAtOnce &&
+                          std::abs(speedNow() - 45.0f) < 0.01f && first->currentPreset() == saved &&
+                          first->canUndoEdit(),
+                      "a preset loaded from another window sets the target's parameters and its name, shown at once "
+                      "there");
+                check(control.state().preset == saved && std::abs(control.state().params[speedAt] - 45.0f) < 0.01f,
+                      "and that window reads the preset's name and parameters back from the target");
+                control.undo();
+                tick({first.get(), second.get()}, 2);
+                follow();
+                check(std::abs(speedNow() - 70.0f) < 0.01f && first->currentPreset().name == "before",
+                      "the load is one undo step on the target: undone from that window, the parameters and the name "
+                      "return (speed " +
+                          juce::String(speedNow(), 2) + ", preset '" + first->currentPreset().name + "')");
+
+                const bool named = control.setPreset({false, "", "renamed"});
+                tick({first.get(), second.get()}, 2);
+                follow();
+                check(named && first->currentPreset().name == "renamed" && std::abs(speedNow() - 70.0f) < 0.01f &&
+                          control.state().preset.name == "renamed",
+                      "a save names the target's preset without touching its parameters");
+                check(!control.setPreset({false, std::string(80, 'x'), "n"}),
+                      "a preset name too long for the bus is refused, not cut");
+            }
+
             control.learn(2);
             tick({first.get(), second.get()}, 2);
             follow();

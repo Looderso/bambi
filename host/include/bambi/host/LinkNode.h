@@ -4,6 +4,7 @@
 #include <functional>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <mutex>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -157,6 +158,11 @@ public:
     std::uint32_t sendPatchEdit(const Uuid& target, const LinkPatch& patch, std::string_view name, std::string_view key,
                                 bool end);
     bool sendCommand(const Uuid& target, std::uint32_t command, float value);
+    /// A preset loaded on another instance: its whole state, applied there as one undo step. 0 if its name does not fit the bus.
+    std::uint32_t sendWholeEdit(const Uuid& target, const LinkPatch& patch, std::span<const float> params,
+                                const PresetRef& preset, std::string_view name);
+    /// Only the preset's name, set there without an undo step. 0 if it does not fit the bus.
+    std::uint32_t sendPresetName(const Uuid& target, const PresetRef& preset);
 
     // ---- another window's energy picture ---------------------------------------------------
     void publishEnergy(const LinkEnergy& e) { bus_.publishEnergy(e); }
