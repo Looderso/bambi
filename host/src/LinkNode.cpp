@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace bambi::host {
 
@@ -95,8 +96,11 @@ void LinkNode::join() {
     const auto now = linkNowMicros();
     Identity id = host_.identity();
 
-    //  A saved instance brings its session. A new one joins the session the user was most recently
-    //  active in, or starts one when none is live.
+    //  A host that names the session for every instance it loads has the last word: its instances find each other whatever
+    //  run their states were saved in. Otherwise a saved instance brings its session, and a new one joins the session the user
+    //  was most recently active in, or starts one when none is live.
+    if (const char* named = std::getenv(kHostSessionVariable); named != nullptr)
+        if (const auto session = Uuid::parse(named); session.has_value() && !session->isNil()) id.session = *session;
     if (id.session.isNil()) id.session = sessionForNewInstance(directory_, now, Uuid::generate());
     if (id.instance.isNil()) id.instance = Uuid::generate();
 

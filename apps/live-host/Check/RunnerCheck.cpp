@@ -1484,7 +1484,8 @@ int routingHolds() {
             page.clickAt({x, kick->getY() + ui::theme::routing::boxHeight / 2.0f});
             paint();
             const auto items = page.drawnMenu();
-            const auto item = std::find_if(items.begin(), items.end(), [](const auto& i) { return i.first == "sidechain"; });
+            const auto item =
+                std::find_if(items.begin(), items.end(), [](const auto& i) { return i.first == "sidechain"; });
             const bool encoderMenu =
                 std::none_of(items.begin(), items.end(), [](const auto& i) { return i.first == "remove"; });
             if (item != items.end() && encoderMenu) {
@@ -1831,6 +1832,53 @@ int positionsOnTheBus() {
     return ok ? 0 : 1;
 }
 
+//  A respawned host's plugins come back with states saved in the last run, which name that run's session -- while a DAW's session
+//  may be the machine's most recent. Every plugin the host loads must still join the host's one session, or a Decoder loaded fresh
+//  and Encoders restored from the last run never see each other.
+int oneSession() {
+    const char* named = std::getenv(kHostSessionVariable);
+    auto first = livehost::loadInstalled("bambi Encoder", Role::Encoder, kOrder, kRate, kMaxBlock);
+    if (first.plugin == nullptr || named == nullptr) {
+        std::printf("  no Encoder, or no session named for the process  FAIL\n");
+        return 1;
+    }
+    const auto session = Uuid::parse(named);
+    for (int i = 0; i < 10; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+
+    //  A state from another run: the same Encoder's, its session and its instance another's.
+    juce::MemoryBlock saved;
+    first.plugin->getStateInformation(saved);
+    std::string text = saved.toString().toStdString();
+    const auto replace = [&](const std::string& from, const std::string& to) {
+        for (auto at = text.find(from); at != std::string::npos; at = text.find(from, at + to.size()))
+            text.replace(at, from.size(), to);
+    };
+    const Uuid foreign = Uuid::generate();
+    replace(session->toString(), foreign.toString());
+    LinkDirectory directory;
+    if (directory.open()) directory.touch(foreign, linkNowMicros());  // and that session the most recently active
+    auto restored = livehost::loadInstalled("bambi Encoder", Role::Encoder, kOrder, kRate, kMaxBlock);
+    if (restored.plugin == nullptr) return 1;
+    //  its instance id is the first's, which is live: it joins with a fresh one, as a duplicated track does
+    restored.plugin->setStateInformation(text.data(), static_cast<int>(text.size()));
+    auto decoder = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock);
+    for (int i = 0; i < 20; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+
+    LinkBus viewer;
+    std::vector<LinkPeer> peers;
+    if (viewer.open(*session, Uuid::generate(), Product::Unknown)) viewer.poll(peers);
+    int encoders = 0, decoders = 0;
+    for (const auto& p : peers) {
+        encoders += p.product == Product::Encoder ? 1 : 0;
+        decoders += p.product == Product::Decoder ? 1 : 0;
+    }
+    //  Catches: a restored state's session winning over the host's, and a fresh instance joining the machine's most recent.
+    const bool ok = encoders == 2 && decoders == 1;
+    std::printf("  in the host's session: %d Encoders (one restored from another run's session) and %d Decoder %s\n",
+                encoders, decoders, ok ? "" : "  FAIL");
+    return ok ? 0 : 1;
+}
+
 int main() {
     juce::ScopedJuceInitialiser_GUI juce;  // the plugins' editors and message thread exist even unseen
     std::printf("the direct render, block 512\n");
@@ -2142,6 +2190,9 @@ int main() {
 
     std::printf("the audio sheet\n");
     failed += sheetHolds();
+
+    std::printf("one session for every plugin the host loads\n");
+    failed += oneSession();
 
     std::printf("the bus, as a Decoder reads it\n");
     failed += positionsOnTheBus();

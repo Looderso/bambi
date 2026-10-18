@@ -812,5 +812,74 @@ int main() {
         bambi::LinkBus::unlinkSession(dec.identity().session);
     }
 
+    //  What the Decoder publishes for every other plugin's scene: the layout while it plays one, what it plays, and where its
+    //  head looks as it resolved it. Read from outside, on the bus, as another instance's window reads it.
+    {
+        std::printf("\nwhat the Decoder publishes for other scenes\n");
+        bambi::host::setLinkDirectoryNameForTests("bambi-decoder-check-" +
+                                                  bambi::Uuid::generate().toString().substr(0, 8));
+        BambiDecoderProcessor dec;
+        dec.setBusesLayout(busIn(16, 18));
+        dec.prepareToPlay(kCheckRate, 128);
+        const auto tick = [&](int ticks) {
+            for (int i = 0; i < ticks; ++i) dec.linkTick();
+        };
+        tick(bambi::host::LinkNode::kTickHz / 10 + 4);
+        bambi::LinkBus viewer;
+        const bool joined = viewer.open(dec.identity().session, bambi::Uuid::generate(), bambi::Product::Encoder);
+        check(joined, "a viewer joins the Decoder's session");
+
+        const auto runBlocks = [&] {
+            juce::AudioBuffer<float> buffer(18, 128);
+            juce::MidiBuffer midi;
+            for (int b = 0; b < 6; ++b) {
+                buffer.clear();
+                dec.processBlock(buffer, midi);
+                tick(2);
+            }
+        };
+        const auto read = [&](bambi::LinkScene& scene) -> const bambi::LinkScene::Entry* {
+            scene.update(viewer);
+            for (const auto& e : scene.entries())
+                if (e.instance == dec.identity().instance) return &e;
+            return nullptr;
+        };
+
+        PluginState s = withLayout("4+7+0", true, true, 13);
+        s.decoder.trackerSource = 1;  // a tracker over OSC turns the head; the sliders turn the scene
+        loadState(dec, s);
+        dec.takeOrientation("/ypr", yprValues(90.0f));  // turned to the left
+        runBlocks();
+        tick(4);
+        bambi::LinkScene scene;
+        const auto* entry = read(scene);
+        check(entry != nullptr && entry->product == bambi::Product::Decoder && !entry->hasPosition,
+              "it is on the bus as a Decoder, with no source position");
+        if (entry != nullptr) {
+            //  Catches: the flags not published, or published from the wrong state.
+            check(
+                entry->dyn.playFlags == (bambi::kLinkPlaySpeakers | bambi::kLinkPlayHeadphones),
+                "it publishes that it plays loudspeakers and headphones: flags " + juce::String(entry->dyn.playFlags));
+            //  Catches: the layout dropped from the static section, or cut.
+            check(entry->st.speakerCount == s.decoder.layout.size(),
+                  "its layout arrives whole: " + juce::String(static_cast<int>(entry->st.speakerCount)) + " of " +
+                      juce::String(static_cast<int>(s.decoder.layout.size())) + " points");
+            //  Catches: the head published as the front, or in the wrong frame -- a head turned left looks along +y.
+            const bambi::Vec3 gaze = entry->dyn.headGaze(), left = entry->dyn.headLeft();
+            check(std::abs(gaze.y - 1.0) < 1e-3 && std::abs(gaze.x) < 1e-3 && std::abs(left.x + 1.0) < 1e-3,
+                  "its head looks where it is turned: gaze (" + juce::String(gaze.x, 2) + ", " +
+                      juce::String(gaze.y, 2) + ", " + juce::String(gaze.z, 2) + ")");
+        }
+
+        //  Catches: a layout still published after the Decoder stops playing it, or a head after it stops playing headphones.
+        loadState(dec, withLayout("4+7+0", false, true, 13));
+        runBlocks();
+        tick(4);
+        entry = read(scene);
+        check(entry != nullptr && entry->dyn.playFlags == bambi::kLinkPlayHeadphones && entry->st.speakerCount == 0,
+              "on headphones alone it publishes no layout and no loudspeaker flag");
+        bambi::LinkBus::unlinkSession(dec.identity().session);
+    }
+
     return checkVerdict();
 }

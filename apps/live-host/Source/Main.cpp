@@ -18,8 +18,8 @@
 #include "Rail.h"
 #include "Routing.h"
 #include "Settings.h"
-#include "bambi/live/midi.hpp"
 #include "Timeline.h"
+#include "bambi/live/midi.hpp"
 #include "bambi/ui/Theme.h"
 #include "devices.hpp"
 #include "loop.hpp"
@@ -92,7 +92,10 @@ public:
             }
         };
         device_.show = [this] {
-            if (auto* top = getTopLevelComponent()) top->toFront(true);
+            if (auto* top = getTopLevelComponent()) {
+                top->setVisible(true);  // closed is hidden: "open host" brings it back
+                top->toFront(true);
+            }
             juce::Process::makeForegroundProcess();
         };
         listening_ = device_.start(&error_);
@@ -126,8 +129,7 @@ public:
         addChildComponent(sheet_);
         sheet_.change = [this](bambi::live::AudioSettings settings) { applyAudio(std::move(settings)); };
         sheet_.changeOrder = [this](int order) { applyOrder(order); };
-        sheet_.changeInputs = [this](std::vector<bambi::live::HostInput> inputs,
-                                     bambi::live::AudioSettings settings) {
+        sheet_.changeInputs = [this](std::vector<bambi::live::HostInput> inputs, bambi::live::AudioSettings settings) {
             applyAudio(std::move(settings));
             auto shape = device_.session().shape();
             shape.inputs = std::move(inputs);
@@ -168,7 +170,16 @@ public:
     }
 
 private:
-    enum class View { Encoder, Echo, Reverb, Decoder, Routing, Timeline, Audio, Gap };  ///< Gap: between the rail's groups
+    enum class View {
+        Encoder,
+        Echo,
+        Reverb,
+        Decoder,
+        Routing,
+        Timeline,
+        Audio,
+        Gap
+    };  ///< Gap: between the rail's groups
 
     //  The plugins' states, kept with the set when they changed. Only while bambi is on: a device sends what the set
     //  kept before it switches on, and the defaults must not be kept over it.
@@ -185,6 +196,17 @@ private:
             measured = true;
         }
         if (measured) sheet_.setLead(lead_.median(), lead_.spread(), lead_.count());
+        //  a click on a Decoder's map: the output placed where it asked, as the sheet's map would
+        for (const bambi::live::Placed& asked : engine_.placementsAsked()) {
+            auto settings = engine_.audio();
+            const auto had = std::find_if(settings.placed.begin(), settings.placed.end(),
+                                          [&](const bambi::live::Placed& p) { return p.out == asked.out; });
+            if (had != settings.placed.end())
+                had->at = asked.at;
+            else
+                settings.placed.push_back(asked);
+            applyAudio(std::move(settings), false);
+        }
         //  what a Decoder's own page changed -- an output lit, moved, a layout -- reaches the routes
         if (engine_.reroute() && sheet_.isOpen()) showSheet();
         //  a device plugged in or out while the sheet is up: shown as it comes
@@ -229,8 +251,7 @@ private:
                 named_.fill({});
                 device_.setLatency(engine_.latencyMs(), 48000.0);
                 //  a window on an Encoder let go of closes before that Encoder can be freed
-                if (view_ != View::Routing && view_ != View::Timeline && !engine_.holds(shownPlugin_))
-                    showView(view_);
+                if (view_ != View::Routing && view_ != View::Timeline && !engine_.holds(shownPlugin_)) showView(view_);
             }
         }
         engine_.setSends(session.field(), session.tree());
@@ -289,12 +310,12 @@ private:
     }
 
     //  The sheet's change: kept on this computer, then played; the sheet shown again as the engine has it.
-    void applyAudio(bambi::live::AudioSettings settings) {
+    void applyAudio(bambi::live::AudioSettings settings, bool show = true) {
         if (!bambi::livehost::saveAudioSettings(settings)) audioProblem_ = "the settings could not be saved";
         juce::String status;
         audioProblem_ = engine_.setAudio(settings, status) ? juce::String() : status;
         device_.setLatency(engine_.latencyMs(), engine_.rate());
-        showSheet();
+        if (show || sheet_.isOpen()) showSheet();
         update();
     }
 
@@ -386,13 +407,13 @@ private:
     bambi::livehost::RoutingPage routing_;
     bambi::livehost::TimelinePage timeline_;
     bambi::livehost::AudioSheet sheet_;
-    juce::String audioProblem_;  ///< why the sheet's last change could not be played or kept
-    bool measuring_{false};      ///< Live's lead is measured, while the sheet is open
-    int keptOrder_{0};           ///< the order last kept with the set
-    bambi::live::MidiLead lead_;  ///< what has been measured since measuring began
+    juce::String audioProblem_;             ///< why the sheet's last change could not be played or kept
+    bool measuring_{false};                 ///< Live's lead is measured, while the sheet is open
+    int keptOrder_{0};                      ///< the order last kept with the set
+    bambi::live::MidiLead lead_;            ///< what has been measured since measuring began
     std::vector<bambi::live::Lane> lanes_;  ///< the host's automation, kept with the set
     std::string keptLanes_;                 ///< the lanes as last kept
-    bool rebuild_{false};  ///< the program to be built again at the next update, whatever changed
+    bool rebuild_{false};                   ///< the program to be built again at the next update, whatever changed
     std::vector<bambi::live::AudioDevice> shownSystem_;  ///< the system's devices, as the sheet last showed them
     std::vector<View> views_;
     View view_{View::Decoder};
@@ -421,7 +442,14 @@ public:
         centreWithSize(getWidth(), getHeight());
         setVisible(true);
     }
-    void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
+    /*  Closing the window hides it, as a Mac app's window does: the host keeps playing, its plugins and their link stay as they
+        are, and "open host" on the device or a second launch brings it back. Quitting is the menu's (Cmd-Q); the host also quits
+        by itself a minute after Live's device has gone. */
+    void closeButtonPressed() override { setVisible(false); }
+    void reveal() {
+        setVisible(true);
+        toFront(true);
+    }
 };
 
 class App final : public juce::JUCEApplication {
@@ -430,6 +458,10 @@ public:
     const juce::String getApplicationVersion() override { return "0.1.0"; }
     bool moreThanOneInstanceAllowed() override { return false; }
     void initialise(const juce::String&) override { window_ = std::make_unique<Window>(); }
+    //  opened again while running -- the device starting it, the Finder, the Dock -- shows the hidden window
+    void anotherInstanceStarted(const juce::String&) override {
+        if (window_ != nullptr) window_->reveal();
+    }
     void shutdown() override { window_.reset(); }
 
 private:

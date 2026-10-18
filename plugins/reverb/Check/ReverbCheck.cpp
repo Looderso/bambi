@@ -214,6 +214,8 @@ int main(int argc, char** argv) {
 
     bambi::editor::checkEffectLinkBus(spec);
 
+    bambi::editor::checkDecoderOverlay<Processor, BambiReverbEditor>(spec);
+
     std::printf("\nthree products, one session\n");
     {
         /*  One bus carries all three, the scene is kind-agnostic, and an edit never crosses a

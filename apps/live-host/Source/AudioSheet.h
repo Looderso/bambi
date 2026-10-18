@@ -93,7 +93,7 @@ private:
     };
     /// The map of `row`, from `top`; a click on a channel calls `place` with it. Returns its bottom.
     float map(juce::Graphics& g, float x, float top, float width, const live::Row& row,
-              const std::vector<Block>& blocks, std::function<void(int)> place);
+              const std::vector<Block>& blocks, float& scroll, std::function<void(int)> place);
 
     live::Row outputRow() const;
     live::Row inputRow() const;
@@ -102,6 +102,8 @@ private:
     Shown s_;
     Tab tab_{Tab::Outputs};
     live::Out chosen_{live::kFirstDecoder, Output::Headphones};  ///< the output the map places
+    float outputsScroll_{0.0f}, inputsScroll_{0.0f};  ///< how far each map is moved left
+    int revealed_{0};  ///< the chosen output's first channel last brought into view
     std::optional<live::Out> arming_;  ///< "+ copy" pressed: the next click on the map places a copy
     bool menu_{false};
     live::TrackId input_{0};  ///< the input the input map places

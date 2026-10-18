@@ -36,7 +36,9 @@ private:
     void chooseSofaFile();
 
     DecoderControlState& state_;
-    int shownKind_{-1};  ///< the layout kind whose section is open before anything of it is loaded: 0 itu, 1 file
+    float mapScroll_{0.0f};  ///< how far the channel map is moved left
+    int revealed_{0};        ///< the output's first channel last brought into view
+    int shownKind_{-1};      ///< the layout kind whose section is open before anything of it is loaded: 0 itu, 1 file
     juce::String calibrationNote_;  ///< what the last calibration step said
     juce::String sofaError_;        ///< why the last SOFA file was not read, until the next is
     juce::String layoutError_;      ///< why the last layout or matrix file was not read, until the next is

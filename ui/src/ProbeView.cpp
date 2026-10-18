@@ -45,7 +45,7 @@ void ProbeView::paintFrame(juce::Graphics& g, const Viewport& vp) {
 
     g.fillAll(colour::panel);
     //  the caption, the globe's view presets and the equirect's corner: every scene view's
-    strip_ = paintSceneStrip(g, getWidth(), projection_, state_);
+    strip_ = paintSceneStrip(g, getWidth(), projection_, state_, true, true);
     regionsToggle_ = strip_.regions;
     energyToggle_ = strip_.energy;
     fullToggle_ = strip_.full;
@@ -248,6 +248,7 @@ void ProbeView::paint(juce::Graphics& g) {
     paintEnergy(g, vp);
     paintGraticule(g, vp);
     paintAxisLabels(g, vp);
+    overlayDrawn_ = paintSceneOverlays(g, projection_, vp, state_);  // the session's decoders, when asked for
     paintRegions(g, vp);
     paintAnswer(g, vp);
     paintProbe(g, vp);
@@ -290,6 +291,7 @@ void ProbeView::paint(juce::Graphics& g) {
     };
     addRegion(std::move(all));
 
+    paintSceneStripList(g, strip_, state_);
     //  last, so the strip's controls are registered after the whole-area region above and take the
     //  press from it: `HitArea` puts later regions on top. Registered first, a press on a toggle
     //  would orbit
@@ -309,11 +311,20 @@ juce::Point<float> ProbeView::screenOf(Vec3 direction) const {
 }
 
 void ProbeView::mouseMove(const juce::MouseEvent& e) {
+    if (sceneStripPointer(state_, strip_, e.position) && changed_) changed_();
+    if (strip_.decodersHere && state_.decoders.open() && state_.decoders.listAreas().box.contains(e.position)) return;
     if (grip_.hover(projection_, state_.camera, viewport(), e.position)) repaint();
     setMouseCursor(grip_.hovering() ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
+bool ProbeView::keyPressed(const juce::KeyPress& key) {
+    if (!sceneStripKey(state_, strip_, key)) return false;
+    if (changed_) changed_();
+    return true;
+}
+
 void ProbeView::mouseExit(const juce::MouseEvent&) {
+    if (sceneStripPointer(state_, strip_, std::nullopt) && changed_) changed_();
     if (grip_.unhover()) repaint();
     setMouseCursor(juce::MouseCursor::NormalCursor);
 }

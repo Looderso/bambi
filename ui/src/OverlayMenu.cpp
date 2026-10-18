@@ -44,7 +44,8 @@ OverlayMenuAreas paintOverlayMenu(juce::Graphics& g, float rightEdge, float top,
         const float indent = row.part ? sh::overlayPartIndent : theme::shape::otherSourceDot * 2.0f + sh::overlayRowGap;
         widest = std::max(widest, indent + textWidth(labelFont(), row.label));
     }
-    const float width = std::max(sh::overlayMinWidth, 2.0f * sh::overlayRowPad + sc::toggleBox + sh::overlayRowGap + widest);
+    const float width =
+        std::max(sh::overlayMinWidth, 2.0f * sh::overlayRowPad + sc::toggleBox + sh::overlayRowGap + widest);
     const int lines = static_cast<int>(rows.size()) + 1;  // all and none above the rows
     const float height = 2.0f * sh::menuPad + line * static_cast<float>(std::min(lines, sh::overlayMaxRows));
     areas.box = {std::max(0.0f, rightEdge - width), top, width, height};
@@ -92,8 +93,12 @@ OverlayMenuAreas paintOverlayMenu(juce::Graphics& g, float rightEdge, float top,
             g.fillEllipse(x, box.getCentreY() - r, 2.0f * r, 2.0f * r);
             x += 2.0f * r + sh::overlayRowGap;
         }
-        text(g, row.label, labelFont(), dim ? colour::inactive : row.part ? colour::label : colour::text,
-             {x, box.getY(), box.getRight() - sh::overlayRowPad - x, box.getHeight()}, juce::Justification::centredLeft);
+        text(g, row.label, labelFont(),
+             dim        ? colour::inactive
+             : row.part ? colour::label
+                        : colour::text,
+             {x, box.getY(), box.getRight() - sh::overlayRowPad - x, box.getHeight()},
+             juce::Justification::centredLeft);
     }
     return areas;
 }
@@ -128,14 +133,13 @@ void addOverlayClicks(HitArea& on, const OverlayToggleAreas& toggle, const Overl
     if (state.open) {
         //  a press anywhere else closes it, there and then, and goes no further: it never orbits the globe it was over, and a
         //  drag begun there turns nothing -- the next one does
-        on.addDragArea(
-            whole,
-            [&state, changed](juce::Point<float>) {
-                state.open = false;
-                state.hovered.reset();
-                changed();
-            },
-            {}, {});
+        on.addDragArea(whole,
+                       [&state, changed](juce::Point<float>) {
+                           state.open = false;
+                           state.hovered.reset();
+                           changed();
+                       },
+                       {}, {});
         //  the list's own area takes the wheel and any press that is not on a row, and does nothing with it. First, so the
         //  rows lie on top: the first area under a press takes it, whatever it does.
         on.addWheelArea(menu.box, [&state, max = menu.maxScroll, changed](float by) {

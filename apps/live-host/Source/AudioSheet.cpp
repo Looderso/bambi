@@ -238,7 +238,6 @@ float AudioSheet::interfacePage(juce::Graphics& g, juce::Rectangle<float> page) 
               sh::control},
              juce::Justification::centredLeft);
     y += sh::control + ctl::segmentGap;
-
     ui::text(g, "load" + kSeparator + "this machine, now", ui::labelFont(), colour::label,
              {page.getX(), y, sh::wideLabel, sh::line}, juce::Justification::centredLeft);
     const float share = std::clamp(s_.load, 0.0f, 1.0f);
@@ -439,11 +438,12 @@ float AudioSheet::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
     const juce::String what = arming_ ? "a click puts a copy of " + nameOf(*arming_) + " there"
                                       : "the outputs of every device" + kSeparator + "a click puts " + nameOf(chosen_) +
                                             " there";
-    const float mapHeight = sh::line + sh::noteLine + ui::theme::channelStrip::height + ui::theme::channelStrip::rulerLine;
+    const float mapHeight = sh::line + sh::noteLine + ui::theme::channelStrip::cell + ui::theme::channelStrip::barGap +
+                            ui::theme::channelStrip::bar;
     const float top = std::max(y, page.getBottom() - mapHeight);
     ui::text(g, what, ui::labelFont(), colour::label, {page.getX(), top, page.getWidth(), sh::line},
              juce::Justification::centredLeft);
-    return map(g, page.getX(), top + sh::line, page.getWidth(), row, blocks, [this, row](int c) {
+    return map(g, page.getX(), top + sh::line, page.getWidth(), row, blocks, outputsScroll_, [this, row](int c) {
         if (arming_) {
             const live::Out of = *arming_;
             arming_.reset();
@@ -468,12 +468,22 @@ float AudioSheet::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
 // ---- the map ------------------------------------------------------------------------------------
 
 float AudioSheet::map(juce::Graphics& g, float x, float top, float width, const live::Row& row,
-                      const std::vector<Block>& blocks, std::function<void(int)> place) {
+                      const std::vector<Block>& blocks, float& scroll, std::function<void(int)> place) {
     std::vector<int> groups;
     for (const live::AudioDevice& d : row.devices)
         if (const int count = row.inputs ? d.ins : d.outs; count > 0) groups.push_back(count);
     const float labelLine = sh::noteLine;
-    const auto strip = ui::ChannelStrip::layout(x, top + labelLine, width, groups);
+    //  the first channel an output takes is brought into view, so the map opens on what is placed
+    int reveal = 0;
+    for (const Block& b : blocks)
+        if (b.chosen && !b.channels.empty()) reveal = b.channels.front();
+    const int revealNow = reveal != revealed_ ? reveal : 0;
+    revealed_ = reveal;
+    const auto strip = ui::ChannelStrip::layout(x, top + labelLine, width, groups, scroll, revealNow);
+    //  under the cells, so a press finds a cell first
+    addRegion({strip.viewport.withTop(top), {}, {}, {}, {}, {}, [shift = &scroll](float by) { *shift += by; }});
+    g.saveState();
+    g.reduceClipRegion(strip.viewport.withTop(top).toNearestIntEdges());
     int c = 1;
     std::size_t group = 0;
     for (const live::AudioDevice& d : row.devices) {
@@ -502,20 +512,20 @@ float AudioSheet::map(juce::Graphics& g, float x, float top, float width, const 
                                        : chosen          ? colour::chosen
                                                          : top1->ink;
             ui::drawFrame(g, box, frame, ui::theme::stroke::rule, clash || (top1 != nullptr && top1->host));
-            if (strip.numbered) {
-                const juce::String label = clash             ? juce::String::fromUTF8("\xc3\x97") + juce::String(here.size())
-                                           : top1 == nullptr ? juce::String(i + 1)
-                                           : here.front().second < top1->labels.size()
-                                               ? top1->labels[here.front().second]
-                                               : juce::String();
-                ui::text(g, label, ui::smallFont(),
-                         chosen ? colour::textInverse : top1 == nullptr ? colour::inactive : colour::text, box,
-                         juce::Justification::centred);
-            }
-            addClickArea(box.expanded(ui::theme::channelStrip::cellGap / 2.0f), [place, c] { place(c); });
+            const juce::String label = clash             ? juce::String::fromUTF8("\xc3\x97") + juce::String(here.size())
+                                       : top1 == nullptr ? juce::String(i + 1)
+                                       : here.front().second < top1->labels.size()
+                                           ? top1->labels[here.front().second]
+                                           : juce::String();
+            ui::text(g, label, ui::smallFont(),
+                     chosen ? colour::textInverse : top1 == nullptr ? colour::inactive : colour::text, box,
+                     juce::Justification::centred);
+            addRegion({box.getIntersection(strip.viewport), {}, {}, {}, [place, c] { place(c); }, {}, {}});
         }
     }
-    return strip.paintRuler(g, colour::inactive);
+    g.restoreState();
+    strip.paintBar(g, colour::label, scroll);
+    return strip.bottom;
 }
 
 // ---- inputs -------------------------------------------------------------------------------------
@@ -627,12 +637,13 @@ float AudioSheet::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
         b.ink = colour::in;
         blocks.push_back(std::move(b));
     }
-    const float mapHeight = sh::line + sh::noteLine + ui::theme::channelStrip::height + ui::theme::channelStrip::rulerLine;
+    const float mapHeight = sh::line + sh::noteLine + ui::theme::channelStrip::cell + ui::theme::channelStrip::barGap +
+                            ui::theme::channelStrip::bar;
     const float top = std::max(y, page.getBottom() - mapHeight);
     ui::text(g, "the inputs of every device" + kSeparator + "a click puts " + juce::String(chosen->name) + " there",
              ui::labelFont(), colour::label, {page.getX(), top, page.getWidth(), sh::line},
              juce::Justification::centredLeft);
-    return map(g, page.getX(), top + sh::line, page.getWidth(), row, blocks, [this, changeAll, row](int c) {
+    return map(g, page.getX(), top + sh::line, page.getWidth(), row, blocks, inputsScroll_, [this, changeAll, row](int c) {
         auto settings = s_.settings;
         bool found = false;
         for (auto& x : settings.inputs)

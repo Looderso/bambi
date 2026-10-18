@@ -37,6 +37,21 @@ TEST_CASE("a report and a request read back as written, and a request names only
           3);
 }
 
+TEST_CASE("where the host plays the outputs is told and read back") {
+    // Catches: a row or a channel list dropped on the way, so the Decoder draws a map the host does not play on
+    DecoderRequest request;
+    request.host = HostOutputs{{{"bambi", 2}, {"Interface", 8}}, {3, 4}, {5, 6, 7}};
+    CHECK(requestFrom(Json::parse(toJson(request).dump(0))) == request);
+    CHECK_FALSE(requestFrom(Json::parse("{}")).host);
+
+    // Catches: a click's serial lost in the report, so the host never carries it out or carries it out twice
+    DecoderReport report;
+    report.placeSerial = 3;
+    report.placeOut = 2;
+    report.placeAt = 9;
+    CHECK(reportFrom(Json::parse(toJson(report).dump(0))) == report);
+}
+
 TEST_CASE("a layout the page does not offer by name reports none, but its name and channels") {
     //  Catches: a typed or file layout reported as the built-in it was loaded from -- the sheet would offer it as
     //  chosen, and a request for it would throw the edits away.

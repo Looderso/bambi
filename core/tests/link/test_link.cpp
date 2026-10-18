@@ -1830,3 +1830,51 @@ TEST_CASE("an instance's preset name crosses the bus with its controls") {
     REQUIRE(readBack());
     CHECK(got->preset.get().none());
 }
+
+TEST_CASE("a Decoder's play flags and head cross the bus with its dynamic section, and give it no position") {
+    /*  Catches: the flags or the head left out of what is published or copied out (a scene then draws a head that does not
+        turn, or loudspeakers of a Decoder that plays none), and a Decoder counted as a source -- which would draw a dot where
+        its head looks. */
+    Session s;
+    const Uuid decoderId = Uuid::generate();
+    LinkBus decoder, viewer;
+    REQUIRE(decoder.open(s.id, decoderId, Product::Decoder));
+    REQUIRE(viewer.open(s.id, Uuid::generate(), Product::Encoder));
+
+    LinkDynamic d;
+    d.headGazeX = 0.5f;
+    d.headGazeY = -0.5f;
+    d.headGazeZ = 0.70710678f;
+    d.headLeftX = 0.25f;
+    d.headLeftY = 0.75f;
+    d.headLeftZ = -0.5f;
+    d.playFlags = kLinkPlaySpeakers | kLinkPlayThroughLayout;
+    decoder.publishDynamic(d);
+
+    std::vector<LinkPeer> peers;
+    viewer.poll(peers);
+    const auto at =
+        std::find_if(peers.begin(), peers.end(), [&](const LinkPeer& p) { return p.instance == decoderId; });
+    REQUIRE(at != peers.end());
+    CHECK(at->product == Product::Decoder);
+    CHECK(at->dyn.headGaze().x == 0.5f);
+    CHECK(at->dyn.headGaze().y == -0.5f);
+    CHECK(at->dyn.headGaze().z == 0.70710678f);
+    CHECK(at->dyn.headLeft().x == 0.25f);
+    CHECK(at->dyn.headLeft().y == 0.75f);
+    CHECK(at->dyn.headLeft().z == -0.5f);
+    CHECK(at->dyn.playFlags == (kLinkPlaySpeakers | kLinkPlayThroughLayout));
+    CHECK((at->dyn.playFlags & kLinkPlayHeadphones) == 0);
+    CHECK_FALSE(at->hasPosition);
+
+    //  and the next publish replaces them: a head that stops turning is not left where it was
+    d.headGazeX = -1.0f;
+    d.playFlags = kLinkPlayHeadphones;
+    decoder.publishDynamic(d);
+    viewer.poll(peers);
+    const auto again =
+        std::find_if(peers.begin(), peers.end(), [&](const LinkPeer& p) { return p.instance == decoderId; });
+    REQUIRE(again != peers.end());
+    CHECK(again->dyn.headGaze().x == -1.0f);
+    CHECK(again->dyn.playFlags == kLinkPlayHeadphones);
+}

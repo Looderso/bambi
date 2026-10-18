@@ -78,6 +78,43 @@ bool EffectEditor::clickViewPreset(int index) {
     return true;
 }
 
+bool EffectEditor::clickDecoderToggle() {
+    paintNow();
+    auto& view = equirectFull() ? equirect : globe;
+    const auto area = effectControls_.sphere.decoders.toggleAreas().toggle;
+    if (area.isEmpty()) return false;
+    view.clickAt(area.getCentre());
+    return true;
+}
+
+bool EffectEditor::clickDecoderTriangle() {
+    paintNow();
+    auto& view = equirectFull() ? equirect : globe;
+    const auto area = effectControls_.sphere.decoders.toggleAreas().triangle;
+    if (area.isEmpty()) return false;
+    view.clickAt(area.getCentre());
+    return true;
+}
+
+juce::Rectangle<float> EffectEditor::decoderRowArea(int index) const {
+    const auto& rows = effectControls_.sphere.decoders.listAreas().rows;
+    return index >= 0 && index < static_cast<int>(rows.size()) ? rows[static_cast<std::size_t>(index)]
+                                                               : juce::Rectangle<float>{};
+}
+
+bool EffectEditor::clickDecoderRow(int index) {
+    paintNow();
+    auto& view = equirectFull() ? equirect : globe;
+    const auto area = decoderRowArea(index);
+    if (area.isEmpty()) return false;
+    view.clickAt(area.getCentre());
+    return true;
+}
+
+bool EffectEditor::pressKeyOnScene(const juce::KeyPress& key) {
+    return (equirectFull() ? equirect : globe).keyPressed(key);
+}
+
 bool EffectEditor::cameraMoved(Camera before) const {
     return !juce::exactlyEqual(before.yaw, effectControls_.sphere.camera.yaw) ||
            !juce::exactlyEqual(before.pitch, effectControls_.sphere.camera.pitch);

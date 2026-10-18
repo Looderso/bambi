@@ -239,6 +239,44 @@ bool Engine::setAudio(const live::AudioSettings& audio, juce::String& status) {
     return true;
 }
 
+void Engine::tellDecoders() {
+    const auto decoders = playing();
+    DecoderRequest request;
+    HostOutputs host;
+    for (const live::AudioDevice& d : row_.devices)
+        if (d.outs > 0) host.row.push_back({d.name, d.outs});
+    for (const live::PlayingDecoder& d : decoders) {
+        auto* remote = [&]() -> remote::IRemote* {
+            for (const Dec& dec : decoders_)
+                if (dec.id == d.id) return remoteOf(*dec.plugin, kDecoderRemoteKind, kDecoderRemoteVersion);
+            return nullptr;
+        }();
+        if (remote == nullptr) continue;
+        host.headphones = live::takenBy({d.id, Output::Headphones}, s_.audio.at({d.id, Output::Headphones}), row_, decoders);
+        host.speakers = live::takenBy({d.id, Output::Speakers}, s_.audio.at({d.id, Output::Speakers}), row_, decoders);
+        request.host = host;
+        std::string text = toJson(request).dump(0);
+        const void* instance = remote;
+        if (auto& told = told_[d.id]; told.first != instance || told.second != text) {
+            told = {instance, text};
+            remote->remoteRequest(text.c_str());
+        }
+    }
+}
+
+std::vector<live::Placed> Engine::placementsAsked() {
+    std::vector<live::Placed> out;
+    for (const live::PlayingDecoder& d : playing()) {
+        int& served = served_[d.id];
+        if (d.report.placeSerial == served) continue;
+        served = d.report.placeSerial;
+        const live::DeviceChannel at = row_.channel(d.report.placeAt);
+        if (at.none() || (d.report.placeOut != 1 && d.report.placeOut != 2)) continue;
+        out.push_back({{d.id, d.report.placeOut == 1 ? Output::Headphones : Output::Speakers}, at});
+    }
+    return out;
+}
+
 bool Engine::setOrder(int order, juce::String& status) {
     if (order == s_.order) return true;
     //  every state as it is, for the plugins loaded again at the new order
@@ -276,6 +314,7 @@ bool Engine::setOrder(int order, juce::String& status) {
 
 bool Engine::reroute() {
     if (program_.slots.empty()) return false;
+    tellDecoders();
     auto routes = routesFor(program_.compiled.latency);
     if (routes == routes_) return false;  // a change the routes do not see is the Decoder's alone
     juce::String why;

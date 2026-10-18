@@ -482,14 +482,14 @@ namespace sheet
     inline constexpr float menuWidth = 300.0f;
     inline constexpr float menuLine  = 22.0f;
     inline constexpr float menuPad   = 6.0f;
-    inline constexpr float control   = 20.0f;    ///< every button, chip and segment on a sheet
-    inline constexpr float noteLine  = 18.0f;    ///< a line of small text: a note, a device's name over the map
     //  the overlay list the scenes open from a corner toggle's triangle
     inline constexpr float overlayRowPad      = 8.0f;   ///< a row's inset from the list's edges
     inline constexpr float overlayRowGap      = 8.0f;   ///< between a row's box, its dot and its name
     inline constexpr float overlayPartIndent  = 18.0f;  ///< a part, under its item
     inline constexpr float overlayMinWidth    = 150.0f;
     inline constexpr int   overlayMaxRows     = 10;     ///< lines shown at once, the head included; more scroll
+    inline constexpr float control   = 20.0f;    ///< every button, chip and segment on a sheet
+    inline constexpr float noteLine  = 18.0f;    ///< a line of small text: a note, a device's name over the map
     //  the columns of a row, from its left
     inline constexpr float nameColumn   = 260.0f;  ///< a device's name
     inline constexpr float ioColumn     = 120.0f;  ///< its channels
@@ -520,14 +520,11 @@ namespace rail
 // ---- a run of channels in one row: the live host's channel map, the decoder's bus ------------------
 namespace channelStrip
 {
-    inline constexpr float cellGap   = 1.0f;    ///< between two cells of one group
-    inline constexpr float groupGap  = 4.0f;    ///< between two groups
-    inline constexpr float height    = 22.0f;   ///< a cell, however narrow
-    inline constexpr float maxCell   = 22.0f;   ///< the widest a cell grows when there is room to spare
-    inline constexpr float numberPad = 3.0f;    ///< room either side of a number inside a cell
-    inline constexpr float tickPad   = 6.0f;    ///< the least room between two numbers on the ruler
-    inline constexpr float rulerLine = 14.0f;   ///< the ruler under cells too narrow for a number
-    inline constexpr int   widest    = 3;       ///< digits a number may have: the 64th channel and past
+    inline constexpr float cell     = 22.0f;   ///< a channel, whatever the run's length
+    inline constexpr float cellGap  = 2.0f;    ///< between two cells of one group
+    inline constexpr float groupGap = 10.0f;   ///< between two groups
+    inline constexpr float barGap   = 4.0f;    ///< from the cells to the bar showing where the window is
+    inline constexpr float bar      = 2.0f;    ///< its thickness
 }
 
 // ---- the live host's timeline: Live's arrangement, as guidance --------------------------------
@@ -568,11 +565,11 @@ namespace routing
     inline constexpr float boxHeight  = 22.0f;
     inline constexpr float indent     = 14.0f;   ///< a line inside a group, per depth
     inline constexpr float nameWidth  = 104.0f;  ///< a node's name, before its marker and chain
-    inline constexpr float liveLeast     = 360.0f;  ///< Live's column, at its narrowest
-    inline constexpr float liveMost      = 560.0f;  ///< and at its widest, however long its lines
     inline constexpr float stripe     = 3.0f;    ///< Live's colour, down a node's left edge
     inline constexpr float left       = 16.0f;   ///< the page's inset, either side
     inline constexpr float top        = 14.0f;   ///< from the band to the first row
+    inline constexpr float liveLeast     = 360.0f;  ///< Live's column, at its narrowest
+    inline constexpr float liveMost      = 560.0f;  ///< and at its widest, however long its lines
     inline constexpr float fieldColumn   = 300.0f;  ///< the returns and Main
     inline constexpr float decoderColumn = 220.0f;
     inline constexpr float tagHeight  = 14.0f;   ///< a node's tag: live, bambi, bus, in group

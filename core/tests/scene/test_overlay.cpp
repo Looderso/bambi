@@ -47,7 +47,7 @@ TEST_CASE("the master hides everything and forgets nothing") {
 
     s.setMaster(false);
     CHECK_FALSE(s.drawn(keyOf(2)));
-    CHECK(s.chosen(keyOf(2)));       // its box still shows what was chosen
+    CHECK(s.chosen(keyOf(2)));  // its box still shows what was chosen
     CHECK_FALSE(s.chosen(keyOf(1)));
 
     s.choose(keyOf(1), true);  // a tick with the master off changes the choice and does not wake the master

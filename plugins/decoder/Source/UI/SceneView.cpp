@@ -7,6 +7,7 @@
 
 #include "bambi/decode/orientation.hpp"
 #include "bambi/math/sphere.hpp"
+#include "bambi/ui/DecoderOverlay.h"
 #include "bambi/ui/Draw.h"
 #include "bambi/ui/OverlayMenu.h"
 #include "bambi/ui/Strokes.h"
@@ -20,22 +21,6 @@ namespace sc = theme::scene;
 
 namespace {
 constexpr int kArcSteps = 16;
-constexpr double kGazeRingDeg = 9.0;   ///< the angular radius of the ring round where the head looks
-constexpr double kEyeAngleRad = 0.45;  ///< each eye this far off the gaze, on the head's rim
-
-/// `count` points of the small circle of angular radius `radiusRad` about `centre`.
-void circleAround(Vec3 centre, double radiusRad, int count, std::vector<Vec3>& out) {
-    const Vec3 c = centre * (1.0 / std::sqrt(dot(centre, centre)));
-    const Vec3 a = std::abs(c.z) < 0.9 ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
-    Vec3 u = cross(c, a);
-    u = u * (1.0 / std::sqrt(dot(u, u)));
-    const Vec3 v = cross(c, u);
-    out.clear();
-    for (int i = 0; i <= count; ++i) {
-        const double f = 2.0 * kPi * i / count;
-        out.push_back(c * std::cos(radiusRad) + (u * std::cos(f) + v * std::sin(f)) * std::sin(radiusRad));
-    }
-}
 }  // namespace
 
 DecoderSceneView::DecoderSceneView(DecoderControlState& state, Projection projection)
@@ -198,25 +183,11 @@ void DecoderSceneView::paintHull(juce::Graphics& g, const Viewport& vp, float al
 }
 
 void DecoderSceneView::paintSpeakers(juce::Graphics& g, const Viewport& vp, float alpha) {
-    const float side = sc::toggleBox;
-    for (const Loudspeaker& s : state_.decoder().layout) {
-        const auto p = toScreen(projection_, state_.sphere.camera, vp,
-                                toView(fromAzEl(s.azimuthDeg * kDeg2Rad, s.elevationDeg * kDeg2Rad)));
-        const float a = alpha * (p.depth < 0.0 ? sc::backAlpha : 1.0f);
-        const juce::Rectangle<float> box{static_cast<float>(p.x) - side / 2.0f, static_cast<float>(p.y) - side / 2.0f,
-                                         side, side};
-        g.setColour(colour::text.withAlpha(a));
-        if (s.imaginary) {
-            juce::Path outline;
-            outline.addRectangle(box);
-            bambi::ui::strokeDashed(g, outline, stroke::unplacedDash, juce::PathStrokeType(stroke::toggle));
-        } else {
-            g.drawRect(box, stroke::toggle);
-        }
-        if (!s.imaginary)
-            text(g, juce::String(s.channel), smallFont(), colour::label.withAlpha(a),
-                 {box.getRight() + 2.0f, box.getY() - side, 3.0f * side, side}, juce::Justification::centredLeft);
-    }
+    speakers_.clear();
+    for (const Loudspeaker& s : state_.decoder().layout)
+        speakers_.push_back(
+            {toView(fromAzEl(s.azimuthDeg * kDeg2Rad, s.elevationDeg * kDeg2Rad)), s.channel, s.imaginary});
+    paintLoudspeakers(g, projection_, state_.sphere.camera, vp, speakers_, alpha);
 }
 
 void DecoderSceneView::paintSources(juce::Graphics& g, const Viewport& vp) {
@@ -252,42 +223,7 @@ void DecoderSceneView::paintHead(juce::Graphics& g, const Viewport& vp, float al
                           ? Vec3{1, 0, 0}
                           : bambi::apply(head_, Vec3{1, 0, 0});  // bambi::, not std::apply through the array
     const Vec3 left = state_.headFrame ? Vec3{0, 1, 0} : bambi::apply(head_, Vec3{0, 1, 0});
-    circleAround(gaze, kGazeRingDeg * kDeg2Rad, 48, arc_);
-    segments_.clear();
-    projectPolyline(projection_, state_.sphere.camera, vp, arc_, true, segments_);
-    strokeSegments(g, segments_, skipped_, colour::text.withAlpha(alpha), stroke::regionEdge, false);
-    const auto tip = toScreen(projection_, state_.sphere.camera, vp, gaze);
-    if (projection_ == Projection::Globe) {
-        //  the head itself at the centre: a circle with an eye on its rim either side of the gaze, kEyeAngleRad off
-        //  it. Each eye is a direction scaled to the head's radius before projection, so the pair foreshortens as
-        //  the head turns toward or away from the viewer, and tilts with roll.
-        const float r = shape::sourceDot + sc::headRadiusPad;
-        const double unit = static_cast<double>(r) / vp.rx;
-        const double c = std::cos(kEyeAngleRad), sn = std::sin(kEyeAngleRad);
-        const Vec3 leftEye{gaze.x * c + left.x * sn, gaze.y * c + left.y * sn, gaze.z * c + left.z * sn};
-        const Vec3 rightEye{gaze.x * c - left.x * sn, gaze.y * c - left.y * sn, gaze.z * c - left.z * sn};
-        const auto eyeL = toScreen(projection_, state_.sphere.camera, vp, leftEye * unit);
-        const auto eyeR = toScreen(projection_, state_.sphere.camera, vp, rightEye * unit);
-        g.setColour(colour::text.withAlpha(alpha));
-        juce::Path line;
-        line.startNewSubPath(static_cast<float>(vp.cx), static_cast<float>(vp.cy));
-        line.lineTo(static_cast<float>(tip.x), static_cast<float>(tip.y));
-        bambi::ui::strokeDashed(g, line, stroke::otherPathDash, juce::PathStrokeType(stroke::rule));
-        g.setColour(colour::ground.withAlpha(alpha));
-        g.fillEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r);
-        g.setColour(colour::text.withAlpha(alpha));
-        g.drawEllipse(static_cast<float>(vp.cx) - r, static_cast<float>(vp.cy) - r, 2.0f * r, 2.0f * r, stroke::toggle);
-        const float eye = sc::eyeRadius;
-        for (const auto& e : {eyeL, eyeR})
-            g.fillEllipse(static_cast<float>(e.x) - eye, static_cast<float>(e.y) - eye, 2.0f * eye, 2.0f * eye);
-    } else {
-        g.setColour(colour::text.withAlpha(alpha * (tip.depth < 0.0 ? sc::backAlpha : 1.0f)));
-        const float c = shape::sourceDot;
-        g.drawLine(static_cast<float>(tip.x) - c, static_cast<float>(tip.y), static_cast<float>(tip.x) + c,
-                   static_cast<float>(tip.y), stroke::toggle);
-        g.drawLine(static_cast<float>(tip.x), static_cast<float>(tip.y) - c, static_cast<float>(tip.x),
-                   static_cast<float>(tip.y) + c, stroke::toggle);
-    }
+    bambi::ui::paintHead(g, projection_, state_.sphere.camera, vp, gaze, left, alpha);
 }
 
 }  // namespace bambi::ui

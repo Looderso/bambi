@@ -41,9 +41,14 @@ inline constexpr double kLinkPathStepRad = 1.0 * kDeg2Rad;
 int linkPathPointsFor(double lengthRad);
 inline constexpr int kLinkInboxReserved = 4;  ///< inbox slots only gesture begin/end may use
 /// Bump whenever the shared layout changes, so no instance ever maps a bus laid out another way.
-inline constexpr std::uint32_t kLinkVersion = 24;
+inline constexpr std::uint32_t kLinkVersion = 25;
 
 //  Which plugin an instance is: `patch/identity.hpp`, because the state format needs it too.
+
+/*  The environment variable a host that loads the suite's plugins in its own process sets to one session id, so that every
+ *  instance it hosts joins that session whatever its saved state or the machine's most recent session says: the live host,
+ *  whose plugins come back with states saved in another run while another session -- a DAW's -- may be live. Unset in a DAW. */
+inline constexpr const char* kHostSessionVariable = "BAMBI_LINK_SESSION";
 
 /// How long an instance may go silent before its slot is reclaimed.
 inline constexpr std::uint64_t kLinkHeartbeatTimeoutUs = 2'000'000;
@@ -153,6 +158,11 @@ struct LinkRegionShape {
 };
 
 /*  DYNAMIC section: where the source is now. Published at scene rate. */
+/// LinkDynamic::playFlags: what a Decoder plays.
+inline constexpr std::uint8_t kLinkPlaySpeakers = 1;       ///< the layout's loudspeakers
+inline constexpr std::uint8_t kLinkPlayHeadphones = 2;     ///< the headphones output
+inline constexpr std::uint8_t kLinkPlayThroughLayout = 4;  ///< the headphones listen through the layout
+
 struct LinkDynamic {
     float s{0.0f};                    ///< normalised arc length, after the movement mode
     float x{1.0f}, y{0.0f}, z{0.0f};  ///< resolved position: transform applied
@@ -168,9 +178,16 @@ struct LinkDynamic {
     std::uint32_t reserved2{0};
     float leftX{1.0f}, leftY{0.0f}, leftZ{0.0f};     ///< the input's left point, resolved as the position is
     float rightX{1.0f}, rightY{0.0f}, rightZ{0.0f};  ///< and its right
-    std::uint32_t reserved3{0};                      ///< keeps the 64-bit stamps below on their own boundary
-    std::uint64_t sampledUs{0};                      ///< when the audio thread computed this (linkNowMicros)
-    std::uint64_t publishedUs{0};                    ///< when it was published: set by LinkPublisher::tick
+    /*  A Decoder's, for the scenes that draw it: what it plays and where its head looks, as the Decoder resolved it this
+        block -- the gaze and the head's left, unit vectors in the room's frame -- so no scene needs the Decoder's maths. Display
+        only: nothing audible reads them, so a bounce matches what was heard. */
+    float headGazeX{1.0f}, headGazeY{0.0f}, headGazeZ{0.0f};
+    float headLeftX{0.0f}, headLeftY{1.0f}, headLeftZ{0.0f};
+    std::uint8_t playFlags{0};  ///< kLinkPlay...: which outputs play
+    std::uint8_t reserved5[7]{};
+    std::uint32_t reserved3{0};    ///< keeps the 64-bit stamps below on their own boundary
+    std::uint64_t sampledUs{0};    ///< when the audio thread computed this (linkNowMicros)
+    std::uint64_t publishedUs{0};  ///< when it was published: set by LinkPublisher::tick
     /// Every region slot the owner has, as resolved this step: 1 for the encoder and Echo, 2 for Reverb.
     std::uint32_t regionCount{0};
     std::uint32_t reserved4{0};
@@ -184,6 +201,8 @@ struct LinkDynamic {
     Vec3 position() const { return {x, y, z}; }
     Vec3 left() const { return {leftX, leftY, leftZ}; }
     Vec3 right() const { return {rightX, rightY, rightZ}; }
+    Vec3 headGaze() const { return {headGazeX, headGazeY, headGazeZ}; }
+    Vec3 headLeft() const { return {headLeftX, headLeftY, headLeftZ}; }
     PathTransform transform() const;
 };
 

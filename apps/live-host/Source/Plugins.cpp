@@ -4,6 +4,7 @@
 #include <iterator>
 
 #include "bambi/decode/params.hpp"
+#include "bambi/link/link.hpp"
 #include "bambi/echo/params.hpp"
 #include "bambi/encode/params.hpp"
 #include "bambi/reverb/params.hpp"
@@ -83,6 +84,12 @@ juce::String describe(const juce::AudioProcessor::BusesLayout& l) {
 }
 
 Loaded loadInstalled(const juce::String& name, Role role, int order, double rate, int maxBlock, int outputs) {
+    //  Every plugin this process loads joins one session, named once for the process before the first is made: a respawned
+    //  host's plugins come back with states saved in the last run, and a DAW's session may be the machine's most recent.
+    static const bool named = [] {
+        return setenv(kHostSessionVariable, Uuid::generate().toString().c_str(), 1) == 0;
+    }();
+    (void)named;
     Loaded out;
     const auto file = installed(name);
     juce::VST3PluginFormat format;

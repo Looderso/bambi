@@ -91,7 +91,12 @@ void addOverlayClicks(HitArea& on, const OverlayToggleAreas& toggle, const Overl
  */
 class OverlayMenu {
 public:
-    explicit OverlayMenu(juce::String label, bool defaultOn = true) : label_(std::move(label)), selection_(defaultOn) {}
+    /// `defaultOn`: whether an item without a choice of its own is ticked. `masterOn`: whether the overlay is drawn at all until
+    /// the toggle is pressed.
+    explicit OverlayMenu(juce::String label, bool defaultOn = true, bool masterOn = true)
+        : label_(std::move(label)), selection_(defaultOn) {
+        selection_.setMaster(masterOn);
+    }
 
     /// The rows the list names now. A choice for something no longer among them is forgotten, so the choices of instances that
     /// left never accumulate.

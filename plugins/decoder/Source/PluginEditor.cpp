@@ -105,7 +105,9 @@ void BambiDecoderEditor::frame(bambi::ui::EditorFrame& parts) {
     globe.repaint();
     equirect.repaint();
     strip.repaint();
-    if (changed || moved) panel.repaint();
+    const bool hostMoved = processor_.hostOutputs() != hostShown_;
+    if (hostMoved) hostShown_ = processor_.hostOutputs();
+    if (changed || moved || hostMoved) panel.repaint();
 }
 
 void BambiDecoderEditor::controlsChanged() {

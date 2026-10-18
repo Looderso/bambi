@@ -61,7 +61,8 @@ void LeadMeter::note(std::int64_t at) noexcept {
 
 void LeadMeter::listen(const float* left, const float* right, int frames, std::int64_t start) noexcept {
     for (int i = 0; i < frames; ++i) {
-        const float v = std::max(left != nullptr ? std::abs(left[i]) : 0.0f, right != nullptr ? std::abs(right[i]) : 0.0f);
+        const float v =
+            std::max(left != nullptr ? std::abs(left[i]) : 0.0f, right != nullptr ? std::abs(right[i]) : 0.0f);
         const std::int64_t at = start + i;
         if (armed_ && at - *armed_ > window_) armed_.reset();
         if (v <= threshold_) {

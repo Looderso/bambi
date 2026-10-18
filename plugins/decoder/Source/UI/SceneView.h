@@ -7,6 +7,7 @@
 #include "Controls.h"
 #include "bambi/decode/allrad.hpp"
 #include "bambi/scene/view.hpp"
+#include "bambi/ui/DecoderOverlay.h"
 #include "bambi/ui/EnergyLayer.h"
 #include "bambi/ui/HitArea.h"
 #include "bambi/ui/OverlayMenu.h"
@@ -60,6 +61,7 @@ private:
     std::vector<ScreenSegment> segments_, lineSegments_;
     std::vector<juce::Point<double>> skipped_;
     std::vector<Vec3> arc_;
+    std::vector<SceneSpeaker> speakers_;
     EnergyLayer energyLayer_;            ///< the field's energy, drawn under everything in ink while asked for
     Mat3 head_{kIdentity3};              ///< the head the decode undoes
     Mat3 scene_{kIdentity3};             ///< the scene's turn, which the sources follow

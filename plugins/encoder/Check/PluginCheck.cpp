@@ -2709,5 +2709,101 @@ int main() {
     bambi::editor::checkPresets<BambiEncoderProcessor>({"render.width", "input.mode"},
                                                        [](bool ok, const juce::String& what) { check(ok, what); });
 
+    //  The `decoder` overlay: the session's decoders drawn in the Encoder's scene, behind a toggle and a list. The Decoder is
+    //  stood in for by buses that publish what a real one does -- the layout in the static section, what it plays and where its
+    //  head looks in the dynamic -- so the Encoder's side is checked on its own; the Decoder's own publishing is in its suite.
+    std::printf("\nthe decoder overlay\n");
+    {
+        const int joinTicks = BambiEncoderProcessor::kLinkTickHz / 10 + 2;
+        auto encoder = std::make_unique<BambiEncoderProcessor>();
+        for (int i = 0; i < joinTicks; ++i) encoder->linkTick();
+        const auto session = encoder->identity().session;
+
+        auto a = bambi::editor::standInDecoder(session, "Decoder A", 5,
+                                               bambi::kLinkPlaySpeakers | bambi::kLinkPlayHeadphones, {0.0, 1.0, 0.0});
+        auto b = bambi::editor::standInDecoder(session, "Decoder B", 0, bambi::kLinkPlayHeadphones, {0.0, 0.0, 1.0});
+        //  a decoder that has published a layout and plays nothing: neither its loudspeakers nor its head are drawn
+        auto c = bambi::editor::standInDecoder(session, "Decoder C", 3, 0, {1.0, 0.0, 0.0});
+
+        std::unique_ptr<juce::AudioProcessorEditor> window(encoder->createEditor());
+        auto* shell = dynamic_cast<BambiEncoderEditor*>(window.get());
+        check(shell != nullptr, "the window opens");
+        if (shell != nullptr) {
+            const auto settle = [&] {
+                for (int i = 0; i < 4; ++i) encoder->linkTick();
+                shell->tick();
+                shell->paintNow();
+            };
+            settle();
+            //  Catches: the overlay on without being asked, which would put loudspeakers over every encoder's scene.
+            check(
+                !shell->decoderOverlayOn() && shell->decodersDrawn().speakers == 0 && shell->decodersDrawn().heads == 0,
+                "off when the window opens: the decoders are on the bus and nothing is drawn");
+            check(shell->decoderRowsListed() == 9, "the list names each decoder and its speakers and head: " +
+                                                       juce::String(shell->decoderRowsListed()) + " rows");
+
+            //  Catches: the layout or the head not arriving, or drawn for a decoder that does not play them.
+            shell->clickDecoderToggle();
+            shell->paintNow();
+            check(
+                shell->decoderOverlayOn() && shell->decodersDrawn().speakers == 5 && shell->decodersDrawn().heads == 2,
+                "on, every decoder is drawn: Decoder A's five loudspeakers and both heads (" +
+                    juce::String(shell->decodersDrawn().speakers) + " loudspeakers, " +
+                    juce::String(shell->decodersDrawn().heads) + " heads)");
+            const bambi::Vec3 gaze = shell->decodersDrawn().gaze;
+            check(std::abs(gaze.y) + std::abs(gaze.z) > 0.99 && std::abs(gaze.x) < 1e-6,
+                  "and a head looks where its decoder published it: (" + juce::String(gaze.x, 2) + ", " +
+                      juce::String(gaze.y, 2) + ", " + juce::String(gaze.z, 2) + ")");
+
+            //  Catches: a row's box not wired to its own part, so that switching a decoder's head off takes its speakers too.
+            shell->clickDecoderTriangle();
+            shell->paintNow();
+            check(shell->decoderListOpen() && !shell->decoderRowArea(5).isEmpty(), "the triangle opens the list");
+            shell->clickDecoderRow(1);  // Decoder A's speakers
+            shell->paintNow();
+            check(shell->decodersDrawn().speakers == 0 && shell->decodersDrawn().heads == 2,
+                  "a decoder's speakers off leave its head");
+            shell->clickDecoderRow(1);
+            shell->clickDecoderRow(3);  // Decoder B itself
+            shell->paintNow();
+            check(shell->decodersDrawn().speakers == 5 && shell->decodersDrawn().heads == 1,
+                  "a decoder off takes both its parts, and the other stays");
+            shell->clickDecoderRow(3);
+
+            //  Catches: Escape ignored, or taken while no list is open.
+            check(shell->pressKeyOnScene(juce::KeyPress(juce::KeyPress::escapeKey)) && !shell->decoderListOpen() &&
+                      !shell->pressKeyOnScene(juce::KeyPress(juce::KeyPress::escapeKey)),
+                  "Escape closes the list and is not taken without one");
+
+            //  Catches: the toggle unreachable while the equirect has the row, where the globe is not drawn.
+            shell->setEquirectFull(true);
+            settle();
+            check(shell->clickDecoderTriangle() && shell->decoderListOpen(),
+                  "with the equirect full the toggle is on its strip, and its list opens there");
+            shell->clickDecoderTriangle();
+            shell->setEquirectFull(false);
+
+            //  Catches: a decoder that leaves staying drawn, or its rows staying listed.
+            b.reset();
+            for (int i = 0; i < 6; ++i) {
+                for (int k = 0; k < 2; ++k) encoder->linkTick();
+                shell->tick();
+            }
+            shell->paintNow();
+            check(shell->decoderRowsListed() == 6 && shell->decodersDrawn().heads == 1,
+                  "a decoder that leaves leaves the list and the scene");
+
+            shell->clickDecoderToggle();
+            shell->paintNow();
+            check(
+                !shell->decoderOverlayOn() && shell->decodersDrawn().speakers == 0 && shell->decodersDrawn().heads == 0,
+                "the toggle is the master: off draws nothing");
+        }
+        window.reset();
+        a.reset();
+        c.reset();
+        bambi::LinkBus::unlinkSession(session);
+    }
+
     return checkVerdict();
 }

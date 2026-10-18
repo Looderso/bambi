@@ -3,11 +3,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
+#include <tuple>
 
 #include "../HelperLink.h"
 #include "bambi/decode/layoutfile.hpp"
 #include "bambi/decode/layouts.hpp"
 #include "bambi/decode/outputs.hpp"
+#include "bambi/ui/ChannelStrip.h"
 #include "bambi/ui/Draw.h"
 #include "bambi/ui/Theme.h"
 #include "bambi/ui/Tiles.h"
@@ -21,6 +24,8 @@ namespace sc = theme::scene;
 namespace ctl = theme::controls;
 
 namespace {
+
+constexpr int kStripGroup = 8;  ///< channels to a group on the bus's map
 constexpr const char* kPageNames[2] = {"headphones", "speakers"};
 const juce::String kDot = juce::String::fromUTF8("\xc2\xb7");
 
@@ -117,75 +122,157 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
         outputChannels(d, output == OutputPage::Headphones ? Output::Headphones : Output::Speakers);
     const std::vector<int> hp = outputChannels(d, Output::Headphones), sp = outputChannels(d, Output::Speakers);
     const bool playing = output == OutputPage::Headphones ? d.headphonesPlay : d.speakersPlay;
+    //  under a host that plays the outputs the map is the host's row of device channels, where it has put them, and
+    //  the host's to change; otherwise it is the bus
+    const auto& host = state_.processor.hostOutputs();
+    const bool onHost = host.has_value() && !host->row.empty();
+    const std::vector<int>& hpAt = onHost ? host->headphones : hp;
+    const std::vector<int>& spAt = onHost ? host->speakers : sp;
+    const std::vector<int>& mineAt = output == OutputPage::Headphones ? hpAt : spAt;
 
-    if (output == OutputPage::Headphones) {
-        //  which pair of the bus's channels: the one choice, shown once
-        std::vector<juce::String> pairs;
-        for (int c = 1; c + 1 <= shownBus; c += 2)
-            pairs.push_back(juce::String(c) + juce::String::fromUTF8("\xe2\x80\x93") + juce::String(c + 1));
-        const int selected = std::clamp((d.headphoneChannel - 1) / 2, 0, static_cast<int>(pairs.size()) - 1);
-        y = paintPicker(g, content.getX(), y, content.getWidth(), pairs, selected, !model().showingAnother(),
-                        [this](int which) {
-                            model().applyEdit("headphone channels",
-                                              [which](PluginState& s) { s.decoder.headphoneChannel = 1 + 2 * which; });
-                        })
-                .bottom;
+    //  where the layout may start on the bus: its channels move as a block, so a pair of headphone channels or an
+    //  interface's own outputs can sit before them
+    int span = 1;
+    for (int c : sp) span = std::max(span, c - (std::max(1, d.speakerFirstChannel) - 1));
+    const int lastStart = std::max(1, shownBus - span + 1);
+
+    std::vector<int> groups;
+    int total = 0;
+    if (onHost) {
+        for (const auto& device : host->row) groups.push_back(device.channels);
+        total = std::accumulate(groups.begin(), groups.end(), 0);
     } else {
-        //  where the layout starts on the bus: its channels move as a block, so a pair of headphone channels or an
-        //  interface's own outputs can sit before them
-        int span = 0;
-        for (int c : mine) span = std::max(span, c - (std::max(1, d.speakerFirstChannel) - 1));
-        const int lastStart = std::max(1, shownBus - span + 1);
-        paintStateTile(
-            g, tileCell(content, y, 0), "from channel", juce::String(d.speakerFirstChannel), d.speakerFirstChannel, 1.0,
-            static_cast<double>(std::max(lastStart, d.speakerFirstChannel)), 1.0, "decoder.speaker_first_channel",
-            !model().showingAnother() && !mine.empty(),
-            [](DecoderState& s, double v) { s.speakerFirstChannel = std::max(1, static_cast<int>(std::lround(v))); },
-            [](DecoderState& s) { s.speakerFirstChannel = 1; });
-        y = tilesBottom(y, 1) + ctl::sectionGap;
-        //  the bus's channels, marked with what each output writes
-        const float cell = static_cast<float>(space::grid * 2), gap = 1.0f;
-        const int perRow = std::max(1, static_cast<int>((content.getWidth() + gap) / (cell + gap)));
-        for (int ch = 1; ch <= shownBus; ++ch) {
-            const int i = ch - 1;
-            const juce::Rectangle<float> box{content.getX() + static_cast<float>(i % perRow) * (cell + gap),
-                                             y + static_cast<float>(i / perRow) * (cell + gap), cell, cell};
-            const bool byHp = d.headphonesPlay && std::find(hp.begin(), hp.end(), ch) != hp.end();
-            const bool bySp = d.speakersPlay && std::find(sp.begin(), sp.end(), ch) != sp.end();
-            const bool own = std::find(mine.begin(), mine.end(), ch) != mine.end();
-            g.setColour(byHp ? colour::text : colour::panel);
-            g.fillRect(box);
-            g.setColour(colour::text);
-            if (bySp) g.drawRect(box, stroke::toggle);
-            if (own && !playing) {
-                //  this output's own, not playing: dashed, as the scene draws what is not placed
-                juce::Path edge;
-                edge.addRectangle(box.reduced(stroke::toggle / 2.0f));
-                bambi::ui::strokeDashed(g, edge, stroke::unplacedDash, juce::PathStrokeType(stroke::toggle));
-            }
-            text(g, juce::String(ch), smallFont(),
-                 byHp   ? colour::textInverse
-                 : bySp ? colour::text
-                        : colour::label,
-                 box, juce::Justification::centred);
+        total = shownBus;
+        groups.assign(static_cast<std::size_t>(total / kStripGroup), kStripGroup);
+        if (total % kStripGroup != 0) groups.push_back(total % kStripGroup);
+    }
+    //  the map opens on this output, and follows it when it moves
+    const int first = mineAt.empty() ? 0 : mineAt.front();
+    const int reveal = first != revealed_ ? first : 0;
+    revealed_ = first;
+    const auto strip = ChannelStrip::layout(content.getX(), y, content.getWidth(), groups, mapScroll_, reveal);
+    const float labelH = noteLineHeight();
+    if (onHost) {
+        //  the devices' names over their channels
+        std::size_t channel = 0;
+        for (std::size_t i = 0; i < groups.size(); ++i) {
+            const float left = strip.groupLeft(i);
+            const float right = strip.cells[channel + static_cast<std::size_t>(groups[i]) - 1].getRight();
+            channel += static_cast<std::size_t>(groups[i]);
+            g.saveState();
+            g.reduceClipRegion(strip.viewport.toNearestIntEdges());
+            text(g, host->row[i].name, smallFont(), colour::label,
+                 {left, y - labelH, std::max(right - left, 0.0f), labelH}, juce::Justification::centredLeft);
+            g.restoreState();
         }
-        y += static_cast<float>((shownBus + perRow - 1) / perRow) * (cell + gap) + ctl::segmentGap;
-        //  the key: which ink is whose
+    }
+    //  a wheel over the map moves it sideways; under the cells, so a press finds a cell first
+    addRegion({strip.viewport, {}, {}, {}, {}, {}, [this](float by) { mapScroll_ += by; }});
+    g.saveState();
+    g.reduceClipRegion(strip.viewport.toNearestIntEdges());
+    for (int ch = 1; ch <= total; ++ch) {
+        const juce::Rectangle<float> box = strip.cells[static_cast<std::size_t>(ch - 1)];
+        const bool byHp = d.headphonesPlay && std::find(hpAt.begin(), hpAt.end(), ch) != hpAt.end();
+        const bool bySp = d.speakersPlay && std::find(spAt.begin(), spAt.end(), ch) != spAt.end();
+        const bool own = std::find(mineAt.begin(), mineAt.end(), ch) != mineAt.end();
+        g.setColour(byHp ? colour::text : bySp ? colour::label : colour::panel);
+        g.fillRect(box);
+        g.setColour(colour::text);
+        if (own && !playing) {
+            //  this output's own, not playing: dashed, as the scene draws what is not placed
+            juce::Path edge;
+            edge.addRectangle(box.reduced(stroke::toggle / 2.0f));
+            bambi::ui::strokeDashed(g, edge, stroke::unplacedDash, juce::PathStrokeType(stroke::toggle));
+        }
+        //  a host's row counts each device's channels from 1
+        int number = ch;
+        for (int count : groups) {
+            if (!onHost || number <= count) break;
+            number -= count;
+        }
+        text(g, juce::String(number), smallFont(), byHp || bySp ? colour::textInverse : colour::label, box,
+             juce::Justification::centred);
+        const auto shown = box.getIntersection(strip.viewport);
+        if (model().showingAnother()) continue;
+        if (onHost) {
+            //  the host puts it there: asked, and carried out on the host's next look
+            addRegion(
+                {shown,
+                 {},
+                 {},
+                 {},
+                 [this, ch, output] { state_.processor.askHostToPlace(output == OutputPage::Headphones ? 1 : 2, ch); },
+                 {},
+                 {}});
+            continue;
+        }
+        if (output == OutputPage::Speakers)
+            addRegion({shown,
+                       {},
+                       {},
+                       {},
+                       [this, at = std::min(ch, lastStart)] {
+                           model().applyEdit("speaker channels",
+                                             [at](PluginState& s) { s.decoder.speakerFirstChannel = at; });
+                       },
+                       {},
+                       {}});
+        else if (ch % 2 == 1 && ch < total)
+            addRegion({shown.getUnion(strip.cells[static_cast<std::size_t>(ch)].getIntersection(strip.viewport)),
+                       {},
+                       {},
+                       {},
+                       [this, ch] {
+                           model().applyEdit("headphone channels",
+                                             [ch](PluginState& s) { s.decoder.headphoneChannel = ch; });
+                       },
+                       {},
+                       {}});
+    }
+    g.restoreState();
+    strip.paintBar(g, colour::label, mapScroll_);
+    y = strip.bottom + ctl::segmentGap;
+    noteContentBottom(y + scroll());
+    //  the key: which ink is whose
+    {
         const float lineH = noteLineHeight();
         float kx = content.getX();
-        for (const auto& [filled, who] : {std::pair{true, "headphones"}, std::pair{false, "speakers"}}) {
+        for (const auto& [ink, who] : {std::pair{colour::text, "headphones"}, std::pair{colour::label, "speakers"}}) {
             const juce::Rectangle<float> swatch{kx, y + (lineH - sc::toggleBox) / 2.0f, sc::toggleBox, sc::toggleBox};
-            g.setColour(colour::text);
-            if (filled)
-                g.fillRect(swatch);
-            else
-                g.drawRect(swatch, stroke::toggle);
+            g.setColour(ink);
+            g.fillRect(swatch);
             kx += sc::toggleBox + sc::toggleGap;
             text(g, who, labelFont(), colour::label, {kx, y, content.getWidth(), lineH},
                  juce::Justification::centredLeft);
             kx += textWidth(labelFont(), who) + sc::toggleGroupGap;
         }
         y += lineH;
+        //  and where each playing output is, in words
+        const auto where = [&](const std::vector<int>& at) {
+            if (!onHost) return rangesOf(at);
+            juce::String out;
+            int from = 0;
+            for (std::size_t i = 0; i < groups.size(); from += groups[i++]) {
+                std::vector<int> here;
+                for (int c : at)
+                    if (c > from && c <= from + groups[i]) here.push_back(c - from);
+                if (here.empty()) continue;
+                out +=
+                    juce::String(out.isEmpty() ? "" : " + ") + juce::String(host->row[i].name) + " " + rangesOf(here);
+            }
+            return out;
+        };
+        juce::String line;
+        for (const auto& [name, on, at] :
+             {std::tuple{"headphones", d.headphonesPlay, &hpAt}, std::tuple{"speakers", d.speakersPlay, &spAt}})
+            if (on && !at->empty()) line += (line.isEmpty() ? "" : " " + kDot + " ") + name + " " + where(*at);
+        if (onHost) line += (line.isEmpty() ? "" : "  ") + juce::String("(placed on the host's audio sheet)");
+        if (line.isNotEmpty()) {
+            y += ctl::segmentGap;
+            text(g, line, labelFont(), colour::label, {content.getX(), y, content.getWidth(), lineH},
+                 juce::Justification::centredLeft);
+            y += lineH;
+        }
     }
 
     //  one line only when the picture cannot say it: the host's bus is too narrow, or the other output has the

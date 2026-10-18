@@ -10,6 +10,7 @@
 #include <juce_osc/juce_osc.h>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -87,6 +88,15 @@ public:
     /// Message thread: what the remote interface reports, and a request through it granted as the page grants it.
     bambi::DecoderReport remoteReport() const;
     void remoteRequest(const bambi::DecoderRequest& request);
+    /// Message thread: where the host that plays the outputs has put them; none in any other host.
+    const std::optional<bambi::HostOutputs>& hostOutputs() const { return host_; }
+    /// Message thread: a click on the map under that host -- `output` 1 headphones, 2 speakers, to start on `at`, a
+    /// channel of the host's row; the host reads it with the report and carries it out.
+    void askHostToPlace(int output, int at) {
+        placeOut_.store(output);
+        placeAt_.store(at);
+        placeSerial_.fetch_add(1);
+    }
     /// The current state, copied: for the editor.
     bambi::DecoderState decoderState() const;
     /*  Message thread: a decoder as filters from a SOFA FIR-E file (tools/matrix/jconvolver-to-sofa.py writes one
@@ -268,6 +278,8 @@ private:
 
     Diagnostics diag_;
     juce::String notice_;
+    std::optional<bambi::HostOutputs> host_;
+    std::atomic<int> placeSerial_{0}, placeOut_{0}, placeAt_{0};  ///< what `askHostToPlace` said last, and how often
     bambi::host::RemoteAnswer remote_{
         bambi::kDecoderRemoteKind, bambi::kDecoderRemoteVersion,
         [this] { return bambi::toJson(remoteReport()).dump(0); },

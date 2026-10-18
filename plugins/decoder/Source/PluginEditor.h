@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <optional>
+
 #include "PluginProcessor.h"
 #include "UI/Controls.h"
 #include "UI/HeadStrip.h"
@@ -55,8 +57,6 @@ public:
     /// Click the square in an output's tab, as the mouse would.
     bool clickOutputSquare(int index);
 
-private:
-    void frame(bambi::ui::EditorFrame& parts) override;
     //  the globe's sources toggle and its list, through the painted areas as the mouse would: each paints first, and
     //  is false when the control is not there to press
     bool clickSourcesToggle();
@@ -79,6 +79,8 @@ private:
     bool dragGlobeBetween(juce::Point<float> from, juce::Point<float> to);  ///< a drag on the globe, as the mouse's
     double globeCameraYaw() const { return controls.sphere.camera.yaw; }
 
+private:
+    void frame(bambi::ui::EditorFrame& parts) override;
     void controlsChanged() override;
     void addOwnSettings(bambi::ui::SettingsContent& c) override;
     bool drawnOnPanel(bambi::ParamId id) override { return !strip.drawnArea(id).isEmpty(); }
@@ -88,6 +90,7 @@ private:
     int listFrames_{0};  ///< frames since the window opened, for learn mode's list
     int trackerMessagesSeen_{0};
     double trackerRateAt_{0.0};
+    std::optional<bambi::HostOutputs> hostShown_;  ///< the host's row as last drawn
     float trackerRate_{0.0f};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BambiDecoderEditor)

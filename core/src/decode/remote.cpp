@@ -68,6 +68,9 @@ Json toJson(const DecoderReport& r) {
     j.set("layouts", std::move(names));
     j.set("levelDb", Json(r.levelDb));
     j.set("notice", Json(r.notice));
+    j.set("placeSerial", Json(r.placeSerial));
+    j.set("placeOut", Json(r.placeOut));
+    j.set("placeAt", Json(r.placeAt));
     return j;
 }
 
@@ -88,6 +91,9 @@ DecoderReport reportFrom(const Json& j) {
             if (n.isString()) r.layouts.emplace_back(n.stringOr(""));
     if (const Json* v = j.find("levelDb")) r.levelDb = v->numberOr(0.0);
     if (const Json* v = j.find("notice")) r.notice = std::string(v->stringOr(""));
+    r.placeSerial = channelOf(j, "placeSerial").value_or(0);
+    r.placeOut = channelOf(j, "placeOut").value_or(0);
+    r.placeAt = channelOf(j, "placeAt").value_or(0);
     return r;
 }
 
@@ -99,6 +105,20 @@ Json toJson(const DecoderRequest& r) {
     if (r.speakerFirstChannel) j.set("speakerFirstChannel", Json(*r.speakerFirstChannel));
     if (r.layout) j.set("layout", Json(*r.layout));
     if (r.levelDb) j.set("levelDb", Json(*r.levelDb));
+    if (r.host) {
+        Json h = Json::object();
+        Json row = Json::array();
+        for (const HostOutputs::Device& d : r.host->row) {
+            Json device = Json::object();
+            device.set("name", Json(d.name));
+            device.set("channels", Json(d.channels));
+            row.push(std::move(device));
+        }
+        h.set("row", std::move(row));
+        h.set("headphones", channels(r.host->headphones));
+        h.set("speakers", channels(r.host->speakers));
+        j.set("host", std::move(h));
+    }
     return j;
 }
 
@@ -110,6 +130,24 @@ DecoderRequest requestFrom(const Json& j) {
     r.speakerFirstChannel = channelOf(j, "speakerFirstChannel");
     if (const Json* v = j.find("layout"); v != nullptr && v->isString()) r.layout = std::string(v->stringOr(""));
     if (const Json* v = j.find("levelDb"); v != nullptr && v->isNumber()) r.levelDb = v->numberOr(0.0);
+    if (const Json* h = j.find("host"); h != nullptr && h->isObject()) {
+        HostOutputs out;
+        if (const Json* row = h->find("row"); row != nullptr && row->isArray())
+            for (const Json& d : row->items()) {
+                HostOutputs::Device device;
+                if (const Json* v = d.find("name")) device.name = std::string(v->stringOr(""));
+                device.channels = channelOf(d, "channels").value_or(0);
+                out.row.push_back(std::move(device));
+            }
+        const auto list = [&](const char* key, std::vector<int>& into) {
+            if (const Json* l = h->find(key); l != nullptr && l->isArray())
+                for (const Json& c : l->items())
+                    if (c.isNumber()) into.push_back(static_cast<int>(std::lround(c.numberOr(0.0))));
+        };
+        list("headphones", out.headphones);
+        list("speakers", out.speakers);
+        r.host = std::move(out);
+    }
     return r;
 }
 

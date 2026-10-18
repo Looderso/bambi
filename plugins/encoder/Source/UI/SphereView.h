@@ -60,6 +60,9 @@ public:
         nothing else in the suite hovers. */
     void mouseMove(const juce::MouseEvent& e) override;
     void mouseExit(const juce::MouseEvent& e) override;
+    bool keyPressed(const juce::KeyPress& key) override;
+    /// What the last paint drew of the session's decoders: for a tool.
+    const bambi::ui::DecoderOverlayDrawn& decoderOverlayDrawn() const { return overlayDrawn_; }
 
     std::function<void()> onPaint;  ///< diagnostics: called as painting starts
 
@@ -94,6 +97,7 @@ private:
     void strokeSegments(juce::Graphics& g, juce::Colour colour, float width, bool dashed) const;
 
     SceneState& state_;
+    bambi::ui::DecoderOverlayDrawn overlayDrawn_;
     bambi::ui::RegionHook region_;
     std::vector<bambi::ui::SceneRegion> regions_;
     bambi::ui::RegionLayer regionLayer_;

@@ -5,15 +5,17 @@
 #import <Network/Network.h>
 #import <Security/Security.h>
 #include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 static NSString* const kWebSocketGuid = @"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-/// This computer's address on the local network: the interface a packet to the outside would leave by. No
-/// packet is sent. Empty without a network.
-static NSString* lanAddress(void) {
+/// The address a packet to the outside would leave by: the default route's interface, which may be a VPN's
+/// tunnel. No packet is sent. Empty without a network.
+static NSString* routeAddress(void) {
     int s = socket(AF_INET, SOCK_DGRAM, 0);
     if (s < 0) return @"";
     struct sockaddr_in far = {0};
@@ -29,6 +31,36 @@ static NSString* lanAddress(void) {
     }
     close(s);
     return out;
+}
+
+/// This computer's address on the local network, where a phone on the same Wi-Fi reaches it: an IPv4 address on
+/// an interface that is up, broadcasts and is not point-to-point, so never a VPN's tunnel. The default route's
+/// address when it is one of these, else the first on an Ethernet or Wi-Fi port (en*), else the first of any;
+/// the default route's address when there is none. Empty without a network.
+static NSString* lanAddress(void) {
+    NSString* routed = routeAddress();
+    struct ifaddrs* all = NULL;
+    if (getifaddrs(&all) != 0) return routed;
+    NSString *firstEn = nil, *first = nil;
+    BOOL routedIsLan = NO;
+    for (struct ifaddrs* i = all; i != NULL; i = i->ifa_next) {
+        if (i->ifa_addr == NULL || i->ifa_addr->sa_family != AF_INET) continue;
+        const unsigned flags = i->ifa_flags;
+        if (!(flags & IFF_UP) || !(flags & IFF_RUNNING) || !(flags & IFF_BROADCAST) || (flags & IFF_LOOPBACK) ||
+            (flags & IFF_POINTOPOINT))
+            continue;
+        const struct in_addr a = ((const struct sockaddr_in*)i->ifa_addr)->sin_addr;
+        if ((ntohl(a.s_addr) & 0xffff0000u) == 0xa9fe0000u) continue;  // 169.254/16: no DHCP answer, unreachable
+        char buf[64];
+        if (inet_ntop(AF_INET, &a, buf, sizeof buf) == NULL) continue;
+        NSString* address = @(buf);
+        if ([address isEqualToString:routed]) routedIsLan = YES;
+        if (firstEn == nil && strncmp(i->ifa_name, "en", 2) == 0) firstEn = address;
+        if (first == nil) first = address;
+    }
+    freeifaddrs(all);
+    if (routedIsLan) return routed;
+    return firstEn ?: first ?: routed;
 }
 
 static BOOL run(NSArray<NSString*>* arguments, NSString** failure) {

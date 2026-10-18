@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <vector>
+
 #include "bambi/live/midi.hpp"
 #include "doctest.h"
-
-#include <vector>
 
 using namespace bambi::live;
 

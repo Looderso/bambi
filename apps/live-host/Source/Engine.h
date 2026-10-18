@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -77,13 +78,19 @@ public:
     /// sound a moment. False, with `status` saying why, when that fails. Message thread.
     bool setAudio(const live::AudioSettings& audio, juce::String& status);
     const live::AudioSettings& audio() const { return s_.audio; }
-    /// The routes again, from where the Decoders report their outputs now; the program swapped only when they
     /// Every plugin at another order: each let go of, its state kept, and the first Decoder loaded again at it, which
     /// stops the sound a moment; the field's are loaded with their states when it is set again. False, with `status`
     /// saying why, when the Decoder cannot be. Message thread.
     bool setOrder(int order, juce::String& status);
+    /// The routes again, from where the Decoders report their outputs now; the program swapped only when they
     /// changed. True when they did. Message thread.
     bool reroute();
+    /// Each Decoder told where this host plays its outputs, when that has changed: the devices' row, and the row
+    /// channels of each output. Message thread.
+    void tellDecoders();
+    /// The placements Decoders have asked for by a click on their own maps since the last call, each served once:
+    /// the output and the device channel it is to start on. Message thread.
+    std::vector<live::Placed> placementsAsked();
     /// Every Decoder as it plays now: where it reports its outputs -- a fresh Decoder's when it offers no
     /// interface -- and its latency.
     std::vector<live::PlayingDecoder> playing() const;
@@ -215,6 +222,8 @@ private:
         std::uint64_t id{0};
         std::shared_ptr<juce::AudioPluginInstance> plugin;
     };
+    std::map<std::uint64_t, std::pair<const void*, std::string>> told_;  ///< the plugin and what it was last told, by id
+    std::map<std::uint64_t, int> served_;  ///< the last click of each Decoder carried out
     std::vector<Dec> decoders_;  ///< in the order of their slots, after the inserts
     Json waitingDecoders_ = Json::object();  ///< restored Decoder states, by id, for Decoders not playing
     Json waiting_ = Json::object();         ///< restored Encoder states, by track, for tracks not yet on a pair

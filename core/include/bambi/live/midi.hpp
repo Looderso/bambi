@@ -62,7 +62,8 @@ private:
 class LeadMeter {
 public:
     explicit LeadMeter(double rate, float threshold = 0.03f) noexcept
-        : threshold_(threshold), quiet_(static_cast<std::int64_t>(0.010 * rate)),
+        : threshold_(threshold),
+          quiet_(static_cast<std::int64_t>(0.010 * rate)),
           window_(static_cast<std::int64_t>(0.300 * rate)) {}
 
     /// A note-on from Live arrived, at the host's sample `at`.

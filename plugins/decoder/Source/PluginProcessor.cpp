@@ -616,11 +616,16 @@ void BambiDecoderProcessor::playOutput(Output which, bool on) {
 
 bambi::DecoderReport BambiDecoderProcessor::remoteReport() const {
     const auto* level = hostParameter(bambi::decoderParam("output.level"));
-    return bambi::reportOf(decoderState(), getChannelCountOfBus(false, 0), level->convertFrom0to1(level->getValue()),
-                           notice_.toStdString());
+    auto report = bambi::reportOf(decoderState(), getChannelCountOfBus(false, 0),
+                                  level->convertFrom0to1(level->getValue()), notice_.toStdString());
+    report.placeSerial = placeSerial_.load();
+    report.placeOut = placeOut_.load();
+    report.placeAt = placeAt_.load();
+    return report;
 }
 
 void BambiDecoderProcessor::remoteRequest(const bambi::DecoderRequest& request) {
+    if (request.host) host_ = request.host;
     const bambi::DecoderState now = decoderState();
     bambi::Lit lit = bambi::grant(now, request, getChannelCountOfBus(false, 0));
     notice_ = juce::String::fromUTF8(lit.notice.c_str());
@@ -766,6 +771,21 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         diag_.headYaw.store(static_cast<float>(y), std::memory_order_relaxed);
         diag_.headPitch.store(static_cast<float>(pt), std::memory_order_relaxed);
         diag_.headRoll.store(static_cast<float>(r), std::memory_order_relaxed);
+        //  where the head looks and what plays, for every other instance's scene: a wait-free copy that linkTick publishes
+        bambi::LinkDynamic published;
+        const bambi::Vec3 gaze = bambi::apply(head, bambi::Vec3{1, 0, 0}),
+                          left = bambi::apply(head, bambi::Vec3{0, 1, 0});
+        published.headGazeX = static_cast<float>(gaze.x);
+        published.headGazeY = static_cast<float>(gaze.y);
+        published.headGazeZ = static_cast<float>(gaze.z);
+        published.headLeftX = static_cast<float>(left.x);
+        published.headLeftY = static_cast<float>(left.y);
+        published.headLeftZ = static_cast<float>(left.z);
+        published.playFlags = static_cast<std::uint8_t>((d.speakersPlay ? bambi::kLinkPlaySpeakers : 0) |
+                                                        (d.headphonesPlay ? bambi::kLinkPlayHeadphones : 0) |
+                                                        (d.throughLayout ? bambi::kLinkPlayThroughLayout : 0));
+        published.sampledUs = bambi::linkNowMicros();
+        link().publish(published);
         bambi::yprOf(scene, y, pt, r);
         diag_.sceneYaw.store(static_cast<float>(y), std::memory_order_relaxed);
         diag_.scenePitch.store(static_cast<float>(pt), std::memory_order_relaxed);
