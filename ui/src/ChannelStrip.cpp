@@ -35,7 +35,7 @@ ChannelStrip ChannelStrip::layout(float x, float top, float width, const std::ve
 
 float ChannelStrip::groupLeft(std::size_t group) const {
     return group < firstOfGroup_.size() && firstOfGroup_[group] < cells.size() ? cells[firstOfGroup_[group]].getX()
-                                                                             : 0.0f;
+                                                                               : 0.0f;
 }
 
 float ChannelStrip::paintRuler(juce::Graphics& g, juce::Colour ink) const {

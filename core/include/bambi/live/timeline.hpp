@@ -14,6 +14,21 @@ namespace bambi::live {
 
 inline constexpr int kBeatsPerBar = 4;
 
+/// What of the song the arrangement view shows: from `start`, `span` quarter notes wide.
+struct TimeView {
+    double start{0.0}, span{64.0};
+    friend bool operator==(const TimeView&, const TimeView&) = default;
+};
+inline constexpr double kNarrowestView = 4.0;  ///< a bar, as far as zooming in goes
+
+/// `view` held inside a song `length` quarter notes long: no wider than the song, no narrower than a bar, and never
+/// past either end.
+TimeView fitted(TimeView view, double length);
+/// `view` zoomed by `factor` -- above 1 wider, below 1 narrower -- about `anchor`, which stays where it is drawn.
+TimeView zoomed(const TimeView& view, double factor, double anchor, double length);
+/// `view` moved along the song by `beats`.
+TimeView scrolled(const TimeView& view, double beats, double length);
+
 /// A song position as Live shows it: "bar.beat.sixteenth", each counted from 1.
 std::string barsBeats(double ppq);
 

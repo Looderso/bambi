@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include <vector>
-
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <vector>
 
 namespace bambi::ui {
 

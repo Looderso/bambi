@@ -258,8 +258,8 @@ function fromhost(sent) {
     } else if (m.type === "command") {
         command(m);
     } else if (m.type === "refresh") {
-        //  read only while Live stands: a read while it plays could stall it
-        if (on && !Number(new LiveAPI("live_set").get("is_playing"))) sendArrangement();
+        //  playing or not, but only as often as the last read's cost allows
+        if (on && mayRead()) sendArrangement();
     }
 }
 
@@ -579,20 +579,27 @@ const relight = new Task(() => observeLightly());
 //  Every track's arrangement clips, the locators and the loop, read in one go and timed: what reading them holds Live
 //  up is sent along, measured rather than guessed. A group and a return have no clips of their own.
 const ARRANGEMENT_SETTLE_MS = 300;  // edits come in bursts: read once they stop
+const ARRANGEMENT_SHARE = 50;       // a read waits this many times its own last cost: Live's thread stays free
 let lastArrangement = "";
 let arrangementStale = false;
+let lastReadAt = 0, lastReadMs = 0;
 const arrangementLater = new Task(() => sendArrangement());
+
+//  Whether reading now keeps Live's own thread free enough: the last read's cost, fifty times over, has passed.
+function mayRead() {
+    return Date.now() - lastReadAt >= Math.max(ARRANGEMENT_SETTLE_MS, ARRANGEMENT_SHARE * lastReadMs);
+}
 
 function arrangementChanged() {
     arrangementStale = true;
-    if (Number(new LiveAPI("live_set").get("is_playing"))) return;  // read once Live stops
     arrangementLater.cancel();
-    arrangementLater.schedule(ARRANGEMENT_SETTLE_MS);
+    arrangementLater.schedule(Math.max(ARRANGEMENT_SETTLE_MS, ARRANGEMENT_SHARE * lastReadMs));
 }
 
 function sendArrangement() {
     arrangementStale = false;
     const began = Date.now();
+    lastReadAt = began;
     const set = new LiveAPI("live_set");
     const tracks = [], session = [];
     for (const n of identify()) {
@@ -627,6 +634,7 @@ function sendArrangement() {
                      loop: {on: Number(set.get("loop")) === 1, start: Number(set.get("loop_start")),
                             length: Number(set.get("loop_length"))},
                      readMs: Date.now() - began};
+    lastReadMs = message.readMs;
     const same = JSON.stringify([tracks, session, message.scenes, locators, message.loop]);
     if (same === lastArrangement) return;
     lastArrangement = same;
@@ -676,7 +684,7 @@ function watchSessionClip(track, key) {
             slot = -1;
         }
         sendSlot(clip !== null ? Number(clip.get("playing_position")) : 0);
-        arrangementChanged();  // a clip launched or stopped: the session's clips read again once Live stops
+        arrangementChanged();  // a clip launched or stopped: the session's clips read again
     }, track);
     playing.property = "playing_slot_index";
     clipWatchers.push(position, playing);
@@ -818,7 +826,7 @@ function observe() {
     watch(song, "current_song_time", transport);
     watch(song, "is_playing", v => {
         transport();
-        if (!Number(v[0]) && arrangementStale) arrangementLater.schedule(ARRANGEMENT_SETTLE_MS);
+        if (!Number(v[0]) && arrangementStale) arrangementChanged();
     });
     watch(song, "tempo", transport);
     //  the arrangement, sent again when it changes -- never while Live plays, where reading it could stall

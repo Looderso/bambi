@@ -10,6 +10,7 @@
 #include "bambi/live/field.hpp"
 #include "bambi/live/lanes.hpp"
 #include "bambi/live/protocol.hpp"
+#include "bambi/live/timeline.hpp"
 #include "bambi/live/transport.hpp"
 #include "bambi/patch/parameters.hpp"
 #include "bambi/ui/ConfirmBox.h"
@@ -38,7 +39,8 @@
  *  and scrolls past them; the grid scrolls up and down, and sideways with the wheel or shift. The song's time is the
  *  arrangement view's alone; Main has no clips.
  *
- *  The whole song fits the width. It changes the lanes, never the engine: `lanesChanged` says what they are now.
+ *  The arrangement view shows the whole song until zoomed: command and the wheel, or a pinch, zooms about the
+ *  pointer, down to a bar; a sideways swipe, or shift and the wheel, moves along the song. It changes the lanes, never the engine: `lanesChanged` says what they are now.
  *  Clicks on release; escape steps back out of "+ lane". Message thread; it redraws itself while Live plays.
  */
 namespace bambi::livehost {
@@ -59,6 +61,11 @@ public:
     void show(Shown shown);
     /// A track's session clip as Live reported it, now: its playhead runs on from here.
     void slotPlayed(const live::SlotPlay& report);
+    /// What of the song the arrangement view shows, as zooming and scrolling leave it. For checks.
+    void showTime(live::TimeView view) {
+        time_ = live::fitted(view, length_);
+        repaint();
+    }
     /// The session view, or the arrangement's, as the band's switch chooses. For checks.
     void showSession(bool on) {
         view_ = on ? View::Session : View::Arrangement;
@@ -76,6 +83,7 @@ public:
     void resized() override;
     bool keyPressed(const juce::KeyPress& key) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
+    void mouseMagnify(const juce::MouseEvent& e, float scale) override;
 
 private:
     //  An instance a row holds, a lane's target.
@@ -111,7 +119,8 @@ private:
     void closeMenu();  ///< "+ lane" closed, from whatever level it had reached
 
     Shown s_;
-    double length_{64.0};  ///< quarter notes the width shows
+    double length_{64.0};  ///< quarter notes of song there are to show
+    live::TimeView time_{0.0, 1.0e9};  ///< what of it the arrangement view shows: the whole song until zoomed
     float left_{0.0f}, width_{1.0f};
     bool wasPlaying_{false};
     int sinceRefresh_{0};  ///< timer ticks since the arrangement was last asked for

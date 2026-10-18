@@ -197,7 +197,8 @@ struct CreateReturn {
 };
 
 /// The arrangement and the session's clips, read again and sent when they changed: the host asks while its timeline
-/// is open, since Live does not report every change. The device reads only while Live stands.
+/// is open, since Live does not report every change. The device reads no more often than fifty times the last
+/// read's cost, so Live's own thread stays free while it plays.
 struct Refresh {
     friend bool operator==(const Refresh&, const Refresh&) = default;
 };

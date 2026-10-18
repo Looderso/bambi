@@ -1090,7 +1090,18 @@ int timelineHolds() {
         page.clickAt({tl::tree + static_cast<float>(ppq / 160.0) * span, 60.0f});
         return lastLocate;
     };
-    const bool placed = std::abs(locateUnder(51.2) - 51.0) < 1e-9 && std::abs(locateUnder(32.3) - 32.0) < 1e-9;
+    bool placed = std::abs(locateUnder(51.2) - 51.0) < 1e-9 && std::abs(locateUnder(32.3) - 32.0) < 1e-9;
+    //  Catches: a zoomed view drawn but not clicked through -- a press locating where the whole song would have it
+    page.showSession(false);
+    page.showTime({64.0, 32.0});
+    {
+        juce::Graphics g(image);
+        page.paint(g);
+    }
+    lastLocate = -1.0;
+    page.clickAt({tl::tree + static_cast<float>((81.2 - 64.0) / 32.0) * span, 60.0f});
+    placed = placed && std::abs(lastLocate - 81.0) < 1e-9;
+    page.showTime({0.0, 1.0e9});
     //  Catches: a clip lane in the session view that takes no point
     const bool ok = commands > 0 && locates > 0 && placed && edits > 0 && sessionEdits > 0;
     std::printf("  of the lane edits, %d in the session view\n", sessionEdits);

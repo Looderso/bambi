@@ -6,6 +6,24 @@
 
 namespace bambi::live {
 
+TimeView fitted(TimeView view, double length) {
+    const double longest = std::max(kNarrowestView, length);
+    view.span = std::clamp(view.span, std::min(kNarrowestView, longest), longest);
+    view.start = std::clamp(view.start, 0.0, std::max(0.0, length - view.span));
+    return view;
+}
+
+TimeView zoomed(const TimeView& view, double factor, double anchor, double length) {
+    const double span = view.span * factor;
+    const double at = view.span > 0.0 ? (anchor - view.start) / view.span : 0.0;  // where the anchor is drawn, 0..1
+    const TimeView sized = fitted({view.start, span}, length);
+    return fitted({anchor - at * sized.span, sized.span}, length);
+}
+
+TimeView scrolled(const TimeView& view, double beats, double length) {
+    return fitted({view.start + beats, view.span}, length);
+}
+
 std::string barsBeats(double ppq) {
     const double at = std::max(0.0, ppq);
     const auto bar = static_cast<long long>(at / kBeatsPerBar);

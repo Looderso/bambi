@@ -58,3 +58,18 @@ TEST_CASE("the grid follows how wide a beat is drawn") {
     CHECK(gridFor(20.0) == 1.0);
     CHECK(gridFor(60.0) == 0.25);
 }
+
+TEST_CASE("the arrangement view zooms about the pointer, scrolls along the song, and never leaves it") {
+    //  Catches: the point under the pointer moving as it zooms, a view wider than the song or narrower than a bar,
+    //  a scroll past either end.
+    const double song = 256.0;
+    const TimeView whole{0.0, song};
+    const TimeView in = zoomed(whole, 0.5, 64.0, song);
+    CHECK(in.span == 128.0);
+    CHECK(in.start == 32.0);  // 64 was a quarter of the way along, and still is
+    CHECK(zoomed(in, 100.0, 64.0, song) == whole);
+    CHECK(zoomed(whole, 0.001, 10.0, song).span == kNarrowestView);
+    CHECK(scrolled(in, 500.0, song).start == song - 128.0);
+    CHECK(scrolled(in, -500.0, song).start == 0.0);
+    CHECK(fitted({10.0, 999.0}, song) == whole);
+}
