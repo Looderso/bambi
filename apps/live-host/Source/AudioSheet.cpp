@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "bambi/ui/ChannelStrip.h"
 #include "bambi/ui/Draw.h"
 #include "bambi/ui/Widgets.h"
 
@@ -415,7 +416,7 @@ float AudioSheet::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
     const juce::String what = arming_ ? "a click puts a copy of " + nameOf(*arming_) + " there"
                                       : "the outputs of every device" + kSeparator + "a click puts " + nameOf(chosen_) +
                                             " there";
-    const float mapHeight = sh::line + sh::noteLine + sh::cell;
+    const float mapHeight = sh::line + sh::noteLine + ui::theme::channelStrip::height + ui::theme::channelStrip::rulerLine;
     const float top = std::max(y, page.getBottom() - mapHeight);
     ui::text(g, what, ui::labelFont(), colour::label, {page.getX(), top, page.getWidth(), sh::line},
              juce::Justification::centredLeft);
@@ -445,21 +446,22 @@ float AudioSheet::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
 
 float AudioSheet::map(juce::Graphics& g, float x, float top, float width, const live::Row& row,
                       const std::vector<Block>& blocks, std::function<void(int)> place) {
-    const int n = row.width();
-    const auto groups = static_cast<float>(std::max<std::size_t>(row.devices.size(), 1) - 1);
-    const float cell =
-        std::min(sh::cell, (width - groups * sh::groupGap) / static_cast<float>(std::max(n, 1)) - sh::cellGap);
+    std::vector<int> groups;
+    for (const live::AudioDevice& d : row.devices)
+        if (const int count = row.inputs ? d.ins : d.outs; count > 0) groups.push_back(count);
     const float labelLine = sh::noteLine;
-    float at = x;
+    const auto strip = ui::ChannelStrip::layout(x, top + labelLine, width, groups);
     int c = 1;
+    std::size_t group = 0;
     for (const live::AudioDevice& d : row.devices) {
         const int count = row.inputs ? d.ins : d.outs;
         if (count == 0) continue;
-        ui::text(g, juce::String(d.name), ui::smallFont(), colour::label,
-                 {at, top, static_cast<float>(count) * (cell + sh::cellGap), labelLine},
+        const float left = strip.groupLeft(group++);
+        const auto& last = strip.cells[static_cast<std::size_t>(c - 1 + count - 1)];
+        ui::text(g, juce::String(d.name), ui::smallFont(), colour::label, {left, top, last.getRight() - left, labelLine},
                  juce::Justification::centredLeft);
         for (int i = 0; i < count; ++i, ++c) {
-            const juce::Rectangle<float> box{at, top + labelLine, cell, cell};
+            const juce::Rectangle<float> box = strip.cells[static_cast<std::size_t>(c - 1)];
             std::vector<std::pair<const Block*, std::size_t>> here;
             for (const Block& b : blocks)
                 for (std::size_t k = 0; k < b.channels.size(); ++k)
@@ -477,20 +479,20 @@ float AudioSheet::map(juce::Graphics& g, float x, float top, float width, const 
                                        : chosen          ? colour::chosen
                                                          : top1->ink;
             ui::drawFrame(g, box, frame, ui::theme::stroke::rule, clash || (top1 != nullptr && top1->host));
-            const juce::String label = clash             ? juce::String::fromUTF8("\xc3\x97") + juce::String(here.size())
-                                       : top1 == nullptr ? juce::String(i + 1)
-                                       : here.front().second < top1->labels.size()
-                                           ? top1->labels[here.front().second]
-                                           : juce::String();
-            ui::text(g, label, ui::smallFont(),
-                     chosen ? colour::textInverse : top1 == nullptr ? colour::inactive : colour::text, box,
-                     juce::Justification::centred);
-            addClickArea(box, [place, c] { place(c); });
-            at += cell + sh::cellGap;
+            if (strip.numbered) {
+                const juce::String label = clash             ? juce::String::fromUTF8("\xc3\x97") + juce::String(here.size())
+                                           : top1 == nullptr ? juce::String(i + 1)
+                                           : here.front().second < top1->labels.size()
+                                               ? top1->labels[here.front().second]
+                                               : juce::String();
+                ui::text(g, label, ui::smallFont(),
+                         chosen ? colour::textInverse : top1 == nullptr ? colour::inactive : colour::text, box,
+                         juce::Justification::centred);
+            }
+            addClickArea(box.expanded(ui::theme::channelStrip::cellGap / 2.0f), [place, c] { place(c); });
         }
-        at += sh::groupGap - sh::cellGap;
     }
-    return top + labelLine + cell;
+    return strip.paintRuler(g, colour::inactive);
 }
 
 // ---- inputs -------------------------------------------------------------------------------------
@@ -602,7 +604,7 @@ float AudioSheet::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
         b.ink = colour::in;
         blocks.push_back(std::move(b));
     }
-    const float mapHeight = sh::line + sh::noteLine + sh::cell;
+    const float mapHeight = sh::line + sh::noteLine + ui::theme::channelStrip::height + ui::theme::channelStrip::rulerLine;
     const float top = std::max(y, page.getBottom() - mapHeight);
     ui::text(g, "the inputs of every device" + kSeparator + "a click puts " + juce::String(chosen->name) + " there",
              ui::labelFont(), colour::label, {page.getX(), top, page.getWidth(), sh::line},

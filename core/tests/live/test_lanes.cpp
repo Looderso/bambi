@@ -49,9 +49,9 @@ TEST_CASE("a press finds the point near it in time and value, the nearest in tim
 
 TEST_CASE("the lanes read back as written, and one the set cannot read is left out") {
     //  Catches: a field lost between the set and the host, the instance read as another, a broken lane taken.
-    const std::vector<Lane> lanes{{1, Instance::Encoder, 12, "source.azimuth", {{0.0, -30.0}, {16.0, 45.0}}},
-                                  {2, Instance::Insert, 7, "mix", {}, 12, 3},
-                                  {3, Instance::Decoder, 1, "output.level", {{4.0, -6.0}}}};
+    const std::vector<Lane> lanes{{1, Instance::Encoder, 12, "source.azimuth", {{0.0, -30.0}, {16.0, 45.0}}, 0, -1, {}},
+                                  {2, Instance::Insert, 7, "mix", {}, 12, 3, "chords"},
+                                  {3, Instance::Decoder, 1, "output.level", {{4.0, -6.0}}, 0, -1, {}}};
     CHECK(lanesFrom(Json::parse(toJson(lanes).dump(0))) == lanes);
     const auto read = lanesFrom(Json::parse(R"([{"id": 4, "instance": "mixer", "owner": 1, "param": "x"},
                                                 {"id": 5, "instance": "encoder", "owner": 1, "param": ""}])"));
@@ -68,4 +68,25 @@ TEST_CASE("a clip runs on from where Live said it was, looping in its loop, held
     CHECK(clipPosition(looping, -1.0) == 3.0);
     const SlotPlay once{1, 0, 3.0, 0.0, 5.0, false};
     CHECK(clipPosition(once, 4.0) == 5.0);
+}
+
+TEST_CASE("a clip lane follows its clip when the scenes move, and keeps it when it is renamed where it stands") {
+    //  Catches: a lane left on a slot that now holds another clip, moved to one of two clips of its name, or let go
+    //  of a clip that was only renamed.
+    Arrangement a;
+    a.session = {
+        {3, {{0, "intro", "#000000", 0.0, 4.0, true, false}, {2, "chords", "#000000", 0.0, 8.0, true, false}}}};
+    std::vector<Lane> lanes{{1, Instance::Encoder, 3, "x", {}, 3, 0, "chords"},  // its scene moved down two
+                            {2, Instance::Encoder, 3, "x", {}, 3, 0, "intro"},   // where it was
+                            {3, Instance::Encoder, 3, "x", {}, 3, 2, "verse"}};  // renamed to "chords"
+    CHECK(followClips(lanes, a));
+    CHECK(lanes[0].slot == 2);
+    CHECK(lanes[1].slot == 0);
+    CHECK(lanes[2].slot == 2);
+    CHECK(lanes[2].clipName == "chords");
+    CHECK_FALSE(followClips(lanes, a));
+    a.session[0].clips.push_back({3, "chords", "#000000", 0.0, 8.0, true, false});
+    lanes[0].slot = 0;  // two clips of its name now: it stays
+    followClips(lanes, a);
+    CHECK(lanes[0].slot == 0);
 }

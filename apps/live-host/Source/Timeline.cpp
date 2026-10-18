@@ -251,13 +251,20 @@ void TimelinePage::paint(juce::Graphics& g) {
             //  its clips, as Live has them: read-only
             const auto clips = std::find_if(s_.arrangement.tracks.begin(), s_.arrangement.tracks.end(),
                                             [&](const live::TrackClips& t) { return t.id == n.id; });
+            //  a track the session has: its arrangement waits for Back to Arrangement, as in Live
+            const auto seen = playing_.find(n.id);
+            const bool taken = seen != playing_.end() && (seen->second.report.overrides || seen->second.report.slot >= 0);
             if (clips != s_.arrangement.tracks.end())
                 for (const live::Clip& c : clips->clips) {
                     const float x0 = xOf(c.start), x1 = xOf(c.end);
                     const juce::Rectangle<float> block{x0, y + tl::clipInset, std::max(1.0f, x1 - x0 - 1.0f),
                                                        tl::row - 2.0f * tl::clipInset};
-                    clipBlock(g, block, c.colour, juce::String(c.name), true);
+                    //  faint, without its bar or name, while the session has the track
+                    clipBlock(g, block, c.colour, juce::String(c.name), !taken);
                 }
+            if (taken)
+                ui::text(g, "the session's" + ui::kSeparator + "back to arrangement in Live", ui::smallFont(),
+                         colour::label, {left_ + tl::gap, y, width_, tl::row}, juce::Justification::bottomLeft);
             y += tl::row;
             lanesOf(n.id);
         }
@@ -692,11 +699,12 @@ void TimelinePage::menu(juce::Graphics& g) {
                 acts.push_back([this, o, key = std::string(m[i].key)] {
                     std::uint64_t next = 1;
                     for (const live::Lane& l : s_.lanes) next = std::max(next, l.id + 1);
-                    live::Lane lane{next, o.instance, o.owner, key, {}};
+                    live::Lane lane{next, o.instance, o.owner, key, {}, 0, -1, {}};  // a song lane until a clip is chosen
                     if (view_ == View::Session)
                         if (const live::SessionClip* clip = chosenClip(*chosen_)) {
                             lane.clipTrack = *chosen_;
                             lane.slot = clip->slot;
+                            lane.clipName = clip->name;
                         }
                     s_.lanes.push_back(std::move(lane));
                     closeMenu();

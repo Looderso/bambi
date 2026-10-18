@@ -79,6 +79,37 @@ double clipPosition(const SlotPlay& at, double elapsed) {
     return at.loopStart + std::fmod(p - at.loopStart, length);
 }
 
+bool followClips(std::vector<Lane>& lanes, const Arrangement& a) {
+    bool changed = false;
+    for (Lane& l : lanes) {
+        if (!l.clip()) continue;
+        const auto track =
+            std::find_if(a.session.begin(), a.session.end(), [&](const TrackSlots& t) { return t.id == l.clipTrack; });
+        if (track == a.session.end()) continue;
+        const SessionClip* here = nullptr;
+        std::vector<const SessionClip*> named;
+        for (const SessionClip& c : track->clips) {
+            if (c.slot == l.slot) here = &c;
+            if (!l.clipName.empty() && c.name == l.clipName) named.push_back(&c);
+        }
+        if (here != nullptr && (l.clipName.empty() || here->name == l.clipName)) {
+            if (l.clipName.empty() && !here->name.empty()) {  // named only now
+                l.clipName = here->name;
+                changed = true;
+            }
+            continue;
+        }
+        if (named.size() == 1) {  // moved with its scene
+            l.slot = named.front()->slot;
+            changed = true;
+        } else if (named.empty() && here != nullptr) {  // renamed where it stands
+            l.clipName = here->name;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 Json toJson(const std::vector<Lane>& lanes) {
     Json out = Json::array();
     for (const Lane& l : lanes) {
@@ -98,6 +129,7 @@ Json toJson(const std::vector<Lane>& lanes) {
         if (l.clip()) {
             o.set("clipTrack", Json(static_cast<double>(l.clipTrack)));
             o.set("slot", Json(l.slot));
+            o.set("clipName", Json(l.clipName));
         }
         out.push(std::move(o));
     }
@@ -120,11 +152,15 @@ std::vector<Lane> lanesFrom(const Json& json) {
                *kind,
                static_cast<std::uint64_t>(std::llround(owner->numberOr(0.0))),
                std::string(param->stringOr("")),
+               {},
+               0,
+               -1,
                {}};
         if (const Json* slot = o.find("slot"); slot != nullptr && slot->numberOr(-1.0) >= 0.0) {
             const Json* track = o.find("clipTrack");
             l.clipTrack = track != nullptr ? static_cast<TrackId>(std::llround(track->numberOr(0.0))) : 0;
             l.slot = l.clipTrack != 0 ? static_cast<int>(std::llround(slot->numberOr(-1.0))) : -1;
+            if (const Json* name = o.find("clipName")) l.clipName = std::string(name->stringOr(""));
         }
         if (const Json* points = o.find("points"); points != nullptr && points->isArray())
             for (const Json& p : points->items())

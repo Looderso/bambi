@@ -224,6 +224,7 @@ struct Writer {
         o.set("loopStart", Json(m.loopStart));
         o.set("loopEnd", Json(m.loopEnd));
         o.set("looping", Json(m.looping));
+        o.set("overrides", Json(m.overrides));
         return o;
     }
     Json operator()(const Arrangement& m) const {
@@ -368,7 +369,8 @@ std::optional<Message> parse(std::string_view line, std::string* error) {
                         number(o, "position"),
                         number(o, "loopStart"),
                         number(o, "loopEnd"),
-                        flag(o, "looping")};
+                        flag(o, "looping"),
+                        flag(o, "overrides")};
     if (type == "arrangement") {
         Arrangement a;
         if (const Json* tracks = member(o, "tracks"); tracks != nullptr && tracks->isArray())

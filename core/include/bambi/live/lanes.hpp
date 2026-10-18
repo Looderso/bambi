@@ -37,6 +37,7 @@ struct Lane {
     /// the clip, from its start, and it loops with it. A song lane: none, -1.
     TrackId clipTrack{0};
     int slot{-1};
+    std::string clipName;  ///< the clip's name, to find it again when the scenes move
     bool clip() const { return slot >= 0; }
     friend bool operator==(const Lane&, const Lane&) = default;
 };
@@ -56,6 +57,12 @@ std::optional<std::size_t> pointNear(const Lane& lane, double ppq, double value,
 /// Where a session clip is `elapsed` quarter notes after Live said it was at `at`: on from there, back to the loop's
 /// start at its end while it loops, held at its end when it does not.
 double clipPosition(const SlotPlay& at, double elapsed);
+
+/// Every clip lane onto its clip again, as the session is now: a lane whose slot holds another clip moves to the one
+/// slot on its track that holds a clip of its clip's name -- the scenes were moved -- and a lane whose slot still
+/// holds a clip and whose name is nowhere else takes that clip's name -- it was renamed in place. True when any
+/// lane changed.
+bool followClips(std::vector<Lane>& lanes, const Arrangement& a);
 
 /// The lanes as the set keeps them, and back; a lane unreadable is left out.
 Json toJson(const std::vector<Lane>& lanes);

@@ -25,6 +25,11 @@ int ClipClock::playing(TrackId track) const noexcept {
     return e != nullptr ? e->report.slot : -1;
 }
 
+bool ClipClock::overridden(TrackId track) const noexcept {
+    const Entry* e = find(track);
+    return e != nullptr && (e->report.overrides || e->report.slot >= 0);
+}
+
 std::optional<double> ClipClock::position(TrackId track, int slot, std::int64_t sample, double bpm,
                                           double sampleRate) const noexcept {
     const Entry* e = find(track);

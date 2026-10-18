@@ -503,6 +503,19 @@ namespace rail
     inline constexpr int   problemLines = 8;  ///< what went wrong, wrapped this far at most
 } // namespace rail
 
+// ---- a run of channels in one row: the live host's channel map, the decoder's bus ------------------
+namespace channelStrip
+{
+    inline constexpr float cellGap   = 1.0f;    ///< between two cells of one group
+    inline constexpr float groupGap  = 4.0f;    ///< between two groups
+    inline constexpr float height    = 22.0f;   ///< a cell, however narrow
+    inline constexpr float maxCell   = 22.0f;   ///< the widest a cell grows when there is room to spare
+    inline constexpr float numberPad = 3.0f;    ///< room either side of a number inside a cell
+    inline constexpr float tickPad   = 6.0f;    ///< the least room between two numbers on the ruler
+    inline constexpr float rulerLine = 14.0f;   ///< the ruler under cells too narrow for a number
+    inline constexpr int   widest    = 3;       ///< digits a number may have: the 64th channel and past
+}
+
 // ---- the live host's timeline: Live's arrangement, as guidance --------------------------------
 namespace timeline
 {

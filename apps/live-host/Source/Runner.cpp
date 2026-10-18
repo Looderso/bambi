@@ -176,7 +176,7 @@ void Runner::drive(const live::Playhead& at) noexcept {
             //  a clip runs on only while Live plays; stopped, it stands where Live last said
             if (clips_ != nullptr)
                 where = clips_->position(d.clipTrack, d.slot, sample_, at.playing ? at.bpm : 0.0, setup_.rate);
-        } else if (d.heldBy == 0 || clips_ == nullptr || clips_->playing(d.heldBy) < 0) {
+        } else if (d.heldBy == 0 || clips_ == nullptr || !clips_->overridden(d.heldBy)) {
             where = at.ppq;
         }
         if (!where) continue;

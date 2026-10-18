@@ -945,6 +945,45 @@ double clipLaneStands(int block) {
     return worst;
 }
 
+//  A song lane on track 7, Live playing: held while the session has the track -- its clip stopped, Back to
+//  Arrangement not yet pressed -- then driven once the arrangement has it back. Whether it stayed, and whether it
+//  moved after.
+std::pair<bool, bool> songLaneWaitsForArrangement() {
+    Pass a;
+    Knob knob;
+    PassOut out;
+    live::Plan p;
+    live::FieldNode n;
+    n.track = 7;
+    n.input = 0;
+    n.encoder = 0;
+    n.inserts = {1};
+    p.nodes = {n};
+    p.slots = {{0, -1}, {0, -1}, {0, -1}};
+    p.decoders = {2};
+    const auto compiled = live::compile(p);
+    live::TransportProjector clock(clockSettings());
+    live::ClipClock clips;
+    livehost::Runner runner;
+    juce::String why;
+    if (!compiled ||
+        !runner.prepare(*compiled, {&a, &knob, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why))
+        return {false, false};
+    runner.setClock(&clock);
+    runner.setClips(&clips);
+    clock.receive({true, 0.0, 120.0}, 0);
+    clips.receive({7, -1, 0.0, 0.0, 0.0, false, true}, 0);  // its clip stopped; the session still has it
+    runner.setAutomation({{knob.depth, {{0.0, 0.0}, {8.0, 1.0}}, 0, -1, 7}}, {});
+    juce::AudioBuffer<float> row(4, kDeviceBlock), part(2, kDeviceBlock);
+    row.clear();
+    for (int at = 0; at < 48000; at += 512) runner.process(row, part, 512);
+    const bool stayed = std::abs(knob.depth->get() - 0.5f) < 1e-6f;
+    clips.receive({7, -1, 0.0, 0.0, 0.0, false, false}, 48000);  // Back to Arrangement
+    for (int at = 0; at < 4800; at += 512) runner.process(row, part, 512);
+    const bool moved = std::abs(knob.depth->get() - 0.5f) > 1e-3f;
+    return {stayed, moved};
+}
+
 //  Every installed plugin's parameters as the host finds them: at their manifest's places, under its names. A
 //  lane names a parameter by key and is driven at the manifest's place; one listed otherwise would move another.
 int parametersWhereNamed() {
@@ -1020,10 +1059,10 @@ int timelineHolds() {
     live::Shape shape;
     shape.chains = {{2, {{7, live::Effect::Echo, 0}}}};
     const live::Field field = live::layOut(tree, shape);
-    const std::vector<live::Lane> lanes{{1, live::Instance::Encoder, 2, "transform.yaw", {{0.0, -30.0}, {64.0, 30.0}}},
-                                        {4, live::Instance::Encoder, 2, "transform.pitch", {{0.0, 0.0}}, 2, 0},
-                                        {2, live::Instance::Insert, 7, "output.wet", {}},
-                                        {3, live::Instance::Decoder, live::kFirstDecoder, "output.level", {}}};
+    const std::vector<live::Lane> lanes{{1, live::Instance::Encoder, 2, "transform.yaw", {{0.0, -30.0}, {64.0, 30.0}}, 0, -1, {}},
+                                        {4, live::Instance::Encoder, 2, "transform.pitch", {{0.0, 0.0}}, 2, 0, {}},
+                                        {2, live::Instance::Insert, 7, "output.wet", {}, 0, -1, {}},
+                                        {3, live::Instance::Decoder, live::kFirstDecoder, "output.level", {}, 0, -1, {}}};
     int edits = 0;
     page.lanesChanged = [&](std::vector<live::Lane>) { ++edits; };
     page.show({tree, a, shape, field, lanes});
@@ -1591,6 +1630,15 @@ int main() {
         failed += ok ? 0 : 1;
         std::printf("  a clip lane while Live stands, block %4d: off where the clip stands by %.2g %s\n", block, off,
                     ok ? "" : "  FAIL");
+    }
+
+    {
+        //  Catches: a song lane let go the moment its track's clip stops, or held after Back to Arrangement.
+        const auto [stayed, moved] = songLaneWaitsForArrangement();
+        const bool ok = stayed && moved;
+        failed += ok ? 0 : 1;
+        std::printf("  a song lane while the session has its track: %s; after Back to Arrangement: %s %s\n",
+                    stayed ? "held" : "driven", moved ? "driven" : "held", ok ? "" : "  FAIL");
     }
 
     std::printf("the timeline\n");

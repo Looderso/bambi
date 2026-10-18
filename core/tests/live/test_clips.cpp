@@ -21,3 +21,15 @@ TEST_CASE("a track's clip runs on from its last report at the tempo, only while 
     CHECK_FALSE(clock.position(1, 2, 60000, 120.0, 48000.0).has_value());
     CHECK(clock.playing(7) == 0);
 }
+
+TEST_CASE("a track stays the session's after its clip stops, until Back to Arrangement gives it back") {
+    //  Catches: song lanes let go the moment a clip stops, or held after Back to Arrangement.
+    ClipClock clock;
+    CHECK_FALSE(clock.overridden(1));
+    clock.receive({1, 0, 0.0, 0.0, 4.0, true, true}, 0);
+    CHECK(clock.overridden(1));
+    clock.receive({1, -1, 0.0, 0.0, 0.0, false, true}, 100);
+    CHECK(clock.overridden(1));
+    clock.receive({1, -1, 0.0, 0.0, 0.0, false, false}, 200);
+    CHECK_FALSE(clock.overridden(1));
+}

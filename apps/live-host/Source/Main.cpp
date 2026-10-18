@@ -226,6 +226,8 @@ private:
         labels.push_back("timeline");
         views_.push_back(View::Timeline);
         if (view_ == View::Timeline) selected = static_cast<int>(views_.size()) - 1;
+        //  a clip lane after its clip, wherever the scenes have moved it
+        if (bambi::live::followClips(lanes_, session.arrangement())) engine_.setLanes(lanes_);
         timeline_.show({session.tree(), session.arrangement(), session.shape(), session.field(), lanes_});
         //  the audio sheet after another gap: over the window, never a view of its own
         labels.push_back({});

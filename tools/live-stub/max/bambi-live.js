@@ -639,23 +639,33 @@ function sendArrangement() {
 //  Each track's session clip: which slot plays, and where in the clip Live is -- every report Live gives, sent on,
 //  so the host can learn how often a clip's position arrives before it projects one between them.
 let clipWatchers = [];
+//  Each watched track's way back to the arrangement, for Back to Arrangement.
+let sessionTracks = [];
 
+//  Whether the session has a track: from a clip launched on it, or its stop button pressed, until Back to
+//  Arrangement -- Live keeps the arrangement silent on it till then, whether a clip still plays or not.
 function watchSessionClip(track, key) {
-    let slot = -1, clip = null;
+    let slot = -1, clip = null, taken = false;
     const sendSlot = position => {
         if (slot < 0 || clip === null) {
-            send({type: "slot", id: key, slot: -1});
+            send({type: "slot", id: key, slot: -1, overrides: taken});
             return;
         }
         send({type: "slot", id: key, slot: slot, position: position, loopStart: Number(clip.get("loop_start")),
-              loopEnd: Number(clip.get("loop_end")), looping: Number(clip.get("looping")) === 1});
+              loopEnd: Number(clip.get("loop_end")), looping: Number(clip.get("looping")) === 1, overrides: taken});
     };
+    sessionTracks.push(() => {
+        if (!taken) return;
+        taken = false;
+        sendSlot(clip !== null ? Number(clip.get("playing_position")) : 0);
+    });
     const position = new LiveAPI(args => {
         if (args[0] === "playing_position" && slot >= 0) sendSlot(Number(args[1]));
     }, track);
     const playing = new LiveAPI(args => {
         if (args[0] !== "playing_slot_index") return;
         slot = Number(args[1]);
+        if (slot >= 0 || slot === -2) taken = true;  // a clip launched, or the track's stop button
         clip = null;
         position.property = "";
         if (slot >= 0 && Number(new LiveAPI(track + " clip_slots " + slot).get("has_clip")) === 1) {
@@ -813,6 +823,10 @@ function observe() {
     watch(song, "tempo", transport);
     //  the arrangement, sent again when it changes -- never while Live plays, where reading it could stall
     for (const prop of ["cue_points", "loop", "loop_start", "loop_length", "scenes"]) watch(song, prop, arrangementChanged);
+    //  Back to Arrangement: every track the session had goes back to the arrangement
+    watch(song, "back_to_arranger", v => {
+        if (!Number(v[0])) for (const back of sessionTracks) back();
+    });
     //  names, colours and the track list come with the tree, which the light observers' refresh sends
 
     for (const n of all) {
@@ -844,6 +858,7 @@ function stopObserving() {
     observers = [];
     for (const o of clipWatchers) o.property = "";
     clipWatchers = [];
+    sessionTracks = [];
 }
 
 // ---- routing ------------------------------------------------------------------------------------------------

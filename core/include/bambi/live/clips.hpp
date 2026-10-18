@@ -24,6 +24,9 @@ public:
 
     /// The slot a track plays, or -1.
     int playing(TrackId track) const noexcept;
+    /// Whether the session has the track rather than the arrangement: a clip plays on it, or one did since Back to
+    /// Arrangement.
+    bool overridden(TrackId track) const noexcept;
 
     /// Where in its clip `track` is at host sample `sample`, when it plays `slot`; none else.
     std::optional<double> position(TrackId track, int slot, std::int64_t sample, double bpm,

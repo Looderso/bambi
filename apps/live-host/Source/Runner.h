@@ -79,7 +79,7 @@ public:
         std::vector<live::LanePoint> points;
         live::TrackId clipTrack{0};  ///< a clip lane: the track whose clip it follows
         int slot{-1};                ///< and that clip's slot; -1 a song lane
-        live::TrackId heldBy{0};     ///< a song lane: the track whose session clip, while one plays, holds it
+        live::TrackId heldBy{0};     ///< a song lane: the track whose session, while it has the track, holds it
     };
 
     Runner() { automation_.begin(std::make_unique<Automation>()); }

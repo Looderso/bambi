@@ -107,6 +107,9 @@ struct SlotPlay {
     double position{0.0};  ///< where in the clip Live is
     double loopStart{0.0}, loopEnd{0.0};
     bool looping{false};
+    /// The session has the track, not the arrangement: from a clip launched on it until Back to Arrangement,
+    /// whether a clip still plays or not.
+    bool overrides{false};
     friend bool operator==(const SlotPlay&, const SlotPlay&) = default;
 };
 
