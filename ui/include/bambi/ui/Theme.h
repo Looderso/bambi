@@ -210,6 +210,8 @@ namespace stroke
     inline constexpr float foreignRegionDash[2] = { 1.0f, 3.0f };
     inline constexpr float unplacedDash[2] = { 3.0f, 3.0f };   ///< the probe's ring before it is placed
     inline constexpr float outsideDash[2] = { 3.0f, 3.0f };    ///< the live host's routing page: what Live plays, outside the field
+    inline constexpr float takesDash[2] = { 2.0f, 2.0f };      ///< the ring round what an armed pick may take
+    inline constexpr float litWire      = 2.0f;   ///< a wire the chosen node reaches along
     inline constexpr float toggle       = 1.3f;   ///< an unset toggle square's outline
     inline constexpr float glyph        = 1.3f;   ///< pictograms: 0/45/90 degrees only, one weight, no fills
     inline constexpr float underline    = 2.0f;   ///< a modulated parameter's label
@@ -550,22 +552,27 @@ namespace timeline
 // ---- the live host's routing page: Live's tracks, the field, Main ------------------------------
 namespace routing
 {
-    inline constexpr float row        = 40.0f;   ///< a node and, under it, its sends
-    inline constexpr float boxWidth   = 132.0f;
+    inline constexpr float row        = 26.0f;   ///< a node's line
     inline constexpr float boxHeight  = 22.0f;
-    inline constexpr float mainWidth  = 70.0f;
-    inline constexpr float decoderWidth = 96.0f;   ///< room for "decoder 2" and its cross
+    inline constexpr float indent     = 14.0f;   ///< a line inside a group, per depth
+    inline constexpr float nameWidth  = 104.0f;  ///< a node's name, before its marker and chain
+    inline constexpr float stripe     = 3.0f;    ///< Live's colour, down a node's left edge
     inline constexpr float left       = 16.0f;   ///< the page's inset, either side
     inline constexpr float top        = 14.0f;   ///< from the band to the first row
-    inline constexpr float gutter      = 40.0f;  ///< between a column's widest node and the next column: the connectors
-    inline constexpr float gutterLeast = 16.0f;  ///< as narrow as it gets for a deep set; never a sideways scroll
-    inline constexpr float chainRoom  = 200.0f;  ///< kept right of Main for its chain and the decoder
-    inline constexpr float control    = 16.0f;   ///< a switch's, a chip's, a button's height
+    inline constexpr float fieldColumn   = 300.0f;  ///< the returns and Main
+    inline constexpr float decoderColumn = 190.0f;
+    inline constexpr float wireGutter    = 72.0f;   ///< between the columns, where the wires run
+    inline constexpr float control    = 16.0f;   ///< a marker's, a chip's, a button's height
     inline constexpr float gap        = 4.0f;    ///< between controls on a row
     inline constexpr float padX       = 8.0f;    ///< text inside a box or a chip
-    inline constexpr float sendsLine  = 16.0f;   ///< the line under a box that holds its sends
-    inline constexpr float returnsGap = 24.0f;   ///< from the last track to the returns' heading
-    inline constexpr float ringGap    = 2.0f;    ///< from a box to the ring round it under the pointer
+    inline constexpr float hearsLine  = 14.0f;   ///< a line of what a Decoder hears
+    inline constexpr float headingGap = 18.0f;   ///< before a group's heading
+    inline constexpr float ringGap    = 2.0f;    ///< from a box to the ring round it
+    inline constexpr float levelDrag  = 0.25f;   ///< dB per pixel a wire's level moves; a tenth of it with shift
+    inline constexpr float menuWidth  = 150.0f;
+    inline constexpr float greyedAlpha = 0.6f;   ///< the ground over a line an armed pick cannot take
+    inline constexpr float labelPad   = 4.0f;    ///< round a level on a wire, over what it crosses
+    inline constexpr float sendRoom   = 48.0f;   ///< kept at a line's right end for "send"
 } // namespace routing
 
 // ---- the header, in every plugin --------------------------------------------------------------

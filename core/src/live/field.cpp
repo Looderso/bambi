@@ -239,6 +239,18 @@ void takeAll(Shape& shape, const Tree& tree) {
         if (!n.parent && reaches(n) && !has(shape.taken, n.id)) shape.taken.push_back(n.id);
 }
 
+void moveInsert(Shape& shape, TrackId owner, std::uint64_t id, std::size_t to) {
+    for (Chain& c : shape.chains) {
+        if (c.node != owner) continue;
+        const auto at = std::find_if(c.inserts.begin(), c.inserts.end(), [&](const Insert& i) { return i.id == id; });
+        if (at == c.inserts.end()) return;
+        const Insert moving = *at;
+        c.inserts.erase(at);
+        c.inserts.insert(c.inserts.begin() + static_cast<std::ptrdiff_t>(std::min(to, c.inserts.size())), moving);
+        return;
+    }
+}
+
 std::vector<Arrival> arrivalsOf(const std::vector<TrackPair>& pairs) {
     std::vector<Arrival> out;
     for (const TrackPair& p : pairs) out.push_back({p.track, kFirstTrackChannel + 2 * p.pair, 2});

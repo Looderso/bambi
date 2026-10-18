@@ -107,6 +107,11 @@ public:
             return engine_.targetOf(l.instance, l.owner, l.param).plugin != nullptr;
         };
         routing_.reshape = [this](bambi::live::Shape shape) { device_.reshape(std::move(shape)); };
+        //  a wire's level while it is dragged: heard at once, the plan as it is, kept only on release
+        routing_.preview = [this](const bambi::live::Shape& shape) {
+            const auto& session = device_.session();
+            engine_.setSends(bambi::live::layOut(session.tree(), shape), session.tree());
+        };
         routing_.showDecoder = [this](std::uint64_t id) { showView(View::Decoder, engine_.decoderOf(id)); };
         routing_.showSource = [this](bambi::live::TrackId track) { showView(View::Encoder, engine_.encoderOf(track)); };
         routing_.showInsert = [this](std::uint64_t insert, bambi::live::Effect effect) {

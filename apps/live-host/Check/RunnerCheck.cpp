@@ -26,23 +26,27 @@
 #include <cstdio>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <optional>
 #include <random>
 #include <vector>
 
 #include "../Source/AudioSheet.h"
 #include "../Source/Plugins.h"
-#include "../Source/Timeline.h"
-#include "bambi/ui/Theme.h"
+#include "../Source/Routing.h"
 #include "../Source/Runner.h"
+#include "../Source/Timeline.h"
 #include "bambi/decode/params.hpp"
 #include "bambi/decode/remote.hpp"
 #include "bambi/echo/params.hpp"
 #include "bambi/encode/params.hpp"
-#include "bambi/reverb/params.hpp"
-#include "devices.hpp"
+#include "bambi/link/directory.hpp"
+#include "bambi/link/link.hpp"
 #include "bambi/live/clips.hpp"
 #include "bambi/live/graph.hpp"
 #include "bambi/live/transport.hpp"
+#include "bambi/reverb/params.hpp"
+#include "bambi/ui/Theme.h"
+#include "devices.hpp"
 
 using namespace bambi;
 using bambi::SnapshotCensus;
@@ -661,7 +665,8 @@ std::pair<float, float> arrivedAt(int first, int width) {
     if (!compiled || !runner.prepare(*compiled, {&a, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why))
         return {-1.0f, -1.0f};
     juce::AudioBuffer<float> row(4, 512), part(2, 512);
-    for (int ch = 0; ch < 4; ++ch) juce::FloatVectorOperations::fill(row.getWritePointer(ch), 0.1f * static_cast<float>(ch + 1), 512);
+    for (int ch = 0; ch < 4; ++ch)
+        juce::FloatVectorOperations::fill(row.getWritePointer(ch), 0.1f * static_cast<float>(ch + 1), 512);
     for (int k = 0; k < 8; ++k) runner.process(row, part, 512);
     return {part.getSample(0, 511), part.getSample(1, 511)};
 }
@@ -794,9 +799,8 @@ std::vector<float> twoDecoders(int block) {
     livehost::Runner runner;
     juce::String why;
     const std::vector<livehost::Runner::Route> routes{{false, 0, 0, 0, 0}, {false, 1, 0, 1, 0}, {false, 1, 1, 2, 0}};
-    if (!compiled ||
-        !runner.prepare(*compiled, {&a, &first, &second}, compiled->levels, {kOrder, kMaxBlock, 4, 3, kRate}, why, {},
-                        routes)) {
+    if (!compiled || !runner.prepare(*compiled, {&a, &first, &second}, compiled->levels,
+                                     {kOrder, kMaxBlock, 4, 3, kRate}, why, {}, routes)) {
         std::printf("  the runner: %s\n", why.toRawUTF8());
         return {};
     }
@@ -943,8 +947,8 @@ bool midiPlaced(int block) {
     const auto compiled = live::compile(p);
     livehost::Runner runner;
     juce::String why;
-    if (!compiled ||
-        !runner.prepare(*compiled, {&a, &first, &second, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why))
+    if (!compiled || !runner.prepare(*compiled, {&a, &first, &second, &out}, compiled->levels,
+                                     {kOrder, kMaxBlock, 4, 2, kRate}, why))
         return false;
     live::MidiPending pending;
     runner.setMidi(&pending);
@@ -988,8 +992,8 @@ double laneFollows(int block) {
     live::TransportProjector clock(clockSettings());
     livehost::Runner runner;
     juce::String why;
-    if (!compiled || !runner.prepare(*compiled, {&a, &knob, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate},
-                                     why))
+    if (!compiled ||
+        !runner.prepare(*compiled, {&a, &knob, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why))
         return 1.0;
     runner.setClock(&clock);
     clock.receive({true, 0.0, 120.0}, 0);
@@ -1027,8 +1031,8 @@ std::pair<double, bool> clipLaneFollows(int block) {
     live::ClipClock clips;
     livehost::Runner runner;
     juce::String why;
-    if (!compiled || !runner.prepare(*compiled, {&a, &knob, &held, &out}, compiled->levels,
-                                     {kOrder, kMaxBlock, 4, 2, kRate}, why))
+    if (!compiled ||
+        !runner.prepare(*compiled, {&a, &knob, &held, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why))
         return {1.0, true};
     runner.setClock(&clock);
     runner.setClips(&clips);
@@ -1204,10 +1208,11 @@ int timelineHolds() {
     shape.chains = {{2, {{7, live::Effect::Echo, 0}}}};
     live::takeAll(shape, tree);
     const live::Field field = live::layOut(tree, shape);
-    const std::vector<live::Lane> lanes{{1, live::Instance::Encoder, 2, "transform.yaw", {{0.0, -30.0}, {64.0, 30.0}}, 0, -1, {}},
-                                        {4, live::Instance::Encoder, 2, "transform.pitch", {{0.0, 0.0}}, 2, 0, {}},
-                                        {2, live::Instance::Insert, 7, "output.wet", {}, 0, -1, {}},
-                                        {3, live::Instance::Decoder, live::kFirstDecoder, "output.level", {}, 0, -1, {}}};
+    const std::vector<live::Lane> lanes{
+        {1, live::Instance::Encoder, 2, "transform.yaw", {{0.0, -30.0}, {64.0, 30.0}}, 0, -1, {}},
+        {4, live::Instance::Encoder, 2, "transform.pitch", {{0.0, 0.0}}, 2, 0, {}},
+        {2, live::Instance::Insert, 7, "output.wet", {}, 0, -1, {}},
+        {3, live::Instance::Decoder, live::kFirstDecoder, "output.level", {}, 0, -1, {}}};
     int edits = 0;
     page.lanesChanged = [&](std::vector<live::Lane>) { ++edits; };
     page.show({tree, a, shape, field, lanes});
@@ -1250,10 +1255,163 @@ int timelineHolds() {
     //  Catches: a clip lane in the session view that takes no point
     const bool ok = commands > 0 && locates > 0 && placed && edits > 0 && sessionEdits > 0;
     std::printf("  of the lane edits, %d in the session view\n", sessionEdits);
-    std::printf("  both views painted playing and stopped, pressed everywhere: %d commands, %d of them locates, %d lane edits; a "
-                "press locates under it %s %s\n",
-                commands, locates, edits, placed ? "yes" : "no", ok ? "" : "  FAIL");
+    std::printf(
+        "  both views painted playing and stopped, pressed everywhere: %d commands, %d of them locates, %d lane edits; "
+        "a "
+        "press locates under it %s %s\n",
+        commands, locates, edits, placed ? "yes" : "no", ok ? "" : "  FAIL");
     return ok ? 0 : 1;
+}
+
+//  The routing page over a set of a group with two tracks, a track, a return and two Decoders: painted in every state
+//  -- nothing chosen, a node chosen with its wires open, "send" waiting, the menu open -- and pressed everywhere on a
+//  grid, painted again after each press; then one track taken, sent to the second Decoder, its level dragged, the
+//  wire removed. The failures; nothing may fall over.
+int routingHolds() {
+    livehost::RoutingPage page;
+    page.setSize(1300, 700);
+    live::Tree tree;
+    const auto node = [](live::TrackId id, live::Node::Kind kind, std::optional<live::TrackId> parent,
+                         const char* name) {
+        live::Node n;
+        n.id = id;
+        n.kind = kind;
+        n.parent = parent;
+        n.name = name;
+        n.colour = "#e0b552";
+        n.fader = 0.0;
+        return n;
+    };
+    tree.nodes = {node(1, live::Node::Kind::Group, std::nullopt, "drums"), node(2, live::Node::Kind::Track, 1, "kick"),
+                  node(3, live::Node::Kind::Track, 1, "snare"), node(4, live::Node::Kind::Track, std::nullopt, "bass"),
+                  node(9, live::Node::Kind::Return, std::nullopt, "A reverb")};
+    live::Shape shape;
+    shape.taken = {1};
+    shape.split = {1};
+    shape.returns = {9};
+    shape.decoders = {1, 2};
+    shape.chains = {{2, {{7, live::Effect::Echo, 0}, {8, live::Effect::Reverb, 0}, {6, live::Effect::Echo, 0}}}};
+    shape.inputs = {{live::kFirstInput, "vox", 1}};
+    const auto showIt = [&] {
+        const live::Field f = live::layOut(tree, shape);
+        page.show(tree, shape, f, {{2, 0}, {3, 1}, {4, 2}});
+    };
+    int asked = 0;
+    page.reshape = [&](live::Shape s) {
+        ++asked;
+        shape = std::move(s);
+        showIt();
+    };
+    page.preview = [](const live::Shape&) {};
+    showIt();
+    juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
+    const auto paint = [&] {
+        juce::Graphics g(image);
+        page.paint(g);
+    };
+    const live::Shape start = shape;
+    for (const std::optional<live::TrackId> chosen :
+         {std::optional<live::TrackId>{}, std::optional<live::TrackId>{2}, std::optional<live::TrackId>{live::kMain}})
+        for (int y = 0; y < page.getHeight(); y += 23)
+            for (int x = 0; x < page.getWidth(); x += 29) {
+                shape = start;
+                showIt();
+                page.choose(chosen);
+                paint();
+                page.clickAt({static_cast<float>(x), static_cast<float>(y)});
+                paint();
+                page.clickAt({static_cast<float>(x + 7), static_cast<float>(y + 5)});  // whatever the first opened
+                paint();
+            }
+    int failed = asked > 0 ? 0 : 1;
+    std::printf("  painted in every state, pressed everywhere: %d changes asked %s\n", asked, failed ? "  FAIL" : "");
+
+    //  bass taken by "+ encoder", sent to the second decoder, its level dragged, the wire taken away: each press
+    //  on its line where the page drew it
+    shape = start;
+    page.choose(std::nullopt);
+    showIt();
+    paint();
+    const auto wiresOf4 = [&] { return live::layOut(tree, shape).wiresOf(4); };
+    const auto wiredTo2 = [&] {
+        const auto w = wiresOf4();
+        const auto it =
+            std::find_if(w.begin(), w.end(), [](const live::Wire& x) { return x.to == live::Target::decoder(2); });
+        return it == w.end() ? std::optional<double>{} : std::optional<double>{it->db};
+    };
+    //  along a line's middle, from `from` to `to`, until `done`
+    const auto along = [&](juce::Rectangle<float> line, float from, float to, float step, auto&& done) {
+        for (float x = from; step > 0 ? x < to : x > to; x += step) {
+            page.clickAt({x, line.getCentreY()});
+            paint();
+            if (done()) return true;
+        }
+        return false;
+    };
+    const auto bass = page.drawnAt(4);
+    const bool taken = bass && along(*bass, bass->getX(), bass->getRight(), 2.0f, [&] {
+                           return std::find(shape.taken.begin(), shape.taken.end(), 4) != shape.taken.end();
+                       });
+    //  "send" is at the line's right end; armed, the second Decoder takes the wire
+    bool wired = false;
+    const auto line = page.drawnAt(4);
+    const auto second = page.drawnDecoderAt(2);
+    if (taken && line && second)
+        for (float x = line->getRight() - 2.0f; x > line->getRight() - 60.0f && !wired; x -= 2.0f) {
+            page.clickAt({x, line->getCentreY()});
+            paint();
+            page.clickAt(second->getCentre());
+            paint();
+            wired = wiredTo2().has_value();
+        }
+    //  chosen, its wires open under its line: the chip of the new wire dragged right, then its cross
+    bool dragged = false, removed = false;
+    if (wired && line) {
+        const auto name = juce::Point<float>{line->getX() + ui::theme::routing::padX + 10.0f, line->getCentreY()};
+        page.clickAt(name);
+        paint();
+        const float chipY = line->getBottom() + ui::theme::routing::row / 2.0f;
+        for (float x = line->getX(); x < line->getRight() && !dragged; x += 4.0f) {
+            page.dragBetween({x, chipY}, {x + 40.0f, chipY});
+            paint();
+            const auto db = wiredTo2();
+            dragged = db && *db > 5.0;
+        }
+        for (float x = line->getX(); x < line->getRight() && !removed && dragged; x += 2.0f) {
+            page.clickAt({x, chipY});
+            paint();
+            removed = !wiredTo2().has_value();
+        }
+    }
+    //  kick's first echo dragged along its chain past the end: only that drag, landing where the pointer is, puts it
+    //  last, the others in their order
+    shape = start;
+    page.choose(std::nullopt);
+    showIt();
+    paint();
+    bool reordered = false;
+    if (const auto kick = page.drawnAt(2))
+        for (float x = kick->getX(); x < kick->getRight() && !reordered; x += 3.0f) {
+            page.dragBetween({x, kick->getY() + ui::theme::routing::boxHeight / 2.0f},
+                             {kick->getRight() + 200.0f, kick->getY() + ui::theme::routing::boxHeight / 2.0f});
+            paint();
+            const auto& chain = shape.insertsOn(2);
+            reordered = chain.size() == 3 && chain[0].id == 8 && chain[1].id == 6 && chain[2].id == 7;
+            if (!reordered) {
+                shape = start;
+                showIt();
+                paint();
+            }
+        }
+    failed += reordered ? 0 : 1;
+    std::printf("  an insert dragged past the end of its chain: %s\n", reordered ? "yes" : "no  FAIL");
+    const bool ok = taken && wired && dragged && removed;
+    failed += ok ? 0 : 1;
+    std::printf(
+        "  a track taken by its encoder button %s, sent to the second decoder %s, its level dragged %s, the "
+        "wire removed %s %s\n",
+        taken ? "yes" : "no", wired ? "yes" : "no", dragged ? "yes" : "no", removed ? "yes" : "no", ok ? "" : "  FAIL");
+    return failed;
 }
 
 //  The audio sheet with two devices, both outputs playing, a copy and an input: each tab painted, then pressed
@@ -1262,12 +1420,13 @@ int sheetHolds() {
     livehost::AudioSheet sheet;
     sheet.setSize(1100, 760);
     livehost::AudioSheet::Shown s;
-    s.system = {{"a", "Interface", 16, 8, 120, 100, false}, {"b", "Box", 4, 2, 80, 70, false},
+    s.system = {{"a", "Interface", 16, 8, 120, 100, false},
+                {"b", "Box", 4, 2, 80, 70, false},
                 {"c", "AirPods", 2, 1, 7000, 7000, true}};
     s.settings.devices = {"a", "b"};
     s.settings.main = {"a", 1};
-    s.settings.placed = {{{1, Output::Headphones}, {"b", 1}}, {{1, Output::Speakers}, {"a", 3}},
-                         {{2, Output::Headphones}, {"a", 13}}};
+    s.settings.placed = {
+        {{1, Output::Headphones}, {"b", 1}}, {{1, Output::Speakers}, {"a", 3}}, {{2, Output::Headphones}, {"a", 13}}};
     s.settings.copies = {{{1, Output::Headphones}, {}, true}, {live::kLiveMain, {"b", 3}, false}};
     s.settings.inputs = {{live::kFirstInput, {"a", 2}}};
     DecoderReport one, two;
@@ -1499,10 +1658,11 @@ int remoteDecoder() {
           "refused: headphones on an even channel, said");
 
     //  Catches: a widest bus whose last channels -- the last speakers VST3 names -- do not reach the Decoder's.
-    auto widest = livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, kMaxVst3BusChannels);
-    remote::IRemote* far = widest.plugin != nullptr ? livehost::remoteOf(*widest.plugin, kDecoderRemoteKind,
-                                                                         kDecoderRemoteVersion)
-                                                    : nullptr;
+    auto widest =
+        livehost::loadInstalled("bambi Decoder", Role::Decoder, kOrder, kRate, kMaxBlock, kMaxVst3BusChannels);
+    remote::IRemote* far = widest.plugin != nullptr
+                               ? livehost::remoteOf(*widest.plugin, kDecoderRemoteKind, kDecoderRemoteVersion)
+                               : nullptr;
     if (far == nullptr) {
         check(false, "the widest Decoder answers");
         return failed;
@@ -1521,6 +1681,59 @@ int remoteDecoder() {
 }
 
 }  // namespace
+
+//  What a Decoder's scene draws as sources is every Encoder on the bus that has published a position, and nothing else. The
+//  host runs its Encoders in its own process, as this does, so the bus is read from outside here as the Decoder reads it.
+//  Only what this run added is counted: another host on the machine may be on the same bus.
+int positionsOnTheBus() {
+    const auto peersNow = [] {
+        std::vector<LinkPeer> peers;
+        LinkDirectory directory;
+        LinkBus viewer;
+        if (directory.open())
+            if (const auto session = directory.mostRecent(linkNowMicros()))
+                if (viewer.open(*session, Uuid::generate(), Product::Decoder)) viewer.poll(peers);
+        return peers;
+    };
+    const auto before = peersNow();
+
+    Set s = load();
+    if (!s.ok) return 1;
+    juce::MidiBuffer midi;
+    std::mt19937 random(9);
+    std::uniform_real_distribution<float> noise(-0.1f, 0.1f);
+    juce::AudioBuffer<float> a(18, 512), b(18, 512);
+    for (int block = 0; block < 25; ++block) {
+        a.clear();
+        b.clear();
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 512; ++i) {
+                a.setSample(ch, i, noise(random));
+                b.setSample(ch, i, noise(random));
+            }
+        s.plugins[0]->processBlock(a, midi);
+        s.plugins[1]->processBlock(b, midi);
+        //  the message thread, where each instance's timer joins the bus and publishes what the audio thread left
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+    }
+
+    int encoders = 0, positioned = 0, others = 0;
+    for (const auto& peer : peersNow()) {
+        const bool known =
+            std::any_of(before.begin(), before.end(), [&](const LinkPeer& p) { return p.instance == peer.instance; });
+        if (known) continue;
+        if (peer.product == Product::Encoder) {
+            ++encoders;
+            positioned += peer.hasPosition ? 1 : 0;
+        } else
+            ++others;
+    }
+    //  Catches: an Encoder that joins the bus but never publishes where its source is, which a Decoder draws as no source at all.
+    const bool ok = encoders == 2 && positioned == 2;
+    std::printf("  a viewer on the bus sees %d new Encoders, %d with a position, and %d other new instances %s\n",
+                encoders, positioned, others, ok ? "" : "  FAIL");
+    return ok ? 0 : 1;
+}
 
 int main() {
     juce::ScopedJuceInitialiser_GUI juce;  // the plugins' editors and message thread exist even unseen
@@ -1738,15 +1951,15 @@ int main() {
             lateStep = std::max(lateStep, std::abs(at(late, 1, i) - at(late, 1, i - 1)));
         }
         const float smooth = 0.5f / static_cast<float>(livehost::Runner::kFade) + 1e-6f;
-        const bool steady = std::abs(keptLow - 0.5f) < 1e-6f && movedLow < 0.01f && lateLow < 0.01f &&
-                            step <= smooth && lateStep <= smooth;
+        const bool steady = std::abs(keptLow - 0.5f) < 1e-6f && movedLow < 0.01f && lateLow < 0.01f && step <= smooth &&
+                            lateStep <= smooth;
         const bool ok = placed && steady;
         failed += ok ? 0 : 1;
-        std::printf("  block %4d: on their channels, late as asked %s; Main through a swap keeping its delay %.3f at "
-                    "least, changing it %.3f, changing it late %.3f; steps %.4f %.4f %s\n",
-                    block, placed ? "yes" : "no", static_cast<double>(keptLow), static_cast<double>(movedLow),
-                    static_cast<double>(lateLow), static_cast<double>(step), static_cast<double>(lateStep),
-                    ok ? "" : "  FAIL");
+        std::printf(
+            "  block %4d: on their channels, late as asked %s; Main through a swap keeping its delay %.3f at "
+            "least, changing it %.3f, changing it late %.3f; steps %.4f %.4f %s\n",
+            block, placed ? "yes" : "no", static_cast<double>(keptLow), static_cast<double>(movedLow),
+            static_cast<double>(lateLow), static_cast<double>(step), static_cast<double>(lateStep), ok ? "" : "  FAIL");
     }
 
     std::printf("two decoders\n");
@@ -1828,8 +2041,14 @@ int main() {
     std::printf("the timeline\n");
     failed += timelineHolds();
 
+    std::printf("the routing page\n");
+    failed += routingHolds();
+
     std::printf("the audio sheet\n");
     failed += sheetHolds();
+
+    std::printf("the bus, as a Decoder reads it\n");
+    failed += positionsOnTheBus();
 
     std::printf("the host's aggregate\n");
     if (const int a = aggregateOpens(); a < 0)

@@ -162,6 +162,10 @@ Field layOut(const Tree& tree, const Shape& shape);
 /// Every node at the top of `tree` that plays to Main with audio taken into the field, besides those already.
 void takeAll(Shape& shape, const Tree& tree);
 
+/// The insert `id` on `owner`'s chain moved to place `to` in it, the others keeping their order; `to` past the end
+/// is the end. Nothing when the chain has no such insert.
+void moveInsert(Shape& shape, TrackId owner, std::uint64_t id, std::size_t to);
+
 /// Whether `from` -- a part, a return, kMain -- may be wired to `to` in `field` as it is: what it goes to is in
 /// the field, the kinds allow it, and it closes no loop.
 bool canWire(const Field& field, TrackId from, const Target& to);

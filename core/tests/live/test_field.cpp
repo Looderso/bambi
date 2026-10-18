@@ -549,3 +549,19 @@ TEST_CASE("a level is a gain: silence at the bottom, unity at 0 dB, held at the 
     CHECK(std::abs(gainOf(-6.0) - 0.501187f) < 1e-5f);
     CHECK(gainOf(40.0) == gainOf(kLoudestDb));
 }
+
+TEST_CASE("an insert moved along its chain keeps its id and leaves the others in their order") {
+    //  Catches: an insert moved by its place rather than its id, a copy left behind, another chain changed, a move
+    //  past the end lost.
+    Shape s;
+    s.chains = {{2, {{1, Effect::Echo, 0}, {2, Effect::Reverb, 0}, {3, Effect::Echo, 5}}}, {4, {{9, Effect::Echo, 0}}}};
+    moveInsert(s, 2, 3, 0);
+    CHECK(s.chains[0].inserts ==
+          std::vector<Insert>{{3, Effect::Echo, 5}, {1, Effect::Echo, 0}, {2, Effect::Reverb, 0}});
+    moveInsert(s, 2, 3, 99);
+    CHECK(s.chains[0].inserts.back().id == 3);
+    CHECK(s.chains[0].inserts.size() == 3);
+    moveInsert(s, 2, 9, 0);  // not on this chain
+    CHECK(s.chains[1].inserts.size() == 1);
+    CHECK(s.chains[0].inserts.front().id == 1);
+}
