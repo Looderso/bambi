@@ -103,6 +103,9 @@ struct Placed {
 
 /// What this computer keeps of where the host plays and hears, by device channel: a set opened elsewhere meets
 /// other devices. What a Decoder plays, and how, is the Decoder's and travels with the set.
+/// The longest Live's MIDI is held back.
+constexpr double kMaxLiveMidiMs = 250.0;
+
 struct AudioSettings {
     std::vector<std::string> devices;  ///< the chosen devices' uids, the clock first
     int buffer{64};
@@ -116,6 +119,8 @@ struct AudioSettings {
         friend bool operator==(const InputAt&, const InputAt&) = default;
     };
     std::vector<InputAt> inputs;
+    /// How long Live's MIDI, through the host's own port, is held back to meet Live's audio: how far it arrives ahead.
+    double liveMidiMs{0.0};
 
     /// Where `out` is placed: Main's, or a Decoder output's; none when it is placed nowhere.
     DeviceChannel at(const Out& out) const;

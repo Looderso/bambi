@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <memory>
@@ -12,6 +13,7 @@
 #include "bambi/live/clips.hpp"
 #include "bambi/live/graph.hpp"
 #include "bambi/live/lanes.hpp"
+#include "bambi/live/midi.hpp"
 #include "bambi/live/transport.hpp"
 
 /*  Plays a compiled plan: the steps bambi-live's graph turned the host's shape into, run in order every block over
@@ -42,6 +44,10 @@
  *  taken, and the send ramps to it linearly over the next kLevelGrid samples, so a moving knob does not click and
  *  what is heard does not depend on the block size. A program starts at its levels, with no ramp: the first at
  *  its first block, one swapped in where it takes over.
+ *
+ *  MIDI comes from the caller's holding place, set with setMidi(): each piece takes the events before its end, and
+ *  every plugin it plays is given them at their samples in it -- one that came late at its first. Every instance
+ *  hears all of it; each picks what it answers to.
  *
  *  The instances are the caller's, prepared by it at the plan's order and at least `maxBlock`; what a program must
  *  keep alive is handed to it as `keep`. The runner only calls processBlock on them, and gives each its playhead.
@@ -120,6 +126,9 @@ public:
     /// Where each track's session clip is, for the clip lanes: the caller's, fed on the audio thread before the
     /// block. Set before audio runs; none: no clip lane plays.
     void setClips(const live::ClipClock* clips) noexcept { clips_ = clips; }
+    /// The MIDI to play, held on the host's samples: the caller's, filled on the audio thread before the block. Set
+    /// before audio runs; none: no MIDI.
+    void setMidi(live::MidiPending* midi) noexcept { midiFrom_ = midi; }
 
     /// Where Live was at the last piece the plugins played, for a window to draw. Any thread; each value on its own,
     /// so a reading may mix two pieces', which a drawing does not see.
@@ -211,7 +220,11 @@ private:
     Handoff<Program> handoff_;
     Handoff<Automation> automation_;
     Program* latest_{nullptr};  // the program last prepared or swapped: the message thread's
-    juce::MidiBuffer midi_;
+    juce::MidiBuffer midi_;  // a plugin's, filled from `taken_` before each: a plugin may change what it is given
+    static constexpr int kMidiPerPiece = 256;  ///< events a piece takes; the rest wait for the next
+    std::array<live::MidiEvent, kMidiPerPiece> taken_{};  // the piece's, the audio thread's
+    int takenCount_{0};
+    live::MidiPending* midiFrom_{nullptr};
     LivePlayhead playhead_;
     live::TransportProjector* clock_{nullptr};
     const live::ClipClock* clips_{nullptr};

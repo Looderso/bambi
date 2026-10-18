@@ -18,6 +18,7 @@
 #include "Rail.h"
 #include "Routing.h"
 #include "Settings.h"
+#include "bambi/live/midi.hpp"
 #include "Timeline.h"
 #include "bambi/ui/Theme.h"
 #include "devices.hpp"
@@ -122,6 +123,12 @@ public:
             device_.reshape(std::move(shape));
             update();
         };
+        sheet_.measure = [this](bool on) {
+            measuring_ = on;
+            lead_ = {};
+            engine_.setMeasuring(on);
+            sheet_.setLead(0.0, 0.0, 0);
+        };
         sheet_.openDecoder = [this](std::uint64_t id) {
             sheet_.close();
             showView(View::Decoder, engine_.decoderOf(id));
@@ -155,6 +162,17 @@ private:
     //  kept before it switches on, and the defaults must not be kept over it.
     void timerCallback() override {
         sheet_.setLoad(engine_.load());
+        //  Live's lead, as it is measured; stopped with the sheet
+        if (measuring_ && !sheet_.isOpen()) {
+            measuring_ = false;
+            engine_.setMeasuring(false);
+        }
+        bool measured = false;
+        while (const auto ms = engine_.measured()) {
+            lead_.add(*ms);
+            measured = true;
+        }
+        if (measured) sheet_.setLead(lead_.median(), lead_.spread(), lead_.count());
         //  what a Decoder's own page changed -- an output lit, moved, a layout -- reaches the routes
         if (engine_.reroute() && sheet_.isOpen()) showSheet();
         //  a device plugged in or out while the sheet is up: shown as it comes
@@ -273,6 +291,11 @@ private:
         shown.rate = engine_.rate();
         shown.order = engine_.order();
         shown.load = engine_.load();
+        shown.midiInputs = engine_.midiInputs();
+        shown.measuring = measuring_;
+        shown.leadMs = lead_.median();
+        shown.leadSpreadMs = lead_.spread();
+        shown.leadCount = lead_.count();
         shown.problem = audioProblem_;
         sheet_.show(std::move(shown));
     }
@@ -337,6 +360,8 @@ private:
     bambi::livehost::TimelinePage timeline_;
     bambi::livehost::AudioSheet sheet_;
     juce::String audioProblem_;  ///< why the sheet's last change could not be played or kept
+    bool measuring_{false};      ///< Live's lead is measured, while the sheet is open
+    bambi::live::MidiLead lead_;  ///< what has been measured since measuring began
     std::vector<bambi::live::Lane> lanes_;  ///< the host's automation, kept with the set
     std::string keptLanes_;                 ///< the lanes as last kept
     bool rebuild_{false};  ///< the program to be built again at the next update, whatever changed

@@ -130,7 +130,7 @@ bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::Aud
     for (juce::AudioProcessor* plugin : slots) ready(plugin);  // no audio runs yet
     latest_ = p.get();
     handoff_.begin(std::move(p));
-    midi_.ensureSize(256);
+    midi_.ensureSize(kMidiPerPiece * 16);  // each event: its bytes, its size and sample
     playhead_.set({}, setup.rate);
     sample_ = 0;
     fade_ = Fade::None;
@@ -203,6 +203,11 @@ void Runner::setLevel(int entry, float level) noexcept {
 //  A plugin over `scratch`, already sized to the piece: its inputs as the caller filled them, its outputs left there.
 void Runner::run(const Program& p, int slot, juce::AudioBuffer<float>& scratch) noexcept {
     midi_.clear();
+    for (int i = 0; i < takenCount_; ++i) {
+        const live::MidiEvent& e = taken_[static_cast<std::size_t>(i)];
+        const auto at = static_cast<int>(std::clamp<std::int64_t>(e.sample - sample_, 0, scratch.getNumSamples() - 1));
+        midi_.addEvent(e.bytes.data(), e.size, at);
+    }
     p.slots[static_cast<std::size_t>(slot)]->processBlock(scratch, midi_);
 }
 
@@ -282,6 +287,7 @@ void Runner::piece(const Program& p, const Inputs& loop, int loopStart,
         shownBpm_.store(reading.bpm, std::memory_order_relaxed);
         shownPlaying_.store(reading.playing, std::memory_order_relaxed);
     }
+    takenCount_ = midiFrom_ != nullptr ? midiFrom_->take(sample_ + frames, taken_.data(), kMidiPerPiece) : 0;
     const int offset = static_cast<int>(sample_ % kLevelGrid);
     if (offset == 0)
         for (int i = 0; i < p.levelCount; ++i) {

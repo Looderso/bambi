@@ -22,7 +22,10 @@
  *      channel, the host's own dashed, two things on one channel marked. A click on the map puts the chosen output
  *      there, from that channel; "+ copy" arms, and the click puts a copy there instead;
  *    - inputs: the host's own sources of the field, each heard from a device channel, one or two wide; the input
- *      map places the chosen one.
+ *      map places the chosen one;
+ *    - midi: the MIDI inputs the host hears, its own port last; how long Live's MIDI is held back to meet Live's
+ *      audio, in steps of a millisecond, and "measure", which pairs Live's notes with the sound on Main and offers
+ *      what it found to use.
  *
  *  It changes the settings, never the engine: `change` and `changeInputs` say what the user asked, and whoever
  *  owns the engine applies it and shows the sheet again. Clicks on release; escape cancels an armed copy or the
@@ -40,6 +43,10 @@ public:
         double rate{48000.0};
         int order{3};
         float load{0.0f};
+        std::vector<juce::String> midiInputs;
+        bool measuring{false};
+        double leadMs{0.0}, leadSpreadMs{0.0};  ///< the measurements so far: their middle, and how far they agree
+        int leadCount{0};
         juce::String problem;  ///< what went wrong applying the last change, or empty
     };
     void show(Shown shown);
@@ -48,8 +55,12 @@ public:
     std::function<void(live::AudioSettings)> change;
     std::function<void(std::vector<live::HostInput>, live::AudioSettings)> changeInputs;
     std::function<void(std::uint64_t)> openDecoder;  ///< a Decoder's own page, by its id
+    std::function<void(bool)> measure;               ///< Live's lead measured from now, or no longer
 
-    enum class Tab { Interface, Outputs, Inputs };
+    /// The measurements so far, while measuring.
+    void setLead(double ms, double spreadMs, int count);
+
+    enum class Tab { Interface, Outputs, Inputs, Midi };
     /// The tab it shows, as a click on its head chooses it. For checks.
     void showTab(Tab tab) {
         tab_ = tab;
@@ -65,6 +76,7 @@ private:
     float interfacePage(juce::Graphics& g, juce::Rectangle<float> page);
     float outputsPage(juce::Graphics& g, juce::Rectangle<float> page);
     float inputsPage(juce::Graphics& g, juce::Rectangle<float> page);
+    float midiPage(juce::Graphics& g, juce::Rectangle<float> page);
     void outputRow(juce::Graphics& g, juce::Rectangle<float> row, const live::Out& out);
     juce::String nameOf(const live::Out& out) const;
     juce::String decoderName(std::uint64_t id) const;

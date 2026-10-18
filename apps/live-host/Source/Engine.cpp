@@ -85,6 +85,9 @@ std::vector<Runner::Route> Engine::routesFor(int fieldLatency) const {
 }
 
 Engine::~Engine() {
+    midiWatch_ = {};
+    midiInputs_.clear();
+    port_.reset();
     devices_.removeAudioCallback(this);
     devices_.closeAudioDevice();
 }
@@ -181,6 +184,13 @@ bool Engine::start(const Settings& settings, juce::String& status) {
     arrivals_.emplace(s_.rate, s_.transportOffsetSamples);
     runner_.setClock(&projector_);
     runner_.setClips(&clips_);
+    runner_.setMidi(&pending_);
+    liveMidi_.store(std::llround(s_.audio.liveMidiMs * 0.001 * s_.rate), std::memory_order_relaxed);
+    port_ = juce::MidiInput::createNewDevice("bambi", this);
+    livePort_ = port_.get();
+    if (port_ != nullptr) port_->start();
+    openMidi();
+    midiWatch_ = juce::MidiDeviceListConnection::make([this] { openMidi(); });
     latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
     devices_.addAudioCallback(this);
     status = said();
@@ -195,6 +205,7 @@ juce::String Engine::said() const {
 bool Engine::setAudio(const live::AudioSettings& audio, juce::String& status) {
     const bool reopen = audio.devices != s_.audio.devices || audio.buffer != s_.audio.buffer;
     s_.audio = audio;
+    liveMidi_.store(std::llround(s_.audio.liveMidiMs * 0.001 * s_.rate), std::memory_order_relaxed);
     juce::String why;
     if (!reopen) {
         reroute();
@@ -216,6 +227,12 @@ bool Engine::setAudio(const live::AudioSettings& audio, juce::String& status) {
         status = "the program: " + why;
         return false;
     }
+    //  the runner counts from 0 again: what waits was placed on the samples before, and is let go of, its notes with
+    //  it; the meter starts afresh. No audio runs
+    pending_.clear();
+    silence_ = true;
+    wasMeasuring_ = false;
+    liveMidi_.store(std::llround(s_.audio.liveMidiMs * 0.001 * s_.rate), std::memory_order_relaxed);
     latencyMs_ = 1000.0 * (deviceLatency_ + program_.compiled.latency) / s_.rate;
     devices_.addAudioCallback(this);
     status = said();
@@ -571,6 +588,79 @@ void Engine::audioDeviceAboutToStart(juce::AudioIODevice* device) {
     faded_ = 0;
 }
 
+// ---- MIDI --------------------------------------------------------------------------------------
+
+void Engine::openMidi() {
+    const auto available = juce::MidiInput::getAvailableDevices();
+    //  the ones gone let go of, the ones new opened; one already open stays as it is
+    std::erase_if(midiInputs_, [&](const std::unique_ptr<juce::MidiInput>& in) {
+        return std::none_of(available.begin(), available.end(),
+                            [&](const juce::MidiDeviceInfo& d) { return d.identifier == in->getIdentifier(); });
+    });
+    for (const juce::MidiDeviceInfo& d : available) {
+        if (port_ != nullptr && d.identifier == port_->getIdentifier()) continue;
+        if (std::any_of(midiInputs_.begin(), midiInputs_.end(), [&](const auto& in) { return in->getIdentifier() == d.identifier; }))
+            continue;
+        if (auto in = juce::MidiInput::openDevice(d.identifier, this)) {
+            in->start();
+            midiInputs_.push_back(std::move(in));
+        }
+    }
+}
+
+std::vector<juce::String> Engine::midiInputs() const {
+    std::vector<juce::String> out;
+    for (const auto& in : midiInputs_) out.push_back(in->getName());
+    if (port_ != nullptr) out.push_back(port_->getName());
+    return out;
+}
+
+void Engine::handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) {
+    const int size = message.getRawDataSize();
+    if (size < 1 || size > 3 || message.isSysEx()) return;
+    TimedMidi m;
+    std::copy_n(message.getRawData(), size, m.bytes.begin());
+    m.size = static_cast<std::uint8_t>(size);
+    m.live = source == livePort_;
+    //  its stamp, on JUCE's millisecond counter, as an age: ahead when the sender scheduled it, and taken as now
+    //  when far off -- a sender that stamps 0 for "now"
+    const double ago = 0.001 * juce::Time::getMillisecondCounterHiRes() - message.getTimeStamp();
+    m.stampNs = nowNs() - (std::abs(ago) < 0.5 ? static_cast<std::int64_t>(ago * 1e9) : 0);
+    const juce::SpinLock::ScopedLockType one(midiPush_);
+    (void)midi_.push(m);
+}
+
+void Engine::takeMidi(const float* const* inputs, int inputCount, int frames, std::int64_t now) noexcept {
+    const std::int64_t start = runner_.sample();
+    const bool measuring = measuring_.load(std::memory_order_relaxed);
+    if (measuring && !wasMeasuring_) meter_.emplace(s_.rate);
+    wasMeasuring_ = measuring;
+    for (TimedMidi m; midi_.pop(m);) {
+        //  where it arrived, on the host's samples: in the past, or ahead when the sender scheduled it
+        const std::int64_t arrived = start - std::llround(1e-9 * static_cast<double>(now - m.stampNs) * s_.rate);
+        if (m.live && measuring && m.size == 3 && (m.bytes[0] & 0xf0) == 0x90 && m.bytes[2] > 0) meter_->note(arrived);
+        const std::int64_t at = arrived + (m.live ? liveMidi_.load(std::memory_order_relaxed) : block_);
+        if (!pending_.add({std::max(at, start), m.bytes, m.size})) silence_ = true;
+    }
+    if (silence_) {
+        //  a note-off may have been lost: all of them let go, on every channel, before anything else
+        pending_.clear();
+        for (std::uint8_t channel = 0; channel < 16; ++channel)
+            (void)pending_.add({start, {static_cast<std::uint8_t>(0xb0 | channel), 123, 0}, 3});
+        silence_ = false;
+    }
+    if (!measuring) return;
+    const auto channel = [&](int c) { return c < inputCount ? inputs[c] : nullptr; };
+    meter_->listen(channel(mainChannel_), channel(mainChannel_ + 1), frames, start);
+    if (const auto lead = meter_->took()) (void)leads_.push(*lead);
+}
+
+std::optional<double> Engine::measured() noexcept {
+    std::int64_t lead = 0;
+    if (!leads_.pop(lead)) return std::nullopt;
+    return 1000.0 * static_cast<double>(lead) / s_.rate;
+}
+
 void Engine::audioDeviceStopped() { playable_.store(false, std::memory_order_relaxed); }
 
 void Engine::audioDeviceIOCallbackWithContext(const float* const* inputs, int inputCount, float* const* outputs,
@@ -590,6 +680,7 @@ void Engine::audioDeviceIOCallbackWithContext(const float* const* inputs, int in
     if (inputCount < inputChannels_) return;
     for (int ch = 0; ch < outputChannels_; ++ch)
         if (outputs[ch] == nullptr) return;
+    takeMidi(inputs, inputCount, frames, now);
     const auto began = juce::Time::getHighResolutionTicks();
     for (int done = 0; done < frames;) {
         const int n = std::min(frames - done, out_.getNumSamples());

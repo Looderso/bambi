@@ -825,6 +825,68 @@ public:
     juce::AudioParameterFloat* depth{nullptr};
 };
 
+//  An insert that lets the field through and keeps every MIDI event it is given, on the host's samples: its own count
+//  of the samples it played, plus the event's place in the block.
+class Ear final : public StandIn {
+public:
+    Ear()
+        : StandIn(BusesProperties()
+                      .withInput("in", juce::AudioChannelSet::ambisonic(kOrder))
+                      .withOutput("out", juce::AudioChannelSet::ambisonic(kOrder))) {}
+    bool acceptsMidi() const override { return true; }
+    void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer& midi) override {
+        for (const auto m : midi) heard.push_back({played + m.samplePosition, m.data[1]});
+        midi.clear();  // as a plugin may: the next must still be given everything
+        played += b.getNumSamples();
+    }
+    std::int64_t played{0};
+    std::vector<std::pair<std::int64_t, int>> heard;  ///< the sample and the note
+};
+
+//  Notes held for the runner at their samples, and one put in late, after its sample was played: whether both
+//  inserts heard every note, once, at its sample -- the late one at the first sample after it was put in.
+bool midiPlaced(int block) {
+    Pass a;
+    Ear first, second;
+    PassOut out;
+    live::Plan p;
+    live::FieldNode n;
+    n.track = 1;
+    n.input = 0;
+    n.encoder = 0;
+    n.inserts = {1, 2};
+    p.nodes = {n};
+    p.slots = {{0, -1}, {0, -1}, {0, -1}, {0, -1}};
+    p.decoders = {3};
+    const auto compiled = live::compile(p);
+    livehost::Runner runner;
+    juce::String why;
+    if (!compiled ||
+        !runner.prepare(*compiled, {&a, &first, &second, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why))
+        return false;
+    live::MidiPending pending;
+    runner.setMidi(&pending);
+    std::vector<std::pair<std::int64_t, int>> want;
+    for (const auto& [at, note] : std::vector<std::pair<std::int64_t, int>>{
+             {0, 60}, {63, 61}, {64, 62}, {255, 63}, {256, 64}, {511, 65}, {777, 66}, {1499, 67}, {1500, 68}}) {
+        pending.add({at, {0x90, static_cast<std::uint8_t>(note), 100}, 3});
+        want.push_back({at, note});
+    }
+    juce::AudioBuffer<float> row(4, kDeviceBlock), part(2, kDeviceBlock);
+    row.clear();
+    constexpr int kLength = 4000;
+    bool late = false;
+    for (int at = 0; at < kLength; at += block) {
+        if (!late && at >= 2000) {  // a note for a sample already played: it plays at once
+            pending.add({1000, {0x90, 70, 100}, 3});
+            want.push_back({at, 70});
+            late = true;
+        }
+        runner.process(row, part, std::min(block, kLength - at));
+    }
+    return first.heard == want && second.heard == want && pending.size() == 0;
+}
+
 //  A lane from 0 at the song's start to 1 at quarter note 4, Live playing at 120 bpm: after every block the
 //  parameter holds the lane's value where the last piece was played. The largest difference.
 double laneFollows(int block) {
@@ -1138,12 +1200,16 @@ int sheetHolds() {
     s.decoders = {{1, one, 64}, {2, two, 64}};
     s.inputs = {{live::kFirstInput, "vox", 1}};
     s.load = 0.3f;
+    s.midiInputs = {"Keys", "bambi"};
+    s.leadCount = 3;
+    s.leadMs = 21.5;
+    s.settings.liveMidiMs = 20.0;
     int asked = 0;
     sheet.change = [&](live::AudioSettings) { ++asked; };
     sheet.changeInputs = [&](std::vector<live::HostInput>, live::AudioSettings) { ++asked; };
     juce::Image image(juce::Image::RGB, sheet.getWidth(), sheet.getHeight(), true);
     for (const auto tab : {livehost::AudioSheet::Tab::Interface, livehost::AudioSheet::Tab::Outputs,
-                           livehost::AudioSheet::Tab::Inputs}) {
+                           livehost::AudioSheet::Tab::Inputs, livehost::AudioSheet::Tab::Midi}) {
         for (int y = 0; y < sheet.getHeight(); y += 9)
             for (int x = 0; x < sheet.getWidth(); x += 11) {
                 sheet.show(s);
@@ -1154,7 +1220,7 @@ int sheetHolds() {
             }
     }
     const bool ok = asked > 0;
-    std::printf("  three tabs, pressed everywhere: %d changes asked %s\n", asked, ok ? "" : "  FAIL");
+    std::printf("  four tabs, pressed everywhere: %d changes asked %s\n", asked, ok ? "" : "  FAIL");
     return ok ? 0 : 1;
 }
 
@@ -1650,6 +1716,15 @@ int main() {
         failed += ok ? 0 : 1;
         std::printf("  a song lane while the session has its track: %s; after Back to Arrangement: %s %s\n",
                     stayed ? "held" : "driven", moved ? "driven" : "held", ok ? "" : "  FAIL");
+    }
+
+    std::printf("MIDI\n");
+    for (const int block : {1, 64, 500}) {
+        //  Catches: a note placed at its piece's start, or a piece late; one given to the first plugin only, as one
+        //  that clears its buffer would leave it; a late note dropped or held back.
+        const bool ok = midiPlaced(block);
+        failed += ok ? 0 : 1;
+        std::printf("  notes for every insert at their samples, block %4d: %s\n", block, ok ? "yes" : "no  FAIL");
     }
 
     std::printf("the timeline\n");

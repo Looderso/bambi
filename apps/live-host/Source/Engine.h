@@ -16,6 +16,7 @@
 #include "bambi/decode/remote.hpp"
 #include "bambi/live/io.hpp"
 #include "bambi/live/lanes.hpp"
+#include "bambi/live/midi.hpp"
 #include "bambi/patch/parameters.hpp"
 #include "bambi/live/pairs.hpp"
 #include "devices.hpp"
@@ -44,11 +45,16 @@
  *  thread takes it from a queue at the start of its next block and places it on the host's samples. It follows a
  *  clock outside the host, so what plays depends on when the messages came: this path is real-time only.
  *
- *  start() and transport() on the message thread; the callbacks are the audio device's.
+ *  MIDI, from every input the system has and from the host's own port, "bambi", where Live's MIDI tracks send: each
+ *  message stamped as it arrives and placed on the host's samples by the audio thread, one buffer after it arrived
+ *  -- so it keeps its place within a buffer -- and Live's instead as late as Live's audio for it reaches the host,
+ *  as the settings keep it. Every instance hears all of it. The inputs are opened again whenever the system's change.
+ *
+ *  start() and transport() on the message thread; the callbacks are the audio device's, and the MIDI inputs'.
  */
 namespace bambi::livehost {
 
-class Engine final : private juce::AudioIODeviceCallback {
+class Engine final : private juce::AudioIODeviceCallback, private juce::MidiInputCallback {
 public:
     struct Settings {
         int order{3};
@@ -93,6 +99,13 @@ public:
 
     /// Live's transport, as the device sent it, stamped in steady-clock nanoseconds when its line was read.
     void transport(const live::TransportMessage& message, std::int64_t stampNs) noexcept;
+
+    /// The MIDI inputs the host hears, by name: the system's, then its own port. Message thread.
+    std::vector<juce::String> midiInputs() const;
+    /// Whether Live's lead is measured: each note-on from Live's port paired with the sound on Live's Main.
+    void setMeasuring(bool on) noexcept { measuring_.store(on, std::memory_order_relaxed); }
+    /// A measurement taken since the last asked, in milliseconds. Message thread.
+    std::optional<double> measured() noexcept;
 
     /// The field as the shape lays it over Live's set, and the pairs its sources are on. Loads an Encoder for each
     /// source new to the field, lets go of each whose track has left it, and swaps the new program in. True when
@@ -163,6 +176,12 @@ private:
         live::TransportMessage message;
         std::int64_t stampNs{0};
     };
+    struct TimedMidi {
+        std::array<std::uint8_t, 3> bytes{};
+        std::uint8_t size{0};
+        bool live{false};  ///< from the host's own port
+        std::int64_t stampNs{0};
+    };
 
     bool open(juce::String& status);
     std::shared_ptr<juce::AudioPluginInstance> loadDecoder(juce::String& status);
@@ -176,6 +195,10 @@ private:
                                           const juce::AudioIODeviceCallbackContext& context) override;
     void audioDeviceAboutToStart(juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
+    void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
+    void openMidi();
+    /// The MIDI that arrived since the last block, onto the host's samples; Main's measured against Live's notes.
+    void takeMidi(const float* const* inputs, int inputCount, int frames, std::int64_t now) noexcept;
 
     Settings s_;
     juce::AudioDeviceManager devices_;
@@ -203,6 +226,19 @@ private:
     };
     SpscQueue<TimedSlot, 256> slots_;  ///< as `queue_`, for the session clips' reports
     live::ClipClock clips_;            ///< the audio thread's: where each track's session clip is
+    std::vector<std::unique_ptr<juce::MidiInput>> midiInputs_;  ///< the system's, open
+    std::unique_ptr<juce::MidiInput> port_;                     ///< the host's own, "bambi"
+    const juce::MidiInput* livePort_{nullptr};  ///< the same, set before it starts and never again: the inputs' to read
+    juce::MidiDeviceListConnection midiWatch_;
+    juce::SpinLock midiPush_;  ///< between the inputs' threads, which may be several; the audio thread never takes it
+    SpscQueue<TimedMidi, 1024> midi_;  ///< full only while no block runs; a message then is dropped
+    live::MidiPending pending_;        ///< the audio thread's: MIDI on the host's samples, until its piece
+    std::atomic<std::int64_t> liveMidi_{0};  ///< samples Live's MIDI is held back by
+    std::atomic<bool> measuring_{false};
+    bool wasMeasuring_{false};                ///< the audio thread's
+    bool silence_{false};  ///< the audio thread's: MIDI was dropped, so every note is let go at the next block
+    std::optional<live::LeadMeter> meter_;    ///< the audio thread's, made afresh as measuring starts
+    SpscQueue<std::int64_t, 64> leads_;       ///< measured leads, in samples, to the message thread
     struct Program {  // what the runner was last given, to give it again with other routes or another device
         live::Compiled compiled;
         std::vector<juce::AudioProcessor*> slots;

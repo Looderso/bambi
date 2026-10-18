@@ -65,6 +65,7 @@ TEST_CASE("the settings read back as written, and an older file's missing fields
     s.copies = {{{1, Output::Headphones}, {"box", 3}, false},
                 {{7, Output::Headphones}, {}, true},
                 {kLiveMain, {"i16", 15}, false}};
+    s.liveMidiMs = 23.5;
     CHECK(audioSettingsFrom(Json::parse(toJson(s).dump(0))) == s);
     CHECK(s.at({7, Output::Speakers}) == DeviceChannel{"i16", 3});
     CHECK(s.at({7, Output::Headphones}).none());
@@ -77,6 +78,7 @@ TEST_CASE("the settings read back as written, and an older file's missing fields
     CHECK(one.copies[0].of == Out{kFirstDecoder, Output::Headphones});
     const AudioSettings old = audioSettingsFrom(Json::parse(R"({"devices": ["i16"]})"));
     CHECK(old.buffer == 64);
+    CHECK(old.liveMidiMs == 0.0);
     CHECK(old.placed.empty());
     CHECK(old.copies.empty());
 }

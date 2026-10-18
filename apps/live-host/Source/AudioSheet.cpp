@@ -43,6 +43,13 @@ void AudioSheet::setLoad(float load) {
     if (isOpen() && tab_ == Tab::Interface) repaint();
 }
 
+void AudioSheet::setLead(double ms, double spreadMs, int count) {
+    s_.leadMs = ms;
+    s_.leadSpreadMs = spreadMs;
+    s_.leadCount = count;
+    if (isOpen() && tab_ == Tab::Midi) repaint();
+}
+
 void AudioSheet::dismiss() {
     if (arming_ || menu_) {
         arming_.reset();
@@ -101,7 +108,8 @@ void AudioSheet::paint(juce::Graphics& g) {
     const auto row = outputRow();
     const std::vector<juce::String> names{
         "interface " + juce::String(static_cast<int>(live::aggregateOf(s_.settings.devices, s_.system).size())),
-        "outputs " + juce::String(row.width()), "inputs " + juce::String(static_cast<int>(s_.inputs.size()))};
+        "outputs " + juce::String(row.width()), "inputs " + juce::String(static_cast<int>(s_.inputs.size())),
+        "midi " + juce::String(static_cast<int>(s_.midiInputs.size()))};
     paintTabRowAt(g, head.getX() + ui::textWidth(titleFont, "audio") + sh::gap + ctl::tabPadX,
                   head.getCentreY() - tabHeight / 2.0f, tabHeight, names, static_cast<int>(tab_), [this](int t) {
                       tab_ = static_cast<Tab>(t);
@@ -126,8 +134,10 @@ void AudioSheet::paint(juce::Graphics& g) {
         interfacePage(g, page);
     else if (tab_ == Tab::Outputs)
         outputsPage(g, page);
-    else
+    else if (tab_ == Tab::Inputs)
         inputsPage(g, page);
+    else
+        midiPage(g, page);
 }
 
 // ---- interface ----------------------------------------------------------------------------------
@@ -620,6 +630,77 @@ float AudioSheet::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
         if (!found) settings.inputs.push_back({input_, row.channel(c)});
         changeAll(s_.inputs, settings);
     });
+}
+
+// ---- midi ---------------------------------------------------------------------------------------
+
+float AudioSheet::midiPage(juce::Graphics& g, juce::Rectangle<float> page) {
+    float y = ui::drawGroupHeading(g, page.getX(), page.getY(), page.getWidth(), "inputs");
+    for (std::size_t k = 0; k < s_.midiInputs.size(); ++k) {
+        auto line = juce::Rectangle<float>{page.getX(), y, page.getWidth(), sh::line};
+        ui::text(g, s_.midiInputs[k], ui::labelFont(), colour::text, line.removeFromLeft(sh::nameColumn),
+                 juce::Justification::centredLeft);
+        if (k + 1 == s_.midiInputs.size())
+            ui::text(g, "the host's own: Live's MIDI tracks send here", ui::smallFont(), colour::label, line,
+                     juce::Justification::centredLeft);
+        y += sh::line;
+    }
+    if (s_.midiInputs.empty()) {
+        ui::text(g, "none", ui::labelFont(), colour::inactive, {page.getX(), y, page.getWidth(), sh::line},
+                 juce::Justification::centredLeft);
+        y += sh::line;
+    }
+    ui::text(g, "Every plugin hears all of it, and answers to the channel and note it learned.", ui::smallFont(),
+             colour::label, {page.getX(), y, page.getWidth(), sh::line}, juce::Justification::centredLeft);
+    y += sh::line;
+
+    y = ui::drawGroupHeading(g, page.getX(), y + sh::gap, page.getWidth(), "Live's MIDI");
+    const double held = s_.settings.liveMidiMs;
+    ui::text(g, "held back", ui::labelFont(), colour::label, {page.getX(), y, sh::labelColumn, sh::control},
+             juce::Justification::centredLeft);
+    float x = page.getX() + sh::labelColumn;
+    const auto step = [this](double by) {
+        edit([by](live::AudioSettings& a) { a.liveMidiMs = std::clamp(std::round(a.liveMidiMs + by), 0.0, live::kMaxLiveMidiMs); });
+    };
+    const auto less = button(g, x, y + sh::control / 2.0f, kDash);
+    addClickArea(less, [step] { step(-1.0); });
+    x = less.getRight() + ctl::segmentGap;
+    const juce::String value = juce::String(held, 1) + " ms";
+    ui::text(g, value, ui::labelFont(), colour::text, {x, y, sh::valueColumn, sh::control},
+             juce::Justification::centred);
+    x += sh::valueColumn + ctl::segmentGap;
+    const auto more = button(g, x, y + sh::control / 2.0f, "+");
+    addClickArea(more, [step] { step(1.0); });
+    x = more.getRight() + sh::gap;
+    const juce::Rectangle<float> measureAt{x, y, ui::framedButtonWidth("measure"), sh::control};
+    ui::drawFramedButton(g, measureAt, "measure", true, s_.measuring);
+    addClickArea(measureAt, [this] {
+        s_.measuring = !s_.measuring;
+        if (measure) measure(s_.measuring);
+        repaint();
+    });
+    y += sh::control + ctl::segmentGap;
+
+    if (s_.leadCount > 0) {
+        auto line = juce::Rectangle<float>{page.getX(), y, page.getWidth(), sh::line};
+        ui::text(g,
+                 "measured " + juce::String(s_.leadMs, 1) + " ms " + juce::String::fromUTF8("\xc2\xb1") + " " +
+                     juce::String(s_.leadSpreadMs, 1) + kSeparator + juce::String(s_.leadCount) +
+                     (s_.leadCount == 1 ? " note" : " notes"),
+                 ui::labelFont(), colour::text, line.removeFromLeft(sh::nameColumn + sh::ioColumn),
+                 juce::Justification::centredLeft);
+        const double found = std::clamp(s_.leadMs, 0.0, live::kMaxLiveMidiMs);
+        const auto use = button(g, line.getX(), line.getCentreY(), "use");
+        addClickArea(use, [this, found] { edit([found](live::AudioSettings& a) { a.liveMidiMs = found; }); });
+        y += sh::line;
+    }
+    ui::text(g,
+             s_.measuring ? "Listening: a MIDI track sending to bambi, and on Main a click on its notes, nothing else."
+                          : "Measure with a MIDI track sending to bambi and, on Main, a click on its notes.",
+             ui::smallFont(), colour::label, {page.getX(), y, page.getWidth(), sh::line},
+             juce::Justification::centredLeft);
+    y += sh::line;
+    return y;
 }
 
 }  // namespace bambi::livehost

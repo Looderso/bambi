@@ -148,6 +148,7 @@ Json toJson(const AudioSettings& s) {
         inputs.push(std::move(o));
     }
     j.set("inputs", std::move(inputs));
+    j.set("liveMidiMs", Json(s.liveMidiMs));
     return j;
 }
 
@@ -175,6 +176,7 @@ AudioSettings audioSettingsFrom(const Json& j) {
             if (v >= static_cast<double>(kFirstInput))
                 s.inputs.push_back({static_cast<TrackId>(std::llround(v)), channelFrom(o.find("at"))});
         }
+    if (const Json* m = j.find("liveMidiMs")) s.liveMidiMs = std::clamp(m->numberOr(0.0), 0.0, kMaxLiveMidiMs);
     return s;
 }
 
