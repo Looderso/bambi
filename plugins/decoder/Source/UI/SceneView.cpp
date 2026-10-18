@@ -93,11 +93,6 @@ void DecoderSceneView::paint(juce::Graphics& g) {
     {
         juce::Graphics::ScopedSaveState clip(g);
         if (!globe) g.reduceClipRegion(frame.getSmallestIntegerContainer());
-        g.setColour(colour::ground);
-        if (globe)
-            g.fillEllipse(frame);
-        else
-            g.fillRect(frame);
         //  the energy of what every output hears, in the room's frame, under everything drawn in ink
         if (state_.sphere.energyOn && state_.sphere.energyAvailable)
             energyLayer_.paint(g, projection_, state_.sphere.camera, vp, state_.sphere.energy, 1.0f);
