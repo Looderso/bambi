@@ -98,8 +98,38 @@ struct Locator {
     std::string name;
     friend bool operator==(const Locator&, const Locator&) = default;
 };
+/*  A track's session clip as Live plays it: which slot, and where in the clip Live is, sent as Live reports it --
+ *  when the track's playing slot changes and as the clip's position moves. In quarter notes from the clip's start;
+ *  a looping clip's position runs from its loop's start to its end and back. */
+struct SlotPlay {
+    TrackId id{0};
+    int slot{-1};          ///< the scene's index; -1 when no session clip plays on the track
+    double position{0.0};  ///< where in the clip Live is
+    double loopStart{0.0}, loopEnd{0.0};
+    bool looping{false};
+    friend bool operator==(const SlotPlay&, const SlotPlay&) = default;
+};
+
+/// A session clip in its slot: what the session view draws a clip lane against.
+struct SessionClip {
+    int slot{0};  ///< the scene's index
+    std::string name;
+    std::string colour;                   ///< "#rrggbb"
+    double loopStart{0.0}, loopEnd{0.0};  ///< quarter notes in the clip; the whole clip when it does not loop
+    bool looping{false};
+    bool midi{false};
+    friend bool operator==(const SessionClip&, const SessionClip&) = default;
+};
+struct TrackSlots {
+    TrackId id{0};
+    std::vector<SessionClip> clips;  ///< the slots that hold one, in scene order
+    friend bool operator==(const TrackSlots&, const TrackSlots&) = default;
+};
+
 struct Arrangement {
     std::vector<TrackClips> tracks;
+    std::vector<TrackSlots> session;  ///< every track's session clips, read with the arrangement
+    int scenes{0};
     std::vector<Locator> locators;  ///< in time order
     bool loopOn{false};
     double loopStart{0.0}, loopLength{0.0};
@@ -163,6 +193,12 @@ struct CreateReturn {
     friend bool operator==(const CreateReturn&, const CreateReturn&) = default;
 };
 
+/// The arrangement and the session's clips, read again and sent when they changed: the host asks while its timeline
+/// is open, since Live does not report every change. The device reads only while Live stands.
+struct Refresh {
+    friend bool operator==(const Refresh&, const Refresh&) = default;
+};
+
 /// Live's transport, asked from the host: Live stays the clock, and reports back what it did as any transport.
 struct Command {
     enum class Action { Play, Stop, Continue, Locate };
@@ -171,8 +207,8 @@ struct Command {
     friend bool operator==(const Command&, const Command&) = default;
 };
 
-using Message = std::variant<Hello, Switched, Tree, Value, TransportMessage, Restore, Arrangement, Routed, Show,
-                             Welcome, Route, Save, Info, Status, Busy, CreateReturn, Command>;
+using Message = std::variant<Hello, Switched, Tree, Value, TransportMessage, Restore, Arrangement, SlotPlay, Routed,
+                             Show, Welcome, Route, Save, Info, Status, Busy, CreateReturn, Command, Refresh>;
 
 /// A line as a message, or none with `error` set when it is not a JSON object or its type is unknown.
 std::optional<Message> parse(std::string_view line, std::string* error = nullptr);

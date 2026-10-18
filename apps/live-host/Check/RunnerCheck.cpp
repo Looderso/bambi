@@ -40,6 +40,7 @@
 #include "bambi/encode/params.hpp"
 #include "bambi/reverb/params.hpp"
 #include "devices.hpp"
+#include "bambi/live/clips.hpp"
 #include "bambi/live/graph.hpp"
 #include "bambi/live/transport.hpp"
 
@@ -861,6 +862,89 @@ double laneFollows(int block) {
     return worst;
 }
 
+//  A clip lane over a looping clip of two quarter notes on track 7, slot 1, from 0 to 1, and a song lane on the same
+//  track's other knob that its clip holds: after every block the clip lane's parameter is where the clip is, round
+//  its loop, and the held song lane's has not moved. The largest difference of the first; whether the second moved.
+std::pair<double, bool> clipLaneFollows(int block) {
+    Pass a;
+    Knob knob, held;
+    PassOut out;
+    live::Plan p;
+    live::FieldNode n;
+    n.track = 7;
+    n.input = 0;
+    n.encoder = 0;
+    n.inserts = {1, 2};
+    p.nodes = {n};
+    p.slots = {{0, -1}, {0, -1}, {0, -1}, {0, -1}};
+    p.decoders = {3};
+    const auto compiled = live::compile(p);
+    live::TransportProjector clock(clockSettings());
+    live::ClipClock clips;
+    livehost::Runner runner;
+    juce::String why;
+    if (!compiled || !runner.prepare(*compiled, {&a, &knob, &held, &out}, compiled->levels,
+                                     {kOrder, kMaxBlock, 4, 2, kRate}, why))
+        return {1.0, true};
+    runner.setClock(&clock);
+    runner.setClips(&clips);
+    clock.receive({true, 0.0, 120.0}, 0);
+    const live::SlotPlay playing{7, 1, 0.0, 0.0, 2.0, true};
+    clips.receive(playing, 0);
+    const std::vector<live::LanePoint> points{{0.0, 0.0}, {2.0, 1.0}};
+    runner.setAutomation({{knob.depth, points, 7, 1, 0}, {held.depth, points, 0, -1, 7}}, {});
+    juce::AudioBuffer<float> row(4, kDeviceBlock), part(2, kDeviceBlock);
+    row.clear();
+    double worst = 0.0;
+    bool moved = false;
+    for (int at = 0; at < 6 * 24000; at += block) {
+        runner.process(row, part, std::min(block, 6 * 24000 - at));
+        const double want = *live::valueAt(points, live::clipPosition(playing, runner.shown().ppq));
+        worst = std::max(worst, std::abs(static_cast<double>(knob.depth->get()) - want));
+        moved = moved || std::abs(held.depth->get() - 0.5f) > 1e-6f;
+    }
+    return {worst, moved};
+}
+
+//  The same clip lane with Live stopped, its clip reported at 1.5: its parameter stays where the clip stands, however
+//  long the runner plays. The largest difference from there.
+double clipLaneStands(int block) {
+    Pass a;
+    Knob knob;
+    PassOut out;
+    live::Plan p;
+    live::FieldNode n;
+    n.track = 7;
+    n.input = 0;
+    n.encoder = 0;
+    n.inserts = {1};
+    p.nodes = {n};
+    p.slots = {{0, -1}, {0, -1}, {0, -1}};
+    p.decoders = {2};
+    const auto compiled = live::compile(p);
+    live::TransportProjector clock(clockSettings());
+    live::ClipClock clips;
+    livehost::Runner runner;
+    juce::String why;
+    if (!compiled ||
+        !runner.prepare(*compiled, {&a, &knob, &out}, compiled->levels, {kOrder, kMaxBlock, 4, 2, kRate}, why))
+        return 1.0;
+    runner.setClock(&clock);
+    runner.setClips(&clips);
+    clock.receive({false, 10.0, 120.0}, 0);
+    clips.receive({7, 1, 1.5, 0.0, 2.0, true}, 0);
+    const std::vector<live::LanePoint> points{{0.0, 0.0}, {2.0, 1.0}};
+    runner.setAutomation({{knob.depth, points, 7, 1, 0}}, {});
+    juce::AudioBuffer<float> row(4, kDeviceBlock), part(2, kDeviceBlock);
+    row.clear();
+    double worst = 0.0;
+    for (int at = 0; at < 4 * 24000; at += block) {
+        runner.process(row, part, std::min(block, 4 * 24000 - at));
+        worst = std::max(worst, std::abs(static_cast<double>(knob.depth->get()) - 0.75));
+    }
+    return worst;
+}
+
 //  Every installed plugin's parameters as the host finds them: at their manifest's places, under its names. A
 //  lane names a parameter by key and is driven at the manifest's place; one listed otherwise would move another.
 int parametersWhereNamed() {
@@ -919,6 +1003,9 @@ int timelineHolds() {
     a.loopStart = 96.0;
     a.loopLength = 32.0;
     a.readMs = 12.0;
+    a.scenes = 4;
+    a.session = {{2, {{0, "kick a", "#e0b552", 0.0, 4.0, true, false}, {2, "fill", "#e0b552", 0.0, 8.0, false, false}}},
+                 {3, {{1, "bass b", "#c05a4a", 0.0, 16.0, true, true}}}};
     int commands = 0, locates = 0;
     double lastLocate = -1.0;
     page.command = [&](const live::Command& c) {
@@ -934,21 +1021,27 @@ int timelineHolds() {
     shape.chains = {{2, {{7, live::Effect::Echo, 0}}}};
     const live::Field field = live::layOut(tree, shape);
     const std::vector<live::Lane> lanes{{1, live::Instance::Encoder, 2, "transform.yaw", {{0.0, -30.0}, {64.0, 30.0}}},
+                                        {4, live::Instance::Encoder, 2, "transform.pitch", {{0.0, 0.0}}, 2, 0},
                                         {2, live::Instance::Insert, 7, "output.wet", {}},
                                         {3, live::Instance::Decoder, live::kFirstDecoder, "output.level", {}}};
     int edits = 0;
     page.lanesChanged = [&](std::vector<live::Lane>) { ++edits; };
     page.show({tree, a, shape, field, lanes});
+    page.slotPlayed({2, 0, 1.0, 0.0, 4.0, true});
     juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
-    for (const bool p : {true, false}) {
-        playing = p;
-        for (int y = 0; y < page.getHeight(); y += 9)
-            for (int x = 0; x < page.getWidth(); x += 11) {
-                juce::Graphics g(image);
-                page.paint(g);
-                page.clickAt({static_cast<float>(x), static_cast<float>(y)});
-            }
-    }
+    int sessionEdits = 0;
+    for (const bool session : {true, false})
+        for (const bool p : {true, false}) {
+            if (!session && sessionEdits == 0) sessionEdits = edits;
+            playing = p;
+            for (int y = 0; y < page.getHeight(); y += 9)
+                for (int x = 0; x < page.getWidth(); x += 11) {
+                    page.showSession(session);
+                    juce::Graphics g(image);
+                    page.paint(g);
+                    page.clickAt({static_cast<float>(x), static_cast<float>(y)});
+                }
+        }
     //  Catches: a ruler press locating anywhere but under it, or not to the locator beside it. The song is 160
     //  quarter notes over the width between the tree's column and the lanes' panel, less the inset between.
     namespace tl = ui::theme::timeline;
@@ -959,8 +1052,10 @@ int timelineHolds() {
         return lastLocate;
     };
     const bool placed = std::abs(locateUnder(51.2) - 51.0) < 1e-9 && std::abs(locateUnder(32.3) - 32.0) < 1e-9;
-    const bool ok = commands > 0 && locates > 0 && placed && edits > 0;
-    std::printf("  painted playing and stopped, pressed everywhere: %d commands, %d of them locates, %d lane edits; a "
+    //  Catches: a clip lane in the session view that takes no point
+    const bool ok = commands > 0 && locates > 0 && placed && edits > 0 && sessionEdits > 0;
+    std::printf("  of the lane edits, %d in the session view\n", sessionEdits);
+    std::printf("  both views painted playing and stopped, pressed everywhere: %d commands, %d of them locates, %d lane edits; a "
                 "press locates under it %s %s\n",
                 commands, locates, edits, placed ? "yes" : "no", ok ? "" : "  FAIL");
     return ok ? 0 : 1;
@@ -1476,6 +1571,25 @@ int main() {
         const bool ok = off < 1e-6;
         failed += ok ? 0 : 1;
         std::printf("  a lane over four beats, block %4d: the parameter off by %.2g at most %s\n", block, off,
+                    ok ? "" : "  FAIL");
+    }
+
+    for (const int block : {1, 64, 500}) {
+        //  Catches: a clip lane read against the song, not looped with its clip, or not driven; a song lane driven
+        //  while its track plays a session clip.
+        const auto [off, moved] = clipLaneFollows(block);
+        const bool ok = off < 1e-6 && !moved;
+        failed += ok ? 0 : 1;
+        std::printf("  a clip lane round a two-beat loop, block %4d: off by %.2g at most; the held song lane %s %s\n",
+                    block, off, moved ? "moved" : "stayed", ok ? "" : "  FAIL");
+    }
+
+    for (const int block : {1, 500}) {
+        //  Catches: a clip run on while Live stands, so a lane moves with nothing playing.
+        const double off = clipLaneStands(block);
+        const bool ok = off < 1e-6;
+        failed += ok ? 0 : 1;
+        std::printf("  a clip lane while Live stands, block %4d: off where the clip stands by %.2g %s\n", block, off,
                     ok ? "" : "  FAIL");
     }
 

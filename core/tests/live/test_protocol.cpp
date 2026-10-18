@@ -124,6 +124,8 @@ TEST_CASE("every message comes back from the wire as it went") {
     CHECK(again(Command{Command::Action::Locate, 64.5}) == Command{Command::Action::Locate, 64.5});
     const Arrangement ar{
         {{3, {{0.0, 16.0, "intro", "#d9a441", false}, {32.0, 96.0, "bass verse", "#c05a4a", true}}}, {8, {}}},
+        {{3, {{0, "kick a", "#e0b552", 0.0, 4.0, true, false}, {2, "fill", "#e0b552", 0.0, 8.0, false, true}}}},
+        4,
         {{0.0, "intro"}, {32.0, "verse"}},
         true,
         96.0,
@@ -132,7 +134,14 @@ TEST_CASE("every message comes back from the wire as it went") {
     CHECK(again(ar) == ar);
     std::string why;
     CHECK_FALSE(parse(R"({"type": "command", "action": "rewind"})", &why).has_value());
+    //  Catches: a slot's place or a clip's position lost, a stopped track read as playing its first slot.
+    const SlotPlay sp{4, 2, 3.5, 0.0, 8.0, true};
+    CHECK(again(sp) == sp);
+    const auto stopped = parse(R"({"type": "slot", "id": 4})");
+    REQUIRE(stopped.has_value());
+    CHECK(std::get<SlotPlay>(*stopped).slot == -1);
     (void)again(Busy{});
+    (void)again(Refresh{});
     (void)again(Show{});
 
     const TransportMessage tr{true, 33.25, 97.0};

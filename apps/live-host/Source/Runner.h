@@ -9,6 +9,7 @@
 
 #include "Playhead.h"
 #include "bambi/link/handoff.hpp"
+#include "bambi/live/clips.hpp"
 #include "bambi/live/graph.hpp"
 #include "bambi/live/lanes.hpp"
 #include "bambi/live/transport.hpp"
@@ -76,6 +77,9 @@ public:
     struct Driven {
         juce::AudioProcessorParameter* parameter{nullptr};
         std::vector<live::LanePoint> points;
+        live::TrackId clipTrack{0};  ///< a clip lane: the track whose clip it follows
+        int slot{-1};                ///< and that clip's slot; -1 a song lane
+        live::TrackId heldBy{0};     ///< a song lane: the track whose session clip, while one plays, holds it
     };
 
     Runner() { automation_.begin(std::make_unique<Automation>()); }
@@ -113,6 +117,9 @@ public:
     /// Live's timeline, owned by the caller on the audio thread, which feeds it Live's transport. Set before audio
     /// runs; none: stopped.
     void setClock(live::TransportProjector* clock) noexcept { clock_ = clock; }
+    /// Where each track's session clip is, for the clip lanes: the caller's, fed on the audio thread before the
+    /// block. Set before audio runs; none: no clip lane plays.
+    void setClips(const live::ClipClock* clips) noexcept { clips_ = clips; }
 
     /// Where Live was at the last piece the plugins played, for a window to draw. Any thread; each value on its own,
     /// so a reading may mix two pieces', which a drawing does not see.
@@ -207,6 +214,7 @@ private:
     juce::MidiBuffer midi_;
     LivePlayhead playhead_;
     live::TransportProjector* clock_{nullptr};
+    const live::ClipClock* clips_{nullptr};
     std::int64_t sample_{0};
     std::atomic<double> shownPpq_{0.0}, shownBpm_{120.0};
     std::atomic<bool> shownPlaying_{false};

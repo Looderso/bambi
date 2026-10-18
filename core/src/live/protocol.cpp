@@ -209,10 +209,21 @@ struct Writer {
         o.set("name", Json(m.name));
         return o;
     }
+    Json operator()(const Refresh&) const { return typed("refresh"); }
     Json operator()(const Command& m) const {
         Json o = typed("command");
         o.set("action", Json(actionName(m.action)));
         if (m.action == Command::Action::Locate) o.set("ppq", Json(m.ppq));
+        return o;
+    }
+    Json operator()(const SlotPlay& m) const {
+        Json o = typed("slot");
+        o.set("id", number(m.id));
+        o.set("slot", Json(m.slot));
+        o.set("position", Json(m.position));
+        o.set("loopStart", Json(m.loopStart));
+        o.set("loopEnd", Json(m.loopEnd));
+        o.set("looping", Json(m.looping));
         return o;
     }
     Json operator()(const Arrangement& m) const {
@@ -235,6 +246,27 @@ struct Writer {
             tracks.push(std::move(tr));
         }
         o.set("tracks", std::move(tracks));
+        Json session = Json::array();
+        for (const TrackSlots& t : m.session) {
+            Json clips = Json::array();
+            for (const SessionClip& c : t.clips) {
+                Json j = Json::object();
+                j.set("slot", Json(c.slot));
+                j.set("name", Json(c.name));
+                j.set("colour", Json(c.colour));
+                j.set("loopStart", Json(c.loopStart));
+                j.set("loopEnd", Json(c.loopEnd));
+                j.set("looping", Json(c.looping));
+                j.set("midi", Json(c.midi));
+                clips.push(std::move(j));
+            }
+            Json tr = Json::object();
+            tr.set("id", number(t.id));
+            tr.set("clips", std::move(clips));
+            session.push(std::move(tr));
+        }
+        o.set("session", std::move(session));
+        o.set("scenes", Json(m.scenes));
         Json locators = Json::array();
         for (const Locator& l : m.locators) {
             Json j = Json::object();
@@ -316,6 +348,7 @@ std::optional<Message> parse(std::string_view line, std::string* error) {
     if (type == "status") return Status{text(o, "text")};
     if (type == "busy") return Busy{};
     if (type == "createReturn") return CreateReturn{text(o, "name")};
+    if (type == "refresh") return Refresh{};
     if (type == "command") {
         const std::string action = text(o, "action");
         const auto a = action == "stop"       ? Command::Action::Stop
@@ -329,6 +362,13 @@ std::optional<Message> parse(std::string_view line, std::string* error) {
         }
         return Command{*a, number(o, "ppq")};
     }
+    if (type == "slot")
+        return SlotPlay{id(o),
+                        static_cast<int>(std::llround(number(o, "slot", -1.0))),
+                        number(o, "position"),
+                        number(o, "loopStart"),
+                        number(o, "loopEnd"),
+                        flag(o, "looping")};
     if (type == "arrangement") {
         Arrangement a;
         if (const Json* tracks = member(o, "tracks"); tracks != nullptr && tracks->isArray())
@@ -340,6 +380,17 @@ std::optional<Message> parse(std::string_view line, std::string* error) {
                                             flag(c, "midi")});
                 if (tc.id != 0) a.tracks.push_back(std::move(tc));
             }
+        if (const Json* session = member(o, "session"); session != nullptr && session->isArray())
+            for (const Json& t : session->items()) {
+                TrackSlots ts{id(t), {}};
+                if (const Json* clips = member(t, "clips"); clips != nullptr && clips->isArray())
+                    for (const Json& c : clips->items())
+                        ts.clips.push_back({static_cast<int>(std::llround(number(c, "slot"))), text(c, "name"),
+                                            text(c, "colour"), number(c, "loopStart"), number(c, "loopEnd"),
+                                            flag(c, "looping"), flag(c, "midi")});
+                if (ts.id != 0) a.session.push_back(std::move(ts));
+            }
+        a.scenes = static_cast<int>(std::llround(number(o, "scenes")));
         if (const Json* locators = member(o, "locators"); locators != nullptr && locators->isArray())
             for (const Json& l : locators->items()) a.locators.push_back({number(l, "time"), text(l, "name")});
         if (const Json* loop = member(o, "loop"); loop != nullptr && loop->isObject()) {

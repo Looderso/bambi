@@ -16,6 +16,7 @@ namespace {
 
 namespace colour = ui::theme::colour;
 namespace tl = ui::theme::timeline;
+const juce::String kDash = juce::String::fromUTF8("\xe2\x80\x93");
 using live::Node;
 
 //  How deep a node sits: 0 at the top, one more for each group it plays into.
@@ -48,6 +49,21 @@ const char* groupName(ParamGroup g) {
 
 juce::String effectName(live::Effect e) { return e == live::Effect::Reverb ? "reverb" : "echo"; }
 
+//  A clip as Live colours it: filled faintly, its colour along its top, its name when there is room -- in the
+//  arrangement's rows, the session's chosen clip, and, without bar or name, a session slot.
+void clipBlock(juce::Graphics& g, juce::Rectangle<float> block, const std::string& colourHex, const juce::String& name,
+               bool full) {
+    const juce::Colour ink = colour::ofLive(juce::String(colourHex), colour::label);
+    g.setColour(ink.withAlpha(tl::clipFill));
+    g.fillRect(block);
+    if (!full) return;
+    g.setColour(ink);
+    g.fillRect(block.withHeight(tl::clipBar));
+    if (block.getWidth() > tl::barLabel)
+        ui::text(g, name, ui::smallFont(), colour::text, block.reduced(tl::clipInset, 0.0f).withTrimmedTop(tl::clipBar),
+                 juce::Justification::topLeft);
+}
+
 }  // namespace
 
 TimelinePage::TimelinePage() {
@@ -67,6 +83,28 @@ void TimelinePage::show(Shown shown) {
     repaint();
 }
 
+void TimelinePage::slotPlayed(const live::SlotPlay& report) {
+    playing_[report.id] = {report, juce::Time::getMillisecondCounterHiRes()};
+    if (view_ == View::Session) repaint();
+}
+
+const live::SessionClip* TimelinePage::chosenClip(live::TrackId track) const {
+    const auto slots = std::find_if(s_.arrangement.session.begin(), s_.arrangement.session.end(),
+                                    [&](const live::TrackSlots& t) { return t.id == track; });
+    if (slots == s_.arrangement.session.end() || slots->clips.empty()) return nullptr;
+    const auto chosen = chosenSlot_.find(track);
+    const int slot = chosen != chosenSlot_.end() ? chosen->second : slots->clips.front().slot;
+    for (const live::SessionClip& c : slots->clips)
+        if (c.slot == slot) return &c;
+    return &slots->clips.front();
+}
+
+void TimelinePage::closeMenu() {
+    adding_ = false;
+    addInstance_.reset();
+    addGroup_.reset();
+}
+
 void TimelinePage::changed() {
     if (lanesChanged) lanesChanged(s_.lanes);
     repaint();
@@ -84,11 +122,23 @@ bool TimelinePage::keyPressed(const juce::KeyPress& key) {
     return true;
 }
 
+void TimelinePage::visibilityChanged() {
+    if (isVisible() && refresh) refresh();
+    sinceRefresh_ = 0;
+}
+
 void TimelinePage::timerCallback() {
     //  while Live plays, and once more as it stops, so the playhead rests where it stopped
+    //  a session clip plays only while Live does
     const bool playing = isShowing() && heard && heard().playing;
     if (playing || wasPlaying_) repaint();
     wasPlaying_ = playing;
+    //  Live does not say when a clip is made or moved: asked again every so often while the page is open and Live
+    //  stands
+    if (isShowing() && !playing && ++sinceRefresh_ * tl::frameMs >= tl::refreshMs) {
+        sinceRefresh_ = 0;
+        if (refresh) refresh();
+    }
 }
 
 float TimelinePage::xOf(double ppq) const { return left_ + static_cast<float>(ppq / length_) * width_; }
@@ -145,9 +195,16 @@ void TimelinePage::paint(juce::Graphics& g) {
     width_ = std::max(1.0f, w - tl::tree - tl::panel - tl::pad);
     const live::Playhead at = heard ? heard() : live::Playhead{};
 
+    const float right = left_ + width_ + tl::pad;
+    if (view_ == View::Session) {
+        paintSession(g, top, at, right);
+        panel(g, {right, top + tl::ruler, w - right, static_cast<float>(getHeight()) - top - tl::ruler});
+        band(g, at);
+        menu(g);
+        return;
+    }
     ruler(g, top);
     const float rows = top + tl::ruler;
-    const float right = left_ + width_ + tl::pad;
     setViewport(rows, static_cast<float>(getHeight()));
     {
         const ContentClip clip(*this, g);
@@ -173,16 +230,15 @@ void TimelinePage::paint(juce::Graphics& g) {
                 ui::text(g, kind, ui::smallFont(), colour::label, head, juce::Justification::centredRight);
             addClickArea(row.withWidth(tl::tree), [this, id] {
                 chosen_ = id;
-                adding_ = false;
-                addInstance_.reset();
-                addGroup_.reset();
+                closeMenu();
                 grabKeyboardFocus();
                 repaint();
             });
         };
         const auto lanesOf = [&](live::TrackId id) {
             for (live::Lane& l : s_.lanes)
-                if (belongs(l, id)) y = lane(g, l, y, id);
+                if (belongs(l, id) && !l.clip())
+                    y = lane(g, l, y, {left_, width_, 0.0, length_, live::edgesOf(s_.arrangement, id)});
         };
         bool returns = false;
         for (const Node& n : s_.tree.nodes) {
@@ -200,15 +256,7 @@ void TimelinePage::paint(juce::Graphics& g) {
                     const float x0 = xOf(c.start), x1 = xOf(c.end);
                     const juce::Rectangle<float> block{x0, y + tl::clipInset, std::max(1.0f, x1 - x0 - 1.0f),
                                                        tl::row - 2.0f * tl::clipInset};
-                    const juce::Colour ink = colour::ofLive(juce::String(c.colour), colour::label);
-                    g.setColour(ink.withAlpha(tl::clipFill));
-                    g.fillRect(block);
-                    g.setColour(ink);
-                    g.fillRect(block.withHeight(tl::clipBar));
-                    if (block.getWidth() > tl::barLabel)
-                        ui::text(g, juce::String(c.name), ui::smallFont(), colour::text,
-                                 block.reduced(tl::clipInset, 0.0f).withTrimmedTop(tl::clipBar),
-                                 juce::Justification::topLeft);
+                    clipBlock(g, block, c.colour, juce::String(c.name), true);
                 }
             y += tl::row;
             lanesOf(n.id);
@@ -228,11 +276,211 @@ void TimelinePage::paint(juce::Graphics& g) {
     menu(g);
 }
 
-float TimelinePage::lane(juce::Graphics& g, live::Lane& l, float y, live::TrackId row) {
+//  The session view's rows: every track that can hold clips, its slots in a strip, the chosen clip across the rest
+//  with its clip lanes under it, and where Live is in it while it plays.
+//  The session view, as Live lays it out: a column per track that can hold clips, its name at the top, a row per
+//  scene, numbered on the left, each clip a cell in its colour with its name. The clip the panel shows is framed in
+//  ink, the one Live plays marked as now; a click chooses one. No time here: the chosen clip's time is the pane's,
+//  at the foot, as tall as its lanes need and no taller than kPaneLanes of them. The grid scrolls up and down, and
+//  sideways when the tracks are more than its width.
+void TimelinePage::paintSession(juce::Graphics& g, float top, const live::Playhead& at, float right) {
+    const auto h = static_cast<float>(getHeight());
+    //  the grid's own left edge: a column just wide enough for the scenes' numbers, not the tracks' names
+    const float gridLeft = tl::sceneNumbers, gridWidth = std::max(1.0f, right - tl::pad - gridLeft);
+    std::vector<const Node*> tracks;
+    for (const Node& n : s_.tree.nodes)
+        if (n.kind == Node::Kind::Track) tracks.push_back(&n);
+    const int scenes = std::max(1, s_.arrangement.scenes);
+
+    //  the pane first: its height is what the chosen clip's lanes need
+    const live::SessionClip* clip = chosen_ ? chosenClip(*chosen_) : nullptr;
+    paneLanes_ = 0;
+    if (clip != nullptr)
+        for (const live::Lane& l : s_.lanes)
+            if (l.clip() && l.clipTrack == *chosen_ && l.slot == clip->slot) ++paneLanes_;
+    const int shownLanes = std::clamp(paneLanes_, 1, tl::paneLanes);
+    paneScroll_ = std::clamp(paneScroll_, 0, std::max(0, paneLanes_ - tl::paneLanes));
+    paneTop_ = h - tl::ruler - tl::lane * static_cast<float>(shownLanes);
+
+    //  the tracks' names over their columns, sideways with the grid
+    const float columns = tl::sessionColumn * static_cast<float>(tracks.size());
+    sideways_ = std::clamp(sideways_, 0.0f, std::max(0.0f, columns - gridWidth));
+    const juce::Rectangle<float> heads{gridLeft, top, gridWidth, tl::ruler};
+    const auto columnX = [&](std::size_t i) {
+        return gridLeft + tl::sessionColumn * static_cast<float>(i) - sideways_;
+    };
+    {
+        juce::Graphics::ScopedSaveState keep(g);
+        g.reduceClipRegion(heads.toNearestInt());
+        for (std::size_t i = 0; i < tracks.size(); ++i) {
+            const juce::Rectangle<float> head{columnX(i), top, tl::sessionColumn, tl::ruler};
+            if (chosen_ && *chosen_ == tracks[i]->id) {
+                g.setColour(colour::highlight);
+                g.fillRect(head);
+            }
+            ui::text(g, juce::String(tracks[i]->name), ui::labelFont(), colour::text, head.reduced(tl::gap, 0.0f),
+                     juce::Justification::centredLeft);
+            const auto clickable = head.getIntersection(heads);
+            if (!clickable.isEmpty())
+                addClickArea(clickable, [this, id = tracks[i]->id] {
+                    chosen_ = id;
+                    closeMenu();
+                    repaint();
+                });
+        }
+    }
+    ui::ruleH(g, 0.0f, right, top + tl::ruler - 1.0f, colour::rule);
+
+    //  the scenes, each a row of cells
+    const float rows = top + tl::ruler;
+    setViewport(rows, paneTop_);
+    {
+        const ContentClip clipped(*this, g);
+        const juce::Rectangle<float> grid{gridLeft, rows, gridWidth, paneTop_ - rows};
+        float y = rows - scroll();
+        for (int sc = 0; sc < scenes; ++sc) {
+            ui::text(g, juce::String(sc + 1), ui::smallFont(), colour::label, {0.0f, y, gridLeft - tl::gap, tl::sceneRow},
+                     juce::Justification::centredRight);
+            g.setColour(colour::rowDivider);
+            g.fillRect(0.0f, y + tl::sceneRow - 1.0f, right, 1.0f);
+            juce::Graphics::ScopedSaveState keep(g);
+            g.reduceClipRegion(grid.toNearestInt());
+            for (std::size_t i = 0; i < tracks.size(); ++i) {
+                const juce::Rectangle<float> box{columnX(i) + tl::slotGap, y + tl::slotGap,
+                                                 tl::sessionColumn - 2.0f * tl::slotGap,
+                                                 tl::sceneRow - 2.0f * tl::slotGap};
+                const auto clickable = box.getIntersection(grid);
+                if (clickable.isEmpty()) continue;
+                const live::SessionClip* c = nullptr;
+                for (const live::TrackSlots& t : s_.arrangement.session)
+                    if (t.id == tracks[i]->id)
+                        for (const live::SessionClip& x : t.clips)
+                            if (x.slot == sc) c = &x;
+                if (c == nullptr) {
+                    g.setColour(colour::rowDivider);
+                    g.drawRect(box, ui::theme::stroke::rule);
+                    continue;
+                }
+                clipBlock(g, box, c->colour, juce::String(c->name), true);
+                if (clip == c) {
+                    g.setColour(colour::chosen);
+                    g.drawRect(box, ui::theme::stroke::toggle);
+                }
+                //  the clip Live plays: what is now, ringed in the ground over the clip's fill
+                const auto seen = playing_.find(tracks[i]->id);
+                if (seen != playing_.end() && seen->second.report.slot == sc) {
+                    const auto mark = juce::Rectangle<float>(tl::slotMark, tl::slotMark)
+                                          .withCentre({box.getRight() - tl::slotMark, box.getCentreY()});
+                    g.setColour(colour::ground);
+                    g.fillRect(mark.expanded(ui::theme::stroke::rule));
+                    g.setColour(colour::playhead);
+                    g.fillRect(mark);
+                }
+                addClickArea(clickable, [this, id = tracks[i]->id, sc] {
+                    chosenSlot_[id] = sc;
+                    chosen_ = id;  // the panel and the pane follow the clip chosen
+                    closeMenu();
+                    repaint();
+                });
+            }
+            y += tl::sceneRow;
+        }
+        noteContentBottom(y + scroll());
+    }
+    clipPane(g, {0.0f, paneTop_, right, h - paneTop_}, at, clip);
+}
+
+//  The chosen clip's pane: its name and track, a ruler in the clip's own bars from its loop's start to its end, and
+//  its clip lanes, kPaneLanes at most in view, scrolled a lane at a time; where Live is in the clip -- run on while
+//  Live plays, standing where Live last said while it stops.
+void TimelinePage::clipPane(juce::Graphics& g, juce::Rectangle<float> area, const live::Playhead& at,
+                            const live::SessionClip* clip) {
+    g.setColour(colour::ground);
+    g.fillRect(area);
+    ui::ruleH(g, area.getX(), area.getRight(), area.getY(), colour::ruleStrong);
+    const float top = area.getY();
+    if (clip == nullptr) {
+        ui::text(g, "choose a clip: its lanes open here", ui::labelFont(), colour::label,
+                 {tl::pad, top, area.getWidth(), tl::ruler}, juce::Justification::centredLeft);
+        return;
+    }
+    juce::String track;
+    for (const Node& n : s_.tree.nodes)
+        if (n.id == *chosen_) track = juce::String(n.name);
+    ui::text(g, juce::String(clip->name) + ui::kSeparator + track, ui::labelFont(), colour::text,
+             {tl::pad, top, tl::tree - tl::pad, tl::ruler}, juce::Justification::centredLeft);
+    //  a clip's loop at least a sixteenth long, so an empty one still has an axis
+    const double start = clip->loopStart, length = std::max(0.25, clip->loopEnd - clip->loopStart);
+    const Axis axis{left_, width_, start, length, {clip->loopStart, clip->loopEnd}};
+    for (int beat = 0; beat <= static_cast<int>(length); ++beat) {
+        const float x = axis.x(start + beat);
+        const bool bar = beat % live::kBeatsPerBar == 0;
+        g.setColour(colour::rule);
+        g.fillRect(x, top + tl::ruler - (bar ? tl::ruler / 2.0f : tl::ruler / 4.0f), 1.0f,
+                   bar ? tl::ruler / 2.0f : tl::ruler / 4.0f);
+        if (bar)
+            ui::text(g, juce::String(beat / live::kBeatsPerBar + 1), ui::smallFont(), colour::label,
+                     {x + tl::gap, top + tl::loopBrace, tl::barLabel, tl::ruler / 2.0f}, juce::Justification::centredLeft);
+    }
+    if (clip->looping) {
+        g.setColour(colour::text);
+        g.fillRect(axis.left, top, axis.width, tl::loopBrace);
+    }
+    ui::ruleH(g, area.getX(), area.getRight(), top + tl::ruler - 1.0f, colour::rule);
+    //  its lanes, from the first in view
+    float y = top + tl::ruler;
+    int index = 0;
+    for (live::Lane& l : s_.lanes) {
+        if (!(l.clip() && l.clipTrack == *chosen_ && l.slot == clip->slot)) continue;
+        if (index++ < paneScroll_ || y + tl::lane > area.getBottom() + 0.5f) continue;
+        y = lane(g, l, y, axis);
+    }
+    if (paneLanes_ == 0)
+        ui::text(g, "no lanes yet" + ui::kSeparator + "+ lane in the panel", ui::smallFont(), colour::label,
+                 {tl::pad, y, area.getWidth(), tl::lane}, juce::Justification::centredLeft);
+    else if (paneLanes_ > tl::paneLanes)
+        ui::text(g,
+                 juce::String(paneScroll_ + 1) + kDash + juce::String(paneScroll_ + tl::paneLanes) + " of " +
+                     juce::String(paneLanes_),
+                 ui::smallFont(), colour::label, {tl::pad, top + tl::ruler / 2.0f, tl::tree - tl::pad, tl::ruler / 2.0f},
+                 juce::Justification::centredLeft);
+    //  where Live is in it
+    const auto seen = playing_.find(*chosen_);
+    if (seen != playing_.end() && seen->second.report.slot == clip->slot) {
+        const double elapsed =
+            at.playing ? (juce::Time::getMillisecondCounterHiRes() - seen->second.atMs) / 1000.0 * at.bpm / 60.0 : 0.0;
+        const float x = axis.x(live::clipPosition(seen->second.report, elapsed));
+        g.setColour(colour::playhead);
+        g.fillRect(x, top, 1.0f, area.getBottom() - top);
+    }
+}
+
+void TimelinePage::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
+    if (view_ == View::Session) {
+        //  over the pane: its lanes, a lane at a time
+        if (e.position.y >= paneTop_) {
+            paneScroll_ = std::clamp(paneScroll_ + (wheel.deltaY < 0.0f ? 1 : -1), 0,
+                                     std::max(0, paneLanes_ - tl::paneLanes));
+            repaint();
+            return;
+        }
+        //  sideways, or with shift: the grid's tracks
+        const bool across = std::abs(wheel.deltaX) > std::abs(wheel.deltaY) || e.mods.isShiftDown();
+        if (across) {
+            const float delta = std::abs(wheel.deltaX) > std::abs(wheel.deltaY) ? wheel.deltaX : wheel.deltaY;
+            sideways_ -= delta * tl::wheelStep;
+            repaint();
+            return;
+        }
+    }
+    HitArea::mouseWheelMove(e, wheel);
+}
+
+float TimelinePage::lane(juce::Graphics& g, live::Lane& l, float y, const Axis& axis) {
     const auto owner = ownerOf(l);
     const ParamManifest* m = owner ? &manifestOf(owner->instance, owner->effect) : nullptr;
     const int at = m != nullptr ? m->byKey(l.param) : kNoParam;
-    const juce::Rectangle<float> strip{0.0f, y, left_ + width_, tl::lane};
+    const juce::Rectangle<float> strip{0.0f, y, axis.left + axis.width, tl::lane};
     g.setColour(colour::rowDivider);
     g.fillRect(strip.getX(), strip.getBottom() - 1.0f, strip.getWidth() + tl::pad, 1.0f);
     ui::text(g, laneName(l), ui::smallFont(), colour::label,
@@ -254,18 +502,18 @@ float TimelinePage::lane(juce::Graphics& g, live::Lane& l, float y, live::TrackI
     juce::Path curve;
     if (l.points.empty()) {
         g.setColour(colour::inactive);
-        curve.startNewSubPath(left_, yOf((*m)[at].def));
-        curve.lineTo(left_ + width_, yOf((*m)[at].def));
+        curve.startNewSubPath(axis.left, yOf((*m)[at].def));
+        curve.lineTo(axis.left + axis.width, yOf((*m)[at].def));
         ui::strokeDashed(g, curve, ui::theme::stroke::outsideDash, juce::PathStrokeType(ui::theme::stroke::rule));
     } else {
-        curve.startNewSubPath(left_, yOf(l.points.front().value));
-        for (const live::LanePoint& p : l.points) curve.lineTo(xOf(p.ppq), yOf(p.value));
-        curve.lineTo(left_ + width_, yOf(l.points.back().value));
+        curve.startNewSubPath(axis.left, yOf(l.points.front().value));
+        for (const live::LanePoint& p : l.points) curve.lineTo(axis.x(p.ppq), yOf(p.value));
+        curve.lineTo(axis.left + axis.width, yOf(l.points.back().value));
         g.setColour(ink);
         g.strokePath(curve, juce::PathStrokeType(ui::theme::stroke::glyph));
         //  the points in the handle ink, as every point that is grabbed is, the one held larger
         for (std::size_t i = 0; i < l.points.size(); ++i) {
-            const juce::Point<float> c{xOf(l.points[i].ppq), yOf(l.points[i].value)};
+            const juce::Point<float> c{axis.x(l.points[i].ppq), yOf(l.points[i].value)};
             const bool held = dragLane_ == l.id && dragPoint_ == i;
             const float r = ui::theme::controls::envelopePoint + (held ? ui::theme::scene::handleHotGrow : 0.0f);
             g.setColour(live ? colour::handle : colour::inactive);
@@ -275,7 +523,7 @@ float TimelinePage::lane(juce::Graphics& g, live::Lane& l, float y, live::TrackI
             const juce::String readout = juce::String(live::barsBeats(l.points[i].ppq)) + ui::kSeparator +
                                          juce::String(formatParameter((*m)[at], l.points[i].value));
             const float rw = ui::textWidth(ui::smallFont(), readout) + tl::gap;
-            const bool left = c.x + r + tl::gap + rw > left_ + width_;
+            const bool left = c.x + r + tl::gap + rw > axis.left + axis.width;
             ui::text(g, readout, ui::smallFont(), colour::text,
                      {left ? c.x - r - tl::gap - rw : c.x + r + tl::gap, y, rw, tl::lane / 2.0f},
                      left ? juce::Justification::centredRight : juce::Justification::centredLeft);
@@ -283,13 +531,13 @@ float TimelinePage::lane(juce::Graphics& g, live::Lane& l, float y, live::TrackI
     }
 
     //  a press puts a point, or takes the one under it; a drag moves it; a double click removes it
-    const double pixelsPerBeat = static_cast<double>(width_) / length_;
+    const double pixelsPerBeat = static_cast<double>(axis.width) / axis.length;
     const double reach = static_cast<double>(tl::reach) / pixelsPerBeat;
     const double valueReach = std::abs(valueOf(top) - valueOf(top + tl::reach));  // the reach, in its units
-    const std::vector<double> edges = live::edgesOf(s_.arrangement, row);
+    const std::vector<double> edges = axis.edges;
     const double grid = live::gridFor(pixelsPerBeat);
-    const auto snapped = [this, edges, grid, reach](float x, bool fine) {
-        const double ppq = std::max(0.0, ppqOf(x));
+    const auto snapped = [axis, edges, grid, reach](float x, bool fine) {
+        const double ppq = std::max(0.0, axis.at(x));
         return fine ? ppq : live::snapAt(ppq, edges, grid, reach);
     };
     const std::uint64_t id = l.id;
@@ -300,12 +548,12 @@ float TimelinePage::lane(juce::Graphics& g, live::Lane& l, float y, live::TrackI
     };
     //  a press takes the point under it; a click on empty ground puts one there, a drag from it puts one and moves
     //  it; a double click removes the one under it
-    const auto take = [this, find, valueOf, reach, valueReach, id](juce::Point<float> p) {
+    const auto take = [this, axis, find, valueOf, reach, valueReach, id](juce::Point<float> p) {
         live::Lane* lane = find();
         if (lane == nullptr) return;
         pressed_ = p;
         tookPoint_ = false;
-        if (const auto near = live::pointNear(*lane, ppqOf(p.x), valueOf(p.y), reach, valueReach)) {
+        if (const auto near = live::pointNear(*lane, axis.at(p.x), valueOf(p.y), reach, valueReach)) {
             dragLane_ = id;
             dragPoint_ = *near;
             tookPoint_ = true;
@@ -328,16 +576,16 @@ float TimelinePage::lane(juce::Graphics& g, live::Lane& l, float y, live::TrackI
         live::putPoint(*lane, {snapped(pressed_.x, false), valueOf(pressed_.y)});
         changed();
     };
-    const auto remove = [this, find, valueOf, reach, valueReach] {
+    const auto remove = [this, axis, find, valueOf, reach, valueReach] {
         live::Lane* lane = find();
         if (lane == nullptr) return;
-        if (const auto near = live::pointNear(*lane, ppqOf(pressed_.x), valueOf(pressed_.y), reach, valueReach)) {
+        if (const auto near = live::pointNear(*lane, axis.at(pressed_.x), valueOf(pressed_.y), reach, valueReach)) {
             live::removePoint(*lane, *near);
             changed();
         }
     };
     addGestureArea(
-        juce::Rectangle<float>{left_, y, width_, tl::lane}, take, move,
+        juce::Rectangle<float>{axis.left, y, axis.width, tl::lane}, take, move,
         [this] {
             if (dragLane_ == 0) return;
             dragLane_ = 0;
@@ -366,8 +614,12 @@ void TimelinePage::panel(juce::Graphics& g, juce::Rectangle<float> area) {
         if (n.id == row) title = juce::String(n.name);
     float y = ui::drawGroupHeading(g, inner.getX(), inner.getY(), inner.getWidth(), title);
     //  its lanes, each removable after asking -- the host has no undo -- greyed while it plays nowhere
+    const live::SessionClip* clip = view_ == View::Session ? chosenClip(row) : nullptr;
     for (const live::Lane& l : s_.lanes) {
         if (!belongs(l, row)) continue;
+        if (view_ == View::Session ? !(l.clip() && clip != nullptr && l.slot == clip->slot && l.clipTrack == row)
+                                   : l.clip())
+            continue;
         const juce::Rectangle<float> r{inner.getX(), y, inner.getWidth(), ctl::listRowHeight};
         y += ctl::listRowHeight;
         const bool live = !plays || plays(l);
@@ -385,9 +637,10 @@ void TimelinePage::panel(juce::Graphics& g, juce::Rectangle<float> area) {
                          });
         });
     }
-    if (ownedBy(row).empty()) {
-        ui::text(g, "nothing of bambi's plays here", ui::smallFont(), colour::label,
-                 {inner.getX(), y, inner.getWidth(), ctl::listRowHeight}, juce::Justification::centredLeft);
+    if (ownedBy(row).empty() || (view_ == View::Session && clip == nullptr)) {
+        ui::text(g, view_ == View::Session && clip == nullptr ? "no session clip here" : "nothing of bambi's plays here",
+                 ui::smallFont(), colour::label, {inner.getX(), y, inner.getWidth(), ctl::listRowHeight},
+                 juce::Justification::centredLeft);
         return;
     }
     addAt_ = {inner.getX(), y + tl::gap, ui::framedButtonWidth("+ lane"), ui::theme::sheet::control};
@@ -439,10 +692,14 @@ void TimelinePage::menu(juce::Graphics& g) {
                 acts.push_back([this, o, key = std::string(m[i].key)] {
                     std::uint64_t next = 1;
                     for (const live::Lane& l : s_.lanes) next = std::max(next, l.id + 1);
-                    s_.lanes.push_back({next, o.instance, o.owner, key, {}});
-                    adding_ = false;
-                    addInstance_.reset();
-                    addGroup_.reset();
+                    live::Lane lane{next, o.instance, o.owner, key, {}};
+                    if (view_ == View::Session)
+                        if (const live::SessionClip* clip = chosenClip(*chosen_)) {
+                            lane.clipTrack = *chosen_;
+                            lane.slot = clip->slot;
+                        }
+                    s_.lanes.push_back(std::move(lane));
+                    closeMenu();
                     changed();
                 });
             }
@@ -450,7 +707,7 @@ void TimelinePage::menu(juce::Graphics& g) {
     }
     namespace sh = ui::theme::sheet;
     addClickArea(getLocalBounds().toFloat(), [this] {
-        adding_ = false;
+        closeMenu();
         repaint();
     });
     const float height = 2.0f * sh::menuPad + sh::menuLine * static_cast<float>(items.size() + 1);
@@ -464,6 +721,7 @@ void TimelinePage::menu(juce::Graphics& g) {
 
 void TimelinePage::ruler(juce::Graphics& g, float top) {
     const auto w = static_cast<float>(getWidth());
+
     const juce::Rectangle<float> strip{tl::tree - 1.0f, top, width_ + 2.0f, tl::ruler};
     //  the loop, a band along the top: ink while it is on
     if (s_.arrangement.loopLength > 0.0) {
@@ -534,6 +792,18 @@ void TimelinePage::band(juce::Graphics& g, const live::Playhead& at) {
     const juce::String tempo = juce::String(at.bpm, 2) + " bpm";
     ui::text(g, tempo, ui::labelFont(), colour::label, {x, 0.0f, ui::textWidth(ui::labelFont(), tempo) + tl::gap, h},
              juce::Justification::centredLeft);
+    x += ui::textWidth(ui::labelFont(), tempo) + tl::gap + tl::pad;
+    const std::vector<juce::String> views{"arrangement", "session"};
+    const juce::Rectangle<float> switcher{x, (h - ui::theme::sheet::control) / 2.0f, ui::segmentsWidth(views),
+                                          ui::theme::sheet::control};
+    const auto viewCells = ui::drawSegments(g, switcher, views, view_ == View::Arrangement ? 0 : 1, true);
+    for (std::size_t i = 0; i < viewCells.size(); ++i)
+        addClickArea(viewCells[i], [this, i] {
+            view_ = i == 0 ? View::Arrangement : View::Session;
+            closeMenu();
+            if (refresh) refresh();
+            repaint();
+        });
     if (s_.arrangement.readMs > 0.0) {
         const juce::String read = "live gave its arrangement in " + juce::String(s_.arrangement.readMs, 0) + " ms";
         const float rw = ui::textWidth(ui::smallFont(), read) + tl::gap;

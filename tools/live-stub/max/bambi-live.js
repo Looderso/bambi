@@ -257,6 +257,9 @@ function fromhost(sent) {
         status(m.text);
     } else if (m.type === "command") {
         command(m);
+    } else if (m.type === "refresh") {
+        //  read only while Live stands: a read while it plays could stall it
+        if (on && !Number(new LiveAPI("live_set").get("is_playing"))) sendArrangement();
     }
 }
 
@@ -591,7 +594,7 @@ function sendArrangement() {
     arrangementStale = false;
     const began = Date.now();
     const set = new LiveAPI("live_set");
-    const tracks = [];
+    const tracks = [], session = [];
     for (const n of identify()) {
         if (n.path.startsWith("live_set return_tracks") || Number(n.api.get("is_foldable")) === 1) continue;
         const clips = [];
@@ -602,6 +605,16 @@ function sendArrangement() {
         }
         clips.sort((a, b) => a.start - b.start);
         tracks.push({id: n.key, clips: clips});
+        //  its session clips, slot by slot
+        const slots = [];
+        for (let s = 0; s < n.api.getcount("clip_slots"); ++s) {
+            if (Number(new LiveAPI(n.path + " clip_slots " + s).get("has_clip")) !== 1) continue;
+            const c = new LiveAPI(n.path + " clip_slots " + s + " clip");
+            slots.push({slot: s, name: text(c, "name"), colour: hex(c.get("color")),
+                        loopStart: Number(c.get("loop_start")), loopEnd: Number(c.get("loop_end")),
+                        looping: Number(c.get("looping")) === 1, midi: Number(c.get("is_midi_clip")) === 1});
+        }
+        session.push({id: n.key, clips: slots});
     }
     const locators = [];
     for (let i = 0; i < set.getcount("cue_points"); ++i) {
@@ -609,15 +622,54 @@ function sendArrangement() {
         locators.push({time: Number(c.get("time")), name: text(c, "name")});
     }
     locators.sort((a, b) => a.time - b.time);
-    const message = {type: "arrangement", tracks: tracks, locators: locators,
+    const message = {type: "arrangement", tracks: tracks, session: session, scenes: set.getcount("scenes"),
+                     locators: locators,
                      loop: {on: Number(set.get("loop")) === 1, start: Number(set.get("loop_start")),
                             length: Number(set.get("loop_length"))},
                      readMs: Date.now() - began};
-    const same = JSON.stringify([tracks, locators, message.loop]);
+    const same = JSON.stringify([tracks, session, message.scenes, locators, message.loop]);
     if (same === lastArrangement) return;
     lastArrangement = same;
     post("bambi: the arrangement read in " + message.readMs + " ms\n");
     send(message);
+}
+
+// ---- session clips, as Live plays them ------------------------------------------------------------------------
+
+//  Each track's session clip: which slot plays, and where in the clip Live is -- every report Live gives, sent on,
+//  so the host can learn how often a clip's position arrives before it projects one between them.
+let clipWatchers = [];
+
+function watchSessionClip(track, key) {
+    let slot = -1, clip = null;
+    const sendSlot = position => {
+        if (slot < 0 || clip === null) {
+            send({type: "slot", id: key, slot: -1});
+            return;
+        }
+        send({type: "slot", id: key, slot: slot, position: position, loopStart: Number(clip.get("loop_start")),
+              loopEnd: Number(clip.get("loop_end")), looping: Number(clip.get("looping")) === 1});
+    };
+    const position = new LiveAPI(args => {
+        if (args[0] === "playing_position" && slot >= 0) sendSlot(Number(args[1]));
+    }, track);
+    const playing = new LiveAPI(args => {
+        if (args[0] !== "playing_slot_index") return;
+        slot = Number(args[1]);
+        clip = null;
+        position.property = "";
+        if (slot >= 0 && Number(new LiveAPI(track + " clip_slots " + slot).get("has_clip")) === 1) {
+            clip = new LiveAPI(track + " clip_slots " + slot + " clip");
+            position.path = track + " clip_slots " + slot + " clip";
+            position.property = "playing_position";
+        } else {
+            slot = -1;
+        }
+        sendSlot(clip !== null ? Number(clip.get("playing_position")) : 0);
+        arrangementChanged();  // a clip launched or stopped: the session's clips read again once Live stops
+    }, track);
+    playing.property = "playing_slot_index";
+    clipWatchers.push(position, playing);
 }
 
 // ---- the set as the host sees it ----------------------------------------------------------------------------
@@ -760,14 +812,16 @@ function observe() {
     });
     watch(song, "tempo", transport);
     //  the arrangement, sent again when it changes -- never while Live plays, where reading it could stall
-    for (const prop of ["cue_points", "loop", "loop_start", "loop_length"]) watch(song, prop, arrangementChanged);
+    for (const prop of ["cue_points", "loop", "loop_start", "loop_length", "scenes"]) watch(song, prop, arrangementChanged);
     //  names, colours and the track list come with the tree, which the light observers' refresh sends
 
     for (const n of all) {
         const t = n.api, key = n.key, name = n.name;
         const value = (what, v) => sendValue(key, name, what, v);
-        if (!n.path.startsWith("live_set return_tracks") && Number(t.get("is_foldable")) !== 1)
+        if (!n.path.startsWith("live_set return_tracks") && Number(t.get("is_foldable")) !== 1) {
             watch(n.path, "arrangement_clips", arrangementChanged);
+            watchSessionClip(n.path, key);
+        }
         watch(n.path, "mute", v => value("mute", Number(v[0])));  // also the track's on/off button
         watch(n.path, "solo", v => value("solo", Number(v[0])));
         watch(n.path, "output_routing_type", () => {
@@ -788,6 +842,8 @@ function observe() {
 function stopObserving() {
     for (const o of observers) o.property = "";
     observers = [];
+    for (const o of clipWatchers) o.property = "";
+    clipWatchers = [];
 }
 
 // ---- routing ------------------------------------------------------------------------------------------------

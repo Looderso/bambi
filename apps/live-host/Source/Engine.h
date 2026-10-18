@@ -88,6 +88,9 @@ public:
     /// The share of each block the host's processing takes, measured as it plays and smoothed; 0 before audio.
     float load() const noexcept { return load_.load(std::memory_order_relaxed); }
 
+    /// A track's session clip, as the device sent it, stamped as the transport is.
+    void slot(const live::SlotPlay& report, std::int64_t stampNs) noexcept;
+
     /// Live's transport, as the device sent it, stamped in steady-clock nanoseconds when its line was read.
     void transport(const live::TransportMessage& message, std::int64_t stampNs) noexcept;
 
@@ -194,6 +197,12 @@ private:
     live::TransportProjector projector_;
     std::optional<live::Arrivals> arrivals_;
     SpscQueue<Timed, 256> queue_;  ///< full only while no block runs; a message then is dropped
+    struct TimedSlot {
+        live::SlotPlay report;
+        std::int64_t stampNs{0};
+    };
+    SpscQueue<TimedSlot, 256> slots_;  ///< as `queue_`, for the session clips' reports
+    live::ClipClock clips_;            ///< the audio thread's: where each track's session clip is
     struct Program {  // what the runner was last given, to give it again with other routes or another device
         live::Compiled compiled;
         std::vector<juce::AudioProcessor*> slots;

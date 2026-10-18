@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "bambi/live/protocol.hpp"
 #include "bambi/patch/json.hpp"
 
 /*  The live host's automation: a lane drives one parameter of one instance the host plays, against Live's song
@@ -32,6 +33,11 @@ struct Lane {
     std::uint64_t owner{0};         ///< the Encoder's track, the insert's id, the Decoder's id
     std::string param;              ///< the parameter's stable key
     std::vector<LanePoint> points;  ///< in time order, no two at one time
+    /// A clip lane: the track whose session clip it follows, and that clip's slot; its points' times are then in
+    /// the clip, from its start, and it loops with it. A song lane: none, -1.
+    TrackId clipTrack{0};
+    int slot{-1};
+    bool clip() const { return slot >= 0; }
     friend bool operator==(const Lane&, const Lane&) = default;
 };
 
@@ -46,6 +52,10 @@ void removePoint(Lane& lane, std::size_t index);
 
 /// The point within `reach` quarter notes and `valueReach` of the value at `ppq`, nearest in time; none else.
 std::optional<std::size_t> pointNear(const Lane& lane, double ppq, double value, double reach, double valueReach);
+
+/// Where a session clip is `elapsed` quarter notes after Live said it was at `at`: on from there, back to the loop's
+/// start at its end while it loops, held at its end when it does not.
+double clipPosition(const SlotPlay& at, double elapsed);
 
 /// The lanes as the set keeps them, and back; a lane unreadable is left out.
 Json toJson(const std::vector<Lane>& lanes);

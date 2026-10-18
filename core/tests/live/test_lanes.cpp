@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <cmath>
+
 #include "bambi/live/lanes.hpp"
 #include "doctest.h"
 
@@ -48,10 +50,22 @@ TEST_CASE("a press finds the point near it in time and value, the nearest in tim
 TEST_CASE("the lanes read back as written, and one the set cannot read is left out") {
     //  Catches: a field lost between the set and the host, the instance read as another, a broken lane taken.
     const std::vector<Lane> lanes{{1, Instance::Encoder, 12, "source.azimuth", {{0.0, -30.0}, {16.0, 45.0}}},
-                                  {2, Instance::Insert, 7, "mix", {}},
+                                  {2, Instance::Insert, 7, "mix", {}, 12, 3},
                                   {3, Instance::Decoder, 1, "output.level", {{4.0, -6.0}}}};
     CHECK(lanesFrom(Json::parse(toJson(lanes).dump(0))) == lanes);
     const auto read = lanesFrom(Json::parse(R"([{"id": 4, "instance": "mixer", "owner": 1, "param": "x"},
                                                 {"id": 5, "instance": "encoder", "owner": 1, "param": ""}])"));
     CHECK(read.empty());
+}
+
+TEST_CASE("a clip runs on from where Live said it was, looping in its loop, held at its end when it does not loop") {
+    //  Catches: a loop that wraps to the clip's start rather than its loop's, a one-shot clip that wraps, time run
+    //  backwards.
+    const SlotPlay looping{1, 0, 3.0, 1.0, 5.0, true};
+    CHECK(clipPosition(looping, 1.0) == 4.0);
+    CHECK(clipPosition(looping, 2.5) == 1.5);
+    CHECK(clipPosition(looping, 10.0) == 1.0 + std::fmod(12.0, 4.0));
+    CHECK(clipPosition(looping, -1.0) == 3.0);
+    const SlotPlay once{1, 0, 3.0, 0.0, 5.0, false};
+    CHECK(clipPosition(once, 4.0) == 5.0);
 }

@@ -180,6 +180,7 @@ bool Engine::start(const Settings& settings, juce::String& status) {
     projector_ = live::TransportProjector({s_.rate});
     arrivals_.emplace(s_.rate, s_.transportOffsetSamples);
     runner_.setClock(&projector_);
+    runner_.setClips(&clips_);
     latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
     devices_.addAudioCallback(this);
     status = said();
@@ -354,10 +355,10 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     voices_ = std::move(next);
     effects_ = std::move(nextEffects);
     decoders_ = std::move(nextDecoders);
-    drive();  // the lanes onto the instances that play now
     playing_ = fp.effects;
     plan_ = fp.plan;
     fieldPlan_ = std::move(fp);
+    drive();  // the lanes onto the instances that play now, and the nodes they are on
     latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
     int buses = 0;
     for (const live::FieldNode& n : plan_.nodes) buses += n.input < 0 ? 1 : 0;
@@ -445,6 +446,8 @@ void Engine::transport(const live::TransportMessage& message, std::int64_t stamp
     (void)queue_.push({message, stampNs});
 }
 
+void Engine::slot(const live::SlotPlay& report, std::int64_t stampNs) noexcept { (void)slots_.push({report, stampNs}); }
+
 Engine::Target Engine::targetOf(live::Instance instance, std::uint64_t owner, std::string_view param) const {
     Target t;
     if (instance == live::Instance::Encoder) {
@@ -494,7 +497,18 @@ void Engine::drive() {
         for (const live::LanePoint& p : lane.points)
             points.push_back(
                 {p.ppq, toNormalised(*t.manifest, t.at, clampToRange(*t.manifest, t.at, static_cast<float>(p.value)))});
-        driven.push_back({t.plugin->getParameters()[t.at], std::move(points)});
+        //  a song lane waits while its track plays a session clip: an Encoder's track, or the node an insert is on
+        live::TrackId heldBy = lane.instance == live::Instance::Encoder ? lane.owner : 0;
+        if (lane.instance == live::Instance::Insert)
+            for (const live::FieldNode& n : plan_.nodes)
+                for (const int s : n.inserts) {
+                    const auto e = static_cast<std::size_t>(s) - voices_.size();
+                    if (s >= static_cast<int>(voices_.size()) && e < effects_.size() &&
+                        effects_[e].insert.id == lane.owner)
+                        heldBy = n.track;
+                }
+        driven.push_back({t.plugin->getParameters()[t.at], std::move(points), lane.clipTrack, lane.slot,
+                          lane.clip() ? 0 : heldBy});
         keep.push_back(alive(t.plugin));
     }
     runner_.setAutomation(std::move(driven), std::move(keep));
@@ -568,6 +582,8 @@ void Engine::audioDeviceIOCallbackWithContext(const float* const* inputs, int in
     const std::int64_t now = nowNs();
     for (Timed t; queue_.pop(t);)
         projector_.receive(t.message, arrivals_->at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
+    for (TimedSlot t; slots_.pop(t);)
+        clips_.receive(t.report, arrivals_->at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
 
     //  The output copied out of the host's own buffer, made before it started: a buffer referring to this many
     //  channels would allocate. A device giving fewer plays nothing.

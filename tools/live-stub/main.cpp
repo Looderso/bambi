@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <map>
 #include <string>
 #include <variant>
 #include <vector>
@@ -37,7 +38,9 @@ struct Stub {
     live::DeviceSession session;
     bool playing{false};
     Clock::time_point lastPosition{};
-    std::vector<double> intervalsMs;  // between song position reports while playing
+    std::vector<double> intervalsMs;                      // between song position reports while playing
+    std::map<live::TrackId, Clock::time_point> lastClip;  // each track's last clip position report
+    std::vector<double> clipIntervalsMs;                  // between one track's clip position reports
 };
 
 const char* kindName(live::Node::Kind k) {
@@ -84,6 +87,20 @@ struct Print {
     void operator()(const live::Value& v) const {
         std::printf("value: %-24s %-12s %s\n", v.name.c_str(), v.what.c_str(), v.value.dump(0).c_str());
     }
+    void operator()(const live::SlotPlay& p) const {
+        const auto now = Clock::now();
+        if (p.slot < 0) {
+            s.lastClip.erase(p.id);
+            std::printf("slot: track %llu stopped\n", static_cast<unsigned long long>(p.id));
+            return;
+        }
+        if (const auto was = s.lastClip.find(p.id); was != s.lastClip.end())
+            s.clipIntervalsMs.push_back(std::chrono::duration<double, std::milli>(now - was->second).count());
+        else
+            std::printf("slot: track %llu plays slot %d, %.3f of %.3f..%.3f%s\n", static_cast<unsigned long long>(p.id),
+                        p.slot, p.position, p.loopStart, p.loopEnd, p.looping ? ", looping" : "");
+        s.lastClip[p.id] = now;
+    }
     void operator()(const live::Show&) const { std::printf("show: the host's window would come to the front\n"); }
     void operator()(const live::Switched& b) const { std::printf("bambi %s\n", b.on ? "on" : "off"); }
     void operator()(const live::Arrangement& a) const {
@@ -109,7 +126,19 @@ void handle(Stub& s, const std::string& line) {
     std::visit(Print{s}, *m);
 }
 
+void reportClips(Stub& s) {
+    if (s.clipIntervalsMs.size() < 2) return;
+    std::vector<double> v = s.clipIntervalsMs;
+    std::sort(v.begin(), v.end());
+    double sum = 0.0;
+    for (const double x : v) sum += x;
+    std::printf("clip position: %zu reports, every %.1f ms on average, 95%% within %.1f ms, longest %.1f ms\n",
+                v.size(), sum / static_cast<double>(v.size()), v[v.size() * 95 / 100], v.back());
+    s.clipIntervalsMs.clear();
+}
+
 void report(Stub& s) {
+    reportClips(s);
     if (s.intervalsMs.size() < 2) return;
     std::vector<double> v = s.intervalsMs;
     std::sort(v.begin(), v.end());

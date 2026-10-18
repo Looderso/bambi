@@ -520,9 +520,17 @@ namespace timeline
     inline constexpr float pad       = 14.0f;   ///< the tree's inset
     inline constexpr float gap       = 3.0f;    ///< from a mark to its label: a bar's number, a locator's name
     inline constexpr int   frameMs   = 33;      ///< the playhead redrawn this often while Live plays
+    inline constexpr int   refreshMs = 2000;    ///< Live's arrangement asked for again this often while Live stands
     inline constexpr float lane      = 36.0f;   ///< an automation lane under its row
     inline constexpr float laneInset = 6.0f;    ///< its curve inside it, above and below
     inline constexpr float panel     = 230.0f;  ///< the chosen row's lanes, on the right
+    inline constexpr float slotGap   = 2.0f;
+    inline constexpr float sessionColumn = 120.0f; ///< a track's column in the session grid
+    inline constexpr float sceneNumbers = 28.0f;  ///< the column of the scenes' numbers, left of it
+    inline constexpr float sceneRow  = 26.0f;   ///< a scene's row in it
+    inline constexpr float slotMark  = 6.0f;    ///< the mark on the clip Live plays
+    inline constexpr int   paneLanes = 4;       ///< the most lanes the chosen clip's pane shows at once
+    inline constexpr float wheelStep = 40.0f;   ///< pixels the grid moves sideways for a wheel notch
 } // namespace timeline
 
 // ---- the live host's routing page: Live's tracks, the field, Main ------------------------------

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <functional>
+#include <map>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <optional>
 #include <vector>
@@ -30,6 +31,13 @@
  *      after asking, and "+ lane", a menu of the row's instances, then of a group of parameters, then of one;
  *    - the playhead, where Live is heard, over the ruler and the rows.
  *
+ *  The session view, from the band's switch, as Live lays it out: a column per track, a row per scene, each clip in
+ *  its colour with its name, the one Live plays marked -- no time in it. A click chooses a clip, which opens in a
+ *  pane at the foot: its own ruler in its own bars, its clip lanes -- which follow that clip wherever it is
+ *  launched, looping with it -- and a playhead where it is. The pane is as tall as its lanes need, four at most,
+ *  and scrolls past them; the grid scrolls up and down, and sideways with the wheel or shift. The song's time is the
+ *  arrangement view's alone; Main has no clips.
+ *
  *  The whole song fits the width. It changes the lanes, never the engine: `lanesChanged` says what they are now.
  *  Clicks on release; escape steps back out of "+ lane". Message thread; it redraws itself while Live plays.
  */
@@ -49,15 +57,25 @@ public:
         std::vector<live::Lane> lanes;
     };
     void show(Shown shown);
+    /// A track's session clip as Live reported it, now: its playhead runs on from here.
+    void slotPlayed(const live::SlotPlay& report);
+    /// The session view, or the arrangement's, as the band's switch chooses. For checks.
+    void showSession(bool on) {
+        view_ = on ? View::Session : View::Arrangement;
+        repaint();
+    }
 
     std::function<void(const live::Command&)> command;              ///< the transport, asked of Live
     std::function<live::Playhead()> heard;                          ///< where Live is heard now
     std::function<void(std::vector<live::Lane>)> lanesChanged;      ///< the lanes, as the user left them
     std::function<bool(const live::Lane&)> plays;                   ///< whether a lane's instance plays now
+    std::function<void()> refresh;  ///< Live's arrangement asked for again: shown, a view switched, every while
+    void visibilityChanged() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
     bool keyPressed(const juce::KeyPress& key) override;
+    void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
 
 private:
     //  An instance a row holds, a lane's target.
@@ -76,20 +94,46 @@ private:
     void ruler(juce::Graphics& g, float top);
     void panel(juce::Graphics& g, juce::Rectangle<float> area);
     void menu(juce::Graphics& g);
-    float lane(juce::Graphics& g, live::Lane& l, float y, live::TrackId row);
+    //  Where time runs across a lane: the song's, or one clip's, from its loop's start.
+    struct Axis {
+        float left{0.0f}, width{1.0f};
+        double start{0.0}, length{1.0};  ///< quarter notes
+        std::vector<double> edges;       ///< what a point snaps to beside the grid
+        float x(double ppq) const { return left + static_cast<float>((ppq - start) / length) * width; }
+        double at(float px) const { return start + static_cast<double>((px - left) / width) * length; }
+    };
+    float lane(juce::Graphics& g, live::Lane& l, float y, const Axis& axis);
     std::vector<Owned> ownedBy(live::TrackId row) const;
     std::optional<Owned> ownerOf(const live::Lane& l) const;
     juce::String laneName(const live::Lane& l) const;
     bool belongs(const live::Lane& l, live::TrackId row) const;
     void changed();
+    void closeMenu();  ///< "+ lane" closed, from whatever level it had reached
 
     Shown s_;
     double length_{64.0};  ///< quarter notes the width shows
     float left_{0.0f}, width_{1.0f};
     bool wasPlaying_{false};
+    int sinceRefresh_{0};  ///< timer ticks since the arrangement was last asked for
     float pressedAt_{0.0f};       ///< where the ruler was pressed: a click there locates
     juce::Point<float> pressed_;  ///< where a lane was last pressed: a click puts, a double click removes, there
     bool tookPoint_{false};       ///< the last press on a lane took a point under it
+    enum class View { Arrangement, Session };
+    View view_{View::Arrangement};
+    std::map<live::TrackId, int> chosenSlot_;  ///< the clip each track's row shows in the session view
+    struct Seen {
+        live::SlotPlay report;
+        double atMs{0.0};  ///< when it came, on the high-resolution millisecond counter
+    };
+    std::map<live::TrackId, Seen> playing_;  ///< each track's session clip as last reported
+    float paneTop_{0.0f};    ///< the session view's pane, as last drawn: a wheel below it scrolls its lanes
+    int paneLanes_{0};       ///< the chosen clip's lanes
+    int paneScroll_{0};      ///< the first of them in view
+    float sideways_{0.0f};   ///< pixels the session grid is scrolled to the right
+    const live::SessionClip* chosenClip(live::TrackId track) const;
+    void paintSession(juce::Graphics& g, float top, const live::Playhead& at, float right);
+    void clipPane(juce::Graphics& g, juce::Rectangle<float> area, const live::Playhead& at,
+                  const live::SessionClip* clip);
     juce::Rectangle<float> addAt_;  ///< "+ lane", as last drawn: its menu drops from it
     std::optional<live::TrackId> chosen_;  ///< the row the panel shows
     //  "+ lane", as far as it has come: the instance, then the group

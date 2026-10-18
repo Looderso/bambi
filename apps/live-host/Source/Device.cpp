@@ -62,6 +62,7 @@ void DeviceServer::handle(net::LineServer::Connection from, const std::string& l
     if (std::holds_alternative<live::Tree>(*message) || (value != nullptr && value->what == "name"))
         (void)loop::nameChannels(session_.channelNames());
     if (const auto* t = std::get_if<live::TransportMessage>(&*message); t != nullptr && transport) transport(*t, stamp);
+    if (const auto* p = std::get_if<live::SlotPlay>(&*message); p != nullptr && slot) slot(*p, stamp);
     if (std::holds_alternative<live::Restore>(*message) && restored) restored();
     if (session_.shows() != shows && show) show();
     if (changed) changed();
@@ -82,6 +83,10 @@ void DeviceServer::reshape(live::Shape shape) {
 
 void DeviceServer::command(const live::Command& c) {
     if (device_ != 0) server_.send(device_, live::serialise(c));
+}
+
+void DeviceServer::refresh() {
+    if (device_ != 0) server_.send(device_, live::serialise(live::Refresh{}));
 }
 
 void DeviceServer::gone(net::LineServer::Connection from) {

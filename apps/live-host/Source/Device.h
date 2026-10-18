@@ -40,12 +40,15 @@ public:
     void reshape(live::Shape shape);
     /// Live's transport, asked of it; nothing while no device is connected.
     void command(const live::Command& c);
+    /// The arrangement asked for again; nothing while no device is connected.
+    void refresh();
 
     using Stamp = std::int64_t;  ///< nanoseconds of std::chrono::steady_clock, when a line was read
 
     std::function<void()> changed;                                        ///< something the session knows has changed
     std::function<void()> show;                                           ///< "open host" was pressed on the device
     std::function<void(const live::TransportMessage&, Stamp)> transport;  ///< Live's transport, as it came
+    std::function<void(const live::SlotPlay&, Stamp)> slot;               ///< a track's session clip, as it came
     std::function<void()> restored;  ///< the set gave back what it kept: session().kept() has it
 
 private:

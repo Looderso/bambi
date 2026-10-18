@@ -68,6 +68,10 @@ public:
         device_.transport = [this](const bambi::live::TransportMessage& m, std::int64_t stamp) {
             engine_.transport(m, stamp);
         };
+        device_.slot = [this](const bambi::live::SlotPlay& p, std::int64_t stamp) {
+            engine_.slot(p, stamp);
+            timeline_.slotPlayed(p);
+        };
         device_.changed = [this] { update(); };
         device_.restored = [this] {
             if (const bambi::Json* states = device_.session().kept("plugins")) {
@@ -93,6 +97,7 @@ public:
         addChildComponent(timeline_);
         timeline_.command = [this](const bambi::live::Command& c) { device_.command(c); };
         timeline_.heard = [this] { return engine_.heard(); };
+        timeline_.refresh = [this] { device_.refresh(); };
         timeline_.lanesChanged = [this](std::vector<bambi::live::Lane> lanes) {
             lanes_ = std::move(lanes);
             engine_.setLanes(lanes_);

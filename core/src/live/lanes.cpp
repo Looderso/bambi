@@ -70,6 +70,15 @@ std::optional<std::size_t> pointNear(const Lane& lane, double ppq, double value,
     return best;
 }
 
+double clipPosition(const SlotPlay& at, double elapsed) {
+    const double p = at.position + std::max(0.0, elapsed);
+    const double length = at.loopEnd - at.loopStart;
+    if (length <= 0.0) return p;
+    if (!at.looping) return std::min(p, at.loopEnd);
+    if (p < at.loopEnd) return p;
+    return at.loopStart + std::fmod(p - at.loopStart, length);
+}
+
 Json toJson(const std::vector<Lane>& lanes) {
     Json out = Json::array();
     for (const Lane& l : lanes) {
@@ -86,6 +95,10 @@ Json toJson(const std::vector<Lane>& lanes) {
             points.push(std::move(pair));
         }
         o.set("points", std::move(points));
+        if (l.clip()) {
+            o.set("clipTrack", Json(static_cast<double>(l.clipTrack)));
+            o.set("slot", Json(l.slot));
+        }
         out.push(std::move(o));
     }
     return out;
@@ -103,8 +116,16 @@ std::vector<Lane> lanesFrom(const Json& json) {
         if (id == nullptr || id->numberOr(0.0) < 1.0 || !kind || owner == nullptr || param == nullptr ||
             param->stringOr("").empty())
             continue;
-        Lane l{static_cast<std::uint64_t>(std::llround(id->numberOr(0.0))), *kind,
-               static_cast<std::uint64_t>(std::llround(owner->numberOr(0.0))), std::string(param->stringOr("")), {}};
+        Lane l{static_cast<std::uint64_t>(std::llround(id->numberOr(0.0))),
+               *kind,
+               static_cast<std::uint64_t>(std::llround(owner->numberOr(0.0))),
+               std::string(param->stringOr("")),
+               {}};
+        if (const Json* slot = o.find("slot"); slot != nullptr && slot->numberOr(-1.0) >= 0.0) {
+            const Json* track = o.find("clipTrack");
+            l.clipTrack = track != nullptr ? static_cast<TrackId>(std::llround(track->numberOr(0.0))) : 0;
+            l.slot = l.clipTrack != 0 ? static_cast<int>(std::llround(slot->numberOr(-1.0))) : -1;
+        }
         if (const Json* points = o.find("points"); points != nullptr && points->isArray())
             for (const Json& p : points->items())
                 if (p.isArray() && p.size() == 2 && p.items()[0].isNumber() && p.items()[1].isNumber())

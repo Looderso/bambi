@@ -169,7 +169,18 @@ void Runner::drive(const live::Playhead& at) noexcept {
     if (a == nullptr) return;
     for (std::size_t i = 0; i < a->lanes.size(); ++i) {
         const Driven& d = a->lanes[i];
-        const auto v = live::valueAt(d.points, at.ppq);
+        //  a clip lane where its clip is, while it plays; a song lane where the song is, unless its track plays a
+        //  session clip, which takes it over as it takes the arrangement over
+        std::optional<double> where;
+        if (d.slot >= 0) {
+            //  a clip runs on only while Live plays; stopped, it stands where Live last said
+            if (clips_ != nullptr)
+                where = clips_->position(d.clipTrack, d.slot, sample_, at.playing ? at.bpm : 0.0, setup_.rate);
+        } else if (d.heldBy == 0 || clips_ == nullptr || clips_->playing(d.heldBy) < 0) {
+            where = at.ppq;
+        }
+        if (!where) continue;
+        const auto v = live::valueAt(d.points, *where);
         if (!v) continue;
         const auto value = static_cast<float>(std::clamp(*v, 0.0, 1.0));
         if (std::abs(value - a->last[i]) < 1e-6f) continue;
