@@ -206,7 +206,7 @@ std::vector<TrackId> Field::sources() const {
 Field layOut(const Tree& tree, const Shape& shape) {
     Field field;
     for (const Node& n : tree.nodes)
-        if (!n.parent && reaches(n) && !has(shape.inLive, n.id)) place(tree, shape, n, -1, field, 0);
+        if (!n.parent && reaches(n) && has(shape.taken, n.id)) place(tree, shape, n, -1, field, 0);
     for (const Node& n : tree.nodes)
         if (n.kind == Node::Kind::Return && has(shape.returns, n.id))
             field.returns.push_back({n.id, shape.insertsOn(n.id), {}});
@@ -232,6 +232,11 @@ Field layOut(const Tree& tree, const Shape& shape) {
         take(field.returns[i].node, {From::Kind::Return, static_cast<int>(i)});
     take(kMain, {From::Kind::Main, -1});
     return field;
+}
+
+void takeAll(Shape& shape, const Tree& tree) {
+    for (const Node& n : tree.nodes)
+        if (!n.parent && reaches(n) && !has(shape.taken, n.id)) shape.taken.push_back(n.id);
 }
 
 std::vector<Arrival> arrivalsOf(const std::vector<TrackPair>& pairs) {
@@ -405,7 +410,7 @@ Json toJson(const Shape& shape) {
     }
     Json j = Json::object();
     j.set("split", ids(shape.split));
-    j.set("inLive", ids(shape.inLive));
+    j.set("taken", ids(shape.taken));
     j.set("chains", std::move(chains));
     j.set("returns", ids(shape.returns));
     Json sidechains = Json::array();
@@ -455,7 +460,7 @@ Shape shapeFrom(const Json& json) {
                 if (const auto v = idOf(id, 1.0)) out.push_back(*v);
         return out;
     };
-    Shape shape{ids("split"), ids("inLive"), {}, ids("returns"), {}, {}, {}, {}};
+    Shape shape{ids("split"), ids("taken"), {}, ids("returns"), {}, {}, {}, {}};
     if (const Json* list = json.find("sidechains"); list != nullptr && list->isArray())
         for (const Json& c : list->items()) {
             const Json* source = c.find("source");

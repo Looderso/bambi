@@ -4,8 +4,11 @@
 //  routing the host asks for. It decides nothing. Messages to and from the host are JSON lines carried by
 //  the Node script; `send` goes out, `fromhost` comes in.
 //
-//  On: the tree goes to the host, observers report every change, and the host's `route` is applied -- each
-//  track's routing remembered first. Off: every remembered routing is put back. A pair p is the loop device's
+//  On while the host is connected: the tree goes to the host, observers report every change, and the host's `route`
+//  is applied -- each track's routing remembered first. The host decides which tracks go to bambi, none until the
+//  user takes one there, so connecting moves nothing; the bambi track is made with the first. Every remembered
+//  routing is put back when the host takes every track out, when it goes away -- or, the set opened with tracks on
+//  bambi, never comes -- and when the device is removed. A pair p is the loop device's
 //  channels 2p+3/2p+4: 1/2 carry Live's Main, where Live sends its Master, and the bambi track's input -- the
 //  host's copy back to Live -- comes in on them too.
 //
@@ -15,8 +18,8 @@
 //  device's patcher, not with the set.) A track is known to the host by its key, never by Live's id, which lasts only while the set
 //  is open; after a reopening it is found again by its place and name.
 //
-//  When the host goes away while bambi is on, the device waits five seconds for it (the Node script starts it
-//  again); then it turns bambi off, so the tracks play in Live again.
+//  When the host goes away while bambi is on, or does not come to a set that has tracks on bambi, the device waits
+//  five seconds for it (the Node script starts it again); then it puts every track back, so they play in Live.
 //
 //  It changes nothing on its own besides that. When the set opens it saves every track's routing -- for a track
 //  it routed, the routing it remembers -- which changes nothing; restoring that is a press, confirmed by a second.
@@ -24,8 +27,8 @@
 
 autowatch = 1;
 inlets = 1;
-outlets = 5;  // 0: "send", "status", "detail", "meta", "saved", "notice" with their text; 1: the route button, set
-              //    without output; 2: the list's rows; 3: the restore button's label; 4: the connection light
+outlets = 4;  // 0: "send", "status", "detail", "meta", "saved", "notice" with their text; 1: the list's rows;
+              //    2: the restore button's label; 3: the connection light
 
 //  The connection light, a square as Live draws its own: green connected (the suite's green), yellow waiting --
 //  for a host that is starting, or one that went away -- red when it failed, grey when another device has it.
@@ -34,7 +37,7 @@ const LIGHT = {connected: [0.494, 0.643, 0.494, 1], waiting: [0.98, 0.69, 0.23, 
 let failed = false;  // the host did not come back, or has no loop device: red until it connects again
 
 function light(state) {
-    outlet(4, "bgfillcolor", LIGHT[state]);
+    outlet(3, "bgfillcolor", LIGHT[state]);
 }
 
 const PROTOCOL = 1;
@@ -61,7 +64,7 @@ let info = {};         // what the host last said about the mix: latency, rate, 
 let confirming = false;  // restore pressed once, waiting for the second press
 const unconfirm = new Task(() => {
     confirming = false;
-    outlet(3, "text", "restore saved");
+    outlet(2, "text", "restore saved");
 });
 const grace = new Task(() => {
     if (!on || linked) return;
@@ -81,6 +84,10 @@ function notifydeleted() {
     relight.cancel();
     grace.cancel();
     unconfirm.cancel();
+    if (on) {  // removed while it routes: everything back to Live, as it was
+        restoreAll();
+        silence([]);
+    }
 }
 
 function dictionary(name) {
@@ -93,7 +100,7 @@ function bang() {
     post("bambi: loaded; the set kept " + (store === null ? "nothing (no dict)" : store.getkeys()) + "\n");
     identify();
     on = remembered().length > 0;
-    outlet(1, "set", on ? 1 : 0);
+    if (on) grace.schedule(GRACE_MS);  // a set saved with tracks on bambi: back to Live unless the host comes
     takeSnapshot(true);
     idle();
     showList();
@@ -104,8 +111,10 @@ function idle() {
     light(busy ? "busy" : failed ? "failed" : linked ? "connected" : "waiting");
     if (busy) status("busy", "another bambi device in this set has the host");
     else if (!linked) status("no host", "starting it… if it does not come, is bambi installed?");
-    else if (on) status("on · " + routedCount() + " tracks", "in the field; binaural back on the bambi track");
-    else status("connected", "press route to play the set in the field");
+    else if (on) status("on · " + routedCount() + " tracks",
+                        routedCount() === 0 ? "add an Encoder to a track in the host to play it in the field"
+                                            : "in the field; binaural back on the bambi track");
+    else status("connected", "everything plays in Live");
     const found = strays(identify());
     notice(found.length > 0 && !on
         ? found.length + " track" + (found.length === 1 ? "" : "s") + " still play to bambi's channels, not routed by " +
@@ -199,7 +208,7 @@ function connected(flag) {
         const state = kept("host", null);
         if (state !== null) send({type: "restore", state: state});
         idle();
-        if (on) start();
+        start();  // nothing moves until the host asks for it
     } else {
         stopObserving();
         info = {};
@@ -274,32 +283,15 @@ function command(m) {
 
 // ---- the button ------------------------------------------------------------------------------------------------
 
-function enable() {
-    if (!ready) return;
-    if (on) {
-        stop();
-    } else if (!linked) {
-        outlet(1, "set", 0);
-        idle();
-    } else {
-        start();
-    }
-}
-
 function start() {
     on = true;
     lastTree = "";
     lastArrangement = "";
     lastValue = {};
-    outlet(1, "set", 1);
-    const listening = makeReturn();
     send({type: "bambi", on: 1});
     sendTree();
     observe();
     sendArrangement();
-    if (!listening)
-        notice("the bambi track cannot hear Ext. In " + RETURN_IN + ": enable it as a stereo pair in Live's " +
-               "Input Config, with the bambi bridge as the input device");
 }
 
 function stop() {
@@ -311,13 +303,11 @@ function stop() {
     const back = restoreAll();
     silence([]);
     removeReturn();
-    outlet(1, "set", 0);
     send({type: "bambi", on: 0});
     info = {};
     outlet(0, "meta", "");
     showList();
-    status("off", back + " track" + (back === 1 ? "" : "s") + " back as they were; press route to play the set " +
-           "in the field");
+    status("off", back + " track" + (back === 1 ? "" : "s") + " back as they were");
 }
 
 function show() {
@@ -920,6 +910,10 @@ function route(m) {
     }
     remember(list);
     silence(m.silent || []);
+    //  the bambi track, with the first track on bambi
+    if (wanted.size > 0 && !makeReturn())
+        notice("the bambi track cannot hear Ext. In " + RETURN_IN + ": enable it as a stereo pair in Live's " +
+               "Input Config, with the bambi bridge as the input device");
     routing = false;
     send({type: "routed", tracks: results});
     idle();
@@ -1026,7 +1020,7 @@ function showList() {
     const count = on ? kept_.length : stray.length;
     const head = count === 0 ? "no tracks on bambi"
                : count + " track" + (count === 1 ? "" : "s") + (on ? " on bambi" : " on bambi's channels");
-    outlet(2, "rows", JSON.stringify({head: head, sub: all.filter(n => !n.ret).length + " in the set", rows: rows}));
+    outlet(1, "rows", JSON.stringify({head: head, sub: all.filter(n => !n.ret).length + " in the set", rows: rows}));
 }
 
 // ---- the routing snapshot ----------------------------------------------------------------------------------
@@ -1069,19 +1063,19 @@ function save() {
 //  Two presses: the first asks, the second does it.
 function restoreSaved() {
     if (!ready) return;
-    if (on) {
-        notice("turn route off to restore");
+    if (on && routedCount() > 0) {
+        notice("take every track out of bambi in the host first: all to Live");
         return;
     }
     if (!confirming) {
         confirming = true;
-        outlet(3, "text", "restore? press again");
+        outlet(2, "text", "restore? press again");
         unconfirm.schedule(4000);
         return;
     }
     unconfirm.cancel();
     confirming = false;
-    outlet(3, "text", "restore saved");
+    outlet(2, "text", "restore saved");
     const s = kept("snapshot", null);
     const all = identify();
     const stray = strays(all).map(n => n.key);

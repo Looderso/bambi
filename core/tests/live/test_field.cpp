@@ -28,18 +28,37 @@ Tree set() {
                  node(6, Node::Kind::Return)}};
 }
 
+//  The field with every node at the top taken, as "route all" leaves it.
+Field laidOut(const Tree& tree, Shape shape) {
+    takeAll(shape, tree);
+    return layOut(tree, shape);
+}
+
 }  // namespace
 
-TEST_CASE("unshaped, every node at the top is a source, a group with all it holds") {
+TEST_CASE("a shape that takes nothing leaves every node in Live; route all takes each at the top, and only those") {
+    //  Catches: a node in the field before it is taken -- the set would move the moment the host opens -- or route
+    //  all taking a track inside a group, a return, or one that plays elsewhere.
+    CHECK(layOut(set(), {}).parts.empty());
+    Tree t = set();
+    t.nodes[4].path = Node::Path::Elsewhere;  // track 5
+    Shape s;
+    takeAll(s, t);
+    CHECK(s.taken == std::vector<TrackId>{1});
+    takeAll(s, set());
+    CHECK(s.taken == std::vector<TrackId>{1, 5});  // what was taken stays, once
+}
+
+TEST_CASE("taken, every node at the top is a source, a group with all it holds") {
     //  Catches: a group's children encoded beside the group, which would play them twice, or a return taken.
-    const Field f = layOut(set(), {});
+    const Field f = laidOut(set(), {});
     CHECK(f.sources() == std::vector<TrackId>{1, 5});
     for (const Part& p : f.parts) CHECK_FALSE(p.bus);
 }
 
 TEST_CASE("a split group is a bus, and what plays into it is laid out under it") {
     //  Catches: the bus left out, a child under the wrong bus, or a bus after what plays into it.
-    const Field f = layOut(set(), Shape{{1}, {}, {}, {}, {}, {}, {}, {}});
+    const Field f = laidOut(set(), Shape{{1}, {}, {}, {}, {}, {}, {}, {}});
     REQUIRE(f.parts.size() == 4);
     CHECK(f.parts[0] == Part{1, true, -1, {}, 0, {{Target::main(), 0.0}}});
     CHECK(f.parts[1] == Part{2, false, 0, {}, 0, {{Target::node(1), 0.0}}});  // into its bus
@@ -50,16 +69,16 @@ TEST_CASE("a split group is a bus, and what plays into it is laid out under it")
 
 TEST_CASE("a group split inside a split group is a bus inside the bus") {
     //  Catches: nested groups flattened onto the outer bus, or the inner bus kept as a source too.
-    const Field f = layOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}, {}, {}});
+    const Field f = laidOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}, {}, {}});
     CHECK(f.sources() == std::vector<TrackId>{2, 4, 5});
     REQUIRE(f.parts.size() == 5);
     CHECK(f.parts[2] == Part{3, true, 0, {}, 0, {{Target::node(1), 0.0}}});
     CHECK(f.parts[3] == Part{4, false, 2, {}, 0, {{Target::node(3), 0.0}}});
 }
 
-TEST_CASE("a node at the top left in Live is not in the field; below the top the mark means nothing") {
-    //  Catches: a node left in Live still given a pair, or a child of a split group dropped by a mark it ignores.
-    const Field f = layOut(set(), Shape{{1}, {5, 2}, {}, {}, {}, {}, {}, {}});
+TEST_CASE("a node at the top not taken is not in the field; below the top the mark means nothing") {
+    //  Catches: a node not taken still given a pair, or a mark below the top taking a child out of its bus.
+    const Field f = layOut(set(), Shape{{1}, {1, 2}, {}, {}, {}, {}, {}, {}});
     CHECK(f.sources() == std::vector<TrackId>{2, 3});
 }
 
@@ -75,14 +94,14 @@ TEST_CASE("under a split group, only what plays into it with audio; an empty bus
     quiet.audio = false;
     t.nodes.push_back(quiet);
     t.nodes.push_back(node(4));
-    const Field f = layOut(t, Shape{{1}, {}, {}, {}, {}, {}, {}, {}});
+    const Field f = laidOut(t, Shape{{1}, {}, {}, {}, {}, {}, {}, {}});
     REQUIRE(f.parts.size() == 1);
     CHECK(f.parts[0] == Part{4, false, -1, {}, 0, {{Target::main(), 0.0}}});
 }
 
 TEST_CASE("split on a track means nothing") {
     //  Catches: a track made a bus with nothing in it, which would take it out of the field.
-    CHECK(layOut(set(), Shape{{5}, {}, {}, {}, {}, {}, {}, {}}).sources() == std::vector<TrackId>{1, 5});
+    CHECK(laidOut(set(), Shape{{5}, {}, {}, {}, {}, {}, {}, {}}).sources() == std::vector<TrackId>{1, 5});
 }
 
 TEST_CASE("the shape the set keeps reads back as it was, and nonsense in it is left out") {
@@ -101,7 +120,7 @@ TEST_CASE("the shape the set keeps reads back as it was, and nonsense in it is l
 TEST_CASE("the plan for a field: a node per source with a pair, its own Encoder, and every bus") {
     //  Catches: a source encoded from another's pair, two sources on one Encoder slot, a bus's child left
     //  under Main, or a decoder slot that is an Encoder's.
-    const Field f = layOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}, {}, {}});  // bus 1 { 2, bus 3 { 4 } }, 5
+    const Field f = laidOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}, {}, {}});  // bus 1 { 2, bus 3 { 4 } }, 5
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 4}, {4, 0}, {5, 6}}));
     REQUIRE(fp.plan.nodes.size() == 5);
     CHECK(fp.encoders == std::vector<TrackId>{2, 4, 5});
@@ -120,7 +139,7 @@ TEST_CASE("the plan for a field: a node per source with a pair, its own Encoder,
 TEST_CASE("a source without a pair is left out of the plan, and the parts after it keep their buses") {
     //  Catches: a node with no pair handed to the runner, or a child pointing at the wrong node once one is
     //  skipped before its bus.
-    const Field f = layOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}, {}, {}});
+    const Field f = laidOut(set(), Shape{{1, 3}, {}, {}, {}, {}, {}, {}, {}});
     const FieldPlan fp = planOf(f, arrivalsOf({{4, 1}, {5, 2}}));  // track 2 got none
     REQUIRE(fp.plan.nodes.size() == 4);
     CHECK(fp.encoders == std::vector<TrackId>{4, 5});
@@ -133,7 +152,7 @@ TEST_CASE("a source without a pair is left out of the plan, and the parts after 
 TEST_CASE("a node's chain goes with its part, Main's with the field, and one on a node not in the field nowhere") {
     //  Catches: a chain on the wrong part, Main's lost, or a chain on a node left in Live played anyway.
     const Shape shape{
-        {1}, {5}, {{2, {{7, Effect::Echo, 0}}}, {kMain, {{8, Effect::Reverb, 0}}}, {5, {{9, Effect::Echo, 0}}}},
+        {1}, {1}, {{2, {{7, Effect::Echo, 0}}}, {kMain, {{8, Effect::Reverb, 0}}}, {5, {{9, Effect::Echo, 0}}}},
         {},  {},  {},
         {},  {}};
     const Field f = layOut(set(), shape);
@@ -158,7 +177,7 @@ TEST_CASE("the plan's insert slots follow the Encoders, the parts' in order and 
                       {},
                       {},
                       {}};
-    const Field f = layOut(set(), shape);                          // bus 1 { 2, 3 }, 5
+    const Field f = laidOut(set(), shape);                         // bus 1 { 2, 3 }, 5
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {5, 1}}));  // 3 got no pair
     CHECK(fp.encoders == std::vector<TrackId>{2, 5});
     CHECK(fp.effects ==
@@ -209,7 +228,7 @@ TEST_CASE("a return the shape takes is a return of the field, at its place in Li
     //  Catches: a return given its place in the field rather than in Live, its chain lost, or a track's id taken as
     //  a return.
     const Shape shape{{}, {}, {{11, {{20, Effect::Reverb, 0}}}}, {11, 3}, {}, {}, {}, {}};
-    const Field f = layOut(sending(), shape);
+    const Field f = laidOut(sending(), shape);
     REQUIRE(f.returns.size() == 1);
     CHECK(f.returns[0].node == 11);
     CHECK(f.returns[0].inserts == std::vector<Insert>{{20, Effect::Reverb, 0}});
@@ -221,7 +240,7 @@ TEST_CASE("a return's chain is slotted after the parts' inserts and before Main'
         {1},  {}, {{2, {{5, Effect::Echo, 0}}}, {10, {{6, Effect::Reverb, 0}}}, {kMain, {{7, Effect::Echo, 0}}}},
         {10}, {}, {},
         {},   {}};
-    const Field f = layOut(sending(), shape);
+    const Field f = laidOut(sending(), shape);
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 1}}));
     CHECK(fp.encoders.size() == 2);
     CHECK(fp.effects == std::vector<Insert>{{5, Effect::Echo, 0}, {6, Effect::Reverb, 0}, {7, Effect::Echo, 0}});
@@ -242,7 +261,7 @@ TEST_CASE("the plan plays the field's wires, each by index, every level in the o
     shape.routing = {{2, {{Target::node(1), 0.0}, {Target::node(10), -6.0}}},
                      {3, {{Target::main(), 0.0}, {Target::node(11), -20.0}, {Target::decoder(2), -12.0}}},
                      {11, {{Target::decoder(2), -3.0}}}};
-    const Field f = layOut(t, shape);
+    const Field f = laidOut(t, shape);
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 1}}));
     REQUIRE(fp.plan.nodes.size() == 3);  // the bus, 2, 3
     CHECK(fp.plan.nodes[1].wires == std::vector<PlanWire>{{PlanWire::To::Node, 0}, {PlanWire::To::Return, 0}});
@@ -263,7 +282,7 @@ TEST_CASE("the plan plays the field's wires, each by index, every level in the o
     //  a level changed in the shape is heard with the plan as it was: no new plan for a level
     Shape louder = shape;
     louder.routing[0].wires[1].db = 0.0;
-    CHECK(live::levels(fp, layOut(t, louder), t)[2] == doctest::Approx(1.0));
+    CHECK(live::levels(fp, laidOut(t, louder), t)[2] == doctest::Approx(1.0));
 }
 
 TEST_CASE("whatever wires a shape asks for, the field plays only wires it allows, and its plan holds together") {
@@ -286,7 +305,7 @@ TEST_CASE("whatever wires a shape asks for, the field plays only wires it allows
             }
             s.routing.push_back(r);
         }
-        const Field f = layOut(set(), s);
+        const Field f = laidOut(set(), s);
         for (const TrackId from : nodes)
             for (const Wire& w : f.wiresOf(from)) CHECK(canWire(f, from, w.to));
         const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {4, 1}, {5, 2}}));
@@ -305,7 +324,7 @@ TEST_CASE("an insert's sidechain hears its source's pair, and silence once the s
     //  Catches: a sidechain on another track's pair, on a bus's or a node's left in Live -- neither arrives on a
     //  pair of its own -- or on a source the loop device had no pair for.
     const Shape shape{
-        {1}, {5}, {{2, {{7, Effect::Reverb, 3}, {8, Effect::Echo, 5}, {9, Effect::Echo, 1}, {10, Effect::Echo, 4}}}},
+        {1}, {1}, {{2, {{7, Effect::Reverb, 3}, {8, Effect::Echo, 5}, {9, Effect::Echo, 1}, {10, Effect::Echo, 4}}}},
         {},  {},  {},
         {},  {}};
     const Field f = layOut(set(), shape);                          // bus 1 { 2, 3 }; 5 in Live
@@ -332,7 +351,7 @@ TEST_CASE("a source's Encoder hears the pair of the track its sidechain names; n
     //  Catches: an Encoder's sidechain on its own pair, on another source's, or on a pair when its track has none;
     //  or a source that names itself hearing itself.
     const Shape shape{{1}, {}, {}, {}, {{2, 3}, {3, 3}, {5, 4}}, {}, {}, {}};
-    const Field f = layOut(set(), shape);  // bus 1 { 2, 3 }, 5; group 3 holds 4
+    const Field f = laidOut(set(), shape);  // bus 1 { 2, 3 }, 5; group 3 holds 4
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 6}, {5, 1}}));
     REQUIRE(fp.encoders == std::vector<TrackId>{2, 3, 5});
     CHECK(fp.plan.slots[0].sidechain == 14);  // 2 hears 3, on pair 6, after Main's two
@@ -357,7 +376,7 @@ TEST_CASE("a bus's wires play at its group's fader too; a source's at its own le
     t.nodes[3].mute = true;    // as the device mutes it
     Shape shape{{1}, {}, {}, {10}, {}, {}, {}, {}};
     shape.routing = {{1, {{Target::main(), 0.0}, {Target::node(10), -6.0}}}};
-    const Field f = layOut(t, shape);
+    const Field f = laidOut(t, shape);
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 1}}));
     //  the bus to Main and A; 2 to the bus; 3 to Main; A to Main; Main to the Decoder
     auto l = live::levels(fp, f, t);
@@ -379,7 +398,7 @@ TEST_CASE("the host's inputs are sources at the top, after Live's, heard where t
     Shape shape;
     shape.inputs = {{kFirstInput, "vox", 1}, {kFirstInput + 1, "gone", 2}};
     shape.chains = {{kFirstInput, {{7, Effect::Echo, kFirstInput}}}};
-    const Field f = layOut(set(), shape);
+    const Field f = laidOut(set(), shape);
     REQUIRE(f.parts.size() >= 2);
     CHECK(f.parts[f.parts.size() - 2].node == kFirstInput);
     CHECK(f.parts.back().node == kFirstInput + 1);
@@ -405,10 +424,10 @@ TEST_CASE("a set's Decoders each have a slot after the inserts, in order; a set 
     //  Catches: a second Decoder left without a slot, two sharing one, the ids lost between the shape and the plan,
     //  a set without decoders getting none, the decoders not kept by the set.
     Shape shape;
-    const Field one = layOut(set(), shape);
+    const Field one = laidOut(set(), shape);
     CHECK(one.decoders == std::vector<std::uint64_t>{kFirstDecoder});
     shape.decoders = {1, 7};
-    const Field two = layOut(set(), shape);
+    const Field two = laidOut(set(), shape);
     const FieldPlan fp = planOf(two, arrivalsOf({{1, 0}, {5, 1}}));
     REQUIRE(fp.plan.decoders.size() == 2);
     CHECK(fp.plan.decoders[0] == static_cast<int>(fp.encoders.size() + fp.effects.size()));
@@ -432,7 +451,7 @@ Shape wired(std::vector<Routing> routing = {}) {
 TEST_CASE("unwired, each node plays where Live would, at 0 dB, and Main into every Decoder") {
     //  Catches: a child of a split group wired past its bus to Main, a return wired nowhere, a Decoder left out of
     //  Main's wires.
-    const Field f = layOut(set(), wired());
+    const Field f = laidOut(set(), wired());
     CHECK(f.wiresOf(4) == std::vector<Wire>{{Target::node(3), 0.0}});
     CHECK(f.wiresOf(3) == std::vector<Wire>{{Target::node(1), 0.0}});
     CHECK(f.wiresOf(1) == std::vector<Wire>{{Target::main(), 0.0}});
@@ -447,12 +466,12 @@ TEST_CASE("a node's own wires replace its default; one the field cannot play is 
     const Shape s = wired({{2, {{Target::decoder(2), -6.0}, {Target::decoder(7), 0.0}}},
                            {5, {}},
                            {4, {{Target::node(5), 0.0}, {Target::node(6), -12.0}, {Target::main(), 0.0}}}});
-    const Field f = layOut(set(), s);
+    const Field f = laidOut(set(), s);
     CHECK(f.wiresOf(2) == std::vector<Wire>{{Target::decoder(2), -6.0}});
     CHECK(f.wiresOf(5).empty());  // plays nowhere, as asked
     CHECK(f.wiresOf(4) == std::vector<Wire>{{Target::node(6), -12.0}, {Target::main(), 0.0}});  // 5 is no bus
     CHECK(s.routing[0].wires.size() == 2);
-    CHECK(layOut(set(), wired({{2, {{Target::decoder(2), -80.0}, {Target::main(), 20.0}}}})).wiresOf(2) ==
+    CHECK(laidOut(set(), wired({{2, {{Target::decoder(2), -80.0}, {Target::main(), 20.0}}}})).wiresOf(2) ==
           std::vector<Wire>{{Target::decoder(2), kSilentDb}, {Target::main(), kLoudestDb}});
 }
 
@@ -460,7 +479,7 @@ TEST_CASE(
     "what may be wired where: a part anywhere but round a loop, a return to Main or a Decoder, Main to Decoders") {
     //  Catches: a bus wired into a bus inside it, which would loop; a part into itself; a return into a return or a
     //  bus; Main into anything but a Decoder; a Decoder the field does not have.
-    const Field f = layOut(set(), wired());
+    const Field f = laidOut(set(), wired());
     CHECK(canWire(f, 2, Target::node(3)));  // into a bus it is not in: fine
     CHECK(canWire(f, 2, Target::node(6)));
     CHECK(canWire(f, 2, Target::decoder(2)));
@@ -480,7 +499,7 @@ TEST_CASE(
 
 TEST_CASE("a loop the shape asks for is refused at the wire that would close it") {
     //  Catches: both wires of a loop played, so the plan could not be ordered, or both refused.
-    const Field f = layOut(set(), wired({{1, {{Target::node(3), 0.0}}}}));  // 3 already plays into 1
+    const Field f = laidOut(set(), wired({{1, {{Target::node(3), 0.0}}}}));  // 3 already plays into 1
     CHECK(f.wiresOf(3) == std::vector<Wire>{{Target::node(1), 0.0}});
     CHECK(f.wiresOf(1).empty());
 }
@@ -488,10 +507,10 @@ TEST_CASE("a loop the shape asks for is refused at the wire that would close it"
 TEST_CASE("a Decoder's mix is what is wired into it; a node that reaches it another way too is heard twice") {
     //  Catches: a node heard through Main listed as wired in, the twice missed when the other way is through a bus
     //  or a return, or claimed for a node wired only once.
-    const Field f = layOut(set(), wired({{2, {{Target::decoder(2), -6.0}}},
-                                         {4, {{Target::node(3), 0.0}, {Target::decoder(1), 0.0}}},
-                                         {5, {{Target::node(6), 0.0}, {Target::decoder(1), -3.0}}},
-                                         {kMain, {{Target::decoder(1), 0.0}}}}));
+    const Field f = laidOut(set(), wired({{2, {{Target::decoder(2), -6.0}}},
+                                          {4, {{Target::node(3), 0.0}, {Target::decoder(1), 0.0}}},
+                                          {5, {{Target::node(6), 0.0}, {Target::decoder(1), -3.0}}},
+                                          {kMain, {{Target::decoder(1), 0.0}}}}));
     CHECK(heardBy(f, 2) == std::vector<Heard>{{2, -6.0, false}});  // Main no longer reaches it
     CHECK(heardBy(f, 1) == std::vector<Heard>{{4, 0.0, true}, {5, -3.0, true}, {kMain, 0.0, false}});
 }
@@ -500,15 +519,15 @@ TEST_CASE("a wire set on a node with none of its own keeps the ones it played; r
     //  Catches: setting one wire dropping the default beside it, a second wire to the same place added rather than
     //  changed, a level past the range kept, a removal that empties the node.
     Shape s = wired();
-    setWire(s, layOut(set(), s), 5, {Target::decoder(2), -6.0});
-    CHECK(layOut(set(), s).wiresOf(5) == std::vector<Wire>{{Target::main(), 0.0}, {Target::decoder(2), -6.0}});
-    setWire(s, layOut(set(), s), 5, {Target::decoder(2), 99.0});
-    CHECK(layOut(set(), s).wiresOf(5).back() == Wire{Target::decoder(2), kLoudestDb});
-    CHECK_FALSE(setWire(s, layOut(set(), s), 1, {Target::node(3), 0.0}));  // a loop: refused, the shape as it was
-    removeWire(s, layOut(set(), s), 5, Target::main());
-    CHECK(layOut(set(), s).wiresOf(5) == std::vector<Wire>{{Target::decoder(2), kLoudestDb}});
-    removeWire(s, layOut(set(), s), kMain, Target::decoder(1));
-    CHECK(layOut(set(), s).mainWires == std::vector<Wire>{{Target::decoder(2), 0.0}});
+    setWire(s, laidOut(set(), s), 5, {Target::decoder(2), -6.0});
+    CHECK(laidOut(set(), s).wiresOf(5) == std::vector<Wire>{{Target::main(), 0.0}, {Target::decoder(2), -6.0}});
+    setWire(s, laidOut(set(), s), 5, {Target::decoder(2), 99.0});
+    CHECK(laidOut(set(), s).wiresOf(5).back() == Wire{Target::decoder(2), kLoudestDb});
+    CHECK_FALSE(setWire(s, laidOut(set(), s), 1, {Target::node(3), 0.0}));  // a loop: refused, the shape as it was
+    removeWire(s, laidOut(set(), s), 5, Target::main());
+    CHECK(laidOut(set(), s).wiresOf(5) == std::vector<Wire>{{Target::decoder(2), kLoudestDb}});
+    removeWire(s, laidOut(set(), s), kMain, Target::decoder(1));
+    CHECK(laidOut(set(), s).mainWires == std::vector<Wire>{{Target::decoder(2), 0.0}});
 }
 
 TEST_CASE("the wires the set keeps read back, a node wired nowhere among them; nonsense is left out") {

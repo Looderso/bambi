@@ -13,11 +13,11 @@
 /*  Which of a Live set's tracks and groups the field takes, and as what: the user's shape laid over the set as it
  *  is now.
  *
- *  Every node at the top of the set that plays to Main with audio is in the field, a return never. Such a node is a
- *  source -- its stereo, whatever Live made of it, arrives on a pair of its own and is encoded -- unless it stays
- *  in Live, or is a group the user split: then it is a bus of the field, and each of its children that plays into
+ *  A node at the top of the set that plays to Main with audio is in the field once the shape takes it -- until then
+ *  it plays in Live, as every node does in a shape that takes none; a return never. Such a node is a source -- its stereo, whatever Live made of it, arrives on a pair of its own and is encoded -- unless it stays
+ *  not taken, or is a group the user split: then it is a bus of the field, and each of its children that plays into
  *  it with audio is laid out in turn, a source or, a group split again, a bus inside it. A split group none of whose
- *  children reaches the field is not in it. The shape's marks on a node not where they apply are ignored: "in Live"
+ *  children reaches the field is not in it. The shape's marks on a node not where they apply are ignored: "taken"
  *  below the top, "split" on a node that is no group.
  *
  *  Each part of the field, and Main, may carry a chain of inserts, Echo or Reverb, each with an id of its own that
@@ -110,7 +110,7 @@ struct Routing {
 
 struct Shape {
     std::vector<TrackId> split;         ///< groups whose children the field takes one by one, the group their bus
-    std::vector<TrackId> inLive;        ///< top-level nodes that stay in Live: nothing of them reaches the field
+    std::vector<TrackId> taken;         ///< top-level nodes the field takes; every other plays in Live
     std::vector<Chain> chains;          ///< one per node with inserts, Main's among them
     std::vector<TrackId> returns;       ///< Live's returns the field plays, its own
     std::vector<Sidechain> sidechains;  ///< the sources whose Encoder's sidechain hears another track
@@ -158,6 +158,9 @@ struct Field {
 };
 
 Field layOut(const Tree& tree, const Shape& shape);
+
+/// Every node at the top of `tree` that plays to Main with audio taken into the field, besides those already.
+void takeAll(Shape& shape, const Tree& tree);
 
 /// Whether `from` -- a part, a return, kMain -- may be wired to `to` in `field` as it is: what it goes to is in
 /// the field, the kinds allow it, and it closes no loop.

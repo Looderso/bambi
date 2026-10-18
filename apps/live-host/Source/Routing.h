@@ -13,7 +13,8 @@
  *  them, Main and its chain, and Live's returns below. What it changes is the shape; the host lays the field out
  *  again and routes Live from it.
  *
- *    - every node at the top, and every return: `live | bambi`, the chosen one a block;
+ *    - every node at the top, and every return: `live | bambi`, the chosen one a block; every node starts in Live,
+ *      "route all", in the band, takes each at the top, and "all to Live" gives every one back;
  *    - a track inside a group the field takes whole: "encode here", which makes the group a bus; a bus: "encode
  *      whole", which takes it back;
  *    - after Main's chain, the decoders, one under the other, each its own listener: a click shows one, "+ decoder"

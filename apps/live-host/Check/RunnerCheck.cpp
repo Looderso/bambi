@@ -1202,6 +1202,7 @@ int timelineHolds() {
     page.heard = [&] { return live::Playhead{playing, 0, 40.0, 120.0}; };
     live::Shape shape;
     shape.chains = {{2, {{7, live::Effect::Echo, 0}}}};
+    live::takeAll(shape, tree);
     const live::Field field = live::layOut(tree, shape);
     const std::vector<live::Lane> lanes{{1, live::Instance::Encoder, 2, "transform.yaw", {{0.0, -30.0}, {64.0, 30.0}}, 0, -1, {}},
                                         {4, live::Instance::Encoder, 2, "transform.pitch", {{0.0, 0.0}}, 2, 0, {}},

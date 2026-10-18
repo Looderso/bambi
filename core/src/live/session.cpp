@@ -79,6 +79,19 @@ std::vector<Message> DeviceSession::onTree(const Tree& t, bool adopt) {
             });
             if (holdsSource) shape_.split.push_back(g.id);
         }
+        //  and the group at the top that now holds them, taken as they were
+        for (const TrackId s : before) {
+            const auto n = std::find_if(t.nodes.begin(), t.nodes.end(), [&](const Node& x) { return x.id == s; });
+            if (n == t.nodes.end() || !n->parent) continue;
+            TrackId top = *n->parent;
+            for (int depth = 0; depth < 64; ++depth) {
+                const auto p = std::find_if(t.nodes.begin(), t.nodes.end(), [&](const Node& x) { return x.id == top; });
+                if (p == t.nodes.end() || !p->parent) break;
+                top = *p->parent;
+            }
+            if (std::find(shape_.taken.begin(), shape_.taken.end(), top) == shape_.taken.end())
+                shape_.taken.push_back(top);
+        }
     }
     tree_ = t;
     treed_ = true;

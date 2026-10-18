@@ -241,6 +241,18 @@ void RoutingPage::band(juce::Graphics& g) {
              {inner.getX() + rt::boxWidth, 0.0f, ui::textWidth(f, middle) + 2.0f, h});
     const float tw = ui::textWidth(f, toMain) + 2.0f;
     ui::text(g, toMain, f, colour::label, {inner.getRight() - tw, 0.0f, tw, h});
+    //  every node at the top into the field at once, or every one back to Live
+    float x = inner.getRight() - tw - rt::gap * 2.0f;
+    const auto action = [&](const juce::String& label, std::function<void(live::Shape&)> how) {
+        const float aw = ui::framedButtonWidth(label);
+        x -= aw;
+        const juce::Rectangle<float> at{x, (h - rt::control) / 2.0f, aw, rt::control};
+        ui::drawFramedButton(g, at, label, true);
+        addClickArea(at, [this, how = std::move(how)] { change(how); });
+        x -= rt::gap;
+    };
+    action("all to Live", [](live::Shape& s) { s.taken.clear(); });
+    action("route all", [this](live::Shape& s) { live::takeAll(s, tree_); });
 }
 
 void RoutingPage::body(juce::Graphics& g, float top) {
@@ -491,18 +503,16 @@ float RoutingPage::node(juce::Graphics& g, const Node& n, juce::Point<float> at)
     }
     //  the switch, at the top only
     if (!n.parent) {
-        const bool inLive = std::find(shape_.inLive.begin(), shape_.inLive.end(), id) != shape_.inLive.end();
+        const bool inLive = std::find(shape_.taken.begin(), shape_.taken.end(), id) == shape_.taken.end();
         const juce::Rectangle<float> sw{x, at.y - rt::control / 2.0f, ui::segmentsWidth({"live", "bambi"}),
                                         rt::control};
         const auto cells = ui::drawSegments(g, sw, {"live", "bambi"}, inLive ? 0 : 1, true);
         addClickArea(cells[0], [this, id] {
-            change([id](live::Shape& s) {
-                if (std::find(s.inLive.begin(), s.inLive.end(), id) == s.inLive.end()) s.inLive.push_back(id);
-            });
+            change([id](live::Shape& s) { std::erase(s.taken, id); });
         });
         addClickArea(cells[1], [this, id] {
             change([id](live::Shape& s) {
-                s.inLive.erase(std::remove(s.inLive.begin(), s.inLive.end(), id), s.inLive.end());
+                if (std::find(s.taken.begin(), s.taken.end(), id) == s.taken.end()) s.taken.push_back(id);
             });
         });
         x = sw.getRight() + rt::gap * 2.0f;

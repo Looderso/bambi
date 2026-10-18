@@ -21,7 +21,7 @@
  *
  *  Grouping tracks never changes what is heard: a group in a new tree that holds, anywhere below it, a track the
  *  field played as a source is split, so its tracks stay sources with their Encoders and inserts, and the group
- *  becomes their bus. Only a tree from Live does this, never the user's own shape. A restore
+ *  becomes their bus, the group at the top taken as they were. Only a tree from Live does this, never the user's own shape. A restore
  *  gives back the state an earlier session kept. A change of a value is taken into the tree.
  *
  *  What the set keeps for the host is the pairs, the shape and the parts the host gives the session by name -- its plugins'
