@@ -94,6 +94,10 @@ void drawFactRow(juce::Graphics& g, juce::Rectangle<float> row, const juce::Stri
 /// Something waiting for the user's next act -- learn listening for a note, the live host's sidechain slot waiting
 /// for a source: a block in the learning colour, its label in the ground's.
 void drawWaiting(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& label, const juce::Font& f);
+/// What a waiting pick may take: a dashed ring in the waiting colour round `box`.
+void drawTakes(juce::Graphics& g, juce::Rectangle<float> box);
+/// What a waiting pick cannot take: the ground laid thinly over `box`, so it reads as out of reach.
+void drawOutOfReach(juce::Graphics& g, juce::Rectangle<float> box);
 /*  A chip: a small framed label, a thing offered or held for a click -- a preset's folder, an insert on the live host's
     page. `accent`, when given, is a bar on its left in its owner's colour; `closable` puts a cross at its right,
     whose area is returned. */
@@ -122,6 +126,8 @@ struct Menu {
 };
 Menu drawMenu(juce::Graphics& g, juce::Point<float> topLeft, float width, const std::vector<MenuItem>& items,
               const juce::String& foot);
+/// The panel every menu stands on: the ground, outlined in the strong rule. `drawMenu` and the overlay list both start here.
+void paintMenuFrame(juce::Graphics& g, juce::Rectangle<float> box);
 
 /// A live host page's band, along its top: the ground, a rule under it. Returns the room inside its insets.
 juce::Rectangle<float> drawPageBand(juce::Graphics& g, float width);

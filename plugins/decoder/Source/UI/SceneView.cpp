@@ -8,6 +8,7 @@
 #include "bambi/decode/orientation.hpp"
 #include "bambi/math/sphere.hpp"
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/OverlayMenu.h"
 #include "bambi/ui/Strokes.h"
 #include "bambi/ui/Theme.h"
 #include "bambi/ui/Widgets.h"
@@ -72,12 +73,7 @@ void DecoderSceneView::paint(juce::Graphics& g) {
         });
     } else {
         const float right = strip_.presets[0].getX() - sc::toggleGroupGap;
-        const auto sources = paintSceneToggle(g, row, right, "sources", state_.showSources);
-        sourcesToggle_ = sources.hit;
-        addClickArea(sources.hit, [this] {
-            state_.showSources = !state_.showSources;
-            state_.notify();
-        });
+        state_.sources.paintToggle(g, row, right);
     }
 
     const auto& diag = state_.processor.diagnostics();
@@ -104,7 +100,7 @@ void DecoderSceneView::paint(juce::Graphics& g) {
         const float headAlpha = d.headphonesPlay ? 1.0f : back;
         const float speakerAlpha = d.speakersPlay || (d.headphonesPlay && d.throughLayout) ? 1.0f : back;
         if (state_.page == OutputPage::Speakers) paintHull(g, vp, 1.0f);
-        if (state_.showSources) paintSources(g, vp);
+        paintSources(g, vp);
         paintSpeakers(g, vp, speakerAlpha);
         paintHead(g, vp, headAlpha);
     }
@@ -127,7 +123,8 @@ void DecoderSceneView::paint(juce::Graphics& g) {
         }
     }
 
-    //  A drag orbits the globe. Regions added later lie on top, so this one, added last, takes any press it overlaps.
+    //  A drag orbits the globe. Regions added later lie on top, so this one is added before the list's, which must take
+    //  a press over the globe and never let it start an orbit.
     if (globe) {
         addDragArea(
             frame, [this](juce::Point<float> at) { dragLast_ = at; },
@@ -138,7 +135,24 @@ void DecoderSceneView::paint(juce::Graphics& g) {
                 state_.notify();
             },
             [] {});
+        //  the list over everything, last
+        state_.sources.paintList(g, static_cast<float>(sc::labelStrip));
+        state_.sources.addClicks(*this, getLocalBounds().toFloat(), [this] { state_.notify(); });
     }
+}
+
+void DecoderSceneView::mouseMove(const juce::MouseEvent& e) {
+    if (state_.sources.mouseMove(e.position)) state_.notify();
+}
+
+void DecoderSceneView::mouseExit(const juce::MouseEvent&) {
+    if (state_.sources.mouseExit()) state_.notify();
+}
+
+bool DecoderSceneView::keyPressed(const juce::KeyPress& key) {
+    if (!state_.sources.keyPressed(key)) return false;
+    state_.notify();
+    return true;
 }
 
 void DecoderSceneView::paintGraticule(juce::Graphics& g, const Viewport& vp) {
@@ -206,8 +220,12 @@ void DecoderSceneView::paintSpeakers(juce::Graphics& g, const Viewport& vp, floa
 }
 
 void DecoderSceneView::paintSources(juce::Graphics& g, const Viewport& vp) {
+    sourcesDrawn_ = 0;
     for (const auto& entry : state_.scene.entries()) {
         if (!entry.hasPosition || entry.product == Product::Decoder) continue;
+        const OverlayKey key{entry.instance, 0};
+        if (!state_.sources.drawn(key)) continue;
+        ++sourcesDrawn_;
         //  where the source is heard: turned with the scene
         const auto p =
             toScreen(projection_, state_.sphere.camera, vp, toView(bambi::apply(scene_, entry.dyn.position())));
@@ -215,6 +233,13 @@ void DecoderSceneView::paintSources(juce::Graphics& g, const Viewport& vp) {
         const float r = shape::otherSourceDot;
         g.setColour(colour::otherInstance.withAlpha(a));
         g.fillEllipse(static_cast<float>(p.x) - r, static_cast<float>(p.y) - r, 2.0f * r, 2.0f * r);
+        //  the row under the pointer in the list, pointed at
+        if (state_.sources.hovered(key)) {
+            const float ring = r + sc::hoverRing;
+            g.setColour(colour::text.withAlpha(a));
+            g.drawEllipse(static_cast<float>(p.x) - ring, static_cast<float>(p.y) - ring, 2.0f * ring, 2.0f * ring,
+                          stroke::rule);
+        }
         text(g, juce::String(entry.label()), smallFont(), colour::label.withAlpha(a),
              {static_cast<float>(p.x) + r + 3.0f, static_cast<float>(p.y) - r - 2.0f, sc::otherSourceLabelWidth,
               2.0f * r + 4.0f},

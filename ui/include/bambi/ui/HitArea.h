@@ -106,6 +106,12 @@ public:
         addRegion({area, {}, {}, {}, std::move(click), {}});
     }
 
+    /// A wheel over `area`, taking the pixels it moves by. Public for the same reason: a shared widget with a list longer
+    /// than it shows -- the overlay menu -- scrolls itself.
+    void addWheelArea(juce::Rectangle<float> area, std::function<void(float)> wheel) {
+        addRegion({area, {}, {}, {}, {}, {}, std::move(wheel)});
+    }
+
     /// A whole gesture, public for the same reason: a shared widget that is dragged -- the envelope's
     /// graph, whose points and curve handles are pulled about -- registers press, move and release,
     /// not a click.
@@ -134,6 +140,7 @@ protected:
         std::function<void()> release;
         std::function<void()> click;
         std::function<void()> doubleClick;
+        std::function<void(float)> wheel;  ///< a wheel over the area: pixels to move by, sideways or down
     };
 
     void clearRegions() { regions_.clear(); }

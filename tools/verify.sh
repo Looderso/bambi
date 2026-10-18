@@ -54,7 +54,7 @@ if [ "${1:-}" != "--core" ]; then
     for mode in "" --regions --settings --copy --room "--source 0"; do
         step "reverb $mode" "$(rel reverb bambi-reverb-shot)" "$shot" $mode
     done
-    for mode in "" --speakers; do
+    for mode in "" --speakers --sources; do
         step "decoder $mode" "$(rel decoder bambi-decoder-shot)" "$shot" $mode
     done
     rm -f "$shot"

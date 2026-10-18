@@ -44,6 +44,14 @@ void HitArea::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDe
     //  Only below the pinned part, and only when there is somewhere to go: a wheel that moves nothing reads
     //  as a broken control, and one that scrolls the heading away defeats pinning it.
     constexpr float kWheelPixels = 140.0f;
+    //  a row that scrolls sideways takes the wheel over it, a trackpad's sideways swipe or the wheel
+    for (auto it = regions_.rbegin(); it != regions_.rend(); ++it)
+        if (it->wheel && it->area.contains(e.position)) {
+            const float d = !juce::approximatelyEqual(wheel.deltaX, 0.0f) ? wheel.deltaX : wheel.deltaY;
+            it->wheel(-d * kWheelPixels);
+            repaint();
+            return;
+        }
     const auto limit = maxScroll();
     if (limit <= 0.0f || e.position.y < viewTop_) return;
     const auto next = std::clamp(scroll_ - wheel.deltaY * kWheelPixels, 0.0f, limit);

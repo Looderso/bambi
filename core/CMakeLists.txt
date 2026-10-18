@@ -195,6 +195,7 @@ add_executable(bambi-tests
 
   tests/scene/test_view.cpp
   tests/scene/test_energy.cpp
+  tests/scene/test_overlay.cpp
   tests/io/test_wav.cpp
 
   tests/encode/test_encoder.cpp

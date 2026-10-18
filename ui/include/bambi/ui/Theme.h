@@ -291,6 +291,7 @@ namespace scene
     inline constexpr float strokeMaxChord  = 24.0f;  ///< pixels: the longest straight element a path is drawn with
     inline constexpr std::size_t strokeRunCap = 64;  ///< points one element may stand for, so the check stays cheap
     inline constexpr float hoverLabelGap  = 10.0f;   ///< a hovered source's name, beside its dot
+    inline constexpr float hoverRing      = 3.0f;    ///< the ring round a dot the pointer names in an overlay's list, off the dot
 
     //  editing a custom chain; hit radii are the core's
     inline constexpr float nodeRadius     = 4.5f;
@@ -478,6 +479,15 @@ namespace sheet
     inline constexpr float menuPad   = 6.0f;
     inline constexpr float control   = 20.0f;    ///< every button, chip and segment on a sheet
     inline constexpr float noteLine  = 18.0f;    ///< a line of small text: a note, a device's name over the map
+    //  the overlay list the scenes open from a corner toggle's triangle
+    inline constexpr float overlayGlyphWidth  = 7.0f;   ///< the triangle itself
+    inline constexpr float overlayGlyphHeight = 5.0f;
+    inline constexpr float overlayGlyphPad    = 3.0f;   ///< round it, the part that takes a press
+    inline constexpr float overlayRowPad      = 8.0f;   ///< a row's inset from the list's edges
+    inline constexpr float overlayRowGap      = 8.0f;   ///< between a row's box, its dot and its name
+    inline constexpr float overlayPartIndent  = 18.0f;  ///< a part, under its item
+    inline constexpr float overlayMinWidth    = 150.0f;
+    inline constexpr int   overlayMaxRows     = 10;     ///< lines shown at once, the head included; more scroll
     //  the columns of a row, from its left
     inline constexpr float nameColumn   = 260.0f;  ///< a device's name
     inline constexpr float ioColumn     = 120.0f;  ///< its channels

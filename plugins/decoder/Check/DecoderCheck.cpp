@@ -663,5 +663,154 @@ int main() {
         bambi::LinkBus::unlinkSession(one.identity().session);
     }
 
+    //  The globe's sources toggle and its list: what the window draws of the other instances on the bus, and the boxes that
+    //  switch each one off. Driven through the painted areas as the mouse is, on a decoder with Encoders on its own bus.
+    {
+        std::printf("\nthe sources list\n");
+        bambi::host::setLinkDirectoryNameForTests("bambi-decoder-check-" +
+                                                  bambi::Uuid::generate().toString().substr(0, 8));
+        BambiDecoderProcessor dec;
+        dec.setBusesLayout(busIn(16, 18));
+        dec.prepareToPlay(kCheckRate, 128);
+        const auto tick = [&](int ticks) {
+            for (int i = 0; i < ticks; ++i) dec.linkTick();
+        };
+        tick(bambi::host::LinkNode::kTickHz / 10 + 4);
+
+        std::vector<std::unique_ptr<bambi::LinkBus>> sources;
+        const auto addSource = [&](const std::string& name, double azimuthDeg) {
+            auto bus = std::make_unique<bambi::LinkBus>();
+            if (!bus->open(dec.identity().session, bambi::Uuid::generate(), bambi::Product::Encoder)) return;
+            bambi::LinkStatic st;
+            st.setLabel(name);
+            bus->publishStatic(st);
+            bambi::LinkDynamic d;
+            const bambi::Vec3 at = bambi::fromAzEl(azimuthDeg * bambi::kDeg2Rad, 0.1);
+            d.x = static_cast<float>(at.x);
+            d.y = static_cast<float>(at.y);
+            d.z = static_cast<float>(at.z);
+            bus->publishDynamic(d);
+            sources.push_back(std::move(bus));
+        };
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor(dec.createEditor());
+        auto* window = dynamic_cast<BambiDecoderEditor*>(editor.get());
+        check(window != nullptr, "the window opens");
+        if (window != nullptr) {
+            const auto settle = [&] {
+                tick(4);
+                window->tick();
+                window->paintNow();
+            };
+            settle();
+            //  Catches: a toggle and a triangle for an empty bus, which would open a list with nothing in it.
+            window->clickSourcesTriangle();
+            check(window->sourcesListed() == 0 && !window->sourcesMenuOpen(),
+                  "with nothing on the bus the list has no rows and the triangle opens nothing");
+
+            addSource("kick", -80.0);
+            addSource("bass", 0.0);
+            addSource("pad", 80.0);
+            settle();
+            check(window->sourcesListed() == 3 && window->sourcesDrawn() == 3,
+                  "three Encoders are listed and drawn: " + juce::String(window->sourcesListed()) + " listed, " +
+                      juce::String(window->sourcesDrawn()) + " drawn");
+
+            window->clickSourcesTriangle();
+            window->paintNow();
+            check(window->sourcesMenuOpen() && !window->sourcesMenuBox().isEmpty() &&
+                      !window->sourcesRowArea(0).isEmpty() && !window->sourcesRowArea(2).isEmpty(),
+                  "the triangle opens the list, a row for each");
+            window->clickSourcesTriangle();
+            check(!window->sourcesMenuOpen(), "and a second press on it closes the list");
+            //  Catches: Escape ignored by an open list, as the sheets and the preset browser do not; or taken with no list
+            //  open, which would eat a key the window or the host wants.
+            const bool escapeIgnored = window->pressKeyOnGlobe(juce::KeyPress(juce::KeyPress::escapeKey));
+            window->clickSourcesTriangle();
+            const bool escapeTaken = window->pressKeyOnGlobe(juce::KeyPress(juce::KeyPress::escapeKey));
+            check(!escapeIgnored && escapeTaken && !window->sourcesMenuOpen(),
+                  "Escape closes an open list and is not taken when none is open");
+            window->clickSourcesTriangle();
+
+            //  Catches: a row's box that is not wired to its own item, or that switches off every item.
+            window->clickSourcesRow(1);
+            window->paintNow();
+            check(window->sourcesDrawn() == 2 && window->sourcesMenuOpen(),
+                  "a row's box switches that one source off and leaves the list open");
+            window->clickSourcesRow(1);
+            window->paintNow();
+            check(window->sourcesDrawn() == 3, "and on again");
+
+            //  Catches: the master read only for the toggle's look, so that sources stay drawn with it off; the master
+            //  woken by a tick; the choices forgotten while it is off.
+            window->clickSourcesRow(0);  // kick off
+            window->clickSourcesToggle();
+            window->paintNow();
+            check(!window->sourcesMasterOn() && window->sourcesDrawn() == 0 && window->sourcesListed() == 3,
+                  "the toggle is the master: off draws nothing, and the list still names every one");
+            window->clickSourcesRow(2);  // pad ticked off while the master is off
+            window->clickSourcesRow(2);  // and on again
+            window->paintNow();
+            check(!window->sourcesMasterOn() && window->sourcesDrawn() == 0,
+                  "a tick while the master is off leaves the master alone");
+            window->clickSourcesToggle();
+            window->paintNow();
+            check(window->sourcesMasterOn() && window->sourcesDrawn() == 2,
+                  "switched back on, the choices are as they were: kick stays off");
+
+            //  Catches: all and none swapped, or reaching sources that are not listed.
+            window->clickSourcesAll(false);
+            window->paintNow();
+            const int afterNone = window->sourcesDrawn();
+            window->clickSourcesAll(true);
+            window->paintNow();
+            check(afterNone == 0 && window->sourcesDrawn() == 3, "none switches every source off, all every one on");
+
+            //  Catches: a press on the list that starts an orbit under it, a press elsewhere that does not close it, and
+            //  the closing press that orbits as it closes.
+            const double yaw = window->globeCameraYaw();
+            const auto row = window->sourcesRowArea(1).getCentre();
+            window->dragGlobeBetween(row, row + juce::Point<float>(60.0f, 30.0f));
+            check(window->sourcesMenuOpen() && std::abs(window->globeCameraYaw() - yaw) < 1e-12,
+                  "a drag that starts on the list orbits nothing");
+            const juce::Point<float> away{250.0f, 250.0f};
+            window->dragGlobeBetween(away, away + juce::Point<float>(30.0f, 0.0f));
+            check(!window->sourcesMenuOpen() && std::abs(window->globeCameraYaw() - yaw) < 1e-12,
+                  "a press elsewhere closes the list, and does not orbit as it does");
+            const juce::Point<float> middle{142.0f, 170.0f};  // the globe's own middle, the list now closed
+            window->dragGlobeBetween(middle, middle + juce::Point<float>(30.0f, 0.0f));
+            check(std::abs(window->globeCameraYaw() - yaw) > 1e-6, "and the next drag orbits as it did");
+
+            //  Catches: choices kept for sources that have left, or a source that joins arriving switched off.
+            const int choicesBefore = window->sourcesChoices();
+            sources.pop_back();  // pad leaves the bus
+            for (int i = 0; i < 6; ++i) {
+                tick(2);
+                window->tick();
+            }
+            window->paintNow();
+            check(window->sourcesListed() == 2 && window->sourcesDrawn() == 2, "a source that leaves leaves the list");
+            check(choicesBefore == 3 && window->sourcesChoices() == 2,
+                  "and takes its choice with it: " + juce::String(choicesBefore) + " choices, now " +
+                      juce::String(window->sourcesChoices()));
+            addSource("vox", 160.0);
+            settle();
+            check(window->sourcesListed() == 3 && window->sourcesDrawn() == 3,
+                  "and one that joins is drawn, whatever was chosen before");
+
+            //  Catches: a long list that cannot be reached: more rows than the list shows, with nowhere to scroll to.
+            for (int i = 0; i < 12; ++i) addSource("s" + std::to_string(i), i * 25.0);
+            settle();
+            window->clickSourcesTriangle();
+            window->paintNow();
+            check(window->sourcesListed() == 15 && window->sourcesMenuAreas().maxScroll > 0.0f &&
+                      window->sourcesRowArea(14).isEmpty() && !window->sourcesRowArea(0).isEmpty(),
+                  "a long list shows part of itself and can scroll for the rest");
+        }
+        editor.reset();
+        sources.clear();
+        bambi::LinkBus::unlinkSession(dec.identity().session);
+    }
+
     return checkVerdict();
 }

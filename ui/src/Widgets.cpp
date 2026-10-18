@@ -206,6 +206,18 @@ void drawWaiting(juce::Graphics& g, juce::Rectangle<float> box, const juce::Stri
     text(g, label, f, theme::colour::textInverse, box, juce::Justification::centred);
 }
 
+void drawTakes(juce::Graphics& g, juce::Rectangle<float> box) {
+    juce::Path p;
+    p.addRectangle(box.expanded(theme::controls::takesGap));
+    g.setColour(theme::colour::learning);
+    strokeDashed(g, p, theme::stroke::takesDash, juce::PathStrokeType(theme::stroke::rule));
+}
+
+void drawOutOfReach(juce::Graphics& g, juce::Rectangle<float> box) {
+    g.setColour(theme::colour::ground.withAlpha(theme::controls::outOfReach));
+    g.fillRect(box.expanded(theme::controls::takesGap + 1.0f));
+}
+
 float chipWidth(const juce::String& label, float height, bool accent, bool closable) {
     return textWidth(labelFont(), label) + 2.0f * static_cast<float>(theme::scene::presetChipPadX) +
            (accent ? theme::stroke::selectionBar : 0.0f) + (closable ? height : 0.0f);
@@ -246,6 +258,13 @@ void drawPlayMark(juce::Graphics& g, juce::Rectangle<float> box, bool plays, boo
     }
 }
 
+void paintMenuFrame(juce::Graphics& g, juce::Rectangle<float> box) {
+    g.setColour(theme::colour::ground);
+    g.fillRect(box);
+    g.setColour(theme::colour::ruleStrong);
+    g.drawRect(box, theme::stroke::rule);
+}
+
 Menu drawMenu(juce::Graphics& g, juce::Point<float> topLeft, float width, const std::vector<MenuItem>& items,
               const juce::String& foot) {
     namespace colour = theme::colour;
@@ -254,10 +273,7 @@ Menu drawMenu(juce::Graphics& g, juce::Point<float> topLeft, float width, const 
     Menu menu;
     menu.box = {topLeft.x, topLeft.y, width,
                 2.0f * sh::menuPad + sh::menuLine * static_cast<float>(items.size()) + footHeight};
-    g.setColour(colour::ground);
-    g.fillRect(menu.box);
-    g.setColour(colour::ruleStrong);
-    g.drawRect(menu.box, theme::stroke::rule);
+    paintMenuFrame(g, menu.box);
     auto inner = menu.box.reduced(sh::menuPad, sh::menuPad);
     for (const MenuItem& item : items) {
         const auto row = inner.removeFromTop(sh::menuLine);

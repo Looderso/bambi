@@ -30,6 +30,7 @@ add_library(bambi-ui STATIC
   src/ConfirmBox.cpp
   src/Sheet.cpp
   src/Tooltips.cpp
+  src/OverlayMenu.cpp
   src/Widgets.cpp
 )
 target_include_directories(bambi-ui PUBLIC include)

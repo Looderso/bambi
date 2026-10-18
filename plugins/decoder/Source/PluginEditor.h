@@ -57,6 +57,28 @@ public:
 
 private:
     void frame(bambi::ui::EditorFrame& parts) override;
+    //  the globe's sources toggle and its list, through the painted areas as the mouse would: each paints first, and
+    //  is false when the control is not there to press
+    bool clickSourcesToggle();
+    bool clickSourcesTriangle();
+    bool clickSourcesRow(int index);
+    bool clickSourcesAll(bool on);
+    bool clickGlobeAt(juce::Point<float> at);  ///< anywhere on the globe's view, as a press and release
+    int sourcesListed() const { return static_cast<int>(controls.sources.rows().size()); }
+    int sourcesDrawn() const { return globe.sourcesDrawn(); }
+    bool sourcesMenuOpen() const { return controls.sources.open(); }
+    /// How many choices the list holds: an instance that left must not leave one behind.
+    int sourcesChoices() const { return static_cast<int>(controls.sources.selection().choices()); }
+    bool sourcesMasterOn() const { return controls.sources.selection().master(); }
+    /// What the list's rows are, in order, as the list was last drawn: a row scrolled out of sight is empty.
+    juce::Rectangle<float> sourcesRowArea(int index) const;
+    juce::Rectangle<float> sourcesMenuBox() const { return controls.sources.listAreas().box; }
+    const bambi::ui::OverlayMenuAreas& sourcesMenuAreas() const { return controls.sources.listAreas(); }
+    /// A key pressed with the globe focused, as the keyboard would: true when the list took it.
+    bool pressKeyOnGlobe(const juce::KeyPress& key) { return globe.keyPressed(key); }
+    bool dragGlobeBetween(juce::Point<float> from, juce::Point<float> to);  ///< a drag on the globe, as the mouse's
+    double globeCameraYaw() const { return controls.sphere.camera.yaw; }
+
     void controlsChanged() override;
     void addOwnSettings(bambi::ui::SettingsContent& c) override;
     bool drawnOnPanel(bambi::ParamId id) override { return !strip.drawnArea(id).isEmpty(); }
