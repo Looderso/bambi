@@ -222,10 +222,23 @@ float AudioSheet::interfacePage(juce::Graphics& g, juce::Rectangle<float> page) 
     y += sh::control + sh::gap;
 
     y = ui::drawGroupHeading(g, page.getX(), y, page.getWidth(), "order");
+    //  every plugin's, with the set: a new one loads every plugin again
+    ui::text(g, "every plugin", ui::labelFont(), colour::label, {page.getX(), y, sh::labelColumn, sh::control},
+             juce::Justification::centredLeft);
+    const std::vector<juce::String> orders{"1", "2", "3", "4", "5", "6", "7"};
+    const auto orderCells = ui::drawSegments(
+        g, {page.getX() + sh::labelColumn, y, ui::segmentsWidth(orders), sh::control}, orders, s_.order - 1, true);
+    for (std::size_t i = 0; i < orderCells.size(); ++i)
+        addClickArea(orderCells[i], [this, order = static_cast<int>(i) + 1] {
+            if (order != s_.order && changeOrder) changeOrder(order);
+        });
     const int field = (s_.order + 1) * (s_.order + 1);
-    ui::drawFactRow(g, {page.getX(), y, page.getWidth(), sh::line}, "every plugin",
-                    juce::String(s_.order) + kSeparator + juce::String(field) + " channels");
-    y += sh::line + ctl::segmentGap;
+    ui::text(g, juce::String(field) + " channels" + kSeparator + "with the set", ui::smallFont(), colour::label,
+             {page.getX() + sh::labelColumn + ui::segmentsWidth(orders) + sh::gap, y, sh::valueColumn * 2.0f,
+              sh::control},
+             juce::Justification::centredLeft);
+    y += sh::control + ctl::segmentGap;
+
     ui::text(g, "load" + kSeparator + "this machine, now", ui::labelFont(), colour::label,
              {page.getX(), y, sh::wideLabel, sh::line}, juce::Justification::centredLeft);
     const float share = std::clamp(s_.load, 0.0f, 1.0f);

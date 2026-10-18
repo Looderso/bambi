@@ -19,7 +19,7 @@ namespace sh = theme::sheet;
 OverlayToggleAreas paintOverlayToggle(juce::Graphics& g, juce::Rectangle<float> strip, float rightEdge,
                                       const juce::String& label, const OverlaySelection& selection, bool listed,
                                       const OverlayMenuState& state) {
-    const float glyphBox = sh::overlayGlyphWidth + 2.0f * sh::overlayGlyphPad;
+    const float glyphBox = dropdownWidth();
     OverlayToggleAreas areas;
     areas.triangle = {rightEdge - glyphBox, strip.getY(), glyphBox, strip.getHeight()};
 
@@ -28,18 +28,7 @@ OverlayToggleAreas paintOverlayToggle(juce::Graphics& g, juce::Rectangle<float> 
     areas.toggle = toggle.hit;
     areas.left = toggle.left;
 
-    //  the triangle: a block while its list is open, as an open tab is
-    const bool open = listed && state.open;
-    if (open) {
-        g.setColour(colour::chosen);
-        g.fillRect(areas.triangle.reduced(0.0f, (strip.getHeight() - sc::toggleBox - 2.0f) / 2.0f));
-    }
-    juce::Path glyph;
-    const auto c = areas.triangle.getCentre();
-    glyph.addTriangle(c.x - sh::overlayGlyphWidth / 2.0f, c.y - sh::overlayGlyphHeight / 2.0f, c.x + sh::overlayGlyphWidth / 2.0f,
-                      c.y - sh::overlayGlyphHeight / 2.0f, c.x, c.y + sh::overlayGlyphHeight / 2.0f);
-    g.setColour(!listed ? colour::inactive : open ? colour::textInverse : colour::label);
-    g.fillPath(glyph);
+    drawDropdown(g, areas.triangle, state.open, listed, sc::toggleBox + 2.0f);
     return areas;
 }
 

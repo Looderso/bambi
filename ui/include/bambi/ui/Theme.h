@@ -414,6 +414,11 @@ namespace controls
     inline constexpr float pairChoiceWidth = 112.0f;  ///< the strip's two-entry segments row: head · scene
     inline constexpr float tableColumns[6] = {24.0f, 40.0f, 40.0f, 40.0f, 40.0f, 44.0f};  ///< ch, az, el, dist, gain, delay
     inline constexpr float learnSlotWidth  = 44.0f;   ///< a learned address's slot column
+    inline constexpr float dropdownWidth  = 7.0f;  ///< a dropdown's triangle, the one look for a list behind a control
+    inline constexpr float dropdownHeight = 5.0f;
+    inline constexpr float dropdownPad    = 3.0f;  ///< round it, the part that takes a press
+    inline constexpr float outOfReach = 0.6f;  ///< the ground's alpha over what a waiting pick cannot take
+    inline constexpr float takesGap   = 2.0f;  ///< from a box to the dashed ring round it, a waiting pick may take it
 } // namespace controls
 
 // ---- the settings page -------------------------------------------------------------------------
@@ -480,9 +485,6 @@ namespace sheet
     inline constexpr float control   = 20.0f;    ///< every button, chip and segment on a sheet
     inline constexpr float noteLine  = 18.0f;    ///< a line of small text: a note, a device's name over the map
     //  the overlay list the scenes open from a corner toggle's triangle
-    inline constexpr float overlayGlyphWidth  = 7.0f;   ///< the triangle itself
-    inline constexpr float overlayGlyphHeight = 5.0f;
-    inline constexpr float overlayGlyphPad    = 3.0f;   ///< round it, the part that takes a press
     inline constexpr float overlayRowPad      = 8.0f;   ///< a row's inset from the list's edges
     inline constexpr float overlayRowGap      = 8.0f;   ///< between a row's box, its dot and its name
     inline constexpr float overlayPartIndent  = 18.0f;  ///< a part, under its item
@@ -566,11 +568,15 @@ namespace routing
     inline constexpr float boxHeight  = 22.0f;
     inline constexpr float indent     = 14.0f;   ///< a line inside a group, per depth
     inline constexpr float nameWidth  = 104.0f;  ///< a node's name, before its marker and chain
+    inline constexpr float liveLeast     = 360.0f;  ///< Live's column, at its narrowest
+    inline constexpr float liveMost      = 560.0f;  ///< and at its widest, however long its lines
     inline constexpr float stripe     = 3.0f;    ///< Live's colour, down a node's left edge
     inline constexpr float left       = 16.0f;   ///< the page's inset, either side
     inline constexpr float top        = 14.0f;   ///< from the band to the first row
     inline constexpr float fieldColumn   = 300.0f;  ///< the returns and Main
-    inline constexpr float decoderColumn = 190.0f;
+    inline constexpr float decoderColumn = 220.0f;
+    inline constexpr float tagHeight  = 14.0f;   ///< a node's tag: live, bambi, bus, in group
+    inline constexpr float tagPad     = 5.0f;    ///< text inside a tag
     inline constexpr float wireGutter    = 72.0f;   ///< between the columns, where the wires run
     inline constexpr float control    = 16.0f;   ///< a marker's, a chip's, a button's height
     inline constexpr float gap        = 4.0f;    ///< between controls on a row
@@ -580,7 +586,6 @@ namespace routing
     inline constexpr float ringGap    = 2.0f;    ///< from a box to the ring round it
     inline constexpr float levelDrag  = 0.25f;   ///< dB per pixel a wire's level moves; a tenth of it with shift
     inline constexpr float menuWidth  = 150.0f;
-    inline constexpr float greyedAlpha = 0.6f;   ///< the ground over a line an armed pick cannot take
     inline constexpr float labelPad   = 4.0f;    ///< round a level on a wire, over what it crosses
     inline constexpr float sendRoom   = 48.0f;   ///< kept at a line's right end for "send"
 } // namespace routing

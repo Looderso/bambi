@@ -175,11 +175,11 @@ bool Engine::start(const Settings& settings, juce::String& status) {
     const auto compiled = live::compile(plan, &error);
     juce::String why;
     if (compiled) routes_ = routesFor(compiled->latency);
-    if (!compiled || !runner_.prepare(*compiled, {first.get()}, 0, runnerSetup(), why, {first}, routes_)) {
+    if (!compiled || !runner_.prepare(*compiled, {first.get()}, compiled->levels, runnerSetup(), why, {first}, routes_)) {
         status = "the first program: " + (compiled ? why : juce::String(error));
         return false;
     }
-    program_ = {*compiled, {first.get()}, 0, {first}};
+    program_ = {*compiled, {first.get()}, compiled->levels, {first}};
     projector_ = live::TransportProjector({s_.rate});
     arrivals_.emplace(s_.rate, s_.transportOffsetSamples);
     runner_.setClock(&projector_);
@@ -234,6 +234,41 @@ bool Engine::setAudio(const live::AudioSettings& audio, juce::String& status) {
     wasMeasuring_ = false;
     liveMidi_.store(std::llround(s_.audio.liveMidiMs * 0.001 * s_.rate), std::memory_order_relaxed);
     latencyMs_ = 1000.0 * (deviceLatency_ + program_.compiled.latency) / s_.rate;
+    devices_.addAudioCallback(this);
+    status = said();
+    return true;
+}
+
+bool Engine::setOrder(int order, juce::String& status) {
+    if (order == s_.order) return true;
+    //  every state as it is, for the plugins loaded again at the new order
+    const Json kept = states();
+    devices_.removeAudioCallback(this);
+    voices_.clear();
+    effects_.clear();
+    decoders_.clear();
+    playing_.clear();
+    plan_ = {};
+    fieldPlan_ = {};
+    s_.order = order;
+    auto first = loadDecoder(status);
+    if (first == nullptr) return false;
+    decoders_ = {{live::kFirstDecoder, first}};
+    live::Plan plan;
+    plan.slots = {{first->getLatencySamples()}};
+    plan.decoders = {0};
+    std::string error;
+    const auto compiled = live::compile(plan, &error);
+    juce::String why;
+    if (compiled) routes_ = routesFor(compiled->latency);
+    if (!compiled || !runner_.prepare(*compiled, {first.get()}, compiled->levels, runnerSetup(), why, {first}, routes_)) {
+        status = "the first program: " + (compiled ? why : juce::String(error));
+        return false;
+    }
+    program_ = {*compiled, {first.get()}, compiled->levels, {first}};
+    pending_.clear();
+    restore(kept);  // the first Decoder takes its own; the rest wait for the field
+    latencyMs_ = 1000.0 * (deviceLatency_ + compiled->latency) / s_.rate;
     devices_.addAudioCallback(this);
     status = said();
     return true;

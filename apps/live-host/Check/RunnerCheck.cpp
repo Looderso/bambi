@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <optional>
@@ -31,6 +32,7 @@
 #include <vector>
 
 #include "../Source/AudioSheet.h"
+#include "../Source/Engine.h"
 #include "../Source/Plugins.h"
 #include "../Source/Routing.h"
 #include "../Source/Runner.h"
@@ -769,6 +771,55 @@ int aggregateOpens() {
     return ok ? 0 : 1;
 }
 
+//  A real engine on the loop device, one track in the field, its Encoder's first parameter turned: the order changed
+//  to 1, then to 5, the field set again each time as the host does. Whether every plugin then plays the new order's
+//  channels and the Encoder kept where it was turned. -1 without a loop device.
+int orderChanges() {
+    if (devices::loopChannels() == 0) return -1;
+    livehost::Engine engine;
+    juce::String status;
+    if (!engine.start({3, 7, 64, 48000.0, 0, {}}, status)) {
+        std::printf("  the engine: %s  FAIL\n", status.toRawUTF8());
+        return 1;
+    }
+    live::Tree tree;
+    live::Node n;
+    n.id = 1;
+    n.name = "kick";
+    tree.nodes = {n};
+    live::Shape shape;
+    shape.taken = {1};
+    const live::Field field = live::layOut(tree, shape);
+    const std::vector<live::TrackPair> pairs{{1, 0}};
+    engine.setField(field, pairs, {}, status);
+    auto* encoder = engine.encoderOf(1);
+    if (encoder == nullptr || encoder->getParameters().isEmpty()) {
+        std::printf("  no Encoder for the track: %s  FAIL\n", status.toRawUTF8());
+        return 1;
+    }
+    auto* turned = encoder->getParameters()[0];
+    const float to = turned->getValue() < 0.5f ? 0.8f : 0.2f;
+    turned->setValueNotifyingHost(to);
+    int failed = 0;
+    for (const int order : {1, 5}) {
+        const bool changed = engine.setOrder(order, status);
+        engine.setField(field, pairs, {}, status);
+        const int channels = (order + 1) * (order + 1);
+        auto* now = engine.encoderOf(1);
+        auto* decoder = engine.decoder();
+        const bool wide = now != nullptr && decoder != nullptr && now->getMainBusNumOutputChannels() == channels &&
+                          decoder->getMainBusNumInputChannels() == channels;
+        const bool kept = now != nullptr && !now->getParameters().isEmpty() &&
+                          std::abs(now->getParameters()[0]->getValue() - to) < 1e-4f;
+        const bool ok = changed && engine.order() == order && wide && kept;
+        failed += ok ? 0 : 1;
+        std::printf("  order %d: every plugin %s, the Encoder %s %s\n", order,
+                    wide ? juce::String(channels).toRawUTF8() : "not", kept ? "as it was turned" : "reset",
+                    ok ? "" : "  FAIL");
+    }
+    return failed;
+}
+
 //  A decoder that gives the field's first two channels out at half their level: a second listener's, told apart.
 class HalfOut final : public StandIn {
 public:
@@ -1310,6 +1361,23 @@ int routingHolds() {
         page.paint(g);
     };
     const live::Shape start = shape;
+    //  BAMBI_ROUTING_SHOT=<path>: the page as it opens, written there as a PNG, and with kick chosen beside it
+    if (const char* shot = std::getenv("BAMBI_ROUTING_SHOT")) {
+        const auto write = [&](const juce::File& file) {
+            paint();
+            juce::FileOutputStream out(file);
+            if (out.openedOk()) {
+                out.setPosition(0);
+                out.truncate();
+                juce::PNGImageFormat().writeImageToStream(image, out);
+            }
+        };
+        const juce::File file(juce::String::fromUTF8(shot));
+        write(file);
+        page.choose(2);
+        write(file.getSiblingFile(file.getFileNameWithoutExtension() + "-chosen.png"));
+        page.choose(std::nullopt);
+    }
     for (const std::optional<live::TrackId> chosen :
          {std::optional<live::TrackId>{}, std::optional<live::TrackId>{2}, std::optional<live::TrackId>{live::kMain}})
         for (int y = 0; y < page.getHeight(); y += 23)
@@ -1405,6 +1473,34 @@ int routingHolds() {
         }
     failed += reordered ? 0 : 1;
     std::printf("  an insert dragged past the end of its chain: %s\n", reordered ? "yes" : "no  FAIL");
+    //  kick's encoder: the dropdown after its chip, "sidechain", then snare's line
+    shape = start;
+    page.choose(std::nullopt);
+    showIt();
+    paint();
+    bool sidechained = false;
+    if (const auto kick = page.drawnAt(2))
+        for (float x = kick->getX(); x < kick->getRight() && !sidechained; x += 3.0f) {
+            page.clickAt({x, kick->getY() + ui::theme::routing::boxHeight / 2.0f});
+            paint();
+            const auto items = page.drawnMenu();
+            const auto item = std::find_if(items.begin(), items.end(), [](const auto& i) { return i.first == "sidechain"; });
+            const bool encoderMenu =
+                std::none_of(items.begin(), items.end(), [](const auto& i) { return i.first == "remove"; });
+            if (item != items.end() && encoderMenu) {
+                page.clickAt(item->second.getCentre());
+                paint();
+                if (const auto snare = page.drawnAt(3)) {
+                    page.clickAt(snare->getCentre());
+                    paint();
+                }
+                sidechained = shape.sidechainOf(2) == 3;
+            }
+            if (!items.empty()) page.keyPressed(juce::KeyPress(juce::KeyPress::escapeKey));
+            paint();
+        }
+    failed += sidechained ? 0 : 1;
+    std::printf("  an encoder's sidechain picked from its menu: %s\n", sidechained ? "yes" : "no  FAIL");
     const bool ok = taken && wired && dragged && removed;
     failed += ok ? 0 : 1;
     std::printf(
@@ -2049,6 +2145,12 @@ int main() {
 
     std::printf("the bus, as a Decoder reads it\n");
     failed += positionsOnTheBus();
+
+    std::printf("the order changed\n");
+    if (const int o = orderChanges(); o < 0)
+        std::printf("  no loop device here: not checked\n");
+    else
+        failed += o;
 
     std::printf("the host's aggregate\n");
     if (const int a = aggregateOpens(); a < 0)

@@ -78,6 +78,10 @@ public:
     bool setAudio(const live::AudioSettings& audio, juce::String& status);
     const live::AudioSettings& audio() const { return s_.audio; }
     /// The routes again, from where the Decoders report their outputs now; the program swapped only when they
+    /// Every plugin at another order: each let go of, its state kept, and the first Decoder loaded again at it, which
+    /// stops the sound a moment; the field's are loaded with their states when it is set again. False, with `status`
+    /// saying why, when the Decoder cannot be. Message thread.
+    bool setOrder(int order, juce::String& status);
     /// changed. True when they did. Message thread.
     bool reroute();
     /// Every Decoder as it plays now: where it reports its outputs -- a fresh Decoder's when it offers no

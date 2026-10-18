@@ -25,9 +25,9 @@ endif()
 
 # The runner against a direct render, through the real installed plugins, at every block size. Headless.
 juce_add_console_app(bambi-live-host-check PRODUCT_NAME "bambi-live-host-check")
-target_sources(bambi-live-host-check PRIVATE Check/RunnerCheck.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/AudioSheet.cpp Source/Timeline.cpp Source/Routing.cpp)
+target_sources(bambi-live-host-check PRIVATE Check/RunnerCheck.cpp Source/Engine.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/AudioSheet.cpp Source/Timeline.cpp Source/Routing.cpp)
 target_compile_definitions(bambi-live-host-check PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(bambi-live-host-check
-    PRIVATE bambi-live bambi-decode bambi-encode bambi-echo bambi-reverb bambi-devices bambi-remote bambi-ui juce::juce_audio_processors juce::juce_audio_devices
+    PRIVATE bambi-live bambi-decode bambi-encode bambi-echo bambi-reverb bambi-loop bambi-devices bambi-remote bambi-ui juce::juce_audio_processors juce::juce_audio_devices
             juce::juce_gui_basics
             juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)

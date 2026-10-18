@@ -84,6 +84,12 @@ public:
                 keptLanes_ = lanes->dump(0);
                 engine_.setLanes(lanes_);
             }
+            //  the order the set was played at, before its plugins are laid out again
+            if (const bambi::Json* order = device_.session().kept("order"); order != nullptr && order->isNumber()) {
+                const int n = std::clamp(static_cast<int>(std::lround(order->numberOr(3.0))), 1, 7);
+                keptOrder_ = n;
+                if (n != engine_.order()) applyOrder(n);
+            }
         };
         device_.show = [this] {
             if (auto* top = getTopLevelComponent()) top->toFront(true);
@@ -119,6 +125,7 @@ public:
         };
         addChildComponent(sheet_);
         sheet_.change = [this](bambi::live::AudioSettings settings) { applyAudio(std::move(settings)); };
+        sheet_.changeOrder = [this](int order) { applyOrder(order); };
         sheet_.changeInputs = [this](std::vector<bambi::live::HostInput> inputs,
                                      bambi::live::AudioSettings settings) {
             applyAudio(std::move(settings));
@@ -191,7 +198,11 @@ private:
         } else if (heard_ && ++alone_ >= kQuitAfterSeconds)
             juce::JUCEApplication::getInstance()->systemRequestedQuit();
         if (!device_.session().on()) return;
-        //  the lanes with the set, as the plugins' states are
+        //  the order with the set, and the lanes, as the plugins' states are
+        if (engine_.order() != keptOrder_) {
+            keptOrder_ = engine_.order();
+            device_.keep("order", bambi::Json(keptOrder_));
+        }
         if (bambi::Json lanes = bambi::live::toJson(lanes_); lanes.dump(0) != keptLanes_) {
             keptLanes_ = lanes.dump(0);
             device_.keep("lanes", std::move(lanes));
@@ -259,6 +270,7 @@ private:
         views_.push_back(View::Audio);
         if (sheet_.isOpen()) selected = static_cast<int>(views_.size()) - 1;
         routing_.show(session.tree(), session.shape(), session.field(), session.pairs());
+        routing_.showDecoders(engine_.playing());
         rail_.setViews(labels, selected, [this](int i) {
             const View v = views_[static_cast<std::size_t>(i)];
             if (v == View::Gap) return;
@@ -284,6 +296,16 @@ private:
         device_.setLatency(engine_.latencyMs(), engine_.rate());
         showSheet();
         update();
+    }
+
+    //  Every plugin at another order: loaded again, their states kept; the field built again on them.
+    void applyOrder(int order) {
+        juce::String status;
+        audioProblem_ = engine_.setOrder(order, status) ? juce::String() : status;
+        rebuild_ = true;
+        device_.setLatency(engine_.latencyMs(), engine_.rate());
+        update();
+        if (sheet_.isOpen()) showSheet();
     }
 
     void showSheet() {
@@ -366,6 +388,7 @@ private:
     bambi::livehost::AudioSheet sheet_;
     juce::String audioProblem_;  ///< why the sheet's last change could not be played or kept
     bool measuring_{false};      ///< Live's lead is measured, while the sheet is open
+    int keptOrder_{0};           ///< the order last kept with the set
     bambi::live::MidiLead lead_;  ///< what has been measured since measuring began
     std::vector<bambi::live::Lane> lanes_;  ///< the host's automation, kept with the set
     std::string keptLanes_;                 ///< the lanes as last kept

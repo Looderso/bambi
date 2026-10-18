@@ -15,7 +15,8 @@
  *
  *    - interface: the devices joined with the loop device, the clock first, each with its channels and latency;
  *      "+ device" offers the system's others, a wireless one listed and not offered. Live's rate, shown; the host's
- *      buffer; the order, beside the share of each block the host takes as it plays;
+ *      buffer; the order every plugin plays at, kept with the set, 1 to 7, beside the share of each block the host
+ *      takes as it plays -- a new order loads every plugin again;
  *    - outputs: Live's Main, and each Decoder's outputs that play -- which, and how, is the Decoder's, set on its
  *      own page -- as blocks of channels to place, each with its copies, the host's: on other channels, or a pair
  *      back to Live for its bambi track to record. Then the channel map: every device a group, what plays on each
@@ -55,6 +56,7 @@ public:
     std::function<void(live::AudioSettings)> change;
     std::function<void(std::vector<live::HostInput>, live::AudioSettings)> changeInputs;
     std::function<void(std::uint64_t)> openDecoder;  ///< a Decoder's own page, by its id
+    std::function<void(int)> changeOrder;            ///< every plugin at another order
     std::function<void(bool)> measure;               ///< Live's lead measured from now, or no longer
 
     /// The measurements so far, while measuring.

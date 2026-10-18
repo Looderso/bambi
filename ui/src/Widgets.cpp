@@ -163,6 +163,22 @@ float framedButtonWidth(const juce::String& label) {
     return textWidth(font(theme::type::body), label) + 2.0f * theme::settings::buttonPadX;
 }
 
+float dropdownWidth() { return theme::controls::dropdownWidth + 2.0f * theme::controls::dropdownPad; }
+
+void drawDropdown(juce::Graphics& g, juce::Rectangle<float> box, bool open, bool offered, float blockHeight) {
+    namespace ct = theme::controls;
+    if (open && offered) {
+        g.setColour(theme::colour::chosen);
+        g.fillRect(box.withSizeKeepingCentre(box.getWidth(), std::min(blockHeight, box.getHeight())));
+    }
+    juce::Path glyph;
+    const auto c = box.getCentre();
+    glyph.addTriangle(c.x - ct::dropdownWidth / 2.0f, c.y - ct::dropdownHeight / 2.0f, c.x + ct::dropdownWidth / 2.0f,
+                      c.y - ct::dropdownHeight / 2.0f, c.x, c.y + ct::dropdownHeight / 2.0f);
+    g.setColour(!offered ? theme::colour::inactive : open ? theme::colour::textInverse : theme::colour::label);
+    g.fillPath(glyph);
+}
+
 void strokeChevron(juce::Graphics& g, juce::Rectangle<float> box, int dx, int dy, juce::Colour c) {
     namespace hdr = theme::header;
     const auto cx = box.getCentreX(), cy = box.getCentreY();

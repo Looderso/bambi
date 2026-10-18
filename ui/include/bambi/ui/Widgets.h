@@ -84,6 +84,13 @@ void drawFramedButton(juce::Graphics& g, juce::Rectangle<float> area, const juce
                       bool on = false);
 /// How wide `drawFramedButton` wants to be for `label`.
 float framedButtonWidth(const juce::String& label);
+/*  A dropdown: the small triangle, pointing down, that opens a list beside what it belongs to -- the scene's overlay
+    toggle, a chip on the live host's routing page. The one look for a list behind a control, everywhere. `box` is
+    what takes the press, its height the control's; while the list is open the triangle sits on a block, as an open
+    tab does, `blockHeight` tall; greyed when it offers nothing. */
+void drawDropdown(juce::Graphics& g, juce::Rectangle<float> box, bool open, bool offered, float blockHeight);
+/// How wide a dropdown's box is: the triangle and its pad either side.
+float dropdownWidth();
 /// A chevron in its box. `dx`/`dy` are the direction it points -- (1, 0) right, (0, 1) down -- one of them zero.
 void strokeChevron(juce::Graphics& g, juce::Rectangle<float> box, int dx, int dy, juce::Colour c);
 /// A group's name with a rule under it, `width` wide from `x`. Returns the y to carry on at.
