@@ -40,6 +40,7 @@ void ReverbEngine::prepare(int busOrder, double sampleRate) {
     field_.assign(clean_.size(), 0.0f);
     placed_.assign(clean_.size(), 0.0f);
     returnOp_.prepare(busOrder, kChunk);
+    sendOp_.prepare(busOrder, kChunk);
     regionsSet_ = false;
     returnPlain_ = true;
     sendSourceRaw_.fill(1.0f);
@@ -150,15 +151,23 @@ void ReverbEngine::adoptPlan(const TailPlan& plan) noexcept {
 
 void ReverbEngine::setRegions(const ReverbFrame& s) noexcept {
     if (!regionsSet_ || !(s.send == sendNow_) || !(s.returnRegion == returnNow_)) {
+        /*  A gain at a direction is what the region's matrix does to a wave from there, not the region's value
+            at the point: the value steps where an edge crosses a line, the matrix passes it gradually, as the
+            reflections' half of the return already does. */
         const auto virtuals = virtualSourceDirections();
-        for (int v = 0; v < kVirtualSources; ++v)
+        const bool sendProjected = sendOp_.set(s.send);
+        for (int v = 0; v < kVirtualSources; ++v) {
+            const Vec3 d = virtuals[static_cast<std::size_t>(v)];
             sendSourceRaw_[static_cast<std::size_t>(v)] =
-                static_cast<float>(valueAt(s.send, virtuals[static_cast<std::size_t>(v)]));
-        returnPlain_ = !returnOp_.set(s.returnRegion) || returnOp_.passesEverything();
+                static_cast<float>(sendProjected ? sendOp_.gainAt(d) : valueAt(s.send, d));
+        }
+        const bool returnProjected = returnOp_.set(s.returnRegion);
+        returnPlain_ = !returnProjected || returnOp_.passesEverything();
         for (int k = 0; k < lines_; ++k) {
             const auto ki = static_cast<std::size_t>(k);
-            sendLineRaw_[ki] = static_cast<float>(valueAt(s.send, lineDirection_[ki]));
-            returnLineRaw_[ki] = returnPlain_ ? 1.0f : static_cast<float>(valueAt(s.returnRegion, lineDirection_[ki]));
+            const Vec3 d = lineDirection_[ki];
+            sendLineRaw_[ki] = static_cast<float>(sendProjected ? sendOp_.gainAt(d) : valueAt(s.send, d));
+            returnLineRaw_[ki] = returnPlain_ ? 1.0f : static_cast<float>(returnOp_.gainAt(d));
         }
         sendNow_ = s.send;
         returnNow_ = s.returnRegion;

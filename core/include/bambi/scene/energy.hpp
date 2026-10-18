@@ -17,6 +17,11 @@ inline constexpr int kEnergyWidth = 128;
 inline constexpr int kEnergyHeight = 64;
 inline constexpr int kEnergyTexels = kEnergyWidth * kEnergyHeight;
 
+/// The level a texel starts to show at, and the level it is fully drawn at, in dB under a full-scale point
+/// source's peak. Between them the brightness rises smoothly.
+inline constexpr double kEnergyDarkDb = -42.0;
+inline constexpr double kEnergyFullDb = -3.0;
+
 /// How long after the last covariance the picture stops being painted at all.
 inline constexpr double kEnergyHoldSeconds = 1.6;
 
@@ -62,11 +67,10 @@ private:
     int order_{0}, channels_{0}, framesPerWindow_{0}, filled_{0};
 };
 
-/*  Message thread. Beam energies, three ballistics, and the colour:
+/*  Message thread. Beam energies, two ballistics, and the colour:
  *
- *    level  a reference that jumps to a new peak and falls at 10 dB/s, so a decaying tail dims.
- *    shape  the field's mean energy is the zero of the scale, so a field with no direction left
- *           disappears (a point source loses only 0.3 dB of its peak at order 3).
+ *    level  a texel's brightness is a smooth function of its own level alone, in dB under a full-scale
+ *           point source's peak, so a source looks the same whatever else is playing.
  *    time   a 110 ms one-pole per texel, so the picture settles instead of flickering.
  */
 class EnergyField {
@@ -98,8 +102,10 @@ public:
     double energyAt(int texel, bool added) const;
 
     int order() const noexcept { return order_; }
-    /// The reference the scale is hung from, in the energy the beams measure. For tests.
-    double reference() const noexcept { return reference_; }
+
+    /// The brightness, 0 to 1, of a beam energy: 0 at kEnergyDarkDb and under, 1 at kEnergyFullDb and over,
+    /// smooth between. `energy` is in the units energyAt() returns, after the table's normalisation.
+    float alphaOf(double energy) const noexcept;
 
 private:
     /// Both covariances in one pass: the beam table (8192 x 64 floats at order 7) is read once.
@@ -110,7 +116,7 @@ private:
     std::vector<double> wetE_, dryE_;     ///< after smoothing, which runs on energy
     std::vector<float> shown_, share_;
     int order_{0}, channels_{0};
-    double reference_{0.0};
+    double fullScale_{1.0};                   ///< the beam energy of a full-scale point source at its own peak
     double since_{kEnergyHoldSeconds + 1.0};  ///< nothing has landed yet
 };
 

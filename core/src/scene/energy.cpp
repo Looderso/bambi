@@ -10,8 +10,7 @@
 namespace bambi {
 
 namespace {
-constexpr double kReferenceFallDbPerSecond = 10.0;
-constexpr double kRangeDb = 30.0;  ///< under the reference, nothing is drawn
+constexpr double kInputShare = 0.1;  ///< the input takes the colour where it is within 10 dB of what the plugin added
 constexpr double kSmoothingSeconds = 0.110;
 }  // namespace
 
@@ -80,6 +79,13 @@ void EnergyField::prepare(int order) {
     std::vector<double> weights(static_cast<std::size_t>(order_ + 1), 1.0);
     maxRE(order_, weights);
 
+    //  the beam a max-rE decoder forms: each order's weight times (2n+1), which SN3D leaves out
+    for (int n = 0; n <= order_; ++n) weights[static_cast<std::size_t>(n)] *= 2 * n + 1;
+    //  a unit plane wave seen by the beam pointing at it has amplitude sum wn (2n+1), and that is full scale
+    double peakAmplitude = 0.0;
+    for (int n = 0; n <= order_; ++n) peakAmplitude += weights[static_cast<std::size_t>(n)];
+    fullScale_ = peakAmplitude * peakAmplitude;
+
     beams_.assign(static_cast<std::size_t>(kEnergyTexels) * static_cast<std::size_t>(channels_), 0.0f);
     std::vector<double> y(static_cast<std::size_t>(channels_), 0.0);
     for (int t = 0; t < kEnergyTexels; ++t) {
@@ -106,7 +112,6 @@ void EnergyField::clear() noexcept {
     std::fill(dryE_.begin(), dryE_.end(), 0.0);
     std::fill(shown_.begin(), shown_.end(), 0.0f);
     std::fill(share_.begin(), share_.end(), 0.0f);
-    reference_ = 0.0;
     since_ = kEnergyHoldSeconds + 1.0;
 }
 
@@ -152,11 +157,20 @@ void EnergyField::sample(std::span<const float> wet, std::span<const float> dry)
     since_ = 0.0;
 }
 
-/*  Every frame, on what the beams last measured. The one-pole runs on the energy and not on the
-    alpha, because smoothing a logarithm smooths the wrong quantity.
+float EnergyField::alphaOf(double energy) const noexcept {
+    constexpr double darkEnergy = 6.309573444801933e-5;  // 10^(kEnergyDarkDb / 10)
+    constexpr double fullEnergy = 0.5011872336272722;    // 10^(kEnergyFullDb / 10)
+    static_assert(kEnergyDarkDb == -42.0 && kEnergyFullDb == -3.0, "the two energies above follow these");
+    const double e = energy / fullScale_;
+    if (!(e > darkEnergy)) return 0.0f;  // under the dark point, and not a number, draw nothing
+    if (e >= fullEnergy) return 1.0f;
+    const double t = (10.0 * std::log10(e) - kEnergyDarkDb) / (kEnergyFullDb - kEnergyDarkDb);
+    return static_cast<float>(t * t * (3.0 - 2.0 * t));  // smooth at both ends: no edge where it starts to show
+}
 
-    The mean and the peak are then taken from the smoothed energies, so a texel that has just
-    settled is what the scale is hung from rather than what arrived a moment ago. */
+/*  Every frame, on what the beams last measured. The one-pole runs on the energy and not on the
+    alpha, because smoothing a logarithm smooths the wrong quantity. Each texel is then drawn from its
+    own energy only. */
 bool EnergyField::step(double dt) {
     if (channels_ <= 0) return false;
     since_ += std::max(0.0, dt);
@@ -167,43 +181,12 @@ bool EnergyField::step(double dt) {
     }
 
     const double k = dt <= 0.0 ? 1.0 : 1.0 - std::exp(-std::max(dt, 1e-3) / kSmoothingSeconds);
-    double sum = 0.0, peak = 0.0;
     for (int t = 0; t < kEnergyTexels; ++t) {
         const auto i = static_cast<std::size_t>(t);
         wetE_[i] += (static_cast<double>(rawWet_[i]) - wetE_[i]) * k;
         dryE_[i] += (static_cast<double>(rawDry_[i]) - dryE_[i]) * k;
-        const double total = wetE_[i] + dryE_[i];
-        sum += total;
-        peak = std::max(peak, total);
-    }
-
-    /*  SHAPE: the field's own mean is the zero of the scale, so a field with no direction left in it
-        disappears rather than glowing evenly. */
-    const double mean = sum / static_cast<double>(kEnergyTexels);
-    double above = peak - mean;
-
-    /*  A peak that is not a peak. A field with no direction left has every texel at the mean, so what
-        is left after subtracting it is arithmetic noise -- and normalising that to the top of the
-        scale lights the whole sphere from nothing. The floor is the drawn range itself: a peak more
-        than 30 dB under the field's own mean is not a direction, it is a wash. */
-    if (above < mean * std::pow(10.0, -kRangeDb / 10.0)) above = 0.0;
-
-    /*  LEVEL: the reference jumps to a new peak at once and falls at 10 dB/s, so a decaying tail dims
-        instead of staying bright. */
-    const double fall = std::pow(10.0, -kReferenceFallDbPerSecond * std::max(0.0, dt) / 10.0);
-    reference_ = std::max(above, reference_ * fall);
-
-    for (int t = 0; t < kEnergyTexels; ++t) {
-        const auto i = static_cast<std::size_t>(t);
-        const double total = wetE_[i] + dryE_[i];
-        const double x = total - mean;
-        shown_[i] = (reference_ > 0.0 && x > 0.0)
-                        ? static_cast<float>(std::clamp(1.0 + 10.0 * std::log10(x / reference_) / kRangeDb, 0.0, 1.0))
-                        : 0.0f;
-        //  the input wins wherever it would be drawn by itself: above the mean, within the drawn range
-        const double arrived = dryE_[i] - mean;
-        const bool inputShows = reference_ > 0.0 && arrived > reference_ * std::pow(10.0, -kRangeDb / 10.0);
-        share_[i] = inputShows ? 0.0f : 1.0f;
+        shown_[i] = alphaOf(wetE_[i] + dryE_[i]);
+        share_[i] = dryE_[i] >= wetE_[i] * kInputShare ? 0.0f : 1.0f;
     }
     return true;
 }

@@ -104,7 +104,7 @@ private:
     double leavingTailGain_{1.0}, leavingRatio_{1.0};  ///< the leaving network's own normalisation ratio
     TailPlan pending_{};
     bool havePending_{false};
-    RegionOperator returnOp_;
+    RegionOperator returnOp_, sendOp_;  ///< sendOp_ only answers gainAt(): the send is gains, not a matrix
     Region sendNow_{}, returnNow_{};
     bool regionsSet_{false}, returnPlain_{true};
     std::array<Vec3, kMaxTailLines> lineDirection_{};

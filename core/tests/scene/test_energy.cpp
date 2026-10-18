@@ -31,10 +31,11 @@ std::vector<float> covarianceOf(const std::vector<float>& frame, int order) {
     return out;
 }
 
-int brightestTexel(std::span<const float> alpha) {
+/// The texel the beams measured most energy in, which is not the first one drawn at full brightness.
+int brightestTexel(const EnergyField& field) {
     int best = 0;
     for (int t = 1; t < kEnergyTexels; ++t)
-        if (alpha[static_cast<std::size_t>(t)] > alpha[static_cast<std::size_t>(best)]) best = t;
+        if (field.energyAt(t, true) > field.energyAt(best, true)) best = t;
     return best;
 }
 
@@ -95,7 +96,7 @@ TEST_CASE("the energy field points at the energy") {
             const auto cov = covarianceOf(planeWave(from, order), order);
             field.sample(cov, {});
             field.step(1.0);  // a long step, so the one-pole has settled
-            const auto at = EnergyField::directionOf(brightestTexel(field.alpha()));
+            const auto at = EnergyField::directionOf(brightestTexel(field));
             //  within a texel's own width: 128 x 64 is under three degrees a texel
             CHECK(dot(at, unit(from)) > std::cos(6.0 * kDeg2Rad));
         }
@@ -115,6 +116,7 @@ TEST_CASE("the energy field points at the energy") {
         const int channels = numChannels(order);
         std::vector<double> weights(static_cast<std::size_t>(order + 1), 1.0);
         maxRE(order, weights);
+        for (int n = 0; n <= order; ++n) weights[static_cast<std::size_t>(n)] *= 2 * n + 1;
 
         for (const int texel : {0, 137, 2048, kEnergyTexels - 1}) {
             std::vector<double> y(static_cast<std::size_t>(channels), 0.0);
@@ -134,20 +136,24 @@ TEST_CASE("the energy field points at the energy") {
         }
     }
 
-    SUBCASE("a diffuse field disappears, because the mean is the zero of the scale") {
-        /*  Catches: the mean not subtracted, which lights this up evenly instead of vanishing --
-            the whole of what the SHAPE ballistic is for. */
+    SUBCASE("a diffuse field is drawn evenly, at its own level") {
+        /*  Catches: a mean or peak taken out of the scale, which would make the same diffuse field vanish or
+            come out lumpy -- and a texel's alpha depending on its direction instead of its energy. */
         field.clear();
         std::vector<float> diffuse(static_cast<std::size_t>(covarianceSize(order)), 0.0f);
         const int channels = numChannels(order);
         for (int c = 0; c < channels; ++c) diffuse[static_cast<std::size_t>(covarianceIndex(channels, c, c))] = 1.0f;
         field.sample(diffuse, {});
-        field.step(1.0);
-        float brightest = 0.0f;
-        for (const float a : field.alpha()) brightest = std::max(brightest, a);
-        CHECK(brightest < 0.05f);
-        //  and it is the floor that does it, not luck: nothing is hung from a peak this small
-        CHECK(field.reference() == 0.0);
+        field.step(0.0);
+        const auto alpha = field.alpha();
+        for (const float a : alpha) CHECK(a == doctest::Approx(alpha[0]).epsilon(1e-3));
+        CHECK(alpha[0] > 0.2f);  // unit energy in every channel is a loud field, and the same everywhere
+
+        for (float& v : diffuse) v *= 1e-7f;  // 70 dB down
+        field.clear();
+        field.sample(diffuse, {});
+        field.step(0.0);
+        for (const float a : field.alpha()) CHECK(a == 0.0f);
     }
 
     SUBCASE("the colour says which energy is whose") {
@@ -185,33 +191,48 @@ TEST_CASE("the energy field points at the energy") {
         for (const float v : field.addedOnly()) CHECK((v == 0.0f || v == 1.0f));
     }
 
-    SUBCASE("the reference jumps to a peak at once and falls at 10 dB a second") {
-        //  Catches: a fall at the wrong rate, or one applied in amplitude rather than energy.
+    SUBCASE("a source looks the same whatever else is playing") {
+        /*  Catches: a scale hung from the field's own peak, which draws a lone quiet source at full brightness,
+            or from its mean, which dims it when a loud one arrives elsewhere. */
+        const Vec3 quietAt{1.0, 0.0, 0.0};
+        auto quiet = covarianceOf(planeWave(quietAt, order, 0.03), order);  // -30 dB
         field.clear();
-        const auto cov = covarianceOf(planeWave({1.0, 0.0, 0.0}, order), order);
-        field.sample(cov, {});
-        for (int i = 0; i < 50; ++i) field.step(0.01);  // 0.5 s: the one-pole has settled
-        const double peak = field.reference();
-        CHECK(peak > 0.0);
+        field.sample(quiet, {});
+        field.step(0.0);
+        const int texel = brightestTexel(field);
+        const float alone = field.alpha()[static_cast<std::size_t>(texel)];
+        CHECK(alone > 0.2f);
+        CHECK(alone < 0.9f);
 
-        /*  The reference falls only once the energy has gone -- it is the peak or the fall,
-            whichever is higher, and a peak that is still there is still the peak. So the field is
-            given silence, and then timed over half a second.
+        const auto loud = covarianceOf(planeWave({-1.0, 0.0, 0.0}, order, 1.0), order);
+        for (std::size_t i = 0; i < quiet.size(); ++i) quiet[i] += loud[i];
+        field.clear();
+        field.sample(quiet, {});
+        field.step(0.0);
+        //  the loud source's own tail adds energy here, so the texel can only get brighter, never dimmer
+        CHECK(field.alpha()[static_cast<std::size_t>(texel)] >= alone);
+    }
 
-            Every step stays inside the 1.6 s hold: past it, `step` stops painting and returns before
-            the fall is applied at all. */
-        std::vector<float> silence(static_cast<std::size_t>(covarianceSize(order)), 0.0f);
-        field.sample(silence, {});
-        for (int i = 0; i < 50; ++i) field.step(0.01);  // the energy decays away
-        const double quiet = field.reference();
-        CHECK(quiet > 0.0);
-        for (int i = 0; i < 50; ++i) field.step(0.01);  // and half a second of fall
-        CHECK(10.0 * std::log10(field.reference() / quiet) == doctest::Approx(-5.0).epsilon(1e-3));
-
-        //  and it jumps back up: a new peak is taken at once, never approached
-        field.sample(cov, {});
-        for (int i = 0; i < 50; ++i) field.step(0.01);
-        CHECK(field.reference() == doctest::Approx(peak).epsilon(1e-3));
+    SUBCASE("the brightness is a smooth curve of the level between the dark and the full point") {
+        /*  Catches: a wrong dB scaling (amplitude for energy), a hard edge at the dark point, a full point that is
+            never reached, or a level not measured against a full-scale point source. */
+        const auto alphaAtLevel = [&](double db) {
+            field.clear();
+            field.sample(covarianceOf(planeWave({1.0, 0.0, 0.0}, order, std::pow(10.0, db / 20.0)), order), {});
+            field.step(0.0);
+            return field.alpha()[static_cast<std::size_t>(brightestTexel(field))];
+        };
+        CHECK(alphaAtLevel(0.0) == 1.0f);
+        CHECK(alphaAtLevel(kEnergyFullDb) == doctest::Approx(1.0).epsilon(1e-3));
+        CHECK(alphaAtLevel(kEnergyDarkDb) == doctest::Approx(0.0).epsilon(1e-3));
+        CHECK(alphaAtLevel(-60.0) == 0.0f);
+        CHECK(alphaAtLevel(0.5 * (kEnergyDarkDb + kEnergyFullDb)) == doctest::Approx(0.5).epsilon(0.01));
+        float last = -1.0f;
+        for (double db = -50.0; db <= 0.0; db += 2.5) {
+            const float a = alphaAtLevel(db);
+            CHECK(a >= last);
+            last = a;
+        }
     }
 
     SUBCASE("painting stops 1.6 s after the last covariance") {
@@ -226,14 +247,11 @@ TEST_CASE("the energy field points at the energy") {
         CHECK(brightest == 0.0f);
     }
 
-    SUBCASE("nothing is drawn more than 30 dB under the reference") {
+    SUBCASE("the far side of a plane wave is dim but not dark") {
         field.clear();
-        const auto cov = covarianceOf(planeWave({1.0, 0.0, 0.0}, order), order);
-        field.sample(cov, {});
-        field.step(1.0);
-        //  The peak is at the reference, so it is drawn fully; the antipode of a plane wave is far
-        //  under it at order 3, so it is not drawn at all.
-        CHECK(field.alpha()[static_cast<std::size_t>(brightestTexel(field.alpha()))] > 0.9f);
+        field.sample(covarianceOf(planeWave({1.0, 0.0, 0.0}, order), order), {});
+        field.step(0.0);
+        CHECK(field.alpha()[static_cast<std::size_t>(brightestTexel(field))] > 0.9f);
         int antipode = 0;
         double closest = -2.0;
         for (int t = 0; t < kEnergyTexels; ++t) {
@@ -243,7 +261,9 @@ TEST_CASE("the energy field points at the energy") {
                 antipode = t;
             }
         }
-        CHECK(field.alpha()[static_cast<std::size_t>(antipode)] == 0.0f);
+        //  a max-rE beam's rear lobe is about 23 dB down at order 3: dim, and well under the peak
+        CHECK(field.alpha()[static_cast<std::size_t>(antipode)] < 0.6f);
+        CHECK(field.alpha()[static_cast<std::size_t>(antipode)] > 0.3f);
     }
 }
 

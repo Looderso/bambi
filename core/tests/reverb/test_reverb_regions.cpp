@@ -296,3 +296,26 @@ TEST_CASE("regions that move do not care how the audio is cut, and a reset is a 
     const std::vector<float> again = run(kReverbHop, true);
     for (std::size_t i = 0; i < whole.size(); ++i) REQUIRE(again[i] == whole[i]);
 }
+
+TEST_CASE("a growing send or return admits the tail gradually, not one line at a time") {
+    /*  Catches: the lines' gains read from the region's value at each line's own direction. The sixteen lines are
+        sixteen points, so with a hard edge the tail jumps by a line's share each time the spot reaches another;
+        read through the region's matrix it rises steadily. Each side is checked alone. */
+    ReverbEngine engine;
+    engine.prepare(3, kFs);
+    const int C = engine.channels();
+    const double full = energy(render(engine, hall(), kFront, 1.6), C, 0.6, 1.6);
+    for (const bool send : {true, false}) {
+        double last = -1.0, biggest = 0.0;
+        for (double size = 10.0; size <= 120.0; size += 3.0) {
+            ReverbFrame s = hall();
+            (send ? s.send : s.returnRegion) = spot(0.0, size * kDeg2Rad, 0.0);
+            const double e = energy(render(engine, s, kFront, 1.6), C, 0.6, 1.6);
+            if (last >= 0.0) biggest = std::max(biggest, (e - last) / full);
+            last = e;
+        }
+        //  read at the points the biggest step is about 0.12 either way; through the matrix 0.06 on the send, which
+        //  acts on what the room is fed and so is steeper, and 0.03 on the return
+        CHECK(biggest < (send ? 0.08 : 0.05));
+    }
+}

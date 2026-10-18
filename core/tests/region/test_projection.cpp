@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include <cmath>
+#include <algorithm>#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -364,5 +364,72 @@ TEST_CASE("half the sphere as one sector and the half opposite add up to everyth
             }
         INFO("order ", order, ", worst entry off the identity ", worst);
         CHECK(worst < 1e-4);
+    }
+}
+
+TEST_CASE("a gain at a direction is the matrix's gain on a wave from there, and has no step") {
+    constexpr int order = 3;
+    const int C = numChannels(order);
+    RegionOperator op;
+    op.prepare(order, 1);
+
+    SUBCASE("it is what the matrix does to that one wave") {
+        /*  Catches: the region's value at the point returned instead (it differs by the band limit's ringing and
+            blur), a wave encoded at another direction, or the matrix applied in the wrong frame. */
+        Region r = softSpot();
+        op.set(r);
+        const auto m = matrixOf(op, order);
+        for (const Vec3 d : {unit({1.0, 0.0, 0.0}), unit({0.3, 0.8, -0.2}), unit({-0.5, 0.1, 0.9})}) {
+            std::vector<double> y(static_cast<std::size_t>(C));
+            shSN3D(d, order, y);
+            double through = 0.0, energy = 0.0;
+            for (int i = 0; i < C; ++i) {
+                double row = 0.0;
+                for (int j = 0; j < C; ++j)
+                    row += m[static_cast<std::size_t>(i * C + j)] * y[static_cast<std::size_t>(j)];
+                through += y[static_cast<std::size_t>(i)] * row;
+                energy += y[static_cast<std::size_t>(i)] * y[static_cast<std::size_t>(i)];
+            }
+            CHECK(op.gainAt(d) == doctest::Approx(std::clamp(through / energy, 0.0, 1.0)).epsilon(1e-4));
+        }
+    }
+
+    SUBCASE("a hard edge crossing the direction moves the gain gradually, where the value steps") {
+        /*  Catches: gainAt reading the region at the point, which jumps from 0 to 1 when the edge passes. */
+        const Vec3 d = unit({std::cos(70.0 * kDeg2Rad), std::sin(70.0 * kDeg2Rad), 0.0});
+        double last = -1.0, biggest = 0.0;
+        for (double size = 5.0; size <= 175.0; size += 1.0) {
+            Region r;
+            r.kind = RegionKind::Spot;
+            r.size = size * kDeg2Rad;
+            r.softness = 0.0;
+            op.set(r);
+            const double g = op.gainAt(d);
+            if (last >= 0.0) biggest = std::max(biggest, std::abs(g - last));
+            last = g;
+        }
+        CHECK(biggest < 0.05);
+    }
+
+    SUBCASE("inside and outside add up to one, a gain stays in 0..1, and everywhere passes everything") {
+        //  Catches: the outside's gain not being the inside's complement, or an unclamped ring.
+        Region r = softSpot();
+        for (const Vec3 d : {unit({1.0, 0.0, 0.0}), unit({-1.0, 0.2, 0.1}), unit({0.0, 0.0, 1.0})}) {
+            r.side = RegionSide::Inside;
+            op.set(r);
+            const double in = op.gainAt(d);
+            r.side = RegionSide::Outside;
+            op.set(r);
+            const double out = op.gainAt(d);
+            CHECK(in >= 0.0);
+            CHECK(in <= 1.0);
+            CHECK(in + out == doctest::Approx(1.0).epsilon(1e-5));
+        }
+        Region all;
+        op.set(all);
+        CHECK(op.gainAt({0.0, 1.0, 0.0}) == 1.0);
+        all.side = RegionSide::Outside;
+        op.set(all);
+        CHECK(op.gainAt({0.0, 1.0, 0.0}) == 0.0);
     }
 }
