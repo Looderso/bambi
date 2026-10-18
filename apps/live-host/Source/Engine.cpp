@@ -328,10 +328,9 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     };
     if (fp.plan.nodes == plan_.nodes && fp.plan.main == plan_.main && fp.effects == playing_ &&
         ids(nextDecoders) == ids(decoders_) &&
-        sidechains(fp.plan) == sidechains(plan_) && fp.plan.returns.size() == plan_.returns.size() &&
-        std::equal(fp.plan.returns.begin(), fp.plan.returns.end(), plan_.returns.begin(),
-                   [](const live::Return& a, const live::Return& b) { return a.chain == b.chain; }))
-        return false;  // the same shape, the same plugins
+        sidechains(fp.plan) == sidechains(plan_) && fp.plan.returns == plan_.returns &&
+        fp.plan.mainWires == plan_.mainWires)
+        return false;  // the same shape, wires and plugins: a level alone is setSends()'s
 
     std::vector<juce::AudioProcessor*> slots;
     Runner::Keep keep;

@@ -102,8 +102,10 @@ live::Plan plan() {
     b.track = 2;
     b.input = 2;
     b.encoder = 1;
+    //  each into Main and the return: the wires' levels 0 and 1 for a, 2 and 3 for b
+    a.wires = b.wires = {{{live::PlanWire::To::Main, 0}, {live::PlanWire::To::Return, 0}}};
     p.nodes = {a, b};
-    p.returns = {live::Return{{3}}};
+    p.returns = {live::Return{{3}, {}}};
     p.decoders = {4};
     return p;
 }
@@ -127,8 +129,8 @@ juce::AudioBuffer<float> throughRunner(int block) {
         std::printf("  the runner: %s\n", why.toRawUTF8());
         return {};
     }
-    runner.setLevel(0, kLevelA);  // node 0 to return 0
-    runner.setLevel(1, kLevelB);  // node 1 to return 0
+    runner.setLevel(1, kLevelA);  // node 0 to return 0
+    runner.setLevel(3, kLevelB);  // node 1 to return 0
     const juce::AudioBuffer<float> in = signal();
     juce::AudioBuffer<float> out(2, kLength), loop(4, kDeviceBlock), block2(2, kDeviceBlock);
     for (int at = 0; at < kLength; at += block) {
@@ -810,6 +812,86 @@ std::vector<float> twoDecoders(int block) {
     return {out.getSample(0, last), out.getSample(1, last), out.getSample(2, last)};
 }
 
+//  Two decoders with mixes of their own: track A, 0.4 on its left, wired only to the second decoder at half; track B,
+//  0.2, into Main, which both hear. Each decoder's left onto an output of its own, once the start's fade is over.
+std::pair<float, float> ownMixes(int block) {
+    Pass a, b;
+    PassOut first, second;
+    live::Plan p;
+    live::FieldNode na, nb;
+    na.track = 1;
+    na.input = 0;
+    na.encoder = 0;
+    na.wires = {{{live::PlanWire::To::Decoder, 1}}};  // level 0
+    nb.track = 2;
+    nb.input = 2;
+    nb.encoder = 1;
+    p.nodes = {na, nb};
+    p.slots = {{0, -1}, {0, -1}, {0, -1}, {0, -1}};
+    p.decoders = {2, 3};
+    const auto compiled = live::compile(p);
+    livehost::Runner runner;
+    juce::String why;
+    const std::vector<livehost::Runner::Route> routes{{false, 0, 0, 0, 0}, {false, 1, 0, 1, 0}};
+    if (!compiled || !runner.prepare(*compiled, {&a, &b, &first, &second}, compiled->levels,
+                                     {kOrder, kMaxBlock, 4, 2, kRate}, why, {}, routes))
+        return {-1.0f, -1.0f};
+    runner.setLevel(0, 0.5f);
+    juce::AudioBuffer<float> row(4, kDeviceBlock), out(2, kDeviceBlock);
+    row.clear();
+    for (int i = 0; i < kDeviceBlock; ++i) {
+        row.setSample(0, i, 0.4f);
+        row.setSample(2, i, 0.2f);
+    }
+    for (int at = 0; at < 4096; at += block) runner.process(row, out, std::min(block, 4096 - at));
+    const int last = (4096 - 1) % block;
+    return {out.getSample(0, last), out.getSample(1, last)};
+}
+
+//  The runner's own work -- sums, delays, the mixes -- over eight stand-in sources, each wired into Main and every
+//  decoder's mix, and Main into each: its share of one core at 128 samples and 48 kHz, as the median of five runs.
+double runnerShare(int decoders) {
+    std::vector<std::unique_ptr<Pass>> sources;
+    std::vector<std::unique_ptr<PassOut>> outs;
+    std::vector<juce::AudioProcessor*> slots;
+    live::Plan p;
+    for (int s = 0; s < 8; ++s) {
+        live::FieldNode n;
+        n.track = static_cast<live::TrackId>(s + 1);
+        n.input = 0;
+        n.encoder = s;
+        std::vector<live::PlanWire> w{{live::PlanWire::To::Main, 0}};
+        for (int d = 0; d < decoders; ++d) w.push_back({live::PlanWire::To::Decoder, d});
+        n.wires = w;
+        p.nodes.push_back(n);
+        sources.push_back(std::make_unique<Pass>());
+        slots.push_back(sources.back().get());
+    }
+    for (int d = 0; d < decoders; ++d) {
+        p.decoders.push_back(8 + d);
+        outs.push_back(std::make_unique<PassOut>());
+        slots.push_back(outs.back().get());
+    }
+    p.slots.assign(slots.size(), {0, -1});
+    const auto compiled = live::compile(p);
+    livehost::Runner runner;
+    juce::String why;
+    if (!compiled || !runner.prepare(*compiled, slots, compiled->levels, {kOrder, 128, 2, 2, 48000.0}, why))
+        return -1.0;
+    juce::AudioBuffer<float> row(2, 128), out(2, 128);
+    row.clear();
+    std::vector<double> runs;
+    constexpr int kBlocks = 4000;
+    for (int r = 0; r < 5; ++r) {
+        const auto began = juce::Time::getHighResolutionTicks();
+        for (int b = 0; b < kBlocks; ++b) runner.process(row, out, 128);
+        const double took = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - began);
+        runs.push_back(took / (kBlocks * 128.0 / 48000.0));
+    }
+    std::sort(runs.begin(), runs.end());
+    return runs[2];
+}
+
 //  A plugin with one parameter a lane can drive, 0 to 1, its value read plain.
 class Knob final : public StandIn {
 public:
@@ -1246,6 +1328,7 @@ std::vector<float> sendGains(int block, int swapAt = 0, float swapLevel = 0.0f) 
     a.track = 1;
     a.input = 0;
     a.encoder = 0;
+    a.wires = {{{live::PlanWire::To::Main, 0}, {live::PlanWire::To::Return, 0}}};  // the send is level 1
     p.nodes = {a};
     p.returns = {live::Return{}};
     p.decoders = {1};
@@ -1263,10 +1346,10 @@ std::vector<float> sendGains(int block, int swapAt = 0, float swapLevel = 0.0f) 
     for (int i = 0; i < kDeviceBlock; ++i) loop.setSample(0, i, kLevel);
     std::size_t next = 0;
     for (int at = 0; at < kRampLength; at += block) {
-        while (next < kLevels.size() && kLevels[next].first <= at) runner.setLevel(0, kLevels[next++].second);
+        while (next < kLevels.size() && kLevels[next].first <= at) runner.setLevel(1, kLevels[next++].second);
         if (swapAt != 0 && at == swapAt) {
             (void)runner.swap(*compiled, {&spread, &out}, compiled->levels, why);
-            runner.setLevel(0, swapLevel);
+            runner.setLevel(1, swapLevel);
         }
         const int n = std::min(block, kRampLength - at);
         runner.process(loop, part, n);
@@ -1678,6 +1761,20 @@ int main() {
                     got.size() == 3 ? static_cast<double>(got[1]) : -1.0,
                     got.size() == 3 ? static_cast<double>(got[2]) : -1.0, ok ? "" : "  FAIL");
     }
+
+    for (const int block : {1, 64, 500}) {
+        //  Catches: a decoder reading Main rather than its own mix, a wire into one mix heard in the other, a wire's
+        //  level not applied.
+        const auto [one, two] = ownMixes(block);
+        const bool ok = std::abs(one - 0.2f) < 1e-6f && std::abs(two - 0.4f) < 1e-6f;
+        failed += ok ? 0 : 1;
+        std::printf("  mixes of their own, block %4d: the first %.2f, the second %.2f %s\n", block,
+                    static_cast<double>(one), static_cast<double>(two), ok ? "" : "  FAIL");
+    }
+
+    std::printf("  the runner's own work, eight sources each into Main and every mix, 128 samples at 48 kHz:\n");
+    for (const int d : {1, 4})
+        std::printf("    %d decoder%s: %.3f%% of a core\n", d, d == 1 ? "" : "s", 100.0 * runnerShare(d));
 
     std::printf("automation\n");
     failed += parametersWhereNamed();

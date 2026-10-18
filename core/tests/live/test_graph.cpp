@@ -4,6 +4,7 @@
 //  output must have taken the same time on every path, and every path must be there once.
 
 #include <algorithm>
+#include <functional>
 #include <random>
 #include <string>
 #include <vector>
@@ -20,6 +21,8 @@ std::vector<int> arrivals(const Plan& p, const Compiled& c) {
     const auto latency = [&](int slot) { return std::max(0, p.slots[static_cast<std::size_t>(slot)].latency); };
     std::vector<std::vector<int>> at(static_cast<std::size_t>(c.buffers));
     std::vector<int> out;
+    int slowest = 0;
+    for (const int d : p.decoders) slowest = std::max(slowest, latency(d));
     for (const Op& op : c.ops) {
         switch (op.step) {
             case Step::Encode: at[static_cast<std::size_t>(op.to)] = {latency(op.slot)}; break;
@@ -31,28 +34,38 @@ std::vector<int> arrivals(const Plan& p, const Compiled& c) {
             case Step::Process:
                 for (int& t : at[static_cast<std::size_t>(op.to)]) t += latency(op.slot);
                 break;
-            case Step::Decode:
-                for (const int t : at[static_cast<std::size_t>(op.from)]) out.push_back(t + latency(op.slot));
+            case Step::Decode:  // a quicker decoder's lead made up, as whoever plays them out makes it up
+                for (const int t : at[static_cast<std::size_t>(op.from)]) out.push_back(t + slowest);
                 break;
         }
     }
     return out;
 }
 
-//  How many paths a plan has: every source dry through its buses to Main, and to every return from itself and
-//  from each bus above it.
+//  How many paths a plan has: from every source, along every wire, to any decoder's mix.
 int paths(const Plan& p) {
+    const std::vector<WireOf> wires = wiresOf(p);
+    const std::function<int(WireOf::From, int)> from = [&](WireOf::From kind, int index) {
+        int n = 0;
+        for (const WireOf& w : wires) {
+            if (w.from != kind || w.index != index) continue;
+            switch (w.wire.to) {
+                case PlanWire::To::Node: n += from(WireOf::From::Node, w.wire.index); break;
+                case PlanWire::To::Return: n += from(WireOf::From::Return, w.wire.index); break;
+                case PlanWire::To::Main: n += from(WireOf::From::Main, 0); break;
+                case PlanWire::To::Decoder: n += 1; break;
+            }
+        }
+        return n;
+    };
     int n = 0;
-    for (const FieldNode& node : p.nodes) {
-        if (node.input < 0) continue;
-        int depth = 1;
-        for (int at = node.parent; at >= 0; at = p.nodes[static_cast<std::size_t>(at)].parent) ++depth;
-        n += 1 + depth * static_cast<int>(p.returns.size());
-    }
+    for (std::size_t i = 0; i < p.nodes.size(); ++i)
+        if (p.nodes[i].input >= 0) n += from(WireOf::From::Node, static_cast<int>(i));
     return n;
 }
 
-//  A plan of random shape and latencies: buses first, each inside an earlier bus or at Main, then sources in any.
+//  A plan of random shape, wiring and latencies: buses first, then sources; each node wired to some of the buses
+//  before it, the returns, Main and the decoders -- or left to its default; each return and Main to some decoders.
 Plan randomPlan(std::mt19937& random) {
     std::uniform_int_distribution<int> count(0, 4), length(0, 600), coin(0, 1);
     Plan p;
@@ -61,9 +74,24 @@ Plan randomPlan(std::mt19937& random) {
         return static_cast<int>(p.slots.size()) - 1;
     };
     const int buses = count(random), sources = count(random) + 1, returns = count(random) % 3;
+    const int decoders = 1 + count(random) % 3;
+    const auto someOf = [&](PlanWire::To to, int n, int from = 0) {
+        std::vector<PlanWire> out;
+        for (int i = from; i < n; ++i)
+            if (coin(random) && coin(random)) out.push_back({to, i});
+        return out;
+    };
+    const auto wiresBefore = [&](int buses) {
+        std::vector<PlanWire> w = someOf(PlanWire::To::Node, buses);
+        for (const auto& x : someOf(PlanWire::To::Return, returns)) w.push_back(x);
+        if (coin(random)) w.push_back({PlanWire::To::Main, 0});
+        for (const auto& x : someOf(PlanWire::To::Decoder, decoders)) w.push_back(x);
+        return w;
+    };
     for (int b = 0; b < buses; ++b) {
         FieldNode n;
         n.parent = b == 0 || coin(random) ? -1 : std::uniform_int_distribution<int>(0, b - 1)(random);
+        if (coin(random)) n.wires = wiresBefore(b);
         for (int i = count(random) % 3; i > 0; --i) n.inserts.push_back(slot());
         p.nodes.push_back(n);
     }
@@ -73,16 +101,22 @@ Plan randomPlan(std::mt19937& random) {
         n.input = 2 * s;
         n.encoder = slot();
         n.parent = buses == 0 || coin(random) ? -1 : std::uniform_int_distribution<int>(0, buses - 1)(random);
+        if (coin(random)) n.wires = wiresBefore(buses);
         for (int i = count(random) % 3; i > 0; --i) n.inserts.push_back(slot());
         p.nodes.push_back(n);
     }
     for (int r = 0; r < returns; ++r) {
         Return ret;
         for (int i = count(random) % 3; i > 0; --i) ret.chain.push_back(slot());
+        if (coin(random)) {
+            ret.wires = someOf(PlanWire::To::Decoder, decoders);
+            if (coin(random)) ret.wires->push_back({PlanWire::To::Main, 0});
+        }
         p.returns.push_back(ret);
     }
     for (int i = count(random) % 3; i > 0; --i) p.main.push_back(slot());
-    p.decoders = {slot()};
+    for (int d = 0; d < decoders; ++d) p.decoders.push_back(slot());
+    if (coin(random)) p.mainWires = someOf(PlanWire::To::Decoder, decoders);
     return p;
 }
 
@@ -98,17 +132,12 @@ Plan source(int latency) {
     return p;
 }
 
-std::vector<Op> without(std::vector<Op> ops, int buffer) {
-    for (Op& op : ops) op.delay = 0;
-    ops.erase(std::remove_if(ops.begin(), ops.end(), [&](const Op& o) { return o.to == buffer; }), ops.end());
-    return ops;
-}
-
 }  // namespace
 
 TEST_CASE("every path from the loop device to the output takes the same time, and each is there once") {
-    //  Catches: a delay wrong, missing or of the wrong sign anywhere -- at a bus, a return, Main -- a send or a dry
-    //  path left out or doubled, or a bus read before what plays into it is done.
+    //  Catches: a delay wrong, missing or of the wrong sign anywhere -- at a bus, a return, Main, a decoder's mix --
+    //  a wire left out or doubled, a mix held to its own time rather than the common one, or a bus read before what
+    //  is wired into it is done.
     std::mt19937 random(11);
     for (int round = 0; round < 300; ++round) {
         const Plan p = randomPlan(random);
@@ -121,7 +150,7 @@ TEST_CASE("every path from the loop device to the output takes the same time, an
     }
 }
 
-TEST_CASE("at every place paths meet, the slowest is not delayed") {
+TEST_CASE("at every place paths meet, the slowest is not delayed; of all the decoders' mixes, the slowest of any") {
     //  Catches: lining up to anything slower than the slowest path, which plays the whole mix later than it must.
     std::mt19937 random(12);
     for (int round = 0; round < 300; ++round) {
@@ -135,6 +164,11 @@ TEST_CASE("at every place paths meet, the slowest is not delayed") {
                     least[static_cast<std::size_t>(op.to)] < 0
                         ? op.delay
                         : std::min(least[static_cast<std::size_t>(op.to)], op.delay);
+        int mixes = -1;  // the mixes are held to one time: the least delay over all of them is 0
+        for (int b = c->mainBuffer() + 1; b < c->buffers; ++b)
+            if (const int l = least[static_cast<std::size_t>(b)]; l >= 0) mixes = mixes < 0 ? l : std::min(mixes, l);
+        CHECK((mixes == -1 || mixes == 0));
+        least.resize(static_cast<std::size_t>(c->mainBuffer() + 1));
         for (const int l : least) CHECK((l == -1 || l == 0));
     }
 }
@@ -149,9 +183,9 @@ TEST_CASE("a source that takes no time reaches the output in the decoder's time 
     for (const Op& op : c->ops) CHECK(op.delay == 0);
 }
 
-TEST_CASE("whatever is read is finished: a send after its node's inserts, a bus after what plays into it") {
-    //  Catches: a send taken before the inserts, so the reverb hears the vocal without its echo; or a bus summing a
-    //  child before the child's own steps have run. Either way something writes a buffer after it was read.
+TEST_CASE("whatever is read is finished: a wire after its node's inserts, a bus after what is wired into it") {
+    //  Catches: a wire taken before the inserts, so the reverb hears the vocal without its echo; or a bus summing a
+    //  node before the node's own steps have run. Either way something writes a buffer after it was read.
     std::mt19937 random(13);
     for (int round = 0; round < 300; ++round) {
         const Plan p = randomPlan(random);
@@ -167,36 +201,36 @@ TEST_CASE("whatever is read is finished: a send after its node's inserts, a bus 
     }
 }
 
-TEST_CASE("a send reads its node's level from the table, a node and a return their own where they play on") {
-    //  Catches: the table read the wrong way round (return * nodes + node), or a dry path scaled by a send level.
-    Plan p = source(0);
-    FieldNode second = p.nodes[0];
-    second.track = 2;
-    second.input = 2;
-    p.slots.push_back({0});
-    second.encoder = 2;
-    p.nodes.push_back(second);
-    p.returns = {Return{}, Return{}, Return{}};
-    const auto c = compile(p);
-    REQUIRE(c.has_value());
-    const int nodes = 2, returns = 3;
-    for (const Op& op : c->ops) {
-        if (op.step != Step::Add) continue;
-        if (op.to >= nodes && op.to < nodes + returns)
-            CHECK(op.gain == op.from * returns + (op.to - nodes));  // a send
-        else
-            CHECK(op.gain == nodes * returns + op.from);  // a node or a return, into its parent or Main
-    }
-    CHECK(c->levels == nodes * returns + nodes + returns);
-    //  and in trees with buses inside buses: every way into a bus or Main reads its own
+TEST_CASE("every wire reads its own level from the table, in the order the table's entries are given") {
+    //  Catches: two wires sharing an entry, an entry read for the wrong wire -- a send's level on a dry path -- or the
+    //  table's size not the wires'.
     std::mt19937 random(23);
-    for (int round = 0; round < 100; ++round) {
-        const Plan q = randomPlan(random);
-        const auto d = compile(q);
-        REQUIRE(d.has_value());
-        const int n = static_cast<int>(q.nodes.size()), r = static_cast<int>(q.returns.size());
-        for (const Op& op : d->ops)
-            if (op.step == Step::Add && !(op.to >= n && op.to < n + r)) CHECK(op.gain == n * r + op.from);
+    for (int round = 0; round < 200; ++round) {
+        const Plan p = randomPlan(random);
+        const auto c = compile(p);
+        REQUIRE(c.has_value());
+        const std::vector<WireOf> wires = wiresOf(p);
+        CHECK(c->levels == static_cast<int>(wires.size()));
+        const int nodes = static_cast<int>(p.nodes.size()), returns = static_cast<int>(p.returns.size());
+        std::vector<int> read(wires.size(), 0);
+        for (const Op& op : c->ops) {
+            if (op.step != Step::Add) continue;
+            REQUIRE(op.gain >= 0);
+            REQUIRE(op.gain < c->levels);
+            ++read[static_cast<std::size_t>(op.gain)];
+            const WireOf& w = wires[static_cast<std::size_t>(op.gain)];
+            const int from = w.from == WireOf::From::Node     ? w.index
+                             : w.from == WireOf::From::Return ? nodes + w.index
+                                                              : c->mainBuffer();
+            const int to = w.wire.to == PlanWire::To::Node     ? w.wire.index
+                           : w.wire.to == PlanWire::To::Return ? nodes + w.wire.index
+                           : w.wire.to == PlanWire::To::Main   ? c->mainBuffer()
+                                                               : c->mainBuffer() + 1 + w.wire.index;
+            CHECK(op.from == from);
+            CHECK(op.to == to);
+            (void)returns;
+        }
+        for (const int r : read) CHECK(r == 1);
     }
 }
 
@@ -206,7 +240,6 @@ TEST_CASE("a source added at the end leaves every other node's steps as they wer
     std::mt19937 random(14);
     for (int round = 0; round < 100; ++round) {
         Plan p = randomPlan(random);
-        p.returns.clear();  // a node's sends are what changes when a node is added; its own steps must not
         const auto before = compile(p);
         FieldNode added;
         added.track = 999;
@@ -217,20 +250,21 @@ TEST_CASE("a source added at the end leaves every other node's steps as they wer
         const auto after = compile(p);
         REQUIRE(before.has_value());
         REQUIRE(after.has_value());
-        //  everything but Main's sum, and the new node's own steps, is unchanged apart from delays
-        std::vector<Op> was = without(before->ops, before->mainBuffer()), is = without(after->ops, after->mainBuffer());
-        is.erase(std::remove_if(is.begin(), is.end(),
-                                [&](const Op& o) { return o.to == static_cast<int>(p.nodes.size()) - 1; }),
-                 is.end());
-        for (Op& op : was)
-            if (op.step == Step::Decode) op.from = after->mainBuffer();
-        CHECK(was == is);
+        //  every other node's steps are as they were, apart from delays: what writes the nodes' buffers
+        const auto nodesOnly = [&](std::vector<Op> ops) {
+            for (Op& op : ops) op.delay = 0;
+            std::erase_if(ops, [&](const Op& o) {
+                return o.step == Step::Decode || o.to >= static_cast<int>(p.nodes.size()) - 1;
+            });
+            return ops;
+        };
+        CHECK(nodesOnly(before->ops) == nodesOnly(after->ops));
     }
 }
 
 TEST_CASE("the shape the first delay compensation was checked on comes out the same") {
-    //  Catches: a total that leaves out the main chain or the decoder. Three sources (0, 64, 10), three returns (128,
-    //  0, 300), main 64 with no decoder latency: 64 + 300 + 64.
+    //  Catches: a total that leaves out the main chain or the decoder. Three sources (0, 64, 10), each wired to Main
+    //  and three returns (128, 0, 300), main 64 with no decoder latency: 64 + 300 + 64.
     Plan p;
     for (const int l : {0, 64, 10, 128, 0, 300, 64, 0}) p.slots.push_back({l});
     for (int s = 0; s < 3; ++s) {
@@ -238,9 +272,11 @@ TEST_CASE("the shape the first delay compensation was checked on comes out the s
         n.track = static_cast<TrackId>(s + 1);
         n.input = 2 * s;
         n.encoder = s;
+        n.wires = {
+            {{PlanWire::To::Main, 0}, {PlanWire::To::Return, 0}, {PlanWire::To::Return, 1}, {PlanWire::To::Return, 2}}};
         p.nodes.push_back(n);
     }
-    p.returns = {Return{{3}}, Return{{4}}, Return{{5}}};
+    p.returns = {Return{{3}, {}}, Return{{4}, {}}, Return{{5}, {}}};
     p.main = {6};
     p.decoders = {7};
     const auto c = compile(p);
@@ -281,6 +317,35 @@ TEST_CASE("a plan that does not hold together is refused") {
     p.nodes.push_back(a);
     p.nodes.push_back(b);
     CHECK_FALSE(compile(p, &error).has_value());  // two buses inside each other
+    CHECK(error.find("cycle") != std::string::npos);
+
+    p = source(0);
+    p.nodes[0].wires = {{{PlanWire::To::Node, 0}}};
+    CHECK_FALSE(compile(p, &error).has_value());  // into itself, a source at that
+
+    p = source(0);
+    p.nodes[0].wires = {{{PlanWire::To::Return, 0}}};
+    CHECK_FALSE(compile(p, &error).has_value());  // a return the plan does not have
+
+    p = source(0);
+    p.nodes[0].wires = {{{PlanWire::To::Decoder, 1}}};
+    CHECK_FALSE(compile(p, &error).has_value());  // a decoder the plan does not have
+
+    p = source(0);
+    p.returns = {Return{{}, std::vector<PlanWire>{{PlanWire::To::Return, 0}}}};
+    CHECK_FALSE(compile(p, &error).has_value());  // a return into a return
+
+    p = source(0);
+    p.mainWires = std::vector<PlanWire>{{PlanWire::To::Main, 0}};
+    CHECK_FALSE(compile(p, &error).has_value());  // Main into Main
+
+    p = source(0);
+    FieldNode c, d;
+    c.wires = {{{PlanWire::To::Node, 2}}};
+    d.wires = {{{PlanWire::To::Node, 1}}};
+    p.nodes.push_back(c);
+    p.nodes.push_back(d);
+    CHECK_FALSE(compile(p, &error).has_value());  // two buses wired into each other
     CHECK(error.find("cycle") != std::string::npos);
 
     p = source(0);
@@ -342,9 +407,9 @@ TEST_CASE("a source's width reaches its step, and a source neither one nor two c
     CHECK_FALSE(compile(p).has_value());
 }
 
-TEST_CASE("every decoder hears Main after its chain, each by its place, the plan as late as the slowest") {
-    //  Catches: a second decoder left without a step, two writing the same output, one before Main's chain,
-    //  the latency of the first decoder taken for all.
+TEST_CASE("every decoder hears its own mix, unwired Main after its chain, each by its place, as late as the slowest") {
+    //  Catches: a second decoder left without a step, two writing the same output or reading the same mix, a mix
+    //  without Main's chain, the latency of the first decoder taken for all.
     Plan p;
     p.slots = {{0, -1}, {10, -1}, {64, -1}, {200, -1}};
     FieldNode n;
@@ -359,7 +424,7 @@ TEST_CASE("every decoder hears Main after its chain, each by its place, the plan
     std::vector<int> decoded;
     for (const Op& op : c->ops)
         if (op.step == Step::Decode) {
-            CHECK(op.from == c->mainBuffer());
+            CHECK(op.from == c->mainBuffer() + 1 + op.to);
             decoded.push_back(op.to);
         }
     CHECK(decoded == std::vector<int>{0, 1});

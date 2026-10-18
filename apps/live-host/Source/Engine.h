@@ -126,8 +126,8 @@ public:
     };
     Target targetOf(live::Instance instance, std::uint64_t owner, std::string_view param) const;
 
-    /// Every level from Live, as `tree` has it now, for the field last set: the sends' knobs, a split group's fader
-    /// on its bus, a field return's fader. Message thread; the runner ramps to them.
+    /// Every wire's level, as `field` has it now, times Live's fader where Live has one -- a split group's on its
+    /// bus, a field return's -- as `tree` has it. Message thread; the runner ramps to them.
     void setSends(const live::Field& field, const live::Tree& tree);
 
     /// Drops the states kept for a track Live no longer has, or an insert the shape no longer has. Message thread.
