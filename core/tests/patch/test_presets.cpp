@@ -440,3 +440,25 @@ TEST_CASE("the window's size is the session's: saved with it, sparse, clamped, a
     adoptPreset(Product::Reverb, m, s, {false, "", "big"}, mine);
     CHECK(mine.windowScale == 0.75f);
 }
+
+TEST_CASE("the bypass is the project's: saved with it, sparse, and no preset's") {
+    //  Catches: a project saved bypassed reopening active, a preset file carrying the bypass, and a
+    //  preset load switching it.
+    const auto& m = echoParams();
+    PluginState s{m};
+    CHECK(saveState(Product::Echo, m, s).find("\"bypass\"") == std::string::npos);
+    s.bypassed = true;
+    PluginState back{m};
+    REQUIRE(loadState(Product::Echo, m, saveState(Product::Echo, m, s), back).ok);
+    CHECK(back.bypassed);
+
+    CHECK(presetText(Product::Echo, m, s).find("\"bypass\"") == std::string::npos);
+    PluginState fromFile{m};
+    REQUIRE(loadPresetText(Product::Echo, m, saveState(Product::Echo, m, s), fromFile).ok);
+    CHECK_FALSE(fromFile.bypassed);
+
+    PluginState mine{m};
+    mine.bypassed = true;
+    adoptPreset(Product::Echo, m, fromFile, {false, "", "slap"}, mine);
+    CHECK(mine.bypassed);
+}

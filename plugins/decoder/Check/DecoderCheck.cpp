@@ -881,5 +881,7 @@ int main() {
         bambi::LinkBus::unlinkSession(dec.identity().session);
     }
 
+    bambi::editor::checkBypass<BambiDecoderProcessor>(busIn(16, 2), "silence", [](int, juce::int64) { return 0.0f; });
+
     return checkVerdict();
 }

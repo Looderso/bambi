@@ -210,6 +210,9 @@ struct PluginState {
     /// Window size as a multiple of its design size. Belongs to the session, not the sound: no
     /// preset carries it, a preset load keeps it, undo doesn't touch it. Sparse.
     float windowScale{1.0f};
+    /// The host's bypass. Belongs to the project, as the window does: no preset carries it, and only
+    /// a project's state sets it. Sparse.
+    bool bypassed{false};
     std::array<float, kMaxParams> params{};  ///< sized to the shared cap, not this plugin's count
 
     PluginState() = default;  ///< parameters at zero: it does not know whose state it is

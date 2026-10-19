@@ -66,7 +66,23 @@ bool BambiEncoderProcessor::isBusesLayoutSupported(const BusesLayout& layouts) c
 
 // ---- lifecycle -----------------------------------------------------------------------
 
-void BambiEncoderProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) {
+void BambiEncoderProcessor::renderBypassed(float* const* channels, int numChannels, int mainInputs,
+                                           int samples) noexcept {
+    if (numChannels < 1) return;
+    if (mainInputs > 1) {
+        const float share = 1.0f / static_cast<float>(mainInputs);
+        for (int i = 0; i < samples; ++i) {
+            float sum = 0.0f;
+            for (int c = 0; c < mainInputs; ++c) sum += channels[c][i];
+            channels[0][i] = sum * share;
+        }
+    } else if (mainInputs < 1) {
+        std::fill_n(channels[0], samples, 0.0f);
+    }
+    for (int c = 1; c < numChannels; ++c) std::fill_n(channels[c], samples, 0.0f);
+}
+
+void BambiEncoderProcessor::prepare(double sampleRate, int maximumExpectedSamplesPerBlock) {
     sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
     const auto maxBlock = static_cast<std::size_t>(std::max(1, maximumExpectedSamplesPerBlock));
     monoIn_.assign(maxBlock, 0.0f);

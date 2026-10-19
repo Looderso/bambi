@@ -2805,5 +2805,9 @@ int main() {
         bambi::LinkBus::unlinkSession(session);
     }
 
+    bambi::editor::checkBypass<BambiEncoderProcessor>(
+        layout(Set::mono(), Set::disabled(), Set::ambisonic(3)), "its input unplaced, in W alone",
+        [](int c, juce::int64 at) { return c == 0 ? bambi::editor::fieldSample(0, at) : 0.0f; });
+
     return checkVerdict();
 }

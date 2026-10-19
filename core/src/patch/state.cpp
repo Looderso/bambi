@@ -319,6 +319,7 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         window.set("scale", Json{static_cast<double>(s.windowScale)});
         root.set("window", window);
     }
+    if (s.bypassed) root.set("bypass", Json{true});
 
     Json params = Json::object();
     for (const auto& p : m.descs)
@@ -626,6 +627,7 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
     if (const Json* window = j.find("window"); window != nullptr && window->isObject())
         if (const Json* v = window->find("scale"))
             s.windowScale = std::clamp(static_cast<float>(v->numberOr(1.0)), kWindowScaleMin, kWindowScaleMax);
+    if (const Json* v = j.find("bypass")) s.bypassed = v->boolOr(false);
 
     if (const Json* params = j.find("parameters"); params != nullptr && params->isObject()) {
         for (const auto& kv : params->members()) {

@@ -139,6 +139,10 @@ int main(int argc, char** argv) {
 
     bambi::editor::checkDecoderOverlay<Processor, BambiEchoEditor>(spec);
 
+    bambi::editor::checkBypass<Processor>(bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)),
+                                          "the field as it arrived",
+                                          [](int c, juce::int64 at) { return bambi::editor::fieldSample(c, at); });
+
     std::printf("\nthe shared parameter page\n");
     {
         /*  The proof that `ui::ParameterPage` is shared and not merely extracted: a plugin with a
