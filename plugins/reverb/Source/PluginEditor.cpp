@@ -20,7 +20,7 @@ void BambiReverbEditor::addEffectSettings(bambi::ui::SettingsContent& c) {
         would take back the wrong document. */
     /*  The quality while playing is a host parameter, so it goes through the controls and follows
         the instance they show. */
-    const auto playing = reverbParam("quality.playing");
+    const auto playing = reverbParam("room.quality");
     c.own.push_back({"while playing",
                      {"efficient", "realistic"},
                      controls.valueOf(playing) > 0.5f ? 1 : 0,

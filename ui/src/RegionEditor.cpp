@@ -28,7 +28,7 @@ bool rollShows(const RegionShape& shape) {
 std::vector<const char*> shapeFields(RegionKind kind) {
     switch (kind) {
         case RegionKind::Spot: return {"size"};
-        case RegionKind::Band: return {"band_elevation", "thickness"};
+        case RegionKind::Band: return {"band_el", "thickness"};
         case RegionKind::Sectors: return {"fill"};
         case RegionKind::Dots: return {"dot_size"};
         case RegionKind::Clouds: return {"coverage", "contrast", "detail", "evolve"};
@@ -423,7 +423,7 @@ RegionSettingsDeg settingsOf(const PatchModel& model, const RegionSlot& slot) {
     d.roll = of("roll", 0.0);
     d.softness = of("softness", 20.0);
     d.size = of("size", 45.0);
-    d.bandElevation = of("band_elevation", 0.0);
+    d.bandElevation = of("band_el", 0.0);
     d.thickness = of("thickness", 30.0);
     d.fill = of("fill", 0.5);
     d.dotSize = of("dot_size", 20.0);
@@ -492,7 +492,7 @@ void carryRegionHandle(PatchModel& model, const RegionSlot& slot, const bambi::R
         }
         case RegionHandle::Kind::Elevation:
             //  A band's centre, carried by the colatitude the pointer sits at.
-            write(model, slot, "band_elevation", wrapDeg((kPi / 2.0 - angle) * kDeg));
+            write(model, slot, "band_el", wrapDeg((kPi / 2.0 - angle) * kDeg));
             break;
         case RegionHandle::Kind::Edge:
             switch (now.kind) {
@@ -548,7 +548,7 @@ void resetRegionHandle(PatchModel& model, const RegionSlot& slot, const bambi::R
             write(model, slot, "roll", 0.0);
             model.zeroRegionTurn(slot.index, 2);
             break;
-        case RegionHandle::Kind::Elevation: toDefault("band_elevation"); break;
+        case RegionHandle::Kind::Elevation: toDefault("band_el"); break;
         case RegionHandle::Kind::Edge:
             switch (now.kind) {
                 case RegionKind::Spot: toDefault("size"); break;

@@ -13,8 +13,8 @@ namespace {
 
 constexpr ParamSpec kLevel = echoParamSpec("tap1", ".level");
 constexpr ParamSpec kFeedback = echoParamSpec("tap1", ".feedback");
-constexpr ParamSpec kAzimuth = echoParamSpec("tap1", ".az");
-constexpr ParamSpec kElevation = echoParamSpec("tap1", ".el");
+constexpr ParamSpec kAzimuth = echoParamSpec("tap1", ".axis_az");
+constexpr ParamSpec kElevation = echoParamSpec("tap1", ".axis_el");
 constexpr ParamSpec kSpin = echoParamSpec("tap1", ".spin");
 constexpr ParamSpec kSkew = echoParamSpec("tap1", ".skew");
 constexpr ParamSpec kBlur = echoParamSpec("tap1", ".blur");
@@ -54,12 +54,12 @@ EchoSettings echoSettingsFrom(const ParamManifest& m, std::span<const float> val
         t.timing.steps = readChoice(m, values, keyOf(buf, p, "steps"), d.timing.steps);
         t.timing.offsetSteps = readChoice(m, values, keyOf(buf, p, "offset_steps"), d.timing.offsetSteps);
         t.timing.swing = readParam(m, values, keyOf(buf, p, "swing"), d.timing.swing);
-        t.timing.ms = readParam(m, values, keyOf(buf, p, "ms"), d.timing.ms);
-        t.timing.offsetMs = readParam(m, values, keyOf(buf, p, "offset_ms"), d.timing.offsetMs);
+        t.timing.ms = readParam(m, values, keyOf(buf, p, "time"), d.timing.ms);
+        t.timing.offsetMs = readParam(m, values, keyOf(buf, p, "offset"), d.timing.offsetMs);
         t.levelDb = readParam(m, values, keyOf(buf, p, "level"), d.levelDb);
         t.feedbackDb = readParam(m, values, keyOf(buf, p, "feedback"), d.feedbackDb);
-        t.axisAzimuthDeg = readParam(m, values, keyOf(buf, p, "az"), d.axisAzimuthDeg);
-        t.axisElevationDeg = readParam(m, values, keyOf(buf, p, "el"), d.axisElevationDeg);
+        t.axisAzimuthDeg = readParam(m, values, keyOf(buf, p, "axis_az"), d.axisAzimuthDeg);
+        t.axisElevationDeg = readParam(m, values, keyOf(buf, p, "axis_el"), d.axisElevationDeg);
         t.spinDeg = readParam(m, values, keyOf(buf, p, "spin"), d.spinDeg);
         t.skew = readParam(m, values, keyOf(buf, p, "skew"), d.skew);
         t.blurDeg = readParam(m, values, keyOf(buf, p, "blur"), d.blurDeg);

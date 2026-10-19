@@ -156,7 +156,7 @@ TEST_CASE("a restart takes the motion back to zero, unless the motion continues"
 TEST_CASE("a frame carries width, gain and trim, and the encoder is told to jump or to ramp") {
     Rig r;
     r.set(EncoderParam::RenderWidth, 60.0f);
-    r.set(EncoderParam::RenderGain, -6.0f);
+    r.set(EncoderParam::OutputGain, -6.0f);
     r.set(EncoderParam::InputTrim, 3.0f);
     r.start();
     const ControlFrame f = r.run(400);
@@ -379,7 +379,7 @@ TEST_CASE("sum is one point, exactly as one encoder aims it, and the side is sil
     Rig rig;
     rig.set(EncoderParam::MotionSpeed, 90.0f);
     rig.set(EncoderParam::RenderWidth, 30.0f);
-    rig.set(EncoderParam::RenderGain, -3.0f);
+    rig.set(EncoderParam::OutputGain, -3.0f);
     Aimed two(rig);
 
     Encoder one;

@@ -184,7 +184,7 @@ ControlFrame EncoderControl::step(ModulationEngine& mod, std::span<const float> 
     const bool onePoint = out.left.x == out.right.x && out.left.y == out.right.y && out.left.z == out.right.z;
     if (out.inputMode == InputMode::Stereo && !onePoint)
         out.pairGain = 1.0 / std::sqrt(2.0 * (1.0 + encodeOverlap(out.left, out.right, out.widthRad, in.order)));
-    out.gainDb = dest(EncoderParam::RenderGain);
+    out.gainDb = dest(EncoderParam::OutputGain);
     out.trimDb = dest(EncoderParam::InputTrim);
 
     out.snap = snapNext_;

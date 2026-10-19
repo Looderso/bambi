@@ -13,7 +13,7 @@ RegionSettingsDeg readRegionSettings(const ParamManifest& m, std::span<const flo
     s.roll = readParam(m, values, keyOf(buf, prefix, "roll"), d.roll);
     s.softness = readParam(m, values, keyOf(buf, prefix, "softness"), d.softness);
     s.size = readParam(m, values, keyOf(buf, prefix, "size"), d.size);
-    s.bandElevation = readParam(m, values, keyOf(buf, prefix, "band_elevation"), d.bandElevation);
+    s.bandElevation = readParam(m, values, keyOf(buf, prefix, "band_el"), d.bandElevation);
     s.thickness = readParam(m, values, keyOf(buf, prefix, "thickness"), d.thickness);
     s.fill = readParam(m, values, keyOf(buf, prefix, "fill"), d.fill);
     s.dotSize = readParam(m, values, keyOf(buf, prefix, "dot_size"), d.dotSize);

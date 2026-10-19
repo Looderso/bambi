@@ -30,8 +30,8 @@ TEST_CASE("every parameter Echo can modulate is named, and no other") {
     for (const char* tap : {"tap1", "tap2", "tap3", "tap4"}) {
         const std::string t = tap;
         for (auto target : std::vector<test::Target>{{t + ".spin", DestKind::Rate},
-                                                     {t + ".az", DestKind::DirectAngle},
-                                                     {t + ".el", DestKind::DirectAngle},
+                                                     {t + ".axis_az", DestKind::DirectAngle},
+                                                     {t + ".axis_el", DestKind::DirectAngle},
                                                      {t + ".level", DestKind::DirectScalar},
                                                      {t + ".feedback", DestKind::DirectScalar},
                                                      {t + ".skew", DestKind::DirectScalar},

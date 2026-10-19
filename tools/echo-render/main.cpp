@@ -41,7 +41,7 @@ void usage() {
         "  --set PATH=VALUE     a setting, repeatable: tapK.on|synced|steps|offset_steps|swing|ms|offset_ms|\n"
         "                       level|feedback|az|el|spin|skew|blur|low_cut|high_cut  (K = 1..4), and\n"
         "                       send.kind (everywhere|spot|band) send.side (inside|outside) send.amount\n"
-        "                       send.yaw|pitch|roll|size|softness|band_elevation|thickness, and bpm\n"
+        "                       send.yaw|pitch|roll|size|softness|band_el|thickness, and bpm\n"
         "  --at S PATH=VALUE    the same, taking effect at the first control step at or after S seconds;\n"
         "                       PATH may be `reset`, a play start or locate\n"
         "  --block N            host block size (512). The result must not depend on it\n"
@@ -70,17 +70,17 @@ bool apply(EchoSettings& s, double& bpm, const std::string& path, const std::str
             t.timing.offsetSteps = static_cast<int>(v);
         else if (key == "swing")
             t.timing.swing = v;
-        else if (key == "ms")
+        else if (key == "time")
             t.timing.ms = v;
-        else if (key == "offset_ms")
+        else if (key == "offset")
             t.timing.offsetMs = v;
         else if (key == "level")
             t.levelDb = v;
         else if (key == "feedback")
             t.feedbackDb = v;
-        else if (key == "az")
+        else if (key == "axis_az")
             t.axisAzimuthDeg = v;
-        else if (key == "el")
+        else if (key == "axis_el")
             t.axisElevationDeg = v;
         else if (key == "spin")
             t.spinDeg = v;
@@ -143,7 +143,7 @@ bool apply(EchoSettings& s, double& bpm, const std::string& path, const std::str
         s.send.softness = v;
         return true;
     }
-    if (path == "send.band_elevation") {
+    if (path == "send.band_el") {
         s.send.bandElevation = v;
         return true;
     }

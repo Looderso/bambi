@@ -22,7 +22,7 @@
   X(Region, P##RollRate,      k ".roll_rate",      n " roll rate",      "deg/s", Float, -180, 180,   0, nullptr) \
   X(Region, P##Softness,      k ".softness",       n " softness",       "deg",   Float,    0, 180,  20, nullptr) \
   X(Region, P##Size,          k ".size",           n " size",           "deg",   Float,    0, 180,  45, nullptr) \
-  X(Region, P##BandElevation, k ".band_elevation", n " band elevation", "deg",   Float,  -90,  90,   0, nullptr) \
+  X(Region, P##BandElevation, k ".band_el", n " band elevation", "deg",   Float,  -90,  90,   0, nullptr) \
   X(Region, P##Thickness,     k ".thickness",      n " thickness",      "deg",   Float,    0, 180,  30, nullptr) \
   X(Region, P##Fill,          k ".fill",           n " fill",           "",      Float,    0,   1, 0.5, nullptr) \
   X(Region, P##DotSize,       k ".dot_size",       n " dot size",       "deg",   Float,    0,  90,  20, nullptr) \
@@ -127,7 +127,7 @@ constexpr DestKind sharedDestKind(std::string_view key) {
         return DestKind::Rate;
     if (key.ends_with(".yaw") || key.ends_with(".pitch") || key.ends_with(".roll") || key.ends_with(".evolve"))
         return DestKind::DirectAngle;
-    if (key.ends_with(".size") || key.ends_with(".softness") || key.ends_with(".band_elevation") ||
+    if (key.ends_with(".size") || key.ends_with(".softness") || key.ends_with(".band_el") ||
         key.ends_with(".thickness") || key.ends_with(".fill") || key.ends_with(".dot_size") ||
         key.ends_with(".coverage") || key.ends_with(".contrast") || key.ends_with(".detail"))
         return DestKind::DirectScalar;

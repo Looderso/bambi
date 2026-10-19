@@ -36,7 +36,7 @@ constexpr std::array kFrozenKeys{
     "render.width",
     "render.width_min",
     "render.width_max",
-    "render.gain",
+    "output.gain",
     "input.trim",
     "mod.global_amount",
     "mod.amount.level",
@@ -99,7 +99,7 @@ constexpr std::array kFrozenKeys{
     "region1.roll_rate",
     "region1.softness",
     "region1.size",
-    "region1.band_elevation",
+    "region1.band_el",
     "region1.thickness",
     "region1.fill",
     "region1.dot_size",
@@ -311,7 +311,7 @@ TEST_CASE("every parameter the encoder can modulate is named, and no other") {
         {"transform.roll", DestKind::DirectAngle},
         {"transform.extent", DestKind::DirectScalar},
         {"render.width", DestKind::DirectScalar},
-        {"render.gain", DestKind::DirectScalar},
+        {"output.gain", DestKind::DirectScalar},
         {"input.trim", DestKind::DirectScalar},
         //  the width of a stereo input may move; its mode may not, and is not here
         {"input.spread", DestKind::DirectScalar},
@@ -368,7 +368,7 @@ TEST_CASE(
     constexpr Centre kCentres[] = {
         {"lfo1.rate", 0.25f},         {"lfo3.rate", 0.25f},       {"level.release", 200.0f},
         {"sc_level.release", 200.0f}, {"env1.attack", 50.0f},     {"env2.decay", 300.0f},
-        {"env3.release", 500.0f},     {"tap1.ms", 250.0f},        {"tap4.offset_ms", 250.0f},
+        {"env3.release", 500.0f},     {"tap1.time", 250.0f},      {"tap4.offset", 250.0f},
         {"tap2.low_cut", 200.0f},     {"tap3.high_cut", 3000.0f}, {"room.distance", 5.0f},
         {"output.pre_delay", 40.0f},  {"input.low_cut", 100.0f},  {"input.high_cut", 6000.0f},
     };

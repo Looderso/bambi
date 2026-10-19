@@ -25,8 +25,8 @@
 
 /*  Nothing on the audio thread allocates. Said about a control step, which is the one place in the
  *  suite that reads parameters by key: a key is built from a prefix and a field name, and building
- *  it with a std::string allocates once it passes 22 characters -- which "region1.band_elevation"
- *  reaches exactly. Nothing catches that unless something counts allocations directly.
+ *  it with a std::string allocates once it passes 22 characters, which no key reaches today but a
+ *  longer one would. Nothing catches that unless something counts allocations directly.
  *
  *  These counters replace the global operator new for the whole test binary, so the count is only
  *  read inside the narrow scopes below; everything else allocates freely, as it should.
@@ -59,7 +59,8 @@ long allocationsDuring(const std::function<void()>& work) {
 }  // namespace
 
 TEST_CASE("a control step allocates nothing (rule 9)") {
-    //  Catches: build any key with `prefix + "." + field` again and the region keys allocate.
+    //  Catches: a control step that allocates: scratch sized in the step, or a key built as a std::string
+    //  past 22 characters.
     SUBCASE("Echo") {
         const ParamManifest& m = echoParams();
         PluginState st{m};

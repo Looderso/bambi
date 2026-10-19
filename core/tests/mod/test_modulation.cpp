@@ -548,7 +548,7 @@ TEST_CASE("a patch compiled elsewhere and adopted by pointer is the same engine 
     PluginState st = stateWithCell(MatrixTab::Generators, 0, EncoderParam::RenderWidth, 0.7);
     st.matrix.push_back({MatrixTab::Generators, 1, EncoderParam::MotionSpeed, 0.4});
     st.matrix.push_back({MatrixTab::Generators, 3, EncoderParam::TransformYaw, 0.5});
-    st.matrix.push_back({MatrixTab::Features, 0, EncoderParam::RenderGain, 0.3});
+    st.matrix.push_back({MatrixTab::Features, 0, EncoderParam::OutputGain, 0.3});
     for (int i = 0; i < 2; ++i) {
         const int base = static_cast<int>(EncoderParam::Lfo1Rate) + i * 5;
         setParam(st, static_cast<ParamId>(base + 0), 3.0 + i);  // rate

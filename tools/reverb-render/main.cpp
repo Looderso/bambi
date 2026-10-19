@@ -48,7 +48,7 @@ void usage() {
         "                       quality(efficient|realistic) render_quality(same|realistic) offline\n"
         "                       send.* and return.*: kind(everywhere|spot|band|sectors|dots)\n"
         "                       side(inside|outside) amount yaw pitch roll size softness\n"
-        "                       band_elevation thickness sectors fill dots dot_size -- DEGREES\n"
+        "                       band_el thickness sectors fill dots dot_size -- DEGREES\n"
         "                       and two ENGINE overrides no control reaches: lines, tail_order\n"
         "  --at S PATH=VALUE    the same, taking effect at the first control step at or after S\n"
         "                       seconds; PATH may be `reset`\n"
@@ -127,7 +127,7 @@ bool applyRegion(ReverbRegionSettings& r, const std::string& key, const std::str
         r.deg.softness = v;
         return true;
     }
-    if (key == "band_elevation") {
+    if (key == "band_el") {
         r.deg.bandElevation = v;
         return true;
     }

@@ -23,12 +23,12 @@ namespace bambi {
   X(Motion, P##Steps,       k ".steps",        n " steps",        "",    Choice,   1,    16, dSteps, "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16") \
   X(Motion, P##OffsetSteps, k ".offset_steps", n " offset steps", "",    Choice,   0,    16, dOffset, "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16") \
   X(Motion, P##Swing,       k ".swing",        n " swing",        "",    Float,    0,   0.9,     0, nullptr) \
-  X(Motion, P##Ms,          k ".ms",           n " time",         "ms",  Float,   20,  2400, dSteps * 125, nullptr) \
-  X(Motion, P##OffsetMs,    k ".offset_ms",    n " offset",       "ms",  Float,    0,  2400, dOffset * 125, nullptr) \
+  X(Motion, P##Ms,          k ".time",         n " time",         "ms",  Float,   20,  2400, dSteps * 125, nullptr) \
+  X(Motion, P##OffsetMs,    k ".offset",       n " offset",       "ms",  Float,    0,  2400, dOffset * 125, nullptr) \
   X(Render, P##Level,       k ".level",        n " level",        "dB",  Float,  -40,     0,    -3, nullptr) \
   X(Render, P##Feedback,    k ".feedback",     n " feedback",     "dB",  Float,  -24,  -0.3,    -6, nullptr) \
-  X(Transform, P##Az,       k ".az",           n " axis azimuth", "deg", Float, -180,   180,  dAz, nullptr) \
-  X(Transform, P##El,       k ".el",           n " axis elevation", "deg", Float, -90,  90,   dEl, nullptr) \
+  X(Transform, P##Az,       k ".axis_az",      n " axis azimuth", "deg", Float, -180,   180,  dAz, nullptr) \
+  X(Transform, P##El,       k ".axis_el",      n " axis elevation", "deg", Float, -90,  90,   dEl, nullptr) \
   X(Transform, P##Spin,     k ".spin",         n " spin",         "deg", Float, -180,   180, dSpin, nullptr) \
   X(Transform, P##Skew,     k ".skew",         n " skew",         "",    Float, -0.6,   0.6,     0, nullptr) \
   X(Transform, P##Blur,     k ".blur",         n " blur",         "deg", Float,    0,   180,     6, nullptr) \

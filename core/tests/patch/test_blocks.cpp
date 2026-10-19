@@ -98,22 +98,14 @@ TEST_CASE("a region block is the same block in every plugin, and in every slot")
         double min, max, def;
     };
     const Pin kBlock[] = {
-        {"yaw", ParamType::Float, -180, 180, 0},
-        {"pitch", ParamType::Float, -180, 180, 0},
-        {"roll", ParamType::Float, -180, 180, 0},
-        {"yaw_rate", ParamType::Float, -180, 180, 0},
-        {"pitch_rate", ParamType::Float, -180, 180, 0},
-        {"roll_rate", ParamType::Float, -180, 180, 0},
-        {"softness", ParamType::Float, 0, 180, 20},
-        {"size", ParamType::Float, 0, 180, 45},
-        {"band_elevation", ParamType::Float, -90, 90, 0},
-        {"thickness", ParamType::Float, 0, 180, 30},
-        {"fill", ParamType::Float, 0, 1, 0.5},
-        {"dot_size", ParamType::Float, 0, 90, 20},
-        {"side", ParamType::Choice, 0, 1, 0},
-        {"coverage", ParamType::Float, 0, 1, 0.5},
-        {"contrast", ParamType::Float, 0, 2, 0.6},
-        {"detail", ParamType::Float, 0, 1, 0.5},
+        {"yaw", ParamType::Float, -180, 180, 0},        {"pitch", ParamType::Float, -180, 180, 0},
+        {"roll", ParamType::Float, -180, 180, 0},       {"yaw_rate", ParamType::Float, -180, 180, 0},
+        {"pitch_rate", ParamType::Float, -180, 180, 0}, {"roll_rate", ParamType::Float, -180, 180, 0},
+        {"softness", ParamType::Float, 0, 180, 20},     {"size", ParamType::Float, 0, 180, 45},
+        {"band_el", ParamType::Float, -90, 90, 0},      {"thickness", ParamType::Float, 0, 180, 30},
+        {"fill", ParamType::Float, 0, 1, 0.5},          {"dot_size", ParamType::Float, 0, 90, 20},
+        {"side", ParamType::Choice, 0, 1, 0},           {"coverage", ParamType::Float, 0, 1, 0.5},
+        {"contrast", ParamType::Float, 0, 2, 0.6},      {"detail", ParamType::Float, 0, 1, 0.5},
         {"evolve", ParamType::Float, -180, 180, 0},
     };
     REQUIRE(std::size(kBlock) == encoder.size());
@@ -187,7 +179,7 @@ TEST_CASE("each list is what its page specifies, and fits the cap the bus shares
 
     //  Reverb: the room, the output, the input and the quality switch
     for (const char* k : {"room.size", "room.decay", "room.tone", "room.roughness", "room.distance", "output.wet",
-                          "output.dry", "output.pre_delay", "input.low_cut", "input.high_cut", "quality.playing"})
+                          "output.dry", "output.pre_delay", "input.low_cut", "input.high_cut", "room.quality"})
         CHECK(reverbParams().byKey(k) != kNoParam);
     //  and what is not a control
     //  -- and the shape, which is the room's and rides with it in state
@@ -237,7 +229,7 @@ TEST_CASE("what wraps is named in full, in every plugin") {
     auto echo = region("region1");
     echo.insert(echo.end(), lfos.begin(), lfos.end());
     for (int t = 1; t <= 4; ++t)
-        echo.insert(echo.end(), {"tap" + std::to_string(t) + ".az", "tap" + std::to_string(t) + ".spin"});
+        echo.insert(echo.end(), {"tap" + std::to_string(t) + ".axis_az", "tap" + std::to_string(t) + ".spin"});
     CHECK(wrapping(echoParams()) == sorted(echo));
 
     auto reverb = region("region1");
