@@ -10,18 +10,20 @@
 #include "PluginProcessor.h"
 #include "bambi/decode/layouts.hpp"
 #include "bambi/host/LinkNode.h"
+#include "bambi/host/ShotScale.h"
 #include "bambi/host/TestPlayHead.h"
 #include "bambi/link/link.hpp"
 #include "bambi/math/sh.hpp"
 #include "bambi/math/sphere.hpp"
 
-/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers | --energy | --sources]
+/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers | --energy | --sources] [--scale N]
  *  The default shows the headphones page with the array's 7.1.4 layout loaded and a source moving; --speakers
  *  opens the speakers page, which draws the hull, and plays the layout; --loudspeakers opens its table too;
  *  --energy switches the energy picture on; --sources puts six Encoders on the bus and opens the sources list. */
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/decoder.png";
+    const float scale = bambi::host::takeShotScale(argc, argv);
     const bool table = argc > 2 && juce::String(argv[2]) == "--loudspeakers";
     const bool energy = argc > 2 && juce::String(argv[2]) == "--energy";
     const bool sources = argc > 2 && juce::String(argv[2]) == "--sources";
@@ -99,8 +101,10 @@ int main(int argc, char** argv) {
     if (table) dec->openTemp(bambi::ui::TempTab::Loudspeakers);
     dec->tick();
     dec->paintNow();
-    juce::Image image(juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
+    juce::Image image(juce::Image::ARGB, juce::roundToInt(editor->getWidth() * scale),
+                      juce::roundToInt(editor->getHeight() * scale), true);
     juce::Graphics g(image);
+    g.addTransform(juce::AffineTransform::scale(scale));
     editor->paintEntireComponent(g, true);
     juce::File(out).deleteFile();
     juce::FileOutputStream stream{juce::File(out)};
