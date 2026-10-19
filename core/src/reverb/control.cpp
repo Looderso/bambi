@@ -93,9 +93,9 @@ ReverbSettings reverbSettingsFrom(const ParamManifest& m, std::span<const float>
     s.ratesContinue = readChoice(m, values, "rates.retrigger", d.ratesContinue ? 1 : 0) > 0;
     s.returnTo.amount = readParam(m, values, "mod.amount.region2", kReturnAmount.def);
 
-    const int fallbackQuality = static_cast<int>(reverbDefault("quality.playing"));
-    s.quality = readChoice(m, values, "quality.playing", fallbackQuality) > 0 ? ReverbQuality::Realistic
-                                                                              : ReverbQuality::Efficient;
+    const int fallbackQuality = static_cast<int>(reverbDefault("room.quality"));
+    s.quality = readChoice(m, values, "room.quality", fallbackQuality) > 0 ? ReverbQuality::Realistic
+                                                                           : ReverbQuality::Efficient;
     s.renderQuality = renderQuality;
     return s;
 }

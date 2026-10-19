@@ -115,8 +115,8 @@ done
 BASE=""
 for b in 1 64 128 333 1024; do
   build/bambi-echo-render --order 3 --seconds 2 --voices 5 \
-          --set tap1.synced=0 --set tap1.ms=20 --set tap1.feedback=-1 \
-          --set tap2.on=1 --set tap2.az=30 --set tap2.el=25 --set tap2.skew=0.4 --set tap2.swing=0.3 \
+          --set tap1.synced=0 --set tap1.time=20 --set tap1.feedback=-1 \
+          --set tap2.on=1 --set tap2.axis_az=30 --set tap2.axis_el=25 --set tap2.skew=0.4 --set tap2.swing=0.3 \
           --set tap3.on=1 --set tap3.blur=25 --set tap3.low_cut=200 --set send.kind=spot \
           --at 0.5 bpm=133 --at 0.7 send.amount=0.3 --at 0.9 tap2.on=0 --at 1.2 tap2.on=1 --at 1.4 send.side=outside --at 1.6 reset \
           --block "$b" "$TMP/e$b.wav" >/dev/null 2>&1

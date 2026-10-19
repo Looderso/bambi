@@ -1263,7 +1263,7 @@ int timelineHolds() {
         {1, live::Instance::Encoder, 2, "transform.yaw", {{0.0, -30.0}, {64.0, 30.0}}, 0, -1, {}},
         {4, live::Instance::Encoder, 2, "transform.pitch", {{0.0, 0.0}}, 2, 0, {}},
         {2, live::Instance::Insert, 7, "output.wet", {}, 0, -1, {}},
-        {3, live::Instance::Decoder, live::kFirstDecoder, "output.level", {}, 0, -1, {}}};
+        {3, live::Instance::Decoder, live::kFirstDecoder, "output.gain", {}, 0, -1, {}}};
     int edits = 0;
     page.lanesChanged = [&](std::vector<live::Lane>) { ++edits; };
     page.show({tree, a, shape, field, lanes});

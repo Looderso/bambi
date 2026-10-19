@@ -21,8 +21,8 @@ tonal-extent|--tone 3 --order 3 --speed 60 --generator orbit --mod tonal:transfo
 lfo-synced-yaw|--noise 4 --order 3 --speed 30 --generator orbit --bpm 128 --mod lfo1:transform.yaw=0.5|yaw
 env-displace|--noise 3 --order 3 --speed 0 --generator orbit --mod env1:motion.displace=0.4|displace
 tone-roll-pitch|--tone 3 --order 3 --speed 40 --generator lissajous --mod level:transform.roll=0.5 --mod tonal:transform.pitch=0.4|roll
-gain-duck|--noise 3 --order 1 --speed 0 --generator orbit --mod level:render.gain=-0.3|gain
-gain-duck-slow|--noise 3 --order 1 --speed 0 --generator orbit --mod level:render.gain=-0.3 --param level.release=1500|gain
+gain-duck|--noise 3 --order 1 --speed 0 --generator orbit --mod level:output.gain=-0.3|gain
+gain-duck-slow|--noise 3 --order 1 --speed 0 --generator orbit --mod level:output.gain=-0.3 --param level.release=1500|gain
 # the input trim reaches the detectors as well as the encoder, as the plugin applies it
 trim-level-speed|--noise 3 --order 3 --speed 0 --generator orbit --param input.trim=-18 --mod level:motion.speed=0.5|speed
 open-pingpong|--noise 3 --order 3 --speed 120 --generator arc --mode pingpong|s
@@ -42,7 +42,7 @@ input-spread-moves|--noise 3 --order 3 --speed 30 --generator orbit --stereo --p
 # one that renders a dry path, and sets its own.
 echo-ping-pong|--order 3 --seconds 3 --set dry=-60 --impulse 35,0 --set tap1.on=0 --set tap4.on=1 --set tap4.feedback=-2|energy
 echo-two-taps-swing|--order 3 --seconds 4 --set dry=-60 --set tap2.on=1 --set tap2.swing=0.4|energy
-echo-tilted-skew|--order 3 --seconds 4 --set dry=-60 --set tap1.az=40 --set tap1.el=20 --set tap1.skew=0.5 --set tap1.feedback=-1|energy
+echo-tilted-skew|--order 3 --seconds 4 --set dry=-60 --set tap1.axis_az=40 --set tap1.axis_el=20 --set tap1.skew=0.5 --set tap1.feedback=-1|energy
 echo-blur-band|--order 3 --seconds 4 --set dry=-60 --set tap1.blur=30 --set tap1.low_cut=300 --set tap1.high_cut=3000 --set tap1.feedback=-1|energy
 echo-sleep-wake|--order 3 --seconds 4 --set dry=-60 --at 1.0 tap1.on=0 --at 2.5 tap1.on=1|energy
 echo-tempo-change|--order 3 --seconds 4 --set dry=-60 --set tap1.feedback=-1 --at 1.5 bpm=97|p1

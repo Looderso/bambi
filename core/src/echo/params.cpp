@@ -28,7 +28,7 @@ constexpr std::array<ParamDesc, kNumEchoParams> kTable{{
 //  Mid-travel values for knobs whose useful range is mostly at the low end.
 constexpr float skewOf(std::string_view k) {
     if (const float shared = sharedSkew(k); shared > 0.0f) return shared;
-    if (k.ends_with(".ms") || k.ends_with(".offset_ms")) return 250.0f;
+    if (k.ends_with(".time") || k.ends_with(".offset")) return 250.0f;
     if (k.ends_with(".blur")) return 30.0f;
     if (k.ends_with(".low_cut")) return 200.0f;
     if (k.ends_with(".high_cut")) return 3000.0f;
@@ -48,7 +48,7 @@ constexpr DestKind destOf(std::string_view k) {
     //  Prefix too: `.level` alone would also match `mod.amount.level`.
     if (!k.starts_with("tap")) return DestKind::NotModulatable;
     if (k.ends_with(".spin")) return DestKind::Rate;
-    if (k.ends_with(".az") || k.ends_with(".el")) return DestKind::DirectAngle;
+    if (k.ends_with(".axis_az") || k.ends_with(".axis_el")) return DestKind::DirectAngle;
     if (k.ends_with(".level") || k.ends_with(".feedback") || k.ends_with(".skew") || k.ends_with(".blur") ||
         k.ends_with(".low_cut") || k.ends_with(".high_cut"))
         return DestKind::DirectScalar;
@@ -79,7 +79,7 @@ constexpr double kSmoothingTable[] = {
 
 //  What wraps around its range.
 constexpr bool wraps(std::string_view k) {
-    return sharedWraps(k) || (k.starts_with("tap") && (k.ends_with(".az") || k.ends_with(".spin")));
+    return sharedWraps(k) || (k.starts_with("tap") && (k.ends_with(".axis_az") || k.ends_with(".spin")));
 }
 
 constexpr std::uint8_t kWrapsTable[] = {

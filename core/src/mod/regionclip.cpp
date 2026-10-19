@@ -20,8 +20,8 @@ constexpr std::array<std::string_view, 7> kKinds{"everywhere", "spot", "band", "
  *  side, which is the use's. A descriptor holds exactly these -- one missing is an older region, one
  *  extra a newer, and either is a guess. */
 constexpr std::array<std::string_view, 16> kFields{
-    "yaw",       "pitch", "roll",     "yaw_rate", "pitch_rate", "roll_rate", "softness", "size", "band_elevation",
-    "thickness", "fill",  "dot_size", "coverage", "contrast",   "detail",    "evolve"};
+    "yaw",     "pitch",     "roll", "yaw_rate", "pitch_rate", "roll_rate", "softness", "size",
+    "band_el", "thickness", "fill", "dot_size", "coverage",   "contrast",  "detail",   "evolve"};
 constexpr std::array<std::string_view, 8> kLfoFields{"index", "rate",  "sync",     "div",
                                                      "shape", "phase", "polarity", "amount"};
 

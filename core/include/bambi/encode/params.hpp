@@ -44,7 +44,7 @@ namespace bambi {
   X(Render, RenderWidth,    "render.width",     "width",     "deg", Float,   0, 180,   0, nullptr) \
   X(Render, RenderWidthMin, "render.width_min", "width min", "deg", Float,   0, 180,   0, nullptr) \
   X(Render, RenderWidthMax, "render.width_max", "width max", "deg", Float,   0, 180, 120, nullptr) \
-  X(Render, RenderGain,     "render.gain",      "gain",      "dB",  Float, -60,  12,   0, nullptr) \
+  X(Render, OutputGain,     "output.gain",      "gain",      "dB",  Float, -60,  12,   0, nullptr) \
                                                                                                \
   X(Input, InputTrim, "input.trim", "input trim", "dB", Float, -24, 24, 0, nullptr)             \
                                                                                                \

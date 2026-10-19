@@ -54,7 +54,7 @@ constexpr DestKind destOf(std::string_view k, ParamId id) {
     //  fast it moved, never about how long it took to settle.
     if (k == "motion.displace" || k == "transform.yaw" || k == "transform.pitch" || k == "transform.roll")
         return DestKind::DirectAngle;
-    if (k == "transform.extent" || k == "render.width" || k == "render.gain" || k == "input.trim" ||
+    if (k == "transform.extent" || k == "render.width" || k == "output.gain" || k == "input.trim" ||
         k == "input.spread" || k == "input.offset")
         return DestKind::DirectScalar;
     //  a parametric path's settings: those that go round are angles, the rest settle

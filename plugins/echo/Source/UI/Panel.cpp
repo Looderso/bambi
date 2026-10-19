@@ -255,8 +255,8 @@ float EchoPanel::paintTiming(juce::Graphics& g, juce::Rectangle<float> content, 
         addParameterTile(g, tileCell(content, y, 1), syncedId, syncedName, synced);
         y = tilesBottom(y, 2) + ctl::tileRowGap;
     };
-    pair(state_.tapParam(tap, "ms"), "time", state_.tapParam(tap, "steps"), "steps");
-    pair(state_.tapParam(tap, "offset_ms"), "offset", state_.tapParam(tap, "offset_steps"), "offset steps");
+    pair(state_.tapParam(tap, "time"), "time", state_.tapParam(tap, "steps"), "steps");
+    pair(state_.tapParam(tap, "offset"), "offset", state_.tapParam(tap, "offset_steps"), "offset steps");
 
     //  swing rides the offset, and only a synced tap has one
     addParameterTile(g, tileCell(content, y, 0), state_.tapParam(tap, "swing"), "swing", synced);
@@ -268,7 +268,7 @@ float EchoPanel::paintTiming(juce::Graphics& g, juce::Rectangle<float> content, 
 /// The axis a pass turns about. How far round it goes each time is `every pass`'s, beside skew: one place.
 float EchoPanel::paintAxis(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     const int tap = state_.tap;
-    return paintGroup(g, content, y, {}, {state_.tapParam(tap, "az"), state_.tapParam(tap, "el")});
+    return paintGroup(g, content, y, {}, {state_.tapParam(tap, "axis_az"), state_.tapParam(tap, "axis_el")});
 }
 
 /*  `every pass` reads as two pairs, one to a row: `degrees` beside `skew` -- where each pass goes,

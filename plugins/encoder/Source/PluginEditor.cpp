@@ -82,7 +82,7 @@ bambi::ui::EncoderWindowParts::EncoderWindowParts(BambiEncoderProcessor& p)
 BambiEncoderEditor::BambiEncoderEditor(BambiEncoderProcessor& p)
     : bambi::ui::EncoderWindowParts(p),
       bambi::editor::PluginEditor(p, {controls, state, tabs, globe, equirect, state}, "encoder",
-                                  {{bambi::EncoderParam::RenderGain, "gain"}},
+                                  {{bambi::EncoderParam::OutputGain, "gain"}},
                                   {{bambi::EncoderParam::RatesRetrigger, "rates continue"}}),
       processor_(p) {
     state.changed = [this] { sceneChanged(); };

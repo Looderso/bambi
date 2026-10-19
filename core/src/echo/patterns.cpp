@@ -50,8 +50,8 @@ void applyPattern(const ParamManifest& m, EchoPattern p, const std::function<voi
         set("synced", 1.0);
         set("steps", t.steps);
         set("offset_steps", t.offset);
-        set("az", t.az);
-        set("el", t.el);
+        set("axis_az", t.az);
+        set("axis_el", t.el);
         set("spin", t.spin);
         set("skew", t.skew);
         set("feedback", t.feedbackDb);

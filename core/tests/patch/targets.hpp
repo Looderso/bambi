@@ -30,7 +30,7 @@ inline std::vector<Target> regionTargets(const std::string& slot) {
             {slot + ".size", DestKind::DirectScalar},
             {slot + ".softness", DestKind::DirectScalar},
             //  the shape's every continuous setting
-            {slot + ".band_elevation", DestKind::DirectScalar},
+            {slot + ".band_el", DestKind::DirectScalar},
             {slot + ".thickness", DestKind::DirectScalar},
             {slot + ".fill", DestKind::DirectScalar},
             {slot + ".dot_size", DestKind::DirectScalar},

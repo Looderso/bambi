@@ -38,7 +38,7 @@ constexpr float kSkewTable[] = {
 constexpr DestKind destOf(std::string_view k) {
     if (const DestKind shared = sharedDestKind(k); shared != DestKind::NotModulatable) return shared;
     if (k == "head.yaw" || k == "head.pitch" || k == "head.roll") return DestKind::DirectAngle;
-    if (k == "output.level") return DestKind::DirectScalar;
+    if (k == "output.gain") return DestKind::DirectScalar;
     if (k == "head.yaw_rate" || k == "head.pitch_rate" || k == "head.roll_rate") return DestKind::Rate;
     return DestKind::NotModulatable;
 }

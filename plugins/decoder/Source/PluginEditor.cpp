@@ -10,7 +10,7 @@ namespace {}  // namespace
 BambiDecoderEditor::BambiDecoderEditor(BambiDecoderProcessor& p)
     : bambi::ui::DecoderWindowParts(p),
       bambi::editor::PluginEditor(p, {controls, controls, panel, globe, equirect, controls.sphere, &strip}, "decoder",
-                                  {{bambi::decoderParam("output.level"), "level"}}, {}),
+                                  {{bambi::decoderParam("output.gain"), "gain"}}, {}),
       processor_(p) {
     //  the outputs' squares: the one option this plugin asks of the shared header
     header().setTabMarks([this](int index) { return controls.outputMark(index); },

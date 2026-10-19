@@ -41,7 +41,7 @@ namespace bambi {
   X(Input, InputHighCut, "input.high_cut", "high cut", "Hz", Float, 2000, 20000, 11000, nullptr)     \
                                                                                                     \
   /*  Efficient or realistic while playing; the tail's line count is the whole of what this scales. */ \
-  X(Render, QualityPlaying, "quality.playing", "quality", "", Choice, 0, 1, 1, "efficient,realistic") \
+  X(Render, RoomQuality, "room.quality", "quality", "", Choice, 0, 1, 1, "efficient,realistic") \
                                                                                                     \
   /*  Two slots, named by role.                                                                   */ \
   BAMBI_REGION_BLOCK(X, Region1, "region1", "send")                                                \

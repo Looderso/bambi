@@ -26,7 +26,7 @@ namespace bambi {
   X(Transform, HeadPitch, "head.pitch", "pitch", "deg", Float,  -90,  90, 0, nullptr)             \
   X(Transform, HeadRoll,  "head.roll",  "roll",  "deg", Float, -180, 180, 0, nullptr)             \
                                                                                                     \
-  X(Render, OutputLevel,  "output.level", "level", "dB", Float, -60, 12, 0, nullptr)              \
+  X(Render, OutputGain,  "output.gain", "gain", "dB", Float, -60, 12, 0, nullptr)              \
                                                                                                     \
   /*  The one region slot every plugin carries; the decoder reads nothing from it.               */ \
   BAMBI_REGION_BLOCK(X, Region1, "region1", "region")                                               \

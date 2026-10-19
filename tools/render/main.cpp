@@ -454,7 +454,7 @@ int main(int argc, char** argv) {
      *  quietly disagree with it. */
     state.params[static_cast<std::size_t>(EncoderParam::MotionSpeed)] = static_cast<float>(speedDeg);
     state.params[static_cast<std::size_t>(EncoderParam::RenderWidth)] = static_cast<float>(widthDeg);
-    state.params[static_cast<std::size_t>(EncoderParam::RenderGain)] = static_cast<float>(gainDb);
+    state.params[static_cast<std::size_t>(EncoderParam::OutputGain)] = static_cast<float>(gainDb);
     state.params[static_cast<std::size_t>(EncoderParam::MotionMode)] = static_cast<float>(static_cast<int>(mode));
     //  A path's continuous settings are parameters: the shape's defaults and any --set go there, as a
     //  preset's already are; a --param of one of them, below, wins.
@@ -558,7 +558,7 @@ int main(int argc, char** argv) {
                              "%.6f,%.4f,%.4f",
                              static_cast<double>(pos) / sr, f[0], f[1], f[2], f[3], f[4], f[5],
                              mod.destination(EncoderParam::MotionSpeed), mod.destination(EncoderParam::MotionDisplace),
-                             mod.destination(EncoderParam::RenderWidth), mod.destination(EncoderParam::RenderGain),
+                             mod.destination(EncoderParam::RenderWidth), mod.destination(EncoderParam::OutputGain),
                              mod.destination(EncoderParam::TransformYaw), mod.destination(EncoderParam::TransformPitch),
                              mod.destination(EncoderParam::TransformRoll),
                              mod.destination(EncoderParam::TransformExtent), s01, azimuth(p) * kRad2Deg,

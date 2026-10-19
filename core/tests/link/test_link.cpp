@@ -794,7 +794,7 @@ TEST_CASE("a sender that disappears mid-gesture has it closed for it") {
     LinkEditReceiver rx;
     std::vector<LinkEditAction> out;
     rx.apply(std::vector{edit(a, EncoderParam::RenderWidth, kLinkGestureBegin, 1),
-                         edit(b, EncoderParam::RenderGain, kLinkGestureBegin, 2)},
+                         edit(b, EncoderParam::OutputGain, kLinkGestureBegin, 2)},
              out);
     REQUIRE(rx.openGestures() == 2);
 
@@ -806,7 +806,7 @@ TEST_CASE("a sender that disappears mid-gesture has it closed for it") {
     REQUIRE(out.size() == 1);
     CHECK(out[0].param == EncoderParam::RenderWidth);  // only the one whose sender left
     CHECK_FALSE(rx.isOpen(EncoderParam::RenderWidth));
-    CHECK(rx.isOpen(EncoderParam::RenderGain));
+    CHECK(rx.isOpen(EncoderParam::OutputGain));
 
     out.clear();
     rx.closeAbandoned(std::span<const LinkPeer>{}, out);
@@ -832,7 +832,7 @@ TEST_CASE("a parameter this build lacks never reaches the host") {
 TEST_CASE("whatever arrives, the host only ever sees well-formed gestures") {
     std::mt19937 rng(20260911);
     const Uuid senders[3] = {Uuid::generate(), Uuid::generate(), Uuid::generate()};
-    const ParamId params[3] = {EncoderParam::RenderWidth, EncoderParam::RenderGain, EncoderParam::MotionSpeed};
+    const ParamId params[3] = {EncoderParam::RenderWidth, EncoderParam::OutputGain, EncoderParam::MotionSpeed};
 
     LinkEditReceiver rx;
     std::vector<LinkEditAction> out;
