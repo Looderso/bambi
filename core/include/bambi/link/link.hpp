@@ -41,7 +41,7 @@ inline constexpr double kLinkPathStepRad = 1.0 * kDeg2Rad;
 int linkPathPointsFor(double lengthRad);
 inline constexpr int kLinkInboxReserved = 4;  ///< inbox slots only gesture begin/end may use
 /// Bump whenever the shared layout changes, so no instance ever maps a bus laid out another way.
-inline constexpr std::uint32_t kLinkVersion = 25;
+inline constexpr std::uint32_t kLinkVersion = 26;
 
 //  Which plugin an instance is: `patch/identity.hpp`, because the state format needs it too.
 
@@ -60,7 +60,7 @@ inline constexpr int kLinkMaxParams = kMaxParams;
 /*  Room for sources, not the number of them: a multiple of eight, so that neither array of them ends
  *  a struct short of its alignment, and so that the next source is not another change of layout. */
 inline constexpr int kLinkMaxSources = 24;
-inline constexpr int kLinkMaxCells = 855;  ///< one cell per (source, target): 19 sources x the encoder's 45 targets
+inline constexpr int kLinkMaxCells = 817;  ///< one cell per (source, target): 19 sources x the encoder's 43 targets
 inline constexpr int kLinkTriggers = 3;
 inline constexpr int kLinkEditNameBytes = 32;
 

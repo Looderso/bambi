@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
     }
 
     {
-        /*  A bounce may be worth more than playback: `quality.playing` is what the user rides, and
+        /*  A bounce may be worth more than playback: `room.quality` is what the user rides, and
             offline the engine goes to the full tail instead. Nothing else here can see that,
             because everything else renders realtime. */
         const auto l = layout(amb(3), juce::AudioChannelSet::stereo(), amb(3));
@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
             proc.setBusesLayout(l);
             proc.setNonRealtime(offline);
             proc.prepareToPlay(kRate, 128);
-            setParameter(proc, "quality.playing", 0.0f);  // efficient while playing
+            setParameter(proc, "room.quality", 0.0f);  // efficient while playing
             PlayingHead head;
             proc.setPlayHead(&head);
             juce::AudioBuffer<float> buffer(18, 128);
@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
         same.setNonRealtime(true);
         same.prepareToPlay(kRate, 128);
         same.setRenderQuality(bambi::RenderQuality::Same);
-        setParameter(same, "quality.playing", 0.0f);
+        setParameter(same, "room.quality", 0.0f);
         PlayingHead head2;
         same.setPlayHead(&head2);
         juce::AudioBuffer<float> b2(18, 128);
@@ -215,6 +215,10 @@ int main(int argc, char** argv) {
     bambi::editor::checkEffectLinkBus(spec);
 
     bambi::editor::checkDecoderOverlay<Processor, BambiReverbEditor>(spec);
+
+    bambi::editor::checkBypass<Processor>(bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)),
+                                          "the field as it arrived",
+                                          [](int c, juce::int64 at) { return bambi::editor::fieldSample(c, at); });
 
     std::printf("\nthree products, one session\n");
     {
@@ -279,8 +283,8 @@ int main(int argc, char** argv) {
             //  the generators and the matrix's amounts are the shared engine's, not this panel's
             if (key.starts_with("lfo") || key.starts_with("env") ||
                 (key.starts_with("mod.") && !key.starts_with("mod.amount.region")) || key == "level.release" ||
-                key == "sc_level.release"     // on Level's own page: checked below
-                || key == "quality.playing")  // on the settings page, beside when rendering: checked there
+                key == "sc_level.release"  // on Level's own page: checked below
+                || key == "room.quality")  // on the settings page, beside when rendering: checked there
                 continue;
             const auto id = static_cast<bambi::ParamId>(i);
             bool found = false;
@@ -809,12 +813,12 @@ int main(int argc, char** argv) {
             not wired, and the footer keeping a switch it no longer has. */
         {
             auto* playing =
-                proc.hostParameter(static_cast<bambi::ParamId>(bambi::reverbParams().byKey("quality.playing")));
+                proc.hostParameter(static_cast<bambi::ParamId>(bambi::reverbParams().byKey("room.quality")));
             check(ed->clickSettingsOption(0, 0) && playing != nullptr && playing->getValue() < 0.5f,
                   "and the row above it sets the quality while playing");
             if (playing != nullptr) playing->setValueNotifyingHost(1.0f);
             check(ed->footer()
-                      .switchArea(static_cast<bambi::ParamId>(bambi::reverbParams().byKey("quality.playing")))
+                      .switchArea(static_cast<bambi::ParamId>(bambi::reverbParams().byKey("room.quality")))
                       .isEmpty(),
                   "and the footer no longer carries it");
         }

@@ -98,22 +98,14 @@ TEST_CASE("a region block is the same block in every plugin, and in every slot")
         double min, max, def;
     };
     const Pin kBlock[] = {
-        {"yaw", ParamType::Float, -180, 180, 0},
-        {"pitch", ParamType::Float, -180, 180, 0},
-        {"roll", ParamType::Float, -180, 180, 0},
-        {"yaw_rate", ParamType::Float, -180, 180, 0},
-        {"pitch_rate", ParamType::Float, -180, 180, 0},
-        {"roll_rate", ParamType::Float, -180, 180, 0},
-        {"softness", ParamType::Float, 0, 180, 20},
-        {"size", ParamType::Float, 0, 180, 45},
-        {"band_elevation", ParamType::Float, -90, 90, 0},
-        {"thickness", ParamType::Float, 0, 180, 30},
-        {"fill", ParamType::Float, 0, 1, 0.5},
-        {"dot_size", ParamType::Float, 0, 90, 20},
-        {"side", ParamType::Choice, 0, 1, 0},
-        {"coverage", ParamType::Float, 0, 1, 0.5},
-        {"contrast", ParamType::Float, 0, 2, 0.6},
-        {"detail", ParamType::Float, 0, 1, 0.5},
+        {"yaw", ParamType::Float, -180, 180, 0},        {"pitch", ParamType::Float, -180, 180, 0},
+        {"roll", ParamType::Float, -180, 180, 0},       {"yaw_rate", ParamType::Float, -180, 180, 0},
+        {"pitch_rate", ParamType::Float, -180, 180, 0}, {"roll_rate", ParamType::Float, -180, 180, 0},
+        {"softness", ParamType::Float, 0, 180, 20},     {"size", ParamType::Float, 0, 180, 45},
+        {"band_el", ParamType::Float, -90, 90, 0},      {"thickness", ParamType::Float, 0, 180, 30},
+        {"fill", ParamType::Float, 0, 1, 0.5},          {"dot_size", ParamType::Float, 0, 90, 20},
+        {"side", ParamType::Choice, 0, 1, 0},           {"coverage", ParamType::Float, 0, 1, 0.5},
+        {"contrast", ParamType::Float, 0, 2, 0.6},      {"detail", ParamType::Float, 0, 1, 0.5},
         {"evolve", ParamType::Float, -180, 180, 0},
     };
     REQUIRE(std::size(kBlock) == encoder.size());
@@ -173,7 +165,7 @@ TEST_CASE("every plugin carries the matrix's amounts, one a source slot and one 
 TEST_CASE("each list is what its page specifies, and fits the cap the bus shares") {
     //  Catches: the cap lowered, or a list grown past it. The static_asserts in each params.cpp
     //  catch it at compile time; this says what the three actually are, so a change is visible.
-    CHECK(encodeParams().size() == 119);  // level and sidechain release, clouds' four, the path's fifteen
+    CHECK(encodeParams().size() == 117);  // level and sidechain release, clouds' four, the path's fifteen
     CHECK(kNumEchoParams == 151);         // + the same two; + clouds' four
     CHECK(kNumReverbParams == 114);       // + the same two; + clouds' four in each of two slots; - room.shape
     CHECK(kNumEchoParams <= kMaxParams);
@@ -187,7 +179,7 @@ TEST_CASE("each list is what its page specifies, and fits the cap the bus shares
 
     //  Reverb: the room, the output, the input and the quality switch
     for (const char* k : {"room.size", "room.decay", "room.tone", "room.roughness", "room.distance", "output.wet",
-                          "output.dry", "output.pre_delay", "input.low_cut", "input.high_cut", "quality.playing"})
+                          "output.dry", "output.pre_delay", "input.low_cut", "input.high_cut", "room.quality"})
         CHECK(reverbParams().byKey(k) != kNoParam);
     //  and what is not a control
     //  -- and the shape, which is the room's and rides with it in state
@@ -229,15 +221,14 @@ TEST_CASE("what wraps is named in full, in every plugin") {
 
     auto encoder = region("region1");
     encoder.insert(encoder.end(), lfos.begin(), lfos.end());
-    encoder.insert(encoder.end(),
-                   {"transform.yaw", "transform.pitch", "transform.roll", "motion.displace", "orbit.axis_az",
-                    "lissajous.phase", "arc.centre_az", "arc.heading", "spiral.start_az"});
+    encoder.insert(encoder.end(), {"transform.yaw", "transform.pitch", "transform.roll", "motion.displace",
+                                   "orbit.axis_az", "lissajous.phase", "polygon.rotation", "spiral.start_az"});
     CHECK(wrapping(encodeParams()) == sorted(encoder));
 
     auto echo = region("region1");
     echo.insert(echo.end(), lfos.begin(), lfos.end());
     for (int t = 1; t <= 4; ++t)
-        echo.insert(echo.end(), {"tap" + std::to_string(t) + ".az", "tap" + std::to_string(t) + ".spin"});
+        echo.insert(echo.end(), {"tap" + std::to_string(t) + ".axis_az", "tap" + std::to_string(t) + ".spin"});
     CHECK(wrapping(echoParams()) == sorted(echo));
 
     auto reverb = region("region1");

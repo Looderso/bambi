@@ -61,12 +61,27 @@ public:
     const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int, const juce::String&) override {}
 
+    /// Sizes the bypass's buffer, then hands over to the plugin's `prepare`.
+    void prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) final;
     void releaseResources() override {}
     bool hasEditor() const override { return true; }
 
     /// The plugin's own DSP load is measured around `renderBlock`, where it runs.
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) final;
     using AudioProcessor::processBlock;
+    /*  The host's bypass is this plugin's own parameter, so a block arriving here is the same block:
+        processBlock reads the parameter and fades. The engine keeps running underneath, so the
+        modulation, the bus and a bounce are the same bypassed or not. */
+    void processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) final {
+        processBlock(buffer, midi);
+    }
+    using AudioProcessor::processBlockBypassed;
+    juce::AudioProcessorParameter* getBypassParameter() const final { return bypass_; }
+    /// How long a bypass takes to fade in or out, in seconds.
+    static constexpr double kBypassFade = 0.01;
+    /// A switch of the bypass starts its fade on a multiple of this many samples since prepare, so where
+    /// it lands does not depend on the host's block size.
+    static constexpr int kBypassGrid = 256;
 
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
@@ -255,6 +270,12 @@ protected:
     void begin(PluginState initial);
 
     //  ---- what a plugin answers ---------------------------------------------------------------
+    /// Everything that allocates for playback. Message thread, before the first block.
+    virtual void prepare(double sampleRate, int maximumExpectedSamplesPerBlock) = 0;
+    /*  What this plugin plays while bypassed, written in place over a copy of the block as it
+        arrived: `mainInputs` channels of the main input first, then whatever else the host handed in.
+        By default the main input goes through and every channel past it is silent. Audio thread. */
+    virtual void renderBypassed(float* const* channels, int numChannels, int mainInputs, int samples) noexcept;
     /// One block. Audio thread.
     virtual void renderBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) = 0;
     /*  A snapshot to fill, with whatever this plugin carries beyond the shared cargo already built
@@ -367,6 +388,13 @@ private:
     Handoff<EngineSnapshot> handoff_;
 
     juce::AudioProcessorValueTreeState apvts_;
+    juce::AudioParameterBool* bypass_{nullptr};
+    juce::AudioBuffer<float> bypassed_;  ///< the block as bypass plays it; sized in prepareToPlay
+    int bypassInputs_{0};                ///< the main bus's input channels, as prepared
+    float bypassMix_{0.0f};              ///< 0 plays the engine, 1 the bypass; audio thread
+    float bypassTarget_{0.0f};           ///< where the mix is heading, taken from the parameter on the grid
+    std::int64_t bypassClock_{0};        ///< samples since prepare; audio thread
+    float bypassStep_{1.0f};             ///< how far the mix moves a sample
     std::array<std::atomic<int>, kMaxRegions> zeroRegionTurns_{};  ///< a bit per axis, per slot
     std::atomic<int> learnArmed_{-1};  ///< the envelope waiting for a note: message thread -> audio thread
     std::atomic<int> learned_{-1};     ///< envelope << 16 | channel << 8 | note: audio thread -> message thread

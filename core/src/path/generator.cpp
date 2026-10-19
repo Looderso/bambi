@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bambi/path/generator.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -11,17 +12,19 @@ namespace {
 
 double p(std::span<const double> a, std::size_t i, double def = 0.0) { return i < a.size() ? a[i] : def; }
 
-/// A tangent-plane basis at p, so an arc can be aimed in any direction.
-void basisAt(Vec3 c, Vec3& e1, Vec3& e2) {
-    const Vec3 up = std::abs(c.z) > 0.99 ? Vec3{1, 0, 0} : Vec3{0, 0, 1};
-    e1 = unit(tangentAt(c, up));
-    e2 = unit(cross(c, e1));
+/// Corner `k` of `sides` around the front, `radius` from it (radians): the first is above the front at
+/// rotation 0, and a rotation turns the corners toward the left, as an azimuth does.
+Vec3 corner(int k, int sides, double radius, double rotation) {
+    const double a = rotation + 2.0 * kPi * k / sides;
+    return expMap({1, 0, 0}, Vec3{0, std::sin(a), std::cos(a)} * radius);
 }
 
 }  // namespace
 
-bool generatorIsClosed(GeneratorType g) {
-    return g == GeneratorType::Orbit || g == GeneratorType::Lissajous || g == GeneratorType::Wave;
+bool generatorIsClosed(GeneratorType g) { return g != GeneratorType::Spiral; }
+
+int generatorCorners(GeneratorType g, std::span<const double> gp) {
+    return g == GeneratorType::Polygon ? std::clamp(static_cast<int>(std::lround(p(gp, 0, 3.0))), 1, 8) : 1;
 }
 
 Vec3 generatorAt(GeneratorType g, double u, std::span<const double> gp) {
@@ -45,13 +48,16 @@ Vec3 generatorAt(GeneratorType g, double u, std::span<const double> gp) {
             const double el = clampd(p(gp, 3) + p(gp, 1, 35.0) * std::sin(p(gp, 2, 3.0) * t), -89.0, 89.0);
             return fromAzEl(az * kDeg2Rad, el * kDeg2Rad);
         }
-        case GeneratorType::Arc: {  // centre_az, centre_el, length, heading
-            const Vec3 c = fromAzEl(p(gp, 0) * kDeg2Rad, p(gp, 1) * kDeg2Rad);
-            Vec3 e1, e2;
-            basisAt(c, e1, e2);
-            const double h = p(gp, 3) * kDeg2Rad;
-            const Vec3 dir = e1 * std::cos(h) + e2 * std::sin(h);
-            return expMap(c, dir * ((u - 0.5) * p(gp, 2, 90.0) * kDeg2Rad));
+        case GeneratorType::Polygon: {  // sides, radius, rotation
+            //  Every edge is as long as every other, so equal shares of u are equal lengths: the
+            //  edges are great-circle arcs, and the corners stay sharp.
+            const int sides = generatorCorners(g, gp);
+            if (sides == 1) return {1, 0, 0};
+            const double radius = p(gp, 1, 45.0) * kDeg2Rad, rotation = p(gp, 2) * kDeg2Rad;
+            const double along = (u - std::floor(u)) * sides;
+            const int k = std::min(static_cast<int>(along), sides - 1);
+            return slerp(corner(k, sides, radius, rotation), corner((k + 1) % sides, sides, radius, rotation),
+                         along - k);
         }
         case GeneratorType::Spiral: {  // turns, from_el, to_el, start_az
             const double az = p(gp, 3) + u * 360.0 * p(gp, 0, 2.0);

@@ -22,7 +22,7 @@ inline constexpr int kMaxGenParams = 6;
 inline constexpr int kMaxNodes = 24;
 
 enum class TrajectoryKind { Parametric, Custom };
-enum class GeneratorType { Orbit, Lissajous, Wave, Arc, Spiral };
+enum class GeneratorType { Orbit, Lissajous, Wave, Polygon, Spiral };
 
 /// A cubic Bezier anchor with its two handles, all on the unit sphere.
 struct Node {

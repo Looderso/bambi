@@ -633,8 +633,8 @@ int main() {
             const bool touchedBase = shell->touchParameter(bambi::EncoderParam::MotionSpeed);
             const bool baseAddsNothing = shell->provisionalRow() == bambi::kNoParamId;
             //  the gain is a level in the column, and a click there opens its row as a tile's does
-            const bool touchedOther = shell->clickLevel(bambi::EncoderParam::RenderGain);
-            const bool otherOpensRow = shell->provisionalRow() == bambi::EncoderParam::RenderGain;
+            const bool touchedOther = shell->clickLevel(bambi::EncoderParam::OutputGain);
+            const bool otherOpensRow = shell->provisionalRow() == bambi::EncoderParam::OutputGain;
             const bool touchedGain = shell->touchParameter(bambi::EncoderParam::InputTrim);
             const bool replaced = shell->provisionalRow() == bambi::EncoderParam::InputTrim;
             check(touchedBase && baseAddsNothing && touchedOther && otherOpensRow && touchedGain && replaced,
@@ -752,9 +752,9 @@ int main() {
                 no tab can hide them. Pressed where they are drawn. Catches the column's drag or the
                 footer's click not being wired, and the switch still living on a page instead. */
             {
-                auto* gain = proc.hostParameter(bambi::EncoderParam::RenderGain);
+                auto* gain = proc.hostParameter(bambi::EncoderParam::OutputGain);
                 const float gainBefore = gain == nullptr ? -1.0f : gain->getValue();
-                const bool dragged = shell->dragLevel(bambi::EncoderParam::RenderGain, -40.0f);
+                const bool dragged = shell->dragLevel(bambi::EncoderParam::OutputGain, -40.0f);
                 check(dragged && gain != nullptr && gain->getValue() > gainBefore,
                       "the gain is in the level column, and an upward drag raises it");
 
@@ -1150,7 +1150,7 @@ int main() {
         //  Catches the processor never handing its region to the control step.
         bambi::PluginState inside = plain;
         inside.regions[0].shape.kind = bambi::RegionKind::Everywhere;
-        inside.matrix.push_back(bambi::MatrixCell{bambi::MatrixTab::Region, 0, bambi::EncoderParam::RenderGain, -0.25});
+        inside.matrix.push_back(bambi::MatrixCell{bambi::MatrixTab::Region, 0, bambi::EncoderParam::OutputGain, -0.25});
         bambi::PluginState outside = inside;
         outside.params[static_cast<std::size_t>(bambi::EncoderParam::Region1Side)] = 1.0f;  // outside the region
         const float ducked =
@@ -1781,7 +1781,7 @@ int main() {
              {bambi::EncoderParam::MotionSpeed, bambi::EncoderParam::MotionDisplace, bambi::EncoderParam::RenderWidth,
               bambi::EncoderParam::TransformYaw, bambi::EncoderParam::TransformPitch,
               bambi::EncoderParam::TransformRoll, bambi::EncoderParam::TransformExtent,
-              bambi::EncoderParam::TransformYawRate, bambi::EncoderParam::RenderGain, bambi::EncoderParam::InputTrim})
+              bambi::EncoderParam::TransformYawRate, bambi::EncoderParam::OutputGain, bambi::EncoderParam::InputTrim})
             many.matrix.push_back({bambi::MatrixTab::Features, column++ % bambi::kSourcesPerTab, target, 0.5});
         const std::string patch = bambi::saveState(bambi::Product::Encoder, bambi::encodeParams(), many);
 
@@ -2595,7 +2595,7 @@ int main() {
             /*  The page follows the kind, which is the whole reason kind is state and not a
                 parameter: a band's elevation is not a spot's anything. */
             shell->chooseRegionKind(static_cast<int>(bambi::RegionKind::Band));
-            check(shell->drawnSomewhere(bambi::parameterByKey("region1.band_elevation")),
+            check(shell->drawnSomewhere(bambi::parameterByKey("region1.band_el")),
                   "and changing the kind to band puts the band's elevation on it");
 
             //  ---- stepping reaches it ---------------------------------------------------------
@@ -2804,6 +2804,10 @@ int main() {
         c.reset();
         bambi::LinkBus::unlinkSession(session);
     }
+
+    bambi::editor::checkBypass<BambiEncoderProcessor>(
+        layout(Set::mono(), Set::disabled(), Set::ambisonic(3)), "its input unplaced, in W alone",
+        [](int c, juce::int64 at) { return c == 0 ? bambi::editor::fieldSample(0, at) : 0.0f; });
 
     return checkVerdict();
 }

@@ -105,7 +105,7 @@ bool BambiDecoderProcessor::clapAudioPortsConfigSelect(clap_id configId) {
 
 // ---- lifecycle -----------------------------------------------------------------------------
 
-void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) {
+void BambiDecoderProcessor::prepare(double sampleRate, int maximumExpectedSamplesPerBlock) {
     //  The committed state first and on its own: committed() takes the document's lock itself, and the work lock
     //  never nests inside it the other way round than in committing().
     const bambi::DecoderState state = document().committed().decoder;
@@ -143,7 +143,7 @@ void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpected
     gainCoefficient_ = 1.0f - std::exp(-1.0f / (0.01f * static_cast<float>(sampleRate_)));  // 10 ms
     {
         //  the level as the parameter has it, so the first block does not fade in from unity
-        const float levelDb = parameterValues()[static_cast<std::size_t>(bambi::DecoderParam::OutputLevel)];
+        const float levelDb = parameterValues()[static_cast<std::size_t>(bambi::DecoderParam::OutputGain)];
         gainNow_ = levelDb <= -60.0f ? 0.0f : juce::Decibels::decibelsToGain(levelDb);
     }
     trackerSeen_ = false;
@@ -615,7 +615,7 @@ void BambiDecoderProcessor::playOutput(Output which, bool on) {
 }
 
 bambi::DecoderReport BambiDecoderProcessor::remoteReport() const {
-    const auto* level = hostParameter(bambi::decoderParam("output.level"));
+    const auto* level = hostParameter(bambi::decoderParam("output.gain"));
     auto report = bambi::reportOf(decoderState(), getChannelCountOfBus(false, 0),
                                   level->convertFrom0to1(level->getValue()), notice_.toStdString());
     report.placeSerial = placeSerial_.load();
@@ -634,7 +634,7 @@ void BambiDecoderProcessor::remoteRequest(const bambi::DecoderRequest& request) 
         editDecoder("outputs", [next](bambi::DecoderState& s) { s = next; });
     }
     if (request.levelDb) {
-        auto* level = hostParameter(bambi::decoderParam("output.level"));
+        auto* level = hostParameter(bambi::decoderParam("output.gain"));
         level->beginChangeGesture();
         level->setValueNotifyingHost(level->convertTo0to1(static_cast<float>(*request.levelDb)));
         level->endChangeGesture();
@@ -796,7 +796,7 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     for (int c = 0; c < outChannels; ++c) buffer.clear(c, 0, n);
     //  The level glides per sample toward the parameter, a one-pole with a fixed coefficient, so the same block of
     //  audio comes out the same however the host cuts it.
-    const float levelDb = p[static_cast<std::size_t>(bambi::DecoderParam::OutputLevel)];
+    const float levelDb = p[static_cast<std::size_t>(bambi::DecoderParam::OutputGain)];
     const float gain = levelDb <= -60.0f ? 0.0f : juce::Decibels::decibelsToGain(levelDb);
     for (int i = 0; i < n; ++i) {
         gainNow_ += (gain - gainNow_) * gainCoefficient_;

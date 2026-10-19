@@ -36,6 +36,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout parameterLayout(const ParamM
                 break;
         }
     }
+    jassert(m.byKey(kBypassKey) == kNoParam);
+    layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID{kBypassKey, 1}, "bypass", false));
     return layout;
 }
 

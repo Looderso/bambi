@@ -91,6 +91,7 @@ std::string presetText(Product p, const ParamManifest& m, const PluginState& s) 
     j.erase("identity");
     j.erase("preset");
     j.erase("window");  // the session's, not the sound's
+    j.erase("bypass");
     if (const Json* params = j.find("parameters"); params != nullptr && !presetKeptKeys(p).empty()) {
         Json kept = *params;
         for (const auto key : presetKeptKeys(p)) kept.erase(key);
@@ -106,6 +107,7 @@ LoadResult loadPresetText(Product p, const ParamManifest& m, std::string_view te
     s.identity = {};
     s.preset = {};
     s.windowScale = PluginState{}.windowScale;
+    s.bypassed = false;
     out = std::move(s);
     return r;
 }
@@ -115,6 +117,7 @@ void adoptPreset(Product p, const ParamManifest& m, const PluginState& preset, c
     PluginState next = preset;
     next.identity = into.identity;
     next.windowScale = into.windowScale;
+    next.bypassed = into.bypassed;
     next.preset = ref;
     for (const auto key : presetKeptKeys(p))
         if (const int at = m.byKey(key); at != kNoParam)

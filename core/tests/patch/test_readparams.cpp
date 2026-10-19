@@ -257,7 +257,7 @@ TEST_CASE("a key a plugin does not have reads as the fallback, not as zero") {
     const ParamManifest& m = echoParams();  // has no room.decay
     const auto v = defaults(m);
     CHECK(readParam(m, v, "room.decay", 1.9) == doctest::Approx(1.9));
-    CHECK(readChoice(m, v, "quality.playing", 1) == 1);
+    CHECK(readChoice(m, v, "room.quality", 1) == 1);
     CHECK(readParam(m, v, "tap1.level", 999.0) != doctest::Approx(999.0));  // it does have this one
 
     //  and a region block a plugin lacks reads the block's own defaults, so the region is evaluable

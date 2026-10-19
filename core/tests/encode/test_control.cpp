@@ -156,7 +156,7 @@ TEST_CASE("a restart takes the motion back to zero, unless the motion continues"
 TEST_CASE("a frame carries width, gain and trim, and the encoder is told to jump or to ramp") {
     Rig r;
     r.set(EncoderParam::RenderWidth, 60.0f);
-    r.set(EncoderParam::RenderGain, -6.0f);
+    r.set(EncoderParam::OutputGain, -6.0f);
     r.set(EncoderParam::InputTrim, 3.0f);
     r.start();
     const ControlFrame f = r.run(400);
@@ -379,7 +379,7 @@ TEST_CASE("sum is one point, exactly as one encoder aims it, and the side is sil
     Rig rig;
     rig.set(EncoderParam::MotionSpeed, 90.0f);
     rig.set(EncoderParam::RenderWidth, 30.0f);
-    rig.set(EncoderParam::RenderGain, -3.0f);
+    rig.set(EncoderParam::OutputGain, -3.0f);
     Aimed two(rig);
 
     Encoder one;
@@ -503,8 +503,8 @@ TEST_CASE("a stereo input's two points each wrap and bounce on their own") {
         the end and turns both round together. */
     for (const float mode : {0.0f, 1.0f}) {  // wrap, ping-pong
         Rig r;
-        r.state.trajectory.generator = GeneratorType::Arc;
-        generatorDefaults(GeneratorType::Arc, r.state.trajectory.genParams);
+        r.state.trajectory.generator = GeneratorType::Spiral;
+        generatorDefaults(GeneratorType::Spiral, r.state.trajectory.genParams);
         r.path.build(r.state.trajectory);
         r.centre = pathCentre(r.path.points());
         REQUIRE(!r.path.closed());
@@ -561,16 +561,16 @@ TEST_CASE(
     };
     CHECK(landed(GeneratorType::Orbit, MovementMode::PingPong) ==
           doctest::Approx(0.2).epsilon(0.01));  // a loop comes round
-    CHECK(landed(GeneratorType::Arc, MovementMode::Wrap) == doctest::Approx(0.2).epsilon(0.01));
-    CHECK(landed(GeneratorType::Arc, MovementMode::PingPong) == doctest::Approx(0.8).epsilon(0.01));
-    CHECK(landed(GeneratorType::Arc, MovementMode::Once) == doctest::Approx(1.0).epsilon(0.01));
+    CHECK(landed(GeneratorType::Spiral, MovementMode::Wrap) == doctest::Approx(0.2).epsilon(0.01));
+    CHECK(landed(GeneratorType::Spiral, MovementMode::PingPong) == doctest::Approx(0.8).epsilon(0.01));
+    CHECK(landed(GeneratorType::Spiral, MovementMode::Once) == doctest::Approx(1.0).epsilon(0.01));
 }
 
 TEST_CASE("a path's settings are its keys: the same range, default and wrap as the generator's table") {
     /*  Two tables say one thing, and this holds them together. Catches: a key's range or default
         moved in one of them, two keys swapped, a whole-number setting given a key. */
     const auto& m = encodeParams();
-    for (const auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Arc,
+    for (const auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                          GeneratorType::Spiral}) {
         const auto info = generatorParams(g);
         std::array<double, kMaxGenParams> defaults{};
@@ -591,30 +591,30 @@ TEST_CASE("a path's settings are its keys: the same range, default and wrap as t
 }
 
 TEST_CASE("an LFO on a path's setting reshapes the path the source plays, step by step") {
-    /*  An arc's length swept by an LFO: the source, parked at its end, moves with it as the engine
-        sweeps the length. Catches: the path played is the one handed in, not rebuilt. */
+    /*  A polygon's radius swept by an LFO: the source, parked on its first corner, moves with it as the
+        engine sweeps the radius. Catches: the path played is the one handed in, not rebuilt. */
     Rig r;
-    r.state.trajectory.generator = GeneratorType::Arc;
-    generatorDefaults(GeneratorType::Arc, r.state.trajectory.genParams);
+    r.state.trajectory.generator = GeneratorType::Polygon;
+    generatorDefaults(GeneratorType::Polygon, r.state.trajectory.genParams);
     r.path.build(r.state.trajectory);
     r.centre = pathCentre(r.path.points());
     r.set(EncoderParam::MotionMode, static_cast<float>(MovementMode::Once));
-    r.set(EncoderParam::MotionDisplace, 1.0f);  // at the arc's far end, where its length shows most
+    r.set(EncoderParam::MotionDisplace, 1.0f);  // round to the first corner, where the radius shows whole
     r.set(EncoderParam::Lfo1Sync, 0.0f);
     r.set(EncoderParam::Lfo1Rate, 1.0f);
-    r.state.matrix.push_back({MatrixTab::Generators, 0, EncoderParam::ArcLength, 0.3});
+    r.state.matrix.push_back({MatrixTab::Generators, 0, EncoderParam::PolygonRadius, 0.3});
     r.start();
-    double lengthLo = 1e9, lengthHi = -1e9;
+    double radiusLo = 1e9, radiusHi = -1e9;
     Vec3 first{};
     double moved = 0.0;
     for (int i = 0; i < 200; ++i) {
         const auto f = r.step();
         if (i == 0) first = f.position;
         moved = std::max(moved, arc(first, f.position));
-        lengthLo = std::min(lengthLo, r.mod.destination(EncoderParam::ArcLength));
-        lengthHi = std::max(lengthHi, r.mod.destination(EncoderParam::ArcLength));
+        radiusLo = std::min(radiusLo, r.mod.destination(EncoderParam::PolygonRadius));
+        radiusHi = std::max(radiusHi, r.mod.destination(EncoderParam::PolygonRadius));
     }
-    INFO("length ran ", lengthLo, " .. ", lengthHi, "; the source moved ", moved * kRad2Deg, " degrees");
-    CHECK(lengthHi - lengthLo > 60.0);
+    INFO("radius ran ", radiusLo, " .. ", radiusHi, "; the source moved ", moved * kRad2Deg, " degrees");
+    CHECK(radiusHi - radiusLo > 40.0);
     CHECK(moved > 20.0 * kDeg2Rad);
 }

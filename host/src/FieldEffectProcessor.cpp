@@ -27,7 +27,7 @@ bool FieldEffectProcessor::isBusesLayoutSupported(const BusesLayout& layouts) co
     return fieldEffectLayoutSupported(layouts);
 }
 
-void FieldEffectProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) {
+void FieldEffectProcessor::prepare(double sampleRate, int maximumExpectedSamplesPerBlock) {
     sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
     const auto maxBlock = static_cast<std::size_t>(std::max(1, maximumExpectedSamplesPerBlock));
 

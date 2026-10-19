@@ -11,7 +11,7 @@ using namespace bambi;
  *  frozen where they are defined. */
 TEST_CASE("the decoder's own parameter keys are frozen, and its manifest holds together") {
     //  Catches: a key renamed or reordered, which would detach every saved automation lane.
-    constexpr std::array<std::string_view, 4> kOwn{"head.yaw", "head.pitch", "head.roll", "output.level"};
+    constexpr std::array<std::string_view, 4> kOwn{"head.yaw", "head.pitch", "head.roll", "output.gain"};
     const ParamManifest& m = decodeParams();
     REQUIRE(m.size() >= static_cast<int>(kOwn.size()));
     for (std::size_t i = 0; i < kOwn.size(); ++i) CHECK(m[static_cast<int>(i)].key == kOwn[i]);

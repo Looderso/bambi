@@ -44,7 +44,7 @@ namespace bambi {
   X(Render, RenderWidth,    "render.width",     "width",     "deg", Float,   0, 180,   0, nullptr) \
   X(Render, RenderWidthMin, "render.width_min", "width min", "deg", Float,   0, 180,   0, nullptr) \
   X(Render, RenderWidthMax, "render.width_max", "width max", "deg", Float,   0, 180, 120, nullptr) \
-  X(Render, RenderGain,     "render.gain",      "gain",      "dB",  Float, -60,  12,   0, nullptr) \
+  X(Render, OutputGain,     "output.gain",      "gain",      "dB",  Float, -60,  12,   0, nullptr) \
                                                                                                \
   X(Input, InputTrim, "input.trim", "input trim", "dB", Float, -24, 24, 0, nullptr)             \
                                                                                                \
@@ -150,10 +150,8 @@ namespace bambi {
   X(Transform, LissajousPhase,     "lissajous.phase",     "lissajous phase",      "deg", Float, kLissajousParams[4].min, kLissajousParams[4].max, kLissajousParams[4].def, nullptr) \
   X(Transform, WaveElAmount,       "wave.el_amount",      "wave el amount",  "deg", Float, kWaveParams[1].min, kWaveParams[1].max, kWaveParams[1].def, nullptr) \
   X(Transform, WaveElOffset,       "wave.el_offset",      "wave el offset",  "deg", Float, kWaveParams[3].min, kWaveParams[3].max, kWaveParams[3].def, nullptr) \
-  X(Transform, ArcCentreAz,        "arc.centre_az",       "arc centre az",  "deg", Float, kArcParams[0].min, kArcParams[0].max, kArcParams[0].def, nullptr) \
-  X(Transform, ArcCentreEl,        "arc.centre_el",       "arc centre el",  "deg", Float, kArcParams[1].min, kArcParams[1].max, kArcParams[1].def, nullptr) \
-  X(Transform, ArcLength,          "arc.length",          "arc length",     "deg", Float, kArcParams[2].min, kArcParams[2].max, kArcParams[2].def, nullptr) \
-  X(Transform, ArcHeading,         "arc.heading",         "arc heading",    "deg", Float, kArcParams[3].min, kArcParams[3].max, kArcParams[3].def, nullptr) \
+  X(Transform, PolygonRadius,      "polygon.radius",      "polygon radius",   "deg", Float, kPolygonParams[1].min, kPolygonParams[1].max, kPolygonParams[1].def, nullptr) \
+  X(Transform, PolygonRotation,    "polygon.rotation",    "polygon rotation", "deg", Float, kPolygonParams[2].min, kPolygonParams[2].max, kPolygonParams[2].def, nullptr) \
   X(Transform, SpiralFromEl,       "spiral.from_el",      "spiral from el",    "deg", Float, kSpiralParams[1].min, kSpiralParams[1].max, kSpiralParams[1].def, nullptr) \
   X(Transform, SpiralToEl,         "spiral.to_el",        "spiral to el",      "deg", Float, kSpiralParams[2].min, kSpiralParams[2].max, kSpiralParams[2].def, nullptr) \
   X(Transform, SpiralStartAz,      "spiral.start_az",     "spiral start az",   "deg", Float, kSpiralParams[3].min, kSpiralParams[3].max, kSpiralParams[3].def, nullptr)

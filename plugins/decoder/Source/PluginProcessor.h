@@ -67,7 +67,11 @@ public:
     const juce::String getName() const override { return JucePlugin_Name; }
     double getTailLengthSeconds() const override { return 0.0; }
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
-    void prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    void prepare(double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    /// Bypassed, the Decoder is silent: its input is a field, not something a loudspeaker plays.
+    void renderBypassed(float* const* channels, int numChannels, int, int samples) noexcept override {
+        for (int c = 0; c < numChannels; ++c) std::fill_n(channels[c], samples, 0.0f);
+    }
     juce::AudioProcessorEditor* createEditor() override;
 
     /// The remote interface a host that plays the Decoder's outputs asks for.

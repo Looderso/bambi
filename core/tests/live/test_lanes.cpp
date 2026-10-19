@@ -51,7 +51,7 @@ TEST_CASE("the lanes read back as written, and one the set cannot read is left o
     //  Catches: a field lost between the set and the host, the instance read as another, a broken lane taken.
     const std::vector<Lane> lanes{{1, Instance::Encoder, 12, "source.azimuth", {{0.0, -30.0}, {16.0, 45.0}}, 0, -1, {}},
                                   {2, Instance::Insert, 7, "mix", {}, 12, 3, "chords"},
-                                  {3, Instance::Decoder, 1, "output.level", {{4.0, -6.0}}, 0, -1, {}}};
+                                  {3, Instance::Decoder, 1, "output.gain", {{4.0, -6.0}}, 0, -1, {}}};
     CHECK(lanesFrom(Json::parse(toJson(lanes).dump(0))) == lanes);
     const auto read = lanesFrom(Json::parse(R"([{"id": 4, "instance": "mixer", "owner": 1, "param": "x"},
                                                 {"id": 5, "instance": "encoder", "owner": 1, "param": ""}])"));

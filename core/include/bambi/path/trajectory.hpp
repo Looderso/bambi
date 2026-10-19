@@ -44,7 +44,7 @@ public:
 
     double lengthRad() const { return length_; }
     bool closed() const { return closed_; }
-    bool empty() const { return lut_.size() < 2; }
+    bool empty() const { return lut_.empty(); }  ///< a path of one point, standing still, is not empty
 
     /// The dense table itself, for drawing and nearest-point search.
     const std::vector<Vec3>& points() const { return lut_; }

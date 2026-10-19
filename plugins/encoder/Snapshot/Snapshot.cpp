@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
         {"kick", bambi::GeneratorType::Orbit, 40.0f, -40.0f, 10.0f, 0.0f, 2.2},
         {"rhodes", bambi::GeneratorType::Lissajous, 90.0f, 0.0f, 0.0f, 25.0f, 3.1},
         {"pad wide", bambi::GeneratorType::Wave, 20.0f, 140.0f, -10.0f, 0.0f, 1.7},
-        {"vox lead", bambi::GeneratorType::Arc, 60.0f, 10.0f, 30.0f, -12.0f, 2.6},
+        {"vox lead", bambi::GeneratorType::Polygon, 60.0f, 10.0f, 30.0f, -12.0f, 2.6},
         {"shaker", bambi::GeneratorType::Spiral, 120.0f, -120.0f, 0.0f, 0.0f, 1.3},
     };
 

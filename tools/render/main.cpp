@@ -56,7 +56,7 @@ void usage() {
 options
   --preset FILE        load plugin state (JSON) as the starting point
   --order N            ambisonic order, 0..max          (default 3)
-  --generator NAME     orbit | lissajous | wave | arc | spiral
+  --generator NAME     orbit | lissajous | wave | polygon | spiral
   --speed DEG_PER_SEC  angular velocity along the path  (default 90)
   --width DEG          source width, 0..180             (default 0)
   --gain DB            output gain                      (default 0)
@@ -97,7 +97,7 @@ GeneratorType generatorByName(const std::string& n, bool& ok) {
     if (n == "orbit") return GeneratorType::Orbit;
     if (n == "lissajous") return GeneratorType::Lissajous;
     if (n == "wave") return GeneratorType::Wave;
-    if (n == "arc") return GeneratorType::Arc;
+    if (n == "polygon") return GeneratorType::Polygon;
     if (n == "spiral") return GeneratorType::Spiral;
     ok = false;
     return GeneratorType::Lissajous;
@@ -364,17 +364,18 @@ int main(int argc, char** argv) {
             generatorDefaults(generator, traj.genParams);
         }
         for (const auto& [key, value] : sets) {
-            const auto names = generatorParamNames(traj.generator);
+            const auto settings = bambi::generatorParams(traj.generator);
             bool found = false;
-            for (std::size_t i = 0; i < names.size(); ++i)
-                if (names[i] == key) {
+            for (std::size_t i = 0; i < settings.size(); ++i)
+                if (settings[i].name == key) {
                     traj.genParams[i] = value;
                     found = true;
                 }
             if (!found) {
                 std::fprintf(stderr, "generator '%.*s' has no parameter '%s'; it has:",
                              static_cast<int>(name(traj.generator).size()), name(traj.generator).data(), key.c_str());
-                for (auto nm : names) std::fprintf(stderr, " %.*s", static_cast<int>(nm.size()), nm.data());
+                for (const auto& s : settings)
+                    std::fprintf(stderr, " %.*s", static_cast<int>(s.name.size()), s.name.data());
                 std::fprintf(stderr, "\n");
                 return 2;
             }
@@ -454,7 +455,7 @@ int main(int argc, char** argv) {
      *  quietly disagree with it. */
     state.params[static_cast<std::size_t>(EncoderParam::MotionSpeed)] = static_cast<float>(speedDeg);
     state.params[static_cast<std::size_t>(EncoderParam::RenderWidth)] = static_cast<float>(widthDeg);
-    state.params[static_cast<std::size_t>(EncoderParam::RenderGain)] = static_cast<float>(gainDb);
+    state.params[static_cast<std::size_t>(EncoderParam::OutputGain)] = static_cast<float>(gainDb);
     state.params[static_cast<std::size_t>(EncoderParam::MotionMode)] = static_cast<float>(static_cast<int>(mode));
     //  A path's continuous settings are parameters: the shape's defaults and any --set go there, as a
     //  preset's already are; a --param of one of them, below, wins.
@@ -558,7 +559,7 @@ int main(int argc, char** argv) {
                              "%.6f,%.4f,%.4f",
                              static_cast<double>(pos) / sr, f[0], f[1], f[2], f[3], f[4], f[5],
                              mod.destination(EncoderParam::MotionSpeed), mod.destination(EncoderParam::MotionDisplace),
-                             mod.destination(EncoderParam::RenderWidth), mod.destination(EncoderParam::RenderGain),
+                             mod.destination(EncoderParam::RenderWidth), mod.destination(EncoderParam::OutputGain),
                              mod.destination(EncoderParam::TransformYaw), mod.destination(EncoderParam::TransformPitch),
                              mod.destination(EncoderParam::TransformRoll),
                              mod.destination(EncoderParam::TransformExtent), s01, azimuth(p) * kRad2Deg,

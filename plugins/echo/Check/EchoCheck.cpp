@@ -81,7 +81,7 @@ using PlayingHead = bambi::host::TestPlayHead;
 Channels render(const Layout& l, int block, double seconds, const std::string& state = {}, juce::int64 locateAt = -1,
                 juce::int64 locateTo = 0, juce::int64 startAt = 0, const bambi::PluginState* patch = nullptr) {
     const auto setUp = [](Processor& p) {
-        setParameter(p, "tap1.ms", 120.0f);
+        setParameter(p, "tap1.time", 120.0f);
         setParameter(p, "tap1.feedback", -6.0f);
         setParameter(p, "tap1.spin", 40.0f);
         setParameter(p, "tap1.synced", 0.0f);
@@ -99,7 +99,7 @@ bambi::editor::EffectCheckSpec<Processor> effectSpec() {
     spec.render = [](const Layout& l, int block, double seconds, const bambi::editor::RenderRun& run) {
         return render(l, block, seconds, run.state, run.locateAt, run.locateTo, run.startAt, run.patch);
     };
-    spec.stateKey = "tap2.ms";
+    spec.stateKey = "tap2.time";
     spec.stateValue = 313.0f;
     spec.stateTolerance = 0.5f;
     spec.stateSetUp = [](Processor& p) { setParameter(p, "tap2.on", 1.0f); };
@@ -138,6 +138,10 @@ int main(int argc, char** argv) {
     bambi::editor::checkEffectLinkBus(spec);
 
     bambi::editor::checkDecoderOverlay<Processor, BambiEchoEditor>(spec);
+
+    bambi::editor::checkBypass<Processor>(bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)),
+                                          "the field as it arrived",
+                                          [](int c, juce::int64 at) { return bambi::editor::fieldSample(c, at); });
 
     std::printf("\nthe shared parameter page\n");
     {
@@ -452,8 +456,8 @@ int main(int argc, char** argv) {
         //  one tap, free, a tenth of a second, no feedback to speak of
         set("tap1.on", 1.0f);
         set("tap1.synced", 0.0f);
-        set("tap1.ms", 100.0f);
-        set("tap1.offset_ms", 0.0f);
+        set("tap1.time", 100.0f);
+        set("tap1.offset", 0.0f);
         set("tap1.feedback", -12.0f);
         auto content = bambi::ui::stripContent(patch, 120.0, kRate, 3);
         check(content.taps[0].on && !content.taps[0].passes.empty(),
@@ -470,7 +474,7 @@ int main(int argc, char** argv) {
         /*  The stop is three stops, and each is asserted by the count it produces, not by a
             bound the others already satisfy. */
         const auto countWith = [&](float ms, float feedbackDb) {
-            set("tap1.ms", ms);
+            set("tap1.time", ms);
             set("tap1.feedback", feedbackDb);
             return bambi::ui::stripContent(patch, 120.0, kRate, 3).taps[0].passes.size();
         };
@@ -480,25 +484,25 @@ int main(int argc, char** argv) {
         check(countWith(900.0f, -0.3f) == 4, "four seconds stops it too (4 passes at 900 ms)");
         //  20 ms and barely any fall: neither of those bites, so the 32-pass cap is what does.
         check(countWith(20.0f, -0.3f) == 32, "and failing both, the walk caps at 32 passes");
-        set("tap1.ms", 100.0f);
+        set("tap1.time", 100.0f);
         set("tap1.feedback", -12.0f);
 
         /*  The span follows the longest enabled tap, rounded up to a whole beat. Checked at a span
             that is not already a whole beat: 300 ms a pass, four passes, is 1.2 s, which at 120 bpm
             rounds up to 1.5. A span that happened to be a beat already would pass without rounding. */
-        set("tap1.ms", 300.0f);
+        set("tap1.time", 300.0f);
         const auto rounded = bambi::ui::stripContent(patch, 120.0, kRate, 3);
         check(rounded.taps[0].passes.size() == 4 && std::abs(rounded.taps[0].passes.back().seconds - 1.2) < 0.01,
               "the longest pass lands at 1.2 s");
         check(
             std::abs(rounded.spanSeconds - 1.5) < 1e-6,
             "and the span rounds it up to a whole beat: 1.5 s, not 1.2 (" + juce::String(rounded.spanSeconds, 3) + ")");
-        set("tap1.ms", 100.0f);
+        set("tap1.time", 100.0f);
         content = bambi::ui::stripContent(patch, 120.0, kRate, 3);
 
         set("tap2.on", 1.0f);
         set("tap2.synced", 0.0f);
-        set("tap2.ms", 900.0f);
+        set("tap2.time", 900.0f);
         set("tap2.feedback", -3.0f);
         const auto longer = bambi::ui::stripContent(patch, 120.0, kRate, 3);
         check(longer.spanSeconds > content.spanSeconds, "a longer tap lengthens the shared axis (" +

@@ -39,12 +39,12 @@ constexpr EchoTapSettings echoTapDefaults(std::string_view tap) {
     t.timing.steps = static_cast<int>(def(".steps"));
     t.timing.offsetSteps = static_cast<int>(def(".offset_steps"));
     t.timing.swing = def(".swing");
-    t.timing.ms = def(".ms");
-    t.timing.offsetMs = def(".offset_ms");
+    t.timing.ms = def(".time");
+    t.timing.offsetMs = def(".offset");
     t.levelDb = def(".level");
     t.feedbackDb = def(".feedback");
-    t.axisAzimuthDeg = def(".az");
-    t.axisElevationDeg = def(".el");
+    t.axisAzimuthDeg = def(".axis_az");
+    t.axisElevationDeg = def(".axis_el");
     t.spinDeg = def(".spin");
     t.skew = def(".skew");
     t.blurDeg = def(".blur");

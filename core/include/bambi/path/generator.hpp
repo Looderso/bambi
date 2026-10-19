@@ -19,6 +19,9 @@ Vec3 generatorAt(GeneratorType g, double u, std::span<const double> genParams);
 /// Whether the generator's path closes on itself.
 bool generatorIsClosed(GeneratorType g);
 
+/// How many sharp corners the path has, evenly spaced in u from u = 0; 1 for a path without.
+int generatorCorners(GeneratorType g, std::span<const double> genParams);
+
 /*  A generator's settings: the name the state saves each under, a lowercase label, "deg" or no unit,
  *  range, step and default. The one statement of them: the encoder's path parameters read their ranges
  *  and defaults from here. */
@@ -45,10 +48,10 @@ inline constexpr std::array<GeneratorParam, 4> kWaveParams{{{"turns", "turns", "
                                                             {"el_amount", "el amount", "deg", 0, 85, 1, 35},
                                                             {"wobbles", "wobbles", "", 1, 9, 1, 3},
                                                             {"el_offset", "el offset", "deg", -60, 60, 1, 0}}};
-inline constexpr std::array<GeneratorParam, 4> kArcParams{{{"centre_az", "centre az", "deg", -180, 180, 1, 0, true},
-                                                           {"centre_el", "centre el", "deg", -89, 89, 1, 0},
-                                                           {"length", "length", "deg", 5, 340, 1, 90},
-                                                           {"heading", "heading", "deg", 0, 360, 1, 0, true}}};
+/// A regular polygon around the front, its corners `radius` from it: one side is a point at the front, two a line there and back.
+inline constexpr std::array<GeneratorParam, 3> kPolygonParams{{{"sides", "sides", "", 1, 8, 1, 3},
+                                                               {"radius", "radius", "deg", 1, 90, 1, 45},
+                                                               {"rotation", "rotation", "deg", 0, 360, 1, 0, true}}};
 inline constexpr std::array<GeneratorParam, 4> kSpiralParams{{{"turns", "turns", "", 1, 6, 1, 2},
                                                               {"from_el", "from el", "deg", -89, 89, 1, 80},
                                                               {"to_el", "to el", "deg", -89, 89, 1, -80},
@@ -59,7 +62,7 @@ constexpr std::span<const GeneratorParam> generatorParams(GeneratorType g) {
         case GeneratorType::Orbit: return kOrbitParams;
         case GeneratorType::Lissajous: return kLissajousParams;
         case GeneratorType::Wave: return kWaveParams;
-        case GeneratorType::Arc: return kArcParams;
+        case GeneratorType::Polygon: return kPolygonParams;
         case GeneratorType::Spiral: return kSpiralParams;
     }
     return {};
