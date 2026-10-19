@@ -706,7 +706,7 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
 
     //  The field, copied out before the outputs are written: on an in-place host they share the buffer.
     const int C = bambi::numChannels(engineOrder_);
-    field_.read(buffer, 0, n);
+    field_.read(bambi::host::busChannels(*this, buffer, true, 0), 0, n);
     float inPeak = 0.0f;
     for (int c = 0; c < std::min(inChannels, C); ++c) inPeak = std::max(inPeak, buffer.getMagnitude(c, 0, n));
     diag_.inputPeak.store(inPeak, std::memory_order_relaxed);

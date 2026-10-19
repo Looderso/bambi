@@ -7,6 +7,7 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "bambi/decode/layouts.hpp"
+#include "bambi/editor/AllocationCheck.h"
 #include "bambi/editor/CheckKit.h"
 #include "bambi/host/LinkNode.h"
 #include "bambi/link/link.hpp"
@@ -880,6 +881,10 @@ int main() {
               "on headphones alone it publishes no layout and no loudspeaker flag");
         bambi::LinkBus::unlinkSession(dec.identity().session);
     }
+
+    std::printf("\nthe audio thread allocates nothing, on a bus of 36 or 64 channels\n");
+    bambi::editor::checkBlocksAllocateNothing<BambiDecoderProcessor>(busIn(36, 2), "36 in, headphones out");
+    bambi::editor::checkBlocksAllocateNothing<BambiDecoderProcessor>(busIn(64, 64), "64 in, 64 out");
 
     bambi::editor::checkBypass<BambiDecoderProcessor>(busIn(16, 2), "silence", [](int, juce::int64) { return 0.0f; });
 
