@@ -481,9 +481,8 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
 
     if (const Json* srcs = j.find("sources"); srcs != nullptr && srcs->isObject()) {
         for (const auto& kv : srcs->members()) {
-            const int idx = slotNumber(kv.first) >= 0 && slotNumber(kv.first) < kNumSources
-                                ? static_cast<int>(slotNumber(kv.first))  // a document from before sources had names
-                                : sourceNamed(kv.first);
+            const long number = slotNumber(kv.first);  // a document from before sources had names
+            const int idx = number >= 0 && number < kNumSources ? static_cast<int>(number) : sourceNamed(kv.first);
             if (idx < 0) continue;  // a source this build lacks: ignore
             auto& slot = s.sources[static_cast<std::size_t>(idx)];
             if (const Json* v = kv.second.find("input"))
