@@ -365,10 +365,10 @@ private:
 
     static juce::String nameOf(View v) {
         switch (v) {
-            case View::Encoder: return ui::productName(Product::Encoder);
-            case View::Echo: return ui::productName(Product::Echo);
-            case View::Reverb: return ui::productName(Product::Reverb);
-            case View::Decoder: return ui::productName(Product::Decoder);
+            case View::Encoder: return bambi::ui::productName(bambi::Product::Encoder);
+            case View::Echo: return bambi::ui::productName(bambi::Product::Echo);
+            case View::Reverb: return bambi::ui::productName(bambi::Product::Reverb);
+            case View::Decoder: return bambi::ui::productName(bambi::Product::Decoder);
             case View::Routing: return "routing";
             case View::Timeline: return "timeline";
             case View::Audio: return "audio";
