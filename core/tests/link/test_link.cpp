@@ -5,6 +5,7 @@
 //  scene. So both seqlocks are tested with real threads and self-checking payloads rather
 //  than by inspection. What only separate processes can show lives in tools/link-test.sh.
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>

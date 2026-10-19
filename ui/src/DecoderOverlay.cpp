@@ -109,8 +109,8 @@ std::vector<OverlayRow> decoderRows(const LinkScene& scene) {
     return rows;
 }
 
-DecoderOverlayDrawn paintDecoderOverlay(juce::Graphics& g, Projection projection, const Camera& camera, const Viewport& vp,
-                         const LinkScene& scene, const OverlayMenu& menu) {
+DecoderOverlayDrawn paintDecoderOverlay(juce::Graphics& g, Projection projection, const Camera& camera,
+                                        const Viewport& vp, const LinkScene& scene, const OverlayMenu& menu) {
     DecoderOverlayDrawn drawn;
     std::vector<SceneSpeaker> speakers;
     for (const auto& entry : scene.entries()) {

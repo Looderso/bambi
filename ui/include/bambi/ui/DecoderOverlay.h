@@ -50,7 +50,7 @@ struct DecoderOverlayDrawn {
 };
 
 /// Every ticked Decoder's loudspeakers, while it plays them, and its head, while it plays headphones, in the room's frame.
-DecoderOverlayDrawn paintDecoderOverlay(juce::Graphics& g, Projection projection, const Camera& camera, const Viewport& vp,
-                         const LinkScene& scene, const OverlayMenu& menu);
+DecoderOverlayDrawn paintDecoderOverlay(juce::Graphics& g, Projection projection, const Camera& camera,
+                                        const Viewport& vp, const LinkScene& scene, const OverlayMenu& menu);
 
 }  // namespace bambi::ui

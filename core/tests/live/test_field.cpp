@@ -2,6 +2,7 @@
 //
 //  Which of a Live set's tracks and groups the field takes, and as what.
 
+#include <algorithm>
 #include <random>
 #include <string>
 
