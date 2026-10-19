@@ -180,6 +180,7 @@ add_executable(bambi-tests
   tests/patch/test_json.cpp
   tests/patch/test_blocks.cpp
   tests/patch/test_parameters.cpp
+  tests/patch/test_frozen.cpp
   tests/patch/test_presets.cpp
   tests/patch/test_readparams.cpp
   tests/patch/test_noalloc.cpp

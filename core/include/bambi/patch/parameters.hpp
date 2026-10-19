@@ -10,9 +10,10 @@ namespace bambi {
 /*  A parameter list is a plugin's own; this file holds the shape of a manifest and the machinery
  *  that reads one, so shared code works over any plugin's list without naming it.
  *
- *  Hosts persist automation against the parameter key, so once released a key can never be
- *  renamed or removed, only appended to. Display names, ranges and defaults may still change.
- *  Enforced by test_parameters.cpp against a frozen golden list.
+ *  Hosts persist automation against the parameter key, as a position from 0 to 1, so once
+ *  released a key can never be renamed or removed, only appended to, and its type, range, skew
+ *  and number of choices never change. Display names, units and defaults may. Enforced by
+ *  test_frozen.cpp against tests/patch/frozen-parameters.txt.
  */
 enum class ParamType : std::uint8_t { Float, Choice, Bool };
 
