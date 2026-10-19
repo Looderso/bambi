@@ -2,7 +2,6 @@
 #pragma once
 
 #include <cstdio>
-
 #include <juce_core/juce_core.h>
 
 namespace bambi::host {
