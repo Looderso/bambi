@@ -258,7 +258,4 @@ std::string_view name(RegionKind v);
 std::string_view name(RegionSide v);
 std::string_view name(RenderQuality v);
 
-/// Parameter names for a generator, in order. Serialised by NAME, never by index.
-std::span<const std::string_view> generatorParamNames(GeneratorType g);
-
 }  // namespace bambi

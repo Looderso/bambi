@@ -224,8 +224,8 @@ TEST_CASE("every generator declares no more names than the array can hold") {
     for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                    GeneratorType::Spiral}) {
         INFO(std::string(name(g)));
-        CHECK(generatorParamNames(g).size() <= kMaxGenParams);
-        CHECK_FALSE(generatorParamNames(g).empty());
+        CHECK(generatorParams(g).size() <= kMaxGenParams);
+        CHECK_FALSE(generatorParams(g).empty());
     }
 }
 

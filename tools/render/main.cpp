@@ -364,17 +364,18 @@ int main(int argc, char** argv) {
             generatorDefaults(generator, traj.genParams);
         }
         for (const auto& [key, value] : sets) {
-            const auto names = generatorParamNames(traj.generator);
+            const auto settings = bambi::generatorParams(traj.generator);
             bool found = false;
-            for (std::size_t i = 0; i < names.size(); ++i)
-                if (names[i] == key) {
+            for (std::size_t i = 0; i < settings.size(); ++i)
+                if (settings[i].name == key) {
                     traj.genParams[i] = value;
                     found = true;
                 }
             if (!found) {
                 std::fprintf(stderr, "generator '%.*s' has no parameter '%s'; it has:",
                              static_cast<int>(name(traj.generator).size()), name(traj.generator).data(), key.c_str());
-                for (auto nm : names) std::fprintf(stderr, " %.*s", static_cast<int>(nm.size()), nm.data());
+                for (const auto& s : settings)
+                    std::fprintf(stderr, " %.*s", static_cast<int>(s.name.size()), s.name.data());
                 std::fprintf(stderr, "\n");
                 return 2;
             }

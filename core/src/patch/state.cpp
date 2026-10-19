@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "bambi/path/authoring.hpp"
+#include "bambi/path/generator.hpp"
 #include "bambi/path/trajectory.hpp"
 
 namespace bambi {
@@ -44,12 +45,6 @@ constexpr std::array<std::string_view, 7> kRegionKindNames{"everywhere", "spot",
                                                            "dots",       "clouds", "custom"};
 constexpr std::array<std::string_view, 2> kRegionSideNames{"inside", "outside"};
 constexpr std::array<std::string_view, 2> kRenderQualityNames{"same", "realistic"};
-
-constexpr std::array<std::string_view, 3> kOrbitParams{"tilt", "spin", "aperture"};
-constexpr std::array<std::string_view, 5> kLissParams{"az_amount", "el_amount", "az_ratio", "el_ratio", "phase"};
-constexpr std::array<std::string_view, 4> kWaveParams{"turns", "el_amount", "wobbles", "el_offset"};
-constexpr std::array<std::string_view, 3> kPolygonParams{"sides", "radius", "rotation"};
-constexpr std::array<std::string_view, 4> kSpiralParams{"turns", "from_el", "to_el", "start_az"};
 
 Json vecToJson(Vec3 v) {
     Json a = Json::array();
@@ -91,17 +86,6 @@ std::string_view name(TriggerGate v) { return kTriggerGateNames[static_cast<std:
 std::string_view name(RegionKind v) { return kRegionKindNames[static_cast<std::size_t>(v)]; }
 std::string_view name(RegionSide v) { return kRegionSideNames[static_cast<std::size_t>(v)]; }
 std::string_view name(RenderQuality v) { return kRenderQualityNames[static_cast<std::size_t>(v)]; }
-
-std::span<const std::string_view> generatorParamNames(GeneratorType g) {
-    switch (g) {
-        case GeneratorType::Orbit: return kOrbitParams;
-        case GeneratorType::Lissajous: return kLissParams;
-        case GeneratorType::Wave: return kWaveParams;
-        case GeneratorType::Polygon: return kPolygonParams;
-        case GeneratorType::Spiral: return kSpiralParams;
-    }
-    return {};
-}
 
 EnvTrigger EnvTrigger::defaults(int index) {
     //  General MIDI drum map: C1 kick, D1 snare, F#1 closed hi-hat.
@@ -150,9 +134,9 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         traj.set("generator", Json{name(s.trajectory.generator)});
 
         Json gp = Json::object();  // by NAME, so a generator can gain a parameter safely
-        const auto names = generatorParamNames(s.trajectory.generator);
-        for (std::size_t i = 0; i < names.size() && i < kMaxGenParams; ++i)
-            gp.set(names[i], Json{s.trajectory.genParams[i]});
+        const auto settings = generatorParams(s.trajectory.generator);
+        for (std::size_t i = 0; i < settings.size() && i < kMaxGenParams; ++i)
+            gp.set(settings[i].name, Json{s.trajectory.genParams[i]});
         traj.set("gen_params", gp);
 
         Json nodes = Json::array();
@@ -412,9 +396,9 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
             s.trajectory.generator = parseEnum(v->stringOr(""), kGenNames, GeneratorType::Orbit);
 
         if (const Json* gp = t->find("gen_params"); gp != nullptr && gp->isObject()) {
-            const auto names = generatorParamNames(s.trajectory.generator);
-            for (std::size_t i = 0; i < names.size() && i < kMaxGenParams; ++i)
-                if (const Json* v = gp->find(names[i])) s.trajectory.genParams[i] = v->numberOr(0);
+            const auto settings = generatorParams(s.trajectory.generator);
+            for (std::size_t i = 0; i < settings.size() && i < kMaxGenParams; ++i)
+                if (const Json* v = gp->find(settings[i].name)) s.trajectory.genParams[i] = v->numberOr(0);
         }
 
         if (const Json* nodes = t->find("nodes"); nodes != nullptr && nodes->isArray()) {
