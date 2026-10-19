@@ -129,7 +129,7 @@ juce::String Header::getTooltip() {
 }
 
 void Header::setStatus(Link status) {
-    const bool same = status.open == status_.open && status.session == status_.session && status.peers == status_.peers;
+    const bool same = status.open == status_.open;  // the session and its peers are shown in settings, not here
     status_ = status;
     if (!same) repaint();
 }
@@ -256,10 +256,8 @@ void Header::paint(juce::Graphics& g) {
     g.strokePath(settingsGlyph(), glyphStroke, juce::AffineTransform::translation(gear.getX(), gear.getY()));
     auto right = gear.getX() - hdr::gap;
 
-    const auto linkText = status_.open ? "link " + juce::String::fromUTF8("\xc2\xb7") + " session " +
-                                             status_.session.substring(0, 4) + " " +
-                                             juce::String::fromUTF8("\xc2\xb7") + " " + juce::String(status_.peers)
-                                       : "link " + juce::String::fromUTF8("\xc2\xb7") + " not joined";
+    //  Whether this instance is on the link, and no more: the session it is in is chosen and shown in settings.
+    const juce::String linkText = "link";
     const auto linkWidth = textWidth(labelFont(), linkText) + 2.0f;
     right -= linkWidth;
     text(g, linkText, labelFont(), colour::label, {right, 0.0f, linkWidth, h});

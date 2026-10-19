@@ -163,7 +163,7 @@ public:
 
     void resized() override {
         auto area = getLocalBounds();
-        rail_.setBounds(area.removeFromLeft(bambi::ui::theme::rail::width));
+        rail_.setBounds(area.removeFromLeft(bambi::livehost::Rail::width()));
         if (editor_ != nullptr) editor_->setBounds(area.withSize(editor_->getWidth(), editor_->getHeight()));
         routing_.setBounds(area);
         timeline_.setBounds(area);
@@ -394,7 +394,7 @@ private:
         }
         const int w = editor_ != nullptr ? editor_->getWidth() : bambi::ui::theme::metrics::windowWidth;
         const int h = editor_ != nullptr ? editor_->getHeight() : bambi::ui::theme::metrics::windowHeight;
-        setSize(bambi::ui::theme::rail::width + w, h);
+        setSize(bambi::livehost::Rail::width() + w, h);
         resized();
         update();
     }

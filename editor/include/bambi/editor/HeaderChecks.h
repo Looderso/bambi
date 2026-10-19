@@ -72,6 +72,14 @@ void checkHeaderHoldsStill(Product product) {
     paintHeader({longName, true, false, true});
     check(header.presetStepArea(false).getX() > header.productArea().getRight(),
           "at the narrowest window the preset cluster clears the plugin's name");
+
+    //  The browser opens over the right-hand panel, under the preset's name: the whole cluster stands over it.
+    ed->setSize(ui::theme::metrics::windowWidth, ui::theme::metrics::windowHeight);
+    paintHeader({longName, true, false, true});
+    //  Catches: a header whose right side grows (a longer link status, a wider name box) and pushes the preset
+    //  cluster left past the panel, so the browser opens somewhere else than under it.
+    check(header.presetStepArea(false).getX() >= static_cast<float>(ui::theme::metrics::leftColumn + 1),
+          "the preset cluster stands over the panel its browser opens on");
 }
 
 }  // namespace bambi::editor

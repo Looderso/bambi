@@ -509,7 +509,6 @@ namespace sheet
 // ---- the live host's column, left of the plugin it shows ---------------------------------------
 namespace rail
 {
-    inline constexpr int   width  = 72;     ///< "decoder" and "routing" at label size, with the padding
     inline constexpr float padX   = 10.0f;  ///< a label's inset from the column's edges
     inline constexpr float row    = 24.0f;  ///< one view's label, and one line of the status
     inline constexpr float top    = 12.0f;  ///< from the plugin's header line to the first view

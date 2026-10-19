@@ -101,14 +101,16 @@ Fixture fixture() {
     a.loopLength = 32.0;
     a.readMs = 4.0;
     a.scenes = 4;
-    a.session = {{kKick, {{0, "Kick A", "#e0b552", 0.0, 4.0, true, false}, {2, "Fill", "#e0b552", 0.0, 8.0, true, false}}},
-                 {kHats, {{0, "Hats", "#e0b552", 0.0, 4.0, true, false}, {1, "Hats open", "#e0b552", 0.0, 8.0, true, false}}},
-                 {kBass, {{1, "Bass B", "#c05a4a", 0.0, 16.0, true, true}, {2, "Bass C", "#c05a4a", 0.0, 16.0, true, true}}},
-                 {kVox, {{3, "Ad libs", "#7fb069", 0.0, 32.0, false, false}}}};
+    a.session = {
+        {kKick, {{0, "Kick A", "#e0b552", 0.0, 4.0, true, false}, {2, "Fill", "#e0b552", 0.0, 8.0, true, false}}},
+        {kHats, {{0, "Hats", "#e0b552", 0.0, 4.0, true, false}, {1, "Hats open", "#e0b552", 0.0, 8.0, true, false}}},
+        {kBass, {{1, "Bass B", "#c05a4a", 0.0, 16.0, true, true}, {2, "Bass C", "#c05a4a", 0.0, 16.0, true, true}}},
+        {kVox, {{3, "Ad libs", "#7fb069", 0.0, 32.0, false, false}}}};
 
-    f.lanes = {{1, live::Instance::Encoder, kVox, "transform.yaw", {{32.0, -90.0}, {64.0, 90.0}, {88.0, 0.0}}, 0, -1, {}},
-               {2, live::Instance::Insert, kVoxEcho, "output.wet", {{32.0, 0.2}, {96.0, 0.2}, {128.0, 0.6}}, 0, -1, {}},
-               {3, live::Instance::Decoder, kSpeakers, "output.gain", {{0.0, -12.0}, {32.0, 0.0}}, 0, -1, {}}};
+    f.lanes = {
+        {1, live::Instance::Encoder, kVox, "transform.yaw", {{32.0, -90.0}, {64.0, 90.0}, {88.0, 0.0}}, 0, -1, {}},
+        {2, live::Instance::Insert, kVoxEcho, "output.wet", {{32.0, 0.2}, {96.0, 0.2}, {128.0, 0.6}}, 0, -1, {}},
+        {3, live::Instance::Decoder, kSpeakers, "output.gain", {{0.0, -12.0}, {32.0, 0.0}}, 0, -1, {}}};
 
     DecoderReport headphones, speakers;
     headphones.bus = 64;
@@ -148,7 +150,7 @@ public:
     void paint(juce::Graphics& g) override { g.fillAll(ui::theme::colour::ground); }
     void resized() override {
         auto area = getLocalBounds();
-        rail.setBounds(area.removeFromLeft(ui::theme::rail::width));
+        rail.setBounds(area.removeFromLeft(livehost::Rail::width()));
         routing.setBounds(area);
         timeline.setBounds(area);
         sheet.setBounds(getLocalBounds());
@@ -185,12 +187,12 @@ int main(int argc, char** argv) {
     window.addChildComponent(window.routing);
     window.addChildComponent(window.timeline);
     window.addChildComponent(window.sheet);
-    window.setSize(ui::theme::rail::width + ui::theme::metrics::windowWidth, ui::theme::metrics::windowHeight);
+    window.setSize(livehost::Rail::width() + ui::theme::metrics::windowWidth, ui::theme::metrics::windowHeight);
 
     //  the column as the host fills it with every kind of plugin playing: the plugins, a gap, the pages, a gap,
     //  the sheet
-    const std::vector<juce::String> labels{"encoder", "echo", "reverb", "decoder", {}, "routing", "timeline", {},
-                                           "audio"};
+    const std::vector<juce::String> labels{"encoder", "echo",     "reverb", "decoder", {},
+                                           "routing", "timeline", {},       "audio"};
     const juce::String open = tab ? "audio" : timeline ? "timeline" : "routing";
     const auto at = std::find(labels.begin(), labels.end(), open) - labels.begin();
     jassert(at < static_cast<std::ptrdiff_t>(labels.size()));

@@ -24,6 +24,8 @@ public:
     /// The views, the open one, what a click on one does. A label after an empty one stands apart from those
     /// before it.
     void setViews(std::vector<juce::String> labels, int open, std::function<void(int)> select);
+    /// The column's width: its widest possible view name, every plugin's and the host's own pages, with its padding.
+    static int width();
     void setStatus(Status status);
 
     void paint(juce::Graphics& g) override;
