@@ -10,13 +10,23 @@
 #include "bambi/host/TestPlayHead.h"
 #include "bambi/math/sh.hpp"
 
-/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers | --energy]
+/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers | --energy] [--scale N]
  *  The default shows the headphones page with the array's 7.1.4 layout loaded and a source moving; --speakers
  *  opens the speakers page, which draws the hull, and plays the layout; --loudspeakers opens its table too;
  *  --energy switches the energy picture on. */
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/decoder.png";
+    /*  --scale N, anywhere after the output file: the picture's pixels per window point, 2 unless
+        asked. Taken out of argv, so the options after it read as they would without it. */
+    float scale = 2.0f;
+    for (int i = 2; i + 1 < argc; ++i)
+        if (juce::String(argv[i]) == "--scale") {
+            scale = juce::String(argv[i + 1]).getFloatValue();
+            for (int j = i; j + 2 < argc; ++j) argv[j] = argv[j + 2];
+            argc -= 2;
+            break;
+        }
     const bool table = argc > 2 && juce::String(argv[2]) == "--loudspeakers";
     const bool energy = argc > 2 && juce::String(argv[2]) == "--energy";
     const bool speakers = table || (argc > 2 && juce::String(argv[2]) == "--speakers");
@@ -62,8 +72,10 @@ int main(int argc, char** argv) {
     if (table) dec->openTemp(bambi::ui::TempTab::Loudspeakers);
     dec->tick();
     dec->paintNow();
-    juce::Image image(juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
+    juce::Image image(juce::Image::ARGB, juce::roundToInt(editor->getWidth() * scale),
+                      juce::roundToInt(editor->getHeight() * scale), true);
     juce::Graphics g(image);
+    g.addTransform(juce::AffineTransform::scale(scale));
     editor->paintEntireComponent(g, true);
     juce::File(out).deleteFile();
     juce::FileOutputStream stream{juce::File(out)};
