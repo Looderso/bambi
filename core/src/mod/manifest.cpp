@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <string>
 
+#include "bambi/patch/state.hpp"
+
 namespace bambi {
 
 bool ModManifest::complete() const {
@@ -47,15 +49,10 @@ ModManifestOwner::ModManifestOwner(const ParamManifest& p, std::span<const char*
                     at(p, numbered("env", i + 1, "release_curve")), at(p, numbered("env", i + 1, "polarity"))};
     }
 
-    /*  The source slots, in the order the matrix lays them out: six features, six from the sidechain,
-     *  three LFOs, three envelopes, the region. A slot's amount is looked up here rather than derived
-     *  from its position, since the key list is append-only. */
-    static const char* const kAmountKeys[kNumSources] = {
-        "mod.amount.level",  "mod.amount.attack",   "mod.amount.tonal",     "mod.amount.low",      "mod.amount.mid",
-        "mod.amount.high",   "mod.amount.sc_level", "mod.amount.sc_attack", "mod.amount.sc_tonal", "mod.amount.sc_low",
-        "mod.amount.sc_mid", "mod.amount.sc_high",  "mod.amount.lfo1",      "mod.amount.lfo2",     "mod.amount.lfo3",
-        "mod.amount.env1",   "mod.amount.env2",     "mod.amount.env3",      "mod.amount.region1"};
-    for (int i = 0; i < kNumSources; ++i) amounts_[static_cast<std::size_t>(i)] = at(p, kAmountKeys[i]);
+    // A slot's amount is looked up by its name rather than derived from its position, since the
+    // key list is append-only.
+    for (int i = 0; i < kNumSources; ++i)
+        amounts_[static_cast<std::size_t>(i)] = at(p, "mod.amount." + std::string(sourceName(i)));
 
     const std::size_t n = std::min(baseKeys.size(), base_.size());
     for (std::size_t i = 0; i < n; ++i) base_[i] = at(p, baseKeys[i]);

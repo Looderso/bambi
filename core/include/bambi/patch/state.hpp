@@ -32,12 +32,29 @@ enum class RenderQuality { Same, Realistic };
 
 enum class SourceInput { Self, Sidechain, Link };
 enum class MatrixTab { Features, Sidechain, Generators, Region };
+
+inline constexpr int kSourcesPerTab = 6;
+
+/// Number of source columns a tab has; the region's tab has one.
+constexpr int columnsIn(MatrixTab tab) { return tab == MatrixTab::Region ? 1 : kSourcesPerTab; }
+
+/// Global slot index for a matrix cell's (tab, column), or -1 if the tab has no such column.
+constexpr int sourceSlot(MatrixTab tab, int column) {
+    if (column < 0 || column >= columnsIn(tab)) return -1;
+    return static_cast<int>(tab) * kSourcesPerTab + column;
+}
+
+/// A source slot's stable name, the suffix of its `mod.amount.*` key ("level", "sc_attack", "lfo2",
+/// "region1"). Saved state names a source by it, never by its slot.
+std::string_view sourceName(int slot);
+/// The slot named `text`, or -1 for a name this build does not have.
+int sourceNamed(std::string_view text);
 enum class TriggerInput { Midi, Audio };
 enum class TriggerGate { Held, OneShot };
 
 struct MatrixCell {
     MatrixTab tab{MatrixTab::Features};
-    int source{0};  ///< column index within the tab
+    int source{0};  ///< column index within the tab; saved as the slot's sourceName()
     ParamId target{kNoParamId};
     double depth{0.0};
 

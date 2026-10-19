@@ -34,6 +34,10 @@ constexpr std::array<std::string_view, 2> kKindNames{"parametric", "custom"};
 constexpr std::array<std::string_view, 5> kGenNames{"orbit", "lissajous", "wave", "arc", "spiral"};
 constexpr std::array<std::string_view, 3> kInputNames{"self", "sidechain", "link"};
 constexpr std::array<std::string_view, 4> kTabNames{"features", "sidechain", "generators", "region"};
+// By slot, in the matrix's order; each is the suffix of the slot's mod.amount.* key.
+constexpr std::array<std::string_view, kNumSources> kSourceNames{
+    "level",  "attack",  "tonal", "low",  "mid",  "high", "sc_level", "sc_attack", "sc_tonal", "sc_low",
+    "sc_mid", "sc_high", "lfo1",  "lfo2", "lfo3", "env1", "env2",     "env3",      "region1"};
 constexpr std::array<std::string_view, 2> kTriggerInputNames{"midi", "audio"};
 constexpr std::array<std::string_view, 2> kTriggerGateNames{"held", "one-shot"};
 constexpr std::array<std::string_view, 7> kRegionKindNames{"everywhere", "spot",   "band",  "sectors",
@@ -68,6 +72,15 @@ long slotNumber(std::string_view text) {
 }
 
 }  // namespace
+
+std::string_view sourceName(int slot) {
+    return slot >= 0 && slot < kNumSources ? kSourceNames[static_cast<std::size_t>(slot)] : std::string_view{};
+}
+
+int sourceNamed(std::string_view text) {
+    const auto at = std::find(kSourceNames.begin(), kSourceNames.end(), text);
+    return at == kSourceNames.end() ? -1 : static_cast<int>(at - kSourceNames.begin());
+}
 
 std::string_view name(TrajectoryKind v) { return kKindNames[static_cast<std::size_t>(v)]; }
 std::string_view name(GeneratorType v) { return kGenNames[static_cast<std::size_t>(v)]; }
@@ -159,17 +172,16 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
     for (const auto& c : s.matrix) {
         if (c.target == kNoParamId) continue;
         Json jc = Json::object();
-        jc.set("tab", Json{name(c.tab)});
-        jc.set("source", Json{c.source});
+        jc.set("source", Json{sourceName(sourceSlot(c.tab, c.source))});
         jc.set("target", Json{m[static_cast<int>(c.target)].key});  // by key, never by ordinal
         jc.set("depth", Json{c.depth});
         mtx.push(jc);
     }
     root.set("matrix", mtx);
 
-    // Sparse, keyed by index: only sources that differ from the default appear. Eighteen
+    // Sparse, keyed by name: only sources that differ from the default appear. Eighteen
     // identical {"input":"self"} entries would be seventy lines of noise in a file people
-    // hand-edit, and a keyed object also survives kNumSources changing.
+    // hand-edit, and a keyed object also survives a source being added.
     Json srcs = Json::object();
     for (std::size_t i = 0; i < kNumSources; ++i) {
         const auto& sl = s.sources[i];
@@ -177,15 +189,13 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         Json js = Json::object();
         js.set("input", Json{name(sl.input)});
         if (sl.input == SourceInput::Link) js.set("link", Json{sl.link.toString()});
-        srcs.set(std::to_string(i), js);
+        srcs.set(std::string(sourceName(static_cast<int>(i))), js);
     }
     root.set("sources", srcs);
 
     // Sparse for the same reason as sources: three default entries are noise in a file people
     // read. A trigger that differs from its default is written WHOLE, MIDI and audio halves both,
-    // so an input switched back loses nothing. The audio source is written as an INDEX because a
-    // modulation slot has no stable key of its own -- if that changes, this is the one place to
-    // migrate.
+    // so an input switched back loses nothing. Keyed by envelope number, which is its own key's.
     Json envs = Json::object();
     for (std::size_t i = 0; i < s.envTriggers.size(); ++i) {
         const auto& t = s.envTriggers[i];
@@ -197,7 +207,7 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         jt.set("channel", Json{t.channel});
         jt.set("gate", Json{name(t.gate)});
         jt.set("velocity", Json{t.velocity});
-        jt.set("source", Json{t.source});
+        jt.set("source", Json{sourceName(t.source)});
         jt.set("threshold", Json{t.threshold});
         jt.set("hysteresis", Json{t.hysteresis});
         envs.set(std::to_string(i), jt);
@@ -440,15 +450,24 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
     if (const Json* mtx = j.find("matrix"); mtx != nullptr && mtx->isArray()) {
         for (const auto& jc : mtx->items()) {
             MatrixCell c;
-            // A tab this build does not have: drop the cell, as one aimed at an unknown parameter is.
-            bool knownTab = true;
-            if (const Json* v = jc.find("tab")) {
-                const std::string_view tab = v->stringOr("");
-                knownTab = std::find(kTabNames.begin(), kTabNames.end(), tab) != kTabNames.end();
-                c.tab = parseEnum(tab, kTabNames, MatrixTab::Features);
-            }
-            if (!knownTab) continue;
-            if (const Json* v = jc.find("source")) c.source = static_cast<int>(v->numberOr(0));
+            // A source this build does not have: drop the cell, as one aimed at an unknown parameter is.
+            const Json* src = jc.find("source");
+            const Json* tab = jc.find("tab");
+            const int slot = src == nullptr ? -1
+                             : src->isString()
+                                 ? sourceNamed(src->stringOr(""))
+                                 // a document from before sources had names: a tab and a column in it
+                                 : [&] {
+                                       const std::string_view t = tab != nullptr ? tab->stringOr("") : "";
+                                       const auto at = std::find(kTabNames.begin(), kTabNames.end(), t);
+                                       return at == kTabNames.end()
+                                                  ? -1
+                                                  : sourceSlot(static_cast<MatrixTab>(at - kTabNames.begin()),
+                                                               static_cast<int>(src->numberOr(-1)));
+                                   }();
+            if (slot < 0) continue;
+            c.tab = static_cast<MatrixTab>(std::min(slot / kSourcesPerTab, static_cast<int>(MatrixTab::Region)));
+            c.source = slot - static_cast<int>(c.tab) * kSourcesPerTab;
             if (const Json* v = jc.find("target"))
                 c.target = [&] {
                     const int at = m.byKey(v->stringOr(""));
@@ -462,8 +481,10 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
 
     if (const Json* srcs = j.find("sources"); srcs != nullptr && srcs->isObject()) {
         for (const auto& kv : srcs->members()) {
-            const long idx = slotNumber(kv.first);
-            if (idx < 0 || idx >= kNumSources) continue;  // an index this build lacks: ignore
+            const int idx = slotNumber(kv.first) >= 0 && slotNumber(kv.first) < kNumSources
+                                ? static_cast<int>(slotNumber(kv.first))  // a document from before sources had names
+                                : sourceNamed(kv.first);
+            if (idx < 0) continue;  // a source this build lacks: ignore
             auto& slot = s.sources[static_cast<std::size_t>(idx)];
             if (const Json* v = kv.second.find("input"))
                 slot.input = parseEnum(v->stringOr(""), kInputNames, SourceInput::Self);
@@ -489,7 +510,10 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
             if (const Json* v = e.find("gate"))
                 t.gate = parseEnum(v->stringOr(""), kTriggerGateNames, TriggerGate::OneShot);
             if (const Json* v = e.find("velocity")) t.velocity = std::clamp(v->numberOr(0.0), 0.0, 1.0);
-            if (const Json* v = e.find("source")) t.source = static_cast<int>(v->numberOr(1));
+            if (const Json* v = e.find("source"))
+                if (const int slot = v->isString() ? sourceNamed(v->stringOr("")) : static_cast<int>(v->numberOr(-1));
+                    slot >= 0 && slot < kNumSources)
+                    t.source = slot;
             if (const Json* v = e.find("threshold")) t.threshold = v->numberOr(0.35);
             if (const Json* v = e.find("hysteresis")) t.hysteresis = v->numberOr(0.10);
         }

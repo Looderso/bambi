@@ -39,16 +39,6 @@ double ease(double u, double curve);
 
 inline constexpr int kNumLfos = 3;
 inline constexpr int kNumEnvelopes = 3;
-inline constexpr int kSourcesPerTab = 6;
-
-/// Number of source columns a tab has; the region's tab has one.
-constexpr int columnsIn(MatrixTab tab) { return tab == MatrixTab::Region ? 1 : kSourcesPerTab; }
-
-/// Global slot index for a matrix cell's (tab, column), or -1 if the tab has no such column.
-constexpr int sourceSlot(MatrixTab tab, int column) {
-    if (column < 0 || column >= columnsIn(tab)) return -1;
-    return static_cast<int>(tab) * kSourcesPerTab + column;
-}
 
 enum class LfoShape { Sine, Triangle, Saw, SampleHold };  ///< matches lfo*.shape choice order
 
