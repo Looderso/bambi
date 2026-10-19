@@ -23,7 +23,7 @@ struct PathKey {
     int index;
 };
 
-inline constexpr std::array<PathKey, 15> kPathKeys{{
+inline constexpr std::array<PathKey, 13> kPathKeys{{
     {EncoderParam::OrbitTilt, GeneratorType::Orbit, 0},
     {EncoderParam::OrbitAxisAz, GeneratorType::Orbit, 1},
     {EncoderParam::OrbitAperture, GeneratorType::Orbit, 2},
@@ -32,10 +32,8 @@ inline constexpr std::array<PathKey, 15> kPathKeys{{
     {EncoderParam::LissajousPhase, GeneratorType::Lissajous, 4},
     {EncoderParam::WaveElAmount, GeneratorType::Wave, 1},
     {EncoderParam::WaveElOffset, GeneratorType::Wave, 3},
-    {EncoderParam::ArcCentreAz, GeneratorType::Arc, 0},
-    {EncoderParam::ArcCentreEl, GeneratorType::Arc, 1},
-    {EncoderParam::ArcLength, GeneratorType::Arc, 2},
-    {EncoderParam::ArcHeading, GeneratorType::Arc, 3},
+    {EncoderParam::PolygonRadius, GeneratorType::Polygon, 1},
+    {EncoderParam::PolygonRotation, GeneratorType::Polygon, 2},
     {EncoderParam::SpiralFromEl, GeneratorType::Spiral, 1},
     {EncoderParam::SpiralToEl, GeneratorType::Spiral, 2},
     {EncoderParam::SpiralStartAz, GeneratorType::Spiral, 3},

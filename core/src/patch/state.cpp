@@ -31,7 +31,7 @@ T parseEnum(std::string_view s, const std::array<std::string_view, N>& names, T 
 }
 
 constexpr std::array<std::string_view, 2> kKindNames{"parametric", "custom"};
-constexpr std::array<std::string_view, 5> kGenNames{"orbit", "lissajous", "wave", "arc", "spiral"};
+constexpr std::array<std::string_view, 5> kGenNames{"orbit", "lissajous", "wave", "polygon", "spiral"};
 constexpr std::array<std::string_view, 3> kInputNames{"self", "sidechain", "link"};
 constexpr std::array<std::string_view, 4> kTabNames{"features", "sidechain", "generators", "region"};
 // By slot, in the matrix's order; each is the suffix of the slot's mod.amount.* key.
@@ -48,7 +48,7 @@ constexpr std::array<std::string_view, 2> kRenderQualityNames{"same", "realistic
 constexpr std::array<std::string_view, 3> kOrbitParams{"tilt", "spin", "aperture"};
 constexpr std::array<std::string_view, 5> kLissParams{"az_amount", "el_amount", "az_ratio", "el_ratio", "phase"};
 constexpr std::array<std::string_view, 4> kWaveParams{"turns", "el_amount", "wobbles", "el_offset"};
-constexpr std::array<std::string_view, 4> kArcParams{"centre_az", "centre_el", "length", "heading"};
+constexpr std::array<std::string_view, 3> kPolygonParams{"sides", "radius", "rotation"};
 constexpr std::array<std::string_view, 4> kSpiralParams{"turns", "from_el", "to_el", "start_az"};
 
 Json vecToJson(Vec3 v) {
@@ -97,7 +97,7 @@ std::span<const std::string_view> generatorParamNames(GeneratorType g) {
         case GeneratorType::Orbit: return kOrbitParams;
         case GeneratorType::Lissajous: return kLissParams;
         case GeneratorType::Wave: return kWaveParams;
-        case GeneratorType::Arc: return kArcParams;
+        case GeneratorType::Polygon: return kPolygonParams;
         case GeneratorType::Spiral: return kSpiralParams;
     }
     return {};

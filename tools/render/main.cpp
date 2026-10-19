@@ -56,7 +56,7 @@ void usage() {
 options
   --preset FILE        load plugin state (JSON) as the starting point
   --order N            ambisonic order, 0..max          (default 3)
-  --generator NAME     orbit | lissajous | wave | arc | spiral
+  --generator NAME     orbit | lissajous | wave | polygon | spiral
   --speed DEG_PER_SEC  angular velocity along the path  (default 90)
   --width DEG          source width, 0..180             (default 0)
   --gain DB            output gain                      (default 0)
@@ -97,7 +97,7 @@ GeneratorType generatorByName(const std::string& n, bool& ok) {
     if (n == "orbit") return GeneratorType::Orbit;
     if (n == "lissajous") return GeneratorType::Lissajous;
     if (n == "wave") return GeneratorType::Wave;
-    if (n == "arc") return GeneratorType::Arc;
+    if (n == "polygon") return GeneratorType::Polygon;
     if (n == "spiral") return GeneratorType::Spiral;
     ok = false;
     return GeneratorType::Lissajous;

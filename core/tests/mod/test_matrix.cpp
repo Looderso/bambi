@@ -207,7 +207,7 @@ TEST_CASE("values are written the way the canvas writes them") {
 }
 
 TEST_CASE("every trajectory shape describes its parameters, under the names its state is saved with") {
-    for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Arc,
+    for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                    GeneratorType::Spiral}) {
         INFO(std::string(name(g)));
         const auto info = generatorParams(g);

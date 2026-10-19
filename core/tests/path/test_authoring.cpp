@@ -193,7 +193,7 @@ TEST_CASE("curvature placement beats equal arc length on an orbit wave") {
 }
 
 TEST_CASE("every generator converts to a faithful chain") {
-    for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Arc,
+    for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                    GeneratorType::Spiral}) {
         TrajectoryState s;
         s.generator = g;
@@ -209,10 +209,10 @@ TEST_CASE("every generator converts to a faithful chain") {
 
 /*  A geodesic has zero curvature, so its discrete curvature is pure noise. Without a floor
  *  every sample looks like a feature and the arc gets runt segments that then cusp. */
-TEST_CASE("a straight arc converts without runt segments") {
+TEST_CASE("a polygon's straight edges convert without runt segments") {
     TrajectoryState s;
-    s.generator = GeneratorType::Arc;
-    generatorDefaults(GeneratorType::Arc, s.genParams);
+    s.generator = GeneratorType::Polygon;
+    generatorDefaults(GeneratorType::Polygon, s.genParams);
     convertToCustom(s, 16);
 
     double smallest = 1e9;
@@ -225,7 +225,7 @@ TEST_CASE("a straight arc converts without runt segments") {
 TEST_CASE("a fitted chain never backtracks on itself") {
     // A handle longer than its segment cusps, and playback walks by arc length, so the
     // backtrack becomes an audible stall.
-    for (auto g : {GeneratorType::Arc, GeneratorType::Spiral}) {
+    for (auto g : {GeneratorType::Spiral}) {
         TrajectoryState s;
         s.generator = g;
         generatorDefaults(g, s.genParams);

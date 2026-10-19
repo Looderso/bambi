@@ -208,20 +208,20 @@ TEST_CASE("version handling") {
 
 TEST_CASE("generator parameters serialise by name, so array order cannot silently shift") {
     PluginState s{encodeParams()};
-    s.trajectory.generator = GeneratorType::Arc;
-    s.trajectory.genParams = {10, 20, 30, 40, 0, 0};
+    s.trajectory.generator = GeneratorType::Polygon;
+    s.trajectory.genParams = {4, 20, 30, 0, 0, 0};
     const std::string text = saveState(Product::Encoder, encodeParams(), s);
-    CHECK(text.find("\"centre_az\"") != std::string::npos);
-    CHECK(text.find("\"heading\"") != std::string::npos);
+    CHECK(text.find("\"sides\"") != std::string::npos);
+    CHECK(text.find("\"rotation\"") != std::string::npos);
 
     PluginState out{encodeParams()};
     REQUIRE(loadState(Product::Encoder, encodeParams(), text, out).ok);
-    CHECK(out.trajectory.genParams[0] == doctest::Approx(10));
-    CHECK(out.trajectory.genParams[3] == doctest::Approx(40));
+    CHECK(out.trajectory.genParams[0] == doctest::Approx(4));
+    CHECK(out.trajectory.genParams[2] == doctest::Approx(30));
 }
 
 TEST_CASE("every generator declares no more names than the array can hold") {
-    for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Arc,
+    for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                    GeneratorType::Spiral}) {
         INFO(std::string(name(g)));
         CHECK(generatorParamNames(g).size() <= kMaxGenParams);

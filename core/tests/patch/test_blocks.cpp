@@ -165,7 +165,7 @@ TEST_CASE("every plugin carries the matrix's amounts, one a source slot and one 
 TEST_CASE("each list is what its page specifies, and fits the cap the bus shares") {
     //  Catches: the cap lowered, or a list grown past it. The static_asserts in each params.cpp
     //  catch it at compile time; this says what the three actually are, so a change is visible.
-    CHECK(encodeParams().size() == 119);  // level and sidechain release, clouds' four, the path's fifteen
+    CHECK(encodeParams().size() == 117);  // level and sidechain release, clouds' four, the path's fifteen
     CHECK(kNumEchoParams == 151);         // + the same two; + clouds' four
     CHECK(kNumReverbParams == 114);       // + the same two; + clouds' four in each of two slots; - room.shape
     CHECK(kNumEchoParams <= kMaxParams);
@@ -221,9 +221,8 @@ TEST_CASE("what wraps is named in full, in every plugin") {
 
     auto encoder = region("region1");
     encoder.insert(encoder.end(), lfos.begin(), lfos.end());
-    encoder.insert(encoder.end(),
-                   {"transform.yaw", "transform.pitch", "transform.roll", "motion.displace", "orbit.axis_az",
-                    "lissajous.phase", "arc.centre_az", "arc.heading", "spiral.start_az"});
+    encoder.insert(encoder.end(), {"transform.yaw", "transform.pitch", "transform.roll", "motion.displace",
+                                   "orbit.axis_az", "lissajous.phase", "polygon.rotation", "spiral.start_az"});
     CHECK(wrapping(encodeParams()) == sorted(encoder));
 
     auto echo = region("region1");

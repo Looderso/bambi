@@ -35,6 +35,15 @@ int segmentSamples(const Vec3 (&c)[4]) {
     return std::clamp(want, kMinSegSamples, kMaxSegSamples);
 }
 
+/*  A count rounded to a multiple of `corners`, so a sample lands on every corner and nothing interpolates
+ *  across one: a chord there would cut the corner and slow the source through it. Down rather than past
+ *  `most`, which is what the scratch was reserved for. */
+int onCorners(int count, int corners, int most) {
+    if (corners <= 1) return count;
+    const int up = (count + corners - 1) / corners * corners;
+    return up <= most ? up : most / corners * corners;
+}
+
 double polylineLength(const std::vector<PathSample>& pts, bool closed) {
     double total = 0.0;
     for (std::size_t i = 1; i < pts.size(); ++i) total += arc(pts[i - 1].p, pts[i].p);
@@ -66,7 +75,9 @@ void samplePathInto(const TrajectoryState& s, std::vector<PathSample>& pts) {
 
     if (s.kind == TrajectoryKind::Parametric) {
         const bool closed = generatorIsClosed(s.generator);
-        const auto sampleAt = [&](int m) {
+        const int corners = generatorCorners(s.generator, s.genParams);
+        const auto sampleAt = [&](int size) {
+            const int m = onCorners(size, corners, kMaxLutSize) * kParametricSamplesPerLutPoint;
             pts.clear();
             pts.reserve(static_cast<std::size_t>(m));
             for (int i = 0; i < m; ++i) {
@@ -77,9 +88,8 @@ void samplePathInto(const TrajectoryState& s, std::vector<PathSample>& pts) {
         };
         //  At the density the shortest table needs first, then again as finely as its own table, only
         //  when that shows the path is too long for it.
-        sampleAt(kMinLutSize * kParametricSamplesPerLutPoint);
-        if (const int size = lutSizeFor(polylineLength(pts, closed)); size > kMinLutSize)
-            sampleAt(size * kParametricSamplesPerLutPoint);
+        sampleAt(kMinLutSize);
+        if (const int size = lutSizeFor(polylineLength(pts, closed)); size > kMinLutSize) sampleAt(size);
         return;
     }
 
@@ -128,7 +138,9 @@ void Trajectory::build(const TrajectoryState& s, PathScratch& scratch) {
         return;
     }
 
-    const int size = lutSizeFor(total);
+    const int size = s.kind == TrajectoryKind::Parametric
+                         ? onCorners(lutSizeFor(total), generatorCorners(s.generator, s.genParams), kMaxLutSize)
+                         : lutSizeFor(total);
     lut_.resize(static_cast<std::size_t>(size));
     std::size_t j = 0;
     for (int i = 0; i < size; ++i) {
@@ -226,7 +238,7 @@ Vec3 applyTransform(Vec3 p, Vec3 centre, const PathTransform& t) {
     /*  Yaw and pitch rotate the path; they do not relocate its centre to an absolute
      *  direction. Read as absolute they would be the centroid's azimuth and elevation, which
      *  is only true of a path whose centre already sits at front -- and no generator's does.
-     *  Their natural centres are orbit el -30, lissajous az 90, wave az 90 el 90, arc az -90,
+     *  Their natural centres are orbit el -30, lissajous az 90, wave az 90 el 90, polygon front,
      *  spiral el -84. Reading the parameters as absolute would make the default transform
      *  relocate every one of them, silently rewriting the shape the user authored. Identity at
      *  zero is the only defensible default, and it is also what the behaviour asks for:

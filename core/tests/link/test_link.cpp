@@ -324,7 +324,7 @@ TEST_CASE("a path is never read back under the wrong instance's name") {
 }
 
 TEST_CASE("a path is sampled at equal steps of arc length, untransformed") {
-    for (GeneratorType g : {GeneratorType::Orbit, GeneratorType::Arc}) {
+    for (GeneratorType g : {GeneratorType::Orbit, GeneratorType::Spiral}) {
         const Trajectory t = buildPath(g);
         LinkStatic st;
         st.setPath(t);
@@ -340,7 +340,7 @@ TEST_CASE("a path is sampled at equal steps of arc length, untransformed") {
         for (int i = 0; i < count; ++i) CHECK(sameDir(st.point(i), t.eval(i / denom), 1e-6));
         CHECK(sameDir(st.centreVec(), pathCentre(t.points()), 1e-6));
     }
-    CHECK_FALSE(buildPath(GeneratorType::Arc).closed());  // so both branches really ran
+    CHECK_FALSE(buildPath(GeneratorType::Spiral).closed());  // so both branches really ran
 }
 
 TEST_CASE("the dynamic section carries a transform the receiver can apply") {

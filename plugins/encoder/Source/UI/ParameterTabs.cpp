@@ -19,7 +19,7 @@ namespace ctl = theme::controls;
 
 constexpr std::array<const char*, 3> kTabNames{"trajectory", "transform", "source"};
 constexpr std::array<bambi::GeneratorType, 5> kShapes{bambi::GeneratorType::Orbit, bambi::GeneratorType::Lissajous,
-                                                      bambi::GeneratorType::Wave, bambi::GeneratorType::Arc,
+                                                      bambi::GeneratorType::Wave, bambi::GeneratorType::Polygon,
                                                       bambi::GeneratorType::Spiral};
 }  // namespace
 

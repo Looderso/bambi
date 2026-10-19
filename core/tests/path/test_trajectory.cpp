@@ -21,8 +21,9 @@ TrajectoryState parametric(GeneratorType g) {
     return s;
 }
 
-/// Ratio of largest to smallest angular step per equal step of s. 1.0 is perfect.
-double speedRatio(const Trajectory& t, int k = 400) {
+/// Ratio of largest to smallest angular step per equal step of s. 1.0 is perfect. The default count divides
+/// by every polygon's sides, so no step straddles a corner, where the chord is shorter than the path.
+double speedRatio(const Trajectory& t, int k = 840) {
     std::vector<double> d;
     d.reserve(static_cast<std::size_t>(k));
     for (int i = 0; i < k; ++i)
@@ -31,8 +32,8 @@ double speedRatio(const Trajectory& t, int k = 400) {
     return *lo > 0 ? *hi / *lo : 1e9;
 }
 
-const GeneratorType kAll[] = {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Arc,
-                              GeneratorType::Spiral};
+const GeneratorType kAll[] = {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave,
+                              GeneratorType::Polygon, GeneratorType::Spiral};
 
 }  // namespace
 
@@ -89,7 +90,7 @@ TEST_CASE("generators declare closedness, and the trajectory honours it") {
     CHECK(generatorIsClosed(GeneratorType::Orbit));
     CHECK(generatorIsClosed(GeneratorType::Lissajous));
     CHECK(generatorIsClosed(GeneratorType::Wave));
-    CHECK_FALSE(generatorIsClosed(GeneratorType::Arc));
+    CHECK(generatorIsClosed(GeneratorType::Polygon));
     CHECK_FALSE(generatorIsClosed(GeneratorType::Spiral));
 
     for (auto g : kAll) {
@@ -106,19 +107,70 @@ TEST_CASE("a closed path joins up; an open one does not") {
     CHECK(arc(closed.eval(0.0), closed.eval(1.0)) < 1e-6);
 
     Trajectory open;
-    open.build(parametric(GeneratorType::Arc));
-    CHECK(arc(open.eval(0.0), open.eval(1.0)) * kRad2Deg == doctest::Approx(90.0).epsilon(1e-3));
+    open.build(parametric(GeneratorType::Spiral));  // from 80 up to 80 down, ending at the azimuth it started on
+    CHECK(arc(open.eval(0.0), open.eval(1.0)) * kRad2Deg == doctest::Approx(160.0).epsilon(1e-3));
 }
 
-TEST_CASE("an arc spans exactly its declared length") {
-    TrajectoryState s = parametric(GeneratorType::Arc);
-    for (double deg : {15.0, 90.0, 180.0, 270.0}) {
-        s.genParams[2] = deg;
-        Trajectory t;
-        t.build(s);
-        INFO("length ", deg);
-        CHECK(t.lengthRad() * kRad2Deg == doctest::Approx(deg).epsilon(1e-3));
+TEST_CASE("a polygon's corners sit at its radius, and its edges are great-circle arcs") {
+    //  Catches: corners placed off the radius, and edges interpolated in azimuth and elevation, which bow
+    //  off the great circle and make the path longer than its sides.
+    std::array<double, kMaxGenParams> gp{};
+    for (int sides = 2; sides <= 8; ++sides)
+        for (double radius : {10.0, 45.0, 80.0}) {
+            gp[0] = sides;
+            gp[1] = radius;
+            gp[2] = 30.0;
+            INFO(sides, " sides, radius ", radius);
+            for (int k = 0; k < sides; ++k) {
+                const Vec3 c = generatorAt(GeneratorType::Polygon, static_cast<double>(k) / sides, gp);
+                CHECK(arc(Vec3{1, 0, 0}, c) * kRad2Deg == doctest::Approx(radius).epsilon(1e-9));
+                const Vec3 next = generatorAt(GeneratorType::Polygon, static_cast<double>(k + 1) / sides, gp);
+                const Vec3 mid = generatorAt(GeneratorType::Polygon, (k + 0.37) / sides, gp);
+                CHECK(std::abs(dot(unit(cross(c, next)), mid)) < 1e-9);
+            }
+            const double r = radius * kDeg2Rad;
+            const double side =
+                std::acos(std::cos(r) * std::cos(r) + std::sin(r) * std::sin(r) * std::cos(2 * kPi / sides));
+            TrajectoryState s = parametric(GeneratorType::Polygon);
+            std::copy(gp.begin(), gp.end(), s.genParams.begin());
+            Trajectory t;
+            t.build(s);
+            CHECK(t.lengthRad() == doctest::Approx(sides * side).epsilon(2e-3));
+        }
+}
+
+TEST_CASE("one side is a point that stands still, and still a path") {
+    //  Catches: a zero-length path divided by its length, and one side read as no path at all.
+    TrajectoryState s = parametric(GeneratorType::Polygon);
+    s.genParams[0] = 1;
+    Trajectory t;
+    t.build(s);
+    CHECK_FALSE(t.empty());
+    CHECK(t.lengthRad() == 0.0);
+    for (double at : {0.0, 0.3, 0.999, 1.0}) {
+        const Vec3 p = t.eval(at);
+        CHECK(std::isfinite(p.x));
+        CHECK(arc(p, Vec3{1, 0, 0}) < 1e-12);
     }
+}
+
+TEST_CASE("a polygon is played at one speed, through its corners too") {
+    //  Catches: playback by the generator's own parameter where it is not arc length, which would slow down
+    //  or jump at a corner.
+    TrajectoryState s = parametric(GeneratorType::Polygon);
+    s.genParams[0] = 3;
+    s.genParams[1] = 60;
+    Trajectory t;
+    t.build(s);
+    constexpr int steps = 840 * 3;
+    double lo = 1e9, hi = 0.0;
+    for (int i = 0; i < steps; ++i) {
+        const double step = arc(t.eval(static_cast<double>(i) / steps), t.eval(static_cast<double>(i + 1) / steps));
+        lo = std::min(lo, step);
+        hi = std::max(hi, step);
+    }
+    INFO("steps from ", lo * kRad2Deg, " to ", hi * kRad2Deg, " deg");
+    CHECK(lo / hi > 0.9);
 }
 
 TEST_CASE("movement modes are a phase mapping and nothing else") {
@@ -288,7 +340,7 @@ TEST_CASE("extent shrinks a path toward its centre without moving it") {
  *  az/el as an absolute bearing would relocate every authored path the moment the
  *  parameters existed, at their default values, without the user touching anything. */
 TEST_CASE("the default transform leaves every generator exactly where it was") {
-    for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Arc,
+    for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                    GeneratorType::Spiral}) {
         TrajectoryState ts;
         ts.kind = TrajectoryKind::Parametric;
@@ -430,10 +482,16 @@ TEST_CASE("the playback table follows the path's length: every default shape as 
         return t;
     };
     //  Every shape at its defaults keeps the table it always had, so nothing already rendered changes.
-    for (const auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Arc,
-                         GeneratorType::Spiral}) {
+    for (const auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Spiral}) {
         INFO("shape ", static_cast<int>(g));
         CHECK(built(g, {}).points().size() == static_cast<std::size_t>(kMinLutSize));
+    }
+    //  A polygon's table holds a point on every corner. Catches: a table that cuts a corner, slowing the source there.
+    for (int sides = 1; sides <= 8; ++sides) {
+        const auto size = built(GeneratorType::Polygon, {{0, sides}}).points().size();
+        INFO(sides, " sides, ", size, " points");
+        CHECK(size >= static_cast<std::size_t>(sides == 1 ? 1 : kMinLutSize));
+        CHECK(size % static_cast<std::size_t>(sides) == 0);
     }
 
     //  A 7:7 Lissajous at full size, over 4000 degrees: a point at least every 0.6 degrees, not every four.

@@ -17,7 +17,7 @@ constexpr std::array<ParamId, kMaxGenParams> keysFor(GeneratorType g) {
 
 constexpr std::array<std::array<ParamId, kMaxGenParams>, 5> kKeys{
     keysFor(GeneratorType::Orbit), keysFor(GeneratorType::Lissajous), keysFor(GeneratorType::Wave),
-    keysFor(GeneratorType::Arc), keysFor(GeneratorType::Spiral)};
+    keysFor(GeneratorType::Polygon), keysFor(GeneratorType::Spiral)};
 
 const std::array<ParamId, kMaxGenParams>& keysOf(GeneratorType g) { return kKeys[static_cast<std::size_t>(g)]; }
 
