@@ -36,6 +36,28 @@ namespace {
 constexpr int kEnoughReads = 1000;
 constexpr auto kReadDeadline = std::chrono::seconds(10);
 
+/*  Paces a writer against a reader whose read is refused while a write is in progress: bursts back to back, where
+ *  the two collide, then a wait until the reader has taken one since the burst began. A writer that never pauses
+ *  starves that reader on a slow machine, and the test then measures the machine. A wait and not a sleep, so neither
+ *  a timer's granularity nor a machine with fewer cores than threads decides how often the reader gets in. */
+struct Pace {
+    static constexpr int kBurst = 32;
+    std::atomic<int> taken{0};
+    int burstStart{0};  ///< the writer's own
+
+    void beforeWrite(int n) {
+        if (n % kBurst == 1) burstStart = taken.load();
+    }
+    void afterWrite(int n) const {
+        if (n % kBurst == 0) taken.wait(burstStart);
+    }
+    /// The reader took one; also what lets a waiting writer see the stop.
+    void took() {
+        taken.fetch_add(1);
+        taken.notify_all();
+    }
+};
+
 /*  A session nobody else is using. Tests run in one process and share the machine's shared
  *  memory namespace, so a fixed name would collide with a previous failed run. */
 struct Session {
@@ -212,6 +234,7 @@ TEST_CASE("a reader never sees half of one position and half of another") {
  *  guarded by the memory model and by the comment at the store in writeStatic; this test guards
  *  everything wider. */
 TEST_CASE("a path and its generation always arrive together") {
+    //  Catches: a reader that copies without the seqlock -- torn, and paired with another write's generation.
     Session s;
     const Uuid writerId = Uuid::generate();
     LinkBus writer, reader;
@@ -219,8 +242,13 @@ TEST_CASE("a path and its generation always arrive together") {
     REQUIRE(reader.open(s.id, Uuid::generate(), Product::Encoder));
 
     std::atomic<bool> stop{false};
+    Pace pace;
     std::thread w([&] {
-        for (int n = 1; n <= 2'000'000 && !stop.load(std::memory_order_relaxed); ++n) writer.publishStatic(staticAt(n));
+        for (int n = 1; !stop.load(std::memory_order_relaxed); ++n) {
+            pace.beforeWrite(n);
+            writer.publishStatic(staticAt(n));
+            pace.afterWrite(n);
+        }
     });
 
     int reads = 0, torn = 0, mismatched = 0, backwards = 0;
@@ -234,6 +262,7 @@ TEST_CASE("a path and its generation always arrive together") {
             if (!(p.instance == writerId)) continue;
             std::uint32_t gen = 0;
             if (!reader.readStatic(p, st, gen)) continue;
+            pace.took();
             ++reads;
             if (!consistent(st)) ++torn;
             if (st.path[0].x != static_cast<float>(gen)) ++mismatched;
@@ -242,6 +271,7 @@ TEST_CASE("a path and its generation always arrive together") {
         }
     }
     stop.store(true);
+    pace.took();  // a writer waiting on its burst sees the stop
     w.join();
 
     INFO("checked ", reads, " paths, last generation ", lastGen);
@@ -1232,6 +1262,7 @@ TEST_CASE("a peer's controls and source values are there once published, and a n
 }
 
 TEST_CASE("controls and their generation always arrive together") {
+    //  Catches: a reader that copies without the seqlock -- torn, and paired with another write's generation.
     Session s;
     const Uuid writerId = Uuid::generate();
     LinkBus writer, reader;
@@ -1239,11 +1270,14 @@ TEST_CASE("controls and their generation always arrive together") {
     REQUIRE(reader.open(s.id, Uuid::generate(), Product::Encoder));
 
     std::atomic<bool> stop{false};
+    Pace pace;
     std::thread w([&] {
         auto c = std::make_unique<LinkControls>();
-        for (int n = 1; n <= 2'000'000 && !stop.load(std::memory_order_relaxed); ++n) {
+        for (int n = 1; !stop.load(std::memory_order_relaxed); ++n) {
+            pace.beforeWrite(n);
             controlsAt(*c, n);
             writer.publishControls(*c);
+            pace.afterWrite(n);
         }
     });
 
@@ -1258,6 +1292,7 @@ TEST_CASE("controls and their generation always arrive together") {
             if (!(p.instance == writerId)) continue;
             std::uint32_t gen = 0;
             if (!reader.readControls(p, *c, gen)) continue;
+            pace.took();
             ++reads;
             if (!consistent(*c)) ++torn;
             if (c->appliedEdit != gen) ++mismatched;
@@ -1266,6 +1301,7 @@ TEST_CASE("controls and their generation always arrive together") {
         }
     }
     stop.store(true);
+    pace.took();  // a writer waiting on its burst sees the stop
     w.join();
 
     INFO("checked ", reads, " controls, last generation ", lastGen);
