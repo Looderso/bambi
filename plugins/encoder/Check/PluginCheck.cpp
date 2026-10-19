@@ -27,6 +27,7 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "UI/FrameTrace.h"
+#include "bambi/editor/AllocationCheck.h"
 #include "bambi/editor/CheckKit.h"
 #include "bambi/editor/PresetChecks.h"
 #include "bambi/editor/RegionChecks.h"
@@ -2804,6 +2805,12 @@ int main() {
         c.reset();
         bambi::LinkBus::unlinkSession(session);
     }
+
+    std::printf("\nthe audio thread allocates nothing, on a bus of 36 or 64 channels\n");
+    for (const int order : {5, 7})
+        bambi::editor::checkBlocksAllocateNothing<BambiEncoderProcessor>(
+            layout(stereo, stereo, Set::ambisonic(order)),
+            "order " + juce::String(order) + ", stereo in with a sidechain");
 
     bambi::editor::checkBypass<BambiEncoderProcessor>(
         layout(Set::mono(), Set::disabled(), Set::ambisonic(3)), "its input unplaced, in W alone",

@@ -94,11 +94,11 @@ void FieldEffectProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::M
     //  How long each Level takes to fall, by its place in the list: nothing to look up here.
     input_.setLevelRelease(sharedValue(levelReleaseAt(), 200.0f), sharedValue(scLevelReleaseAt(), 200.0f));
 
-    auto in = getBusBuffer(buffer, true, 0);
-    auto out = getBusBuffer(buffer, false, 0);
-    const int outChannels = out.getNumChannels();
+    const BusChannels in = busChannels(*this, buffer, true, 0);
+    const BusChannels out = busChannels(*this, buffer, false, 0);
+    const int outChannels = out.count;
 
-    diag_.mainInputChannels.store(in.getNumChannels(), std::memory_order_relaxed);
+    diag_.mainInputChannels.store(in.count, std::memory_order_relaxed);
     diag_.outputChannels.store(outChannels, std::memory_order_relaxed);
     diag_.order.store(orderThatFits(outChannels), std::memory_order_relaxed);
     diag_.nonRealtime.store(isNonRealtime(), std::memory_order_relaxed);
@@ -116,7 +116,7 @@ void FieldEffectProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::M
     //  W, the field's power, the sidechain and the detectors they feed are the shared field input.
     const bool haveSidechain =
         getBusCount(true) > 1 && getBus(true, 1)->isEnabled() && getChannelCountOfBus(true, 1) > 0;
-    const auto side = haveSidechain ? getBusBuffer(buffer, true, 1) : juce::AudioBuffer<float>();
+    const BusChannels side = haveSidechain ? busChannels(*this, buffer, true, 1) : BusChannels{};
     if (!input_.take(in, haveSidechain ? &side : nullptr, numSamples, std::max(0, engineOrder_))) {
         //  A host exceeding its own announced maximum. Silence, never a resize on this thread.
         buffer.clear();
@@ -126,7 +126,7 @@ void FieldEffectProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::M
     }
     diag_.inputPeak.store(input_.peak(), std::memory_order_relaxed);
     diag_.sidechainPeak.store(input_.sidechainPeak(), std::memory_order_relaxed);
-    diag_.sidechainChannels.store(haveSidechain ? side.getNumChannels() : 0, std::memory_order_relaxed);
+    diag_.sidechainChannels.store(haveSidechain ? side.count : 0, std::memory_order_relaxed);
 
     /*  Where the host is, and whether it jumped, decided the same way everywhere: two plugins that
         disagreed about where a timeline jumped would put two different renders in the same bounce. */
@@ -142,7 +142,7 @@ void FieldEffectProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::M
         order are cleared, as the encoder clears them: they are not the field, and on an in-place
         host they still hold whatever arrived -- so leaving them passes audio this plugin never
         processed straight through to whatever sums the bus. */
-    for (int c = numChannels(engineOrder_); c < outChannels; ++c) out.clear(c, 0, numSamples);
+    for (int c = numChannels(engineOrder_); c < outChannels; ++c) out.clear(c);
     const double dt = static_cast<double>(controlHop_) / sampleRate_;
     const bool gathering = gatheringEnergy();  // once a block: a window has the picture on
     grid_.hear(tp.ppq, tp.bpm, tp.playing, sampleRate_);
@@ -164,7 +164,7 @@ void FieldEffectProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::M
     afterBlock();
     diag_.notesDropped.store(grid_.notesDropped(), std::memory_order_relaxed);
     diag_.controlPhase.store(grid_.phase(), std::memory_order_relaxed);
-    diag_.outputPeak.store(out.getMagnitude(0, numSamples), std::memory_order_relaxed);
+    diag_.outputPeak.store(out.peak(), std::memory_order_relaxed);
 }
 
 void FieldEffectProcessor::step(double ppq, double bpm, bool playing, double dt) noexcept {

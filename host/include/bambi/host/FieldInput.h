@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "bambi/dsp/features.hpp"
+#include "bambi/host/BusChannels.h"
 #include "bambi/math/sh.hpp"
 
 /*  What a field effect listens to.
@@ -49,23 +50,22 @@ public:
      *  announced, which is the caller's cue to output silence rather than resize on this thread.
      *  `order` is what the engine renders at: a host may hand over a bus wider than that, and
      *  whatever it left in the channels past (order + 1)^2 is not the field. */
-    bool take(const juce::AudioBuffer<float>& field, const juce::AudioBuffer<float>* sidechain, int numSamples,
-              int order) {
+    bool take(const BusChannels& field, const BusChannels* sidechain, int numSamples, int order) {
         const auto n = static_cast<std::size_t>(std::max(0, numSamples));
         if (n > mono_.size()) return false;
 
         peak_ = 0.0f;
-        if (field.getNumChannels() > 0) {
-            const float* w = field.getReadPointer(0);
+        if (field.count > 0) {
+            const float* w = field.read(0);
             std::copy_n(w, n, mono_.begin());
             for (std::size_t i = 0; i < n; ++i) peak_ = std::max(peak_, std::abs(mono_[i]));
 
             std::array<const float*, bambi::kMaxChannels> channels{};
             //  whole orders only: the largest the bus can carry, and never more than the engine's
             int whole = std::clamp(order, 0, bambi::kMaxOrder);
-            while (whole > 0 && bambi::numChannels(whole) > field.getNumChannels()) --whole;
+            while (whole > 0 && bambi::numChannels(whole) > field.count) --whole;
             const int count = bambi::numChannels(whole);
-            for (int c = 0; c < count; ++c) channels[static_cast<std::size_t>(c)] = field.getReadPointer(c);
+            for (int c = 0; c < count; ++c) channels[static_cast<std::size_t>(c)] = field.read(c);
             bambi::fieldPower(std::span<const float* const>(channels.data(), static_cast<std::size_t>(count)),
                               static_cast<int>(n), power_.data());
         } else {
@@ -73,14 +73,14 @@ public:
             std::fill_n(power_.begin(), n, 0.0f);
         }
 
-        sidechainActive_ = sidechain != nullptr && sidechain->getNumChannels() > 0;
+        sidechainActive_ = sidechain != nullptr && sidechain->count > 0;
         sidePeak_ = 0.0f;
         std::fill_n(side_.begin(), n, 0.0f);
         if (sidechainActive_) {
-            const int used = std::min(2, sidechain->getNumChannels());
+            const int used = std::min(2, sidechain->count);
             const float k = 1.0f / static_cast<float>(used);
             for (int c = 0; c < used; ++c) {
-                const float* x = sidechain->getReadPointer(c);
+                const float* x = sidechain->read(c);
                 for (std::size_t i = 0; i < n; ++i) side_[i] += x[i] * k;
             }
             for (std::size_t i = 0; i < n; ++i) sidePeak_ = std::max(sidePeak_, std::abs(side_[i]));

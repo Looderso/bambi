@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include <juce_audio_processors/juce_audio_processors.h>
+#include <algorithm>
 #include <vector>
 
+#include "bambi/host/BusChannels.h"
 #include "bambi/math/sh.hpp"
 
 /*  Between a host's planar channels and an engine's interleaved frames.
@@ -31,11 +32,11 @@ public:
     const float* data() const noexcept { return storage_.data(); }
 
     /// `frames` frames from `at` of a planar bus, interleaved. Real-time safe. Reading more frames than were prepared for, or a bus narrower than the order, is refused by taking the smaller.
-    void read(const juce::AudioBuffer<float>& from, int at, int frames) noexcept {
+    void read(const BusChannels& from, int at, int frames) noexcept {
         const int n = std::min(frames, frames_);
-        const int c = std::min(channels_, from.getNumChannels());
+        const int c = std::min(channels_, from.count);
         for (int ch = 0; ch < c; ++ch) {
-            const float* x = from.getReadPointer(ch) + at;
+            const float* x = from.read(ch) + at;
             for (int i = 0; i < n; ++i)
                 storage_[static_cast<std::size_t>(i) * static_cast<std::size_t>(channels_) +
                          static_cast<std::size_t>(ch)] = x[i];
@@ -43,11 +44,11 @@ public:
     }
 
     /// The same frames back out to a planar bus at `at`. Real-time safe.
-    void write(juce::AudioBuffer<float>& to, int at, int frames) const noexcept {
+    void write(const BusChannels& to, int at, int frames) const noexcept {
         const int n = std::min(frames, frames_);
-        const int c = std::min(channels_, to.getNumChannels());
+        const int c = std::min(channels_, to.count);
         for (int ch = 0; ch < c; ++ch) {
-            float* y = to.getWritePointer(ch) + at;
+            float* y = to.write(ch) + at;
             for (int i = 0; i < n; ++i)
                 y[i] = storage_[static_cast<std::size_t>(i) * static_cast<std::size_t>(channels_) +
                                 static_cast<std::size_t>(ch)];

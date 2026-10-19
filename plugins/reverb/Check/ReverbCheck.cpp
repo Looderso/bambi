@@ -26,6 +26,7 @@
 #include "../../echo/Source/PluginProcessor.h"
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "bambi/editor/AllocationCheck.h"
 #include "bambi/editor/CheckKit.h"
 #include "bambi/editor/EffectChecks.h"
 #include "bambi/editor/PresetChecks.h"
@@ -215,6 +216,12 @@ int main(int argc, char** argv) {
     bambi::editor::checkEffectLinkBus(spec);
 
     bambi::editor::checkDecoderOverlay<Processor, BambiReverbEditor>(spec);
+
+    std::printf("\nthe audio thread allocates nothing, on a bus of 36 or 64 channels\n");
+    for (const int order : {5, 7})
+        bambi::editor::checkBlocksAllocateNothing<Processor>(
+            bambi::editor::layout(amb(order), juce::AudioChannelSet::stereo(), amb(order)),
+            "order " + juce::String(order) + " with a sidechain");
 
     bambi::editor::checkBypass<Processor>(bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)),
                                           "the field as it arrived",

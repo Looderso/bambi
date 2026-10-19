@@ -9,6 +9,7 @@
 #include "PluginEditor.h"
 #include "bambi/encode/params.hpp"
 #include "bambi/encode/pathparams.hpp"
+#include "bambi/host/BusChannels.h"
 #include "bambi/host/Layout.h"
 #include "bambi/math/denormals.hpp"
 #include "bambi/math/sh.hpp"
@@ -222,17 +223,21 @@ void BambiEncoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
 
     //  Inputs are summed to mono before anything is written: in-place hosts hand over the same
     //  memory for input and output channels.
-    const auto sumToMono = [n](const juce::AudioBuffer<float>& bus, std::vector<float>& mono) {
+    const bambi::host::BusChannels main = bambi::host::busChannels(*this, buffer, true, 0);
+    sidechainActive_ = getBusCount(true) > 1 && getBus(true, 1)->isEnabled() && getChannelCountOfBus(true, 1) > 0;
+    const bambi::host::BusChannels side =
+        sidechainActive_ ? bambi::host::busChannels(*this, buffer, true, 1) : bambi::host::BusChannels{};
+    const auto sumToMono = [n](const bambi::host::BusChannels& bus, std::vector<float>& mono) {
         std::fill_n(mono.begin(), n, 0.0f);
         //  The main input is mono or stereo and nothing wider (isBusesLayoutSupported); the bound is
         //  what keeps the source the first pair if a host ever hands over more.
-        const int channels = std::min(2, bus.getNumChannels());
+        const int channels = std::min(2, bus.count);
         if (channels == 0) return 0.0f;
         //  Mean of those channels, accumulated channel by channel: the same downmix, in the same
         //  order of operations, as the core's AudioBuffer::mono() on a stereo file.
         const float k = 1.0f / static_cast<float>(channels);
         for (int c = 0; c < channels; ++c) {
-            const float* x = bus.getReadPointer(c);
+            const float* x = bus.read(c);
             for (std::size_t i = 0; i < n; ++i) mono[i] += x[i] * k;
         }
         float peak = 0.0f;
@@ -244,28 +249,25 @@ void BambiEncoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         written. The two encoders are always fed these two, whatever the input mode; a mono
         bus has no side, and every mode is then `sum`. */
     {
-        const auto& main = getBusBuffer(buffer, true, 0);
         std::fill_n(sideIn_.begin(), n, 0.0f);
-        if (main.getNumChannels() >= 2) {
-            const float* l = main.getReadPointer(0);
-            const float* r = main.getReadPointer(1);
+        if (main.count >= 2) {
+            const float* l = main.read(0);
+            const float* r = main.read(1);
             for (std::size_t i = 0; i < n; ++i) sideIn_[i] = (l[i] - r[i]) * 0.5f;
         }
     }
-    diag_.inputPeak.store(sumToMono(getBusBuffer(buffer, true, 0), monoIn_), std::memory_order_relaxed);
-    sidechainActive_ = getBusCount(true) > 1 && getBus(true, 1)->isEnabled() && getChannelCountOfBus(true, 1) > 0;
-    diag_.sidechainPeak.store(sidechainActive_ ? sumToMono(getBusBuffer(buffer, true, 1), monoSidechain_) : 0.0f,
-                              std::memory_order_relaxed);
+    diag_.inputPeak.store(sumToMono(main, monoIn_), std::memory_order_relaxed);
+    diag_.sidechainPeak.store(sidechainActive_ ? sumToMono(side, monoSidechain_) : 0.0f, std::memory_order_relaxed);
 
     //  Live channel counts, every block. A host may change a layout without calling
     //  prepareToPlay again, and the readout has to show what is actually arriving.
-    const int liveOut = getBusBuffer(buffer, false, 0).getNumChannels();
-    diag_.mainInputChannels.store(getBusBuffer(buffer, true, 0).getNumChannels(), std::memory_order_relaxed);
+    const bambi::host::BusChannels out = bambi::host::busChannels(*this, buffer, false, 0);
+    const int liveOut = out.count;
+    diag_.mainInputChannels.store(main.count, std::memory_order_relaxed);
     diag_.mainBusChannels.store(getChannelCountOfBus(true, 0), std::memory_order_relaxed);
     //  What arrives, not what the layout declares: reading the declaration told us a bus was 16 channels
     //  wide while the negotiated layout said 2, and only the arriving width says what can be read.
-    diag_.sidechainChannels.store(sidechainActive_ ? getBusBuffer(buffer, true, 1).getNumChannels() : 0,
-                                  std::memory_order_relaxed);
+    diag_.sidechainChannels.store(side.count, std::memory_order_relaxed);
     diag_.sidechainBusChannels.store(getBusCount(true) > 1 ? getChannelCountOfBus(true, 1) : 0,
                                      std::memory_order_relaxed);
     diag_.outputChannels.store(liveOut, std::memory_order_relaxed);
@@ -294,8 +296,7 @@ void BambiEncoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
 
     //  Output. Clearing first is also what silences the channels beyond the encoded order: on an
     //  in-place host they still hold input audio.
-    auto out = getBusBuffer(buffer, false, 0);
-    const int outChannels = out.getNumChannels();
+    const int outChannels = out.count;
     out.clear();
     if (encoderOrder_ < 0 || bambi::host::orderThatFits(outChannels) != encoderOrder_ ||
         static_cast<std::size_t>(outChannels) > outPtrs_.size()) {
@@ -307,7 +308,7 @@ void BambiEncoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         return;
     }
     const int encoded = bambi::numChannels(encoderOrder_);
-    for (int c = 0; c < encoded; ++c) outPtrs_[static_cast<std::size_t>(c)] = out.getWritePointer(c);
+    for (int c = 0; c < encoded; ++c) outPtrs_[static_cast<std::size_t>(c)] = out.write(c);
 
     const double dt = static_cast<double>(kControlHop) / sampleRate_;
     /*  Every note at or before a step and after the previous one reaches the envelopes at that step,
@@ -356,7 +357,7 @@ void BambiEncoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
 
     diag_.notesDropped.store(grid_.notesDropped(), std::memory_order_relaxed);
     diag_.controlPhase.store(grid_.phase(), std::memory_order_relaxed);
-    diag_.outputPeak.store(out.getMagnitude(0, numSamples), std::memory_order_relaxed);
+    diag_.outputPeak.store(out.peak(), std::memory_order_relaxed);
 }
 
 void BambiEncoderProcessor::zeroRotation(int axis) noexcept {
