@@ -39,6 +39,7 @@ bool EffectControls::rebuildInstances() {
         std::any_of(instances.begin(), instances.end(), [this](const Instance& i) { return i.id == selected; });
     if (!present) selected = self();
     liveScene = &scene;  // what its engine plays, for the pictures and the live marks
+    ui::refreshSceneOverlays(sphere, scene);
     shownInstance = selected;
     return instances.size() != before || !(selected == wasSelected);
 }

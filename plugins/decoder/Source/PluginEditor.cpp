@@ -28,6 +28,7 @@ void BambiDecoderEditor::frame(bambi::ui::EditorFrame& parts) {
     //  show and edit instead of its own: the header's switch, offered only while there is another
     processor_.updateScene(controls.scene);
     controls.liveScene = &controls.scene;
+    controls.refreshSourceRows();
     const bambi::Uuid self = processor_.identity().instance;
     controls.decoders.clear();
     controls.decoders.emplace_back(self, "this");
@@ -104,7 +105,9 @@ void BambiDecoderEditor::frame(bambi::ui::EditorFrame& parts) {
     globe.repaint();
     equirect.repaint();
     strip.repaint();
-    if (changed || moved) panel.repaint();
+    const bool hostMoved = processor_.hostOutputs() != hostShown_;
+    if (hostMoved) hostShown_ = processor_.hostOutputs();
+    if (changed || moved || hostMoved) panel.repaint();
 }
 
 void BambiDecoderEditor::controlsChanged() {
@@ -141,5 +144,55 @@ bool BambiDecoderEditor::clickOutputSquare(int index) {
     header().mouseDown(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), area.getCentre(), {}, 0.0f,
                                         0.0f, 0.0f, 0.0f, 0.0f, &header(), &header(), juce::Time::getCurrentTime(),
                                         area.getCentre(), juce::Time::getCurrentTime(), 1, false));
+    return true;
+}
+
+bool BambiDecoderEditor::clickGlobeAt(juce::Point<float> at) {
+    paintNow();
+    globe.clickAt(at);
+    return true;
+}
+
+bool BambiDecoderEditor::clickSourcesToggle() {
+    paintNow();
+    const auto area = globe.sourcesToggle().toggle;
+    if (area.isEmpty()) return false;
+    globe.clickAt(area.getCentre());
+    return true;
+}
+
+bool BambiDecoderEditor::clickSourcesTriangle() {
+    paintNow();
+    const auto area = globe.sourcesToggle().triangle;
+    if (area.isEmpty()) return false;
+    globe.clickAt(area.getCentre());
+    return true;
+}
+
+juce::Rectangle<float> BambiDecoderEditor::sourcesRowArea(int index) const {
+    const auto& rows = controls.sources.listAreas().rows;
+    return index >= 0 && index < static_cast<int>(rows.size()) ? rows[static_cast<std::size_t>(index)]
+                                                               : juce::Rectangle<float>{};
+}
+
+bool BambiDecoderEditor::clickSourcesRow(int index) {
+    paintNow();
+    const auto area = sourcesRowArea(index);
+    if (area.isEmpty()) return false;
+    globe.clickAt(area.getCentre());
+    return true;
+}
+
+bool BambiDecoderEditor::clickSourcesAll(bool on) {
+    paintNow();
+    const auto area = on ? controls.sources.listAreas().all : controls.sources.listAreas().none;
+    if (area.isEmpty()) return false;
+    globe.clickAt(area.getCentre());
+    return true;
+}
+
+bool BambiDecoderEditor::dragGlobeBetween(juce::Point<float> from, juce::Point<float> to) {
+    paintNow();
+    globe.dragBetween(from, to);
     return true;
 }

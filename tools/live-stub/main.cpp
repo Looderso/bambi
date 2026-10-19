@@ -4,22 +4,26 @@
 //  host. A local TCP server around bambi-live's DeviceSession -- the host's own answers -- which prints what the
 //  device says and measures how often Live reports the song position while playing.
 //
-//    bambi-live-stub [--port 9461] [--pairs 7] [--quit-when-alone SECONDS]
+//    bambi-live-stub [--port 9461] [--pairs 31] [--quit-when-alone SECONDS]
 //    bambi-live-stub --names       sets test names on the loop device, reads them back, and exits
+//    bambi-live-stub --devices     lists the system's devices, makes the host's private aggregate of the loop device
+//                                  and the ones offered, says what it holds, and removes it
 //
-//  Seven pairs by default: the loop device's channels 1-14, with 15/16 left for the binaural return. With bambi's
-//  own loop device installed, every assignment names its channels after the tracks. A second device is answered
+//  31 pairs by default: bambi's 64 channels after Live's Main on 1/2. With bambi's own loop device installed, every
+//  assignment names its channels after the tracks. A second device is answered
 //  busy. Started by the device, it quits SECONDS after its last device has gone.
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <map>
 #include <string>
 #include <variant>
 #include <vector>
 
 #include "bambi/live/protocol.hpp"
 #include "bambi/live/session.hpp"
+#include "devices.hpp"
 #include "lines.hpp"
 #include "loop.hpp"
 
@@ -34,7 +38,9 @@ struct Stub {
     live::DeviceSession session;
     bool playing{false};
     Clock::time_point lastPosition{};
-    std::vector<double> intervalsMs;  // between song position reports while playing
+    std::vector<double> intervalsMs;                      // between song position reports while playing
+    std::map<live::TrackId, Clock::time_point> lastClip;  // each track's last clip position report
+    std::vector<double> clipIntervalsMs;                  // between one track's clip position reports
 };
 
 const char* kindName(live::Node::Kind k) {
@@ -81,8 +87,28 @@ struct Print {
     void operator()(const live::Value& v) const {
         std::printf("value: %-24s %-12s %s\n", v.name.c_str(), v.what.c_str(), v.value.dump(0).c_str());
     }
+    void operator()(const live::SlotPlay& p) const {
+        const auto now = Clock::now();
+        if (p.slot < 0) {
+            s.lastClip.erase(p.id);
+            std::printf("slot: track %llu stopped\n", static_cast<unsigned long long>(p.id));
+            return;
+        }
+        if (const auto was = s.lastClip.find(p.id); was != s.lastClip.end())
+            s.clipIntervalsMs.push_back(std::chrono::duration<double, std::milli>(now - was->second).count());
+        else
+            std::printf("slot: track %llu plays slot %d, %.3f of %.3f..%.3f%s\n", static_cast<unsigned long long>(p.id),
+                        p.slot, p.position, p.loopStart, p.loopEnd, p.looping ? ", looping" : "");
+        s.lastClip[p.id] = now;
+    }
     void operator()(const live::Show&) const { std::printf("show: the host's window would come to the front\n"); }
     void operator()(const live::Switched& b) const { std::printf("bambi %s\n", b.on ? "on" : "off"); }
+    void operator()(const live::Arrangement& a) const {
+        std::size_t clips = 0;
+        for (const auto& t : a.tracks) clips += t.clips.size();
+        std::printf("arrangement: %zu tracks, %zu clips, %zu locators, loop %s; read in %.0f ms\n", a.tracks.size(),
+                    clips, a.locators.size(), a.loopOn ? "on" : "off", a.readMs);
+    }
     template <typename Other>
     void operator()(const Other&) const {
         std::printf("a message only the host sends, from the device\n");
@@ -100,7 +126,19 @@ void handle(Stub& s, const std::string& line) {
     std::visit(Print{s}, *m);
 }
 
+void reportClips(Stub& s) {
+    if (s.clipIntervalsMs.size() < 2) return;
+    std::vector<double> v = s.clipIntervalsMs;
+    std::sort(v.begin(), v.end());
+    double sum = 0.0;
+    for (const double x : v) sum += x;
+    std::printf("clip position: %zu reports, every %.1f ms on average, 95%% within %.1f ms, longest %.1f ms\n",
+                v.size(), sum / static_cast<double>(v.size()), v[v.size() * 95 / 100], v.back());
+    s.clipIntervalsMs.clear();
+}
+
 void report(Stub& s) {
+    reportClips(s);
     if (s.intervalsMs.size() < 2) return;
     std::vector<double> v = s.intervalsMs;
     std::sort(v.begin(), v.end());
@@ -113,18 +151,48 @@ void report(Stub& s) {
 
 }  // namespace
 
+namespace {
+
+int listDevices() {
+    const auto system = bambi::devices::system();
+    std::vector<std::string> offered;
+    std::printf("the loop device: %d channels each way\n", bambi::devices::loopChannels());
+    for (const auto& d : system) {
+        std::printf("  %-36s %2d out, %2d in, latency %4d out, %4d in%s   %s\n", d.name.c_str(), d.outs, d.ins,
+                    d.outLatency, d.inLatency, d.wireless ? ", wireless: not offered" : "", d.uid.c_str());
+        if (!d.wireless) offered.push_back(d.uid);
+    }
+    bambi::devices::Aggregate aggregate;
+    std::string error;
+    if (!aggregate.create(offered, &error)) {
+        std::printf("no aggregate: %s\n", error.c_str());
+        return 1;
+    }
+    const auto joined = bambi::live::aggregateOf(offered, system);
+    const auto outs = bambi::live::rowOf(joined), ins = bambi::live::rowOf(joined, true);
+    std::printf("the aggregate \"%s\": the loop device, then %zu devices; the row %d out, %d in\n",
+                bambi::devices::Aggregate::kName, joined.size(), outs.width(), ins.width());
+    aggregate.destroy();
+    std::printf("removed\n");
+    return 0;
+}
+
+}  // namespace
+
 int main(int argc, char** argv) {
+    if (argc > 1 && std::string(argv[1]) == "--devices") return listDevices();
     if (argc > 1 && std::string(argv[1]) == "--names") {
         std::vector<std::string> names;
-        for (int c = 1; c <= 16; ++c) names.push_back("test " + std::to_string(c));
+        const int channels = bambi::devices::loopChannels() > 0 ? bambi::devices::loopChannels() : 16;
+        for (int c = 1; c <= channels; ++c) names.push_back("test " + std::to_string(c));
         if (!bambi::loop::nameChannels(names)) {
             std::printf("no bambi loop device, or it refused the names\n");
             return 1;
         }
-        for (int c = 1; c <= 16; ++c) std::printf("channel %2d: %s\n", c, bambi::loop::channelName(c).c_str());
+        for (int c = 1; c <= channels; ++c) std::printf("channel %2d: %s\n", c, bambi::loop::channelName(c).c_str());
         return 0;
     }
-    int port = 9461, quitAfter = -1, pairs = 7;  // quitAfter: seconds alone before quitting; never by default
+    int port = 9461, quitAfter = -1, pairs = 31;  // quitAfter: seconds alone before quitting; never by default
     for (int i = 1; i + 1 < argc; i += 2) {
         const std::string key = argv[i];
         if (key == "--port")

@@ -191,6 +191,7 @@ void BambiEncoderEditor::frame(bambi::ui::EditorFrame& parts) {
 
     const bool selection = updateSelection();
     controls.liveScene = &scene;  // what its engine plays: the tiles' live marks
+    bambi::ui::refreshSceneOverlays(state, scene);
     controls.shownInstance = state.selected;
     const bool changed = controls.refresh() || selection;
     updateLivePath();
@@ -348,4 +349,41 @@ bool BambiEncoderEditor::liveMark(bambi::ParamId id, double& out) {
 juce::Rectangle<float> BambiEncoderEditor::liveMarkBounds() {
     paintNow();
     return tabs.liveBounds();
+}
+
+bool BambiEncoderEditor::clickDecoderToggle() {
+    paintNow();
+    auto& view = state.equirectFull ? equirect : globe;
+    const auto area = state.decoders.toggleAreas().toggle;
+    if (area.isEmpty()) return false;
+    view.clickAt(area.getCentre());
+    return true;
+}
+
+bool BambiEncoderEditor::clickDecoderTriangle() {
+    paintNow();
+    auto& view = state.equirectFull ? equirect : globe;
+    const auto area = state.decoders.toggleAreas().triangle;
+    if (area.isEmpty()) return false;
+    view.clickAt(area.getCentre());
+    return true;
+}
+
+juce::Rectangle<float> BambiEncoderEditor::decoderRowArea(int index) const {
+    const auto& rows = state.decoders.listAreas().rows;
+    return index >= 0 && index < static_cast<int>(rows.size()) ? rows[static_cast<std::size_t>(index)]
+                                                               : juce::Rectangle<float>{};
+}
+
+bool BambiEncoderEditor::clickDecoderRow(int index) {
+    paintNow();
+    auto& view = state.equirectFull ? equirect : globe;
+    const auto area = decoderRowArea(index);
+    if (area.isEmpty()) return false;
+    view.clickAt(area.getCentre());
+    return true;
+}
+
+bool BambiEncoderEditor::pressKeyOnScene(const juce::KeyPress& key) {
+    return (state.equirectFull ? equirect : globe).keyPressed(key);
 }

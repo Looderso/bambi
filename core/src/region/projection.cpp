@@ -66,6 +66,9 @@ void RegionOperator::prepare(int order, int maxFrames) {
     fromOwn_.assign(rotation_.size(), 0.0f);
     a_.assign(static_cast<std::size_t>(numChannels(order) * maxFrames), 0.0f);
     b_.assign(a_.size(), 0.0f);
+    probeY_.assign(C, 0.0);
+    probeIn_.assign(C, 0.0f);
+    probeOut_.assign(C, 0.0f);
     identity_ = true;
     refused_ = false;
     prepareDense();
@@ -630,6 +633,21 @@ void RegionOperator::apply(const float* in, float* out, int frames) noexcept {
     //  Outside is what inside left: I - M, exactly, rather than a second matrix that might not add up.
     if (outside_)
         for (std::size_t k = 0; k < count; ++k) out[k] = in[k] - out[k];
+}
+
+double RegionOperator::gainAt(Vec3 direction) noexcept {
+    if (refused_ || identity_) return identity_ && outside_ ? 0.0 : 1.0;
+    shSN3D(direction, order_, probeY_);
+    double energy = 0.0;
+    for (std::size_t i = 0; i < probeY_.size(); ++i) {
+        probeIn_[i] = static_cast<float>(probeY_[i]);
+        energy += probeY_[i] * probeY_[i];
+    }
+    apply(probeIn_.data(), probeOut_.data(), 1);
+    double through = 0.0;
+    for (std::size_t i = 0; i < probeY_.size(); ++i) through += static_cast<double>(probeOut_[i]) * probeY_[i];
+    //  the band-limited edge rings a little past 0 and 1; a gain does not
+    return energy > 0.0 ? std::clamp(through / energy, 0.0, 1.0) : 0.0;
 }
 
 }  // namespace bambi

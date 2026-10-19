@@ -417,4 +417,78 @@ void checkEffectViewPresets() {
           "a drag that orbits the globe away leaves no preset lit");
 }
 
+/*  The `decoder` overlay in a field effect's scene: the session's decoders drawn behind a toggle and a list, off until asked for.
+    Run by every field effect over its own processor and editor: the overlay is the shared scene's, so the same checks hold for
+    each. Decoders are stood in for by buses that publish what a real one does. */
+template <class Processor, class Editor>
+void checkDecoderOverlay(const EffectCheckSpec<Processor>& spec) {
+    std::printf("\nthe decoder overlay\n");
+    host::setLinkDirectoryNameForTests(std::string(spec.linkDirectory) + Uuid::generate().toString().substr(0, 8));
+    Processor proc;
+    for (int i = 0; i < host::LinkNode::kTickHz / 10 + 4; ++i) proc.linkTick();
+    const auto session = proc.identity().session;
+    auto a = standInDecoder(session, "Decoder A", 5, kLinkPlaySpeakers | kLinkPlayHeadphones, {0.0, 1.0, 0.0});
+    auto b = standInDecoder(session, "Decoder B", 0, kLinkPlayHeadphones, {0.0, 0.0, 1.0});
+    //  a decoder that has published a layout and plays nothing: neither its loudspeakers nor its head are drawn
+    auto c = standInDecoder(session, "Decoder C", 3, 0, {1.0, 0.0, 0.0});
+
+    std::unique_ptr<juce::AudioProcessorEditor> window(proc.createEditor());
+    auto* ed = dynamic_cast<Editor*>(window.get());
+    check(ed != nullptr, "the window opens");
+    if (ed != nullptr) {
+        const auto settle = [&] {
+            for (int i = 0; i < 4; ++i) proc.linkTick();
+            ed->tick();
+            ed->paintNow();
+        };
+        settle();
+        //  Catches: the overlay on without being asked, which would put loudspeakers over every scene.
+        check(!ed->decoderOverlayOn() && ed->decodersDrawn().speakers == 0 && ed->decodersDrawn().heads == 0,
+              "off when the window opens: the decoders are on the bus and nothing is drawn");
+        check(ed->decoderRowsListed() == 9, "the list names each decoder and its speakers and head");
+
+        ed->clickDecoderToggle();
+        ed->paintNow();
+        check(ed->decoderOverlayOn() && ed->decodersDrawn().speakers == 5 && ed->decodersDrawn().heads == 2,
+              "on, every decoder is drawn: Decoder A's five loudspeakers and both heads");
+
+        ed->clickDecoderTriangle();
+        ed->paintNow();
+        check(ed->decoderListOpen() && !ed->decoderRowArea(5).isEmpty(), "the triangle opens the list");
+        ed->clickDecoderRow(1);  // Decoder A's speakers
+        ed->paintNow();
+        check(ed->decodersDrawn().speakers == 0 && ed->decodersDrawn().heads == 2,
+              "a decoder's speakers off leave its head");
+        ed->clickDecoderRow(1);
+        ed->clickDecoderRow(3);  // Decoder B itself
+        ed->paintNow();
+        check(ed->decodersDrawn().speakers == 5 && ed->decodersDrawn().heads == 1,
+              "a decoder off takes both its parts, and the other stays");
+        ed->clickDecoderRow(3);
+        check(ed->pressKeyOnScene(juce::KeyPress(juce::KeyPress::escapeKey)) && !ed->decoderListOpen() &&
+                  !ed->pressKeyOnScene(juce::KeyPress(juce::KeyPress::escapeKey)),
+              "Escape closes the list and is not taken without one");
+
+        //  Catches: the toggle unreachable while the equirect has the row, where the globe is not drawn.
+        ed->setEquirectFull(true);
+        settle();
+        check(ed->clickDecoderTriangle() && ed->decoderListOpen(),
+              "with the equirect full the toggle is on its strip, and its list opens there");
+        ed->clickDecoderTriangle();
+        ed->setEquirectFull(false);
+        b.reset();
+        for (int i = 0; i < 6; ++i) {
+            for (int k = 0; k < 2; ++k) proc.linkTick();
+            ed->tick();
+        }
+        ed->paintNow();
+        check(ed->decoderRowsListed() == 6 && ed->decodersDrawn().heads == 1,
+              "a decoder that leaves leaves the list and the scene");
+    }
+    window.reset();
+    a.reset();
+    c.reset();
+    LinkBus::unlinkSession(session);
+}
+
 }  // namespace bambi::editor

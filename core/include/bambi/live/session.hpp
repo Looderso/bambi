@@ -21,7 +21,7 @@
  *
  *  Grouping tracks never changes what is heard: a group in a new tree that holds, anywhere below it, a track the
  *  field played as a source is split, so its tracks stay sources with their Encoders and inserts, and the group
- *  becomes their bus. Only a tree from Live does this, never the user's own shape. A restore
+ *  becomes their bus, the group at the top taken as they were. Only a tree from Live does this, never the user's own shape. A restore
  *  gives back the state an earlier session kept. A change of a value is taken into the tree.
  *
  *  What the set keeps for the host is the pairs, the shape and the parts the host gives the session by name -- its plugins'
@@ -35,7 +35,7 @@
 namespace bambi::live {
 
 struct SessionSettings {
-    int pairCount{7};       ///< the loop device's pairs for tracks; the one past them carries the binaural return
+    int pairCount{31};      ///< the loop device's pairs for tracks, after Live's Main's on its first two channels
     bool loop{true};        ///< the loop device is there
     double latencyMs{0.0};  ///< the spatial mix behind a dry track, as the host's plan has it
     double rate{48000.0};
@@ -62,6 +62,9 @@ public:
 
     bool connected() const { return hello_.has_value(); }
     const std::optional<Hello>& hello() const { return hello_; }
+    /// The device speaks this host's protocol -- or has not said, and is taken to. A device that does not is welcomed once, in
+    /// the host's, and its other messages are not answered or acted on.
+    bool compatible() const { return !hello_.has_value() || accepts(*hello_); }
     bool on() const { return on_; }
     const Tree& tree() const { return tree_; }
     /// Whether a tree has come: before it, tree() says nothing of the set, not that it is empty.
@@ -77,13 +80,16 @@ public:
     void keep(std::string_view name, Json value);
     /// The part of that name, as kept or restored; none when there is none.
     const Json* kept(std::string_view name) const { return kept_.find(name); }
+    /// Live's arrangement as the device last sent it: empty before it has.
+    const Arrangement& arrangement() const { return arrangement_; }
     /// What the set should keep now.
     Save save() const { return Save{state()}; }
 
     /// The node on a pair, as the tree has it now; none when no track is on it.
     const Node* trackOn(int pair) const;
 
-    /// The loop device's channel names, channel 1 first: 2 x (pairCount + 1) of them, unnamed ones empty.
+    /// The loop device's channel names, channel 1 first: 2 x (pairCount + 1) of them -- Main's, then the tracks' --
+    /// unnamed ones empty.
     std::vector<std::string> channelNames() const;
 
     /// The device went away: what it said is forgotten, the pairs are kept for when it comes back.
@@ -103,6 +109,7 @@ private:
     std::vector<TrackPair> pairs_;
     std::vector<TrackId> unassigned_;
     Json kept_ = Json::object();
+    Arrangement arrangement_;
     Routed routed_;
     std::optional<TransportMessage> transport_;
     int shows_{0};

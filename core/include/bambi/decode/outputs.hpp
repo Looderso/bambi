@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "bambi/patch/state.hpp"
@@ -13,6 +14,9 @@
 namespace bambi {
 
 enum class Output { Headphones, Speakers };
+
+/// "headphones" or "speakers".
+const char* outputName(Output which);
 
 /// The bus channels `which` writes, ascending; empty without a layout.
 std::vector<int> outputChannels(const DecoderState& d, Output which);
@@ -29,5 +33,14 @@ struct Placement {
     int span{0};          ///< channels from its first to its last, gaps included
 };
 Placement placeOutput(const DecoderState& d, Output which, int bus);
+
+/// A state after an output is lit or stopped on a bus of `bus` channels, as the page lights it.
+struct Lit {
+    DecoderState state;
+    std::string notice;  ///< why it did not light, or what it moved or stopped; empty when nothing needs saying
+};
+/// Lighting one that needs more channels than the bus has leaves it dark; lighting one on the other's channels
+/// moves it past them while the bus has room, and stops the other when it has not.
+Lit lightOutput(DecoderState d, Output which, bool on, int bus);
 
 }  // namespace bambi

@@ -5,6 +5,7 @@
 //  scene. So both seqlocks are tested with real threads and self-checking payloads rather
 //  than by inspection. What only separate processes can show lives in tools/link-test.sh.
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -1739,4 +1740,142 @@ TEST_CASE("an instance's undo and redo names cross the bus with its controls") {
     REQUIRE(readBack());
     CHECK(got->undoNameString().empty());
     CHECK(got->redoNameString().empty());
+}
+
+TEST_CASE("a preset's name fits the bus exactly or is refused, never cut") {
+    /*  Catches: a name cut at the field's width, which names no file; the boundary off by one, so a name one
+        character short of the field loses its terminator or one at the field's width is let in. */
+    LinkPreset p;
+    const PresetRef longest{true, std::string(kLinkPresetBytes - 1, 'f'), std::string(kLinkPresetBytes - 1, 'n')};
+    REQUIRE(p.set(longest));
+    CHECK(p.get() == longest);
+
+    LinkPreset q;
+    CHECK_FALSE(q.set({false, std::string(kLinkPresetBytes, 'f'), "n"}));
+    CHECK_FALSE(q.set({false, "", std::string(kLinkPresetBytes, 'n')}));
+    CHECK(q.get().none());  // a refused set left it as it was
+
+    REQUIRE(q.set({false, "", "short"}));
+    CHECK_FALSE(q.set({false, "", std::string(kLinkPresetBytes, 'n')}));
+    CHECK(q.get().name == "short");
+
+    REQUIRE(q.set({false, "", ""}));  // no preset at all
+    CHECK(q.get().none());
+}
+
+TEST_CASE("a loaded preset crosses the bus whole: every parameter, the patch and the preset's name") {
+    /*  Catches: the parameters left out of the edit (the target would keep its own), only some of them copied, the
+        preset's name or its factory flag dropped, or the whole flag lost on the way. */
+    Session s;
+    const Uuid targetId = Uuid::generate();
+    LinkBus target, sender;
+    REQUIRE(target.open(s.id, targetId, Product::Reverb));
+    REQUIRE(sender.open(s.id, Uuid::generate(), Product::Reverb));
+
+    auto edit = std::make_unique<LinkPatchEdit>(), got = std::make_unique<LinkPatchEdit>();
+    edit->setName("load preset");
+    edit->flags = kLinkEditWhole;
+    edit->paramCount = kLinkMaxParams;
+    for (int i = 0; i < kLinkMaxParams; ++i) edit->params[i] = 0.25f * static_cast<float>(i) - 7.0f;
+    edit->patch.genParams[0] = 3.5;
+    const PresetRef ref{true, "Rooms", "cathedral"};
+    REQUIRE(edit->preset.set(ref));
+    REQUIRE(sender.sendPatchEdit(targetId, *edit) != 0);
+
+    std::uint32_t last = 0;
+    REQUIRE(target.takePatchEdit(*got, last));
+    CHECK(got->flags == kLinkEditWhole);
+    CHECK(got->paramCount == static_cast<std::uint32_t>(kLinkMaxParams));
+    for (int i = 0; i < kLinkMaxParams; ++i) CHECK(got->params[i] == 0.25f * static_cast<float>(i) - 7.0f);
+    CHECK(got->patch.genParams[0] == 3.5);
+    CHECK(got->preset.get() == ref);
+    CHECK(got->nameString() == "load preset");
+
+    //  a name alone is its own kind of edit, and carries no parameters
+    auto named = std::make_unique<LinkPatchEdit>();
+    named->flags = kLinkEditPresetOnly;
+    REQUIRE(named->preset.set({false, "", "mine"}));
+    REQUIRE(sender.sendPatchEdit(targetId, *named) != 0);
+    REQUIRE(target.takePatchEdit(*got, last));
+    CHECK(got->flags == kLinkEditPresetOnly);
+    CHECK(got->paramCount == 0);
+    CHECK(got->preset.get() == PresetRef{false, "", "mine"});
+}
+
+TEST_CASE("an instance's preset name crosses the bus with its controls") {
+    //  Catches: the name left out of the controls, so another window shows no preset for an instance that has one,
+    //  or kept after the instance has none.
+    Session s;
+    const Uuid writerId = Uuid::generate();
+    LinkBus writer, reader;
+    REQUIRE(writer.open(s.id, writerId, Product::Reverb));
+    REQUIRE(reader.open(s.id, Uuid::generate(), Product::Reverb));
+
+    auto sent = std::make_unique<LinkControls>(), got = std::make_unique<LinkControls>();
+    const auto readBack = [&] {
+        std::vector<LinkPeer> peers;
+        reader.poll(peers);
+        std::uint32_t gen = 0;
+        for (const auto& p : peers)
+            if (p.instance == writerId) return reader.readControls(p, *got, gen);
+        return false;
+    };
+
+    REQUIRE(sent->preset.set({false, "Mine", "dark hall"}));
+    writer.publishControls(*sent);
+    REQUIRE(readBack());
+    CHECK(got->preset.get() == PresetRef{false, "Mine", "dark hall"});
+
+    REQUIRE(sent->preset.set({}));
+    writer.publishControls(*sent);
+    REQUIRE(readBack());
+    CHECK(got->preset.get().none());
+}
+
+TEST_CASE("a Decoder's play flags and head cross the bus with its dynamic section, and give it no position") {
+    /*  Catches: the flags or the head left out of what is published or copied out (a scene then draws a head that does not
+        turn, or loudspeakers of a Decoder that plays none), and a Decoder counted as a source -- which would draw a dot where
+        its head looks. */
+    Session s;
+    const Uuid decoderId = Uuid::generate();
+    LinkBus decoder, viewer;
+    REQUIRE(decoder.open(s.id, decoderId, Product::Decoder));
+    REQUIRE(viewer.open(s.id, Uuid::generate(), Product::Encoder));
+
+    LinkDynamic d;
+    d.headGazeX = 0.5f;
+    d.headGazeY = -0.5f;
+    d.headGazeZ = 0.70710678f;
+    d.headLeftX = 0.25f;
+    d.headLeftY = 0.75f;
+    d.headLeftZ = -0.5f;
+    d.playFlags = kLinkPlaySpeakers | kLinkPlayThroughLayout;
+    decoder.publishDynamic(d);
+
+    std::vector<LinkPeer> peers;
+    viewer.poll(peers);
+    const auto at =
+        std::find_if(peers.begin(), peers.end(), [&](const LinkPeer& p) { return p.instance == decoderId; });
+    REQUIRE(at != peers.end());
+    CHECK(at->product == Product::Decoder);
+    CHECK(at->dyn.headGaze().x == 0.5f);
+    CHECK(at->dyn.headGaze().y == -0.5f);
+    CHECK(at->dyn.headGaze().z == 0.70710678f);
+    CHECK(at->dyn.headLeft().x == 0.25f);
+    CHECK(at->dyn.headLeft().y == 0.75f);
+    CHECK(at->dyn.headLeft().z == -0.5f);
+    CHECK(at->dyn.playFlags == (kLinkPlaySpeakers | kLinkPlayThroughLayout));
+    CHECK((at->dyn.playFlags & kLinkPlayHeadphones) == 0);
+    CHECK_FALSE(at->hasPosition);
+
+    //  and the next publish replaces them: a head that stops turning is not left where it was
+    d.headGazeX = -1.0f;
+    d.playFlags = kLinkPlayHeadphones;
+    decoder.publishDynamic(d);
+    viewer.poll(peers);
+    const auto again =
+        std::find_if(peers.begin(), peers.end(), [&](const LinkPeer& p) { return p.instance == decoderId; });
+    REQUIRE(again != peers.end());
+    CHECK(again->dyn.headGaze().x == -1.0f);
+    CHECK(again->dyn.playFlags == kLinkPlayHeadphones);
 }

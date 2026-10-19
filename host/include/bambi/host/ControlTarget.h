@@ -145,6 +145,13 @@ public:
     void zeroTurn(int axis) override;
     void zeroRegionTurn(int slot, int axis) override;
 
+    /*  A preset loaded on the followed instance: `next` is its whole state afterwards, which the instance applies as one undo
+        step of its own, so a slip is undone there like a local load. False when nothing could be sent -- the name does not
+        fit the bus, or the instance is gone. Shown at once, as an edit is. */
+    bool loadWhole(std::string_view name, const PluginState& next);
+    /// A save named what the followed instance already holds: only its preset's name changes there, and no step of history.
+    bool setPreset(const PresetRef& ref);
+
 private:
     void send(std::string_view name, std::string_view key, const UndoStack::Edit& change);
     float plainValue(ParamId id) const;  ///< as shown now, in the parameter's own units
@@ -165,6 +172,8 @@ private:
     std::uint32_t pendingSequence_{0};
     double pendingSeconds_{0.0};
     bool hasPending_{false};
+    PresetRef pendingPreset_;  ///< shown in place of the published one while `hasPendingPreset_`
+    bool hasPendingPreset_{false};
     bool dragging_{false};
     std::string dragName_, dragKey_;
     /// Sized by the cap every plugin shares, not by one plugin's count: this is the suite's target now, and `kNumEncoderParams` is the encoder's.

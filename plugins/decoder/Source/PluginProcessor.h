@@ -10,6 +10,7 @@
 #include <juce_osc/juce_osc.h>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -21,12 +22,14 @@
 #include "bambi/decode/orientation.hpp"
 #include "bambi/decode/outputs.hpp"
 #include "bambi/decode/params.hpp"
+#include "bambi/decode/remote.hpp"
 #include "bambi/decode/sofafile.hpp"
 #include "bambi/decode/speakers.hpp"
 #include "bambi/decode/virtualarray.hpp"
 #include "bambi/host/FieldBuffer.h"
 #include "bambi/host/Layout.h"
 #include "bambi/host/PluginProcessor.h"
+#include "bambi/host/RemoteAnswer.h"
 #include "bambi/host/Transport.h"
 #include "bambi/link/latest.hpp"
 #include "bambi/mod/modulation.hpp"
@@ -67,6 +70,9 @@ public:
     void prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) override;
     juce::AudioProcessorEditor* createEditor() override;
 
+    /// The remote interface a host that plays the Decoder's outputs asks for.
+    juce::VST3ClientExtensions* getVST3ClientExtensions() override { return &remote_; }
+
     int clapAmbisonicOrderForBus(bool isInput, int busIndex) override;
     uint32_t clapAudioPortsConfigCount() override;
     bool clapAudioPortsConfigGet(uint32_t index, clap_audio_ports_config* config) override;
@@ -79,6 +85,18 @@ public:
     /// Light or stop an output. Lighting one whose channels collide with another's stops that one and says so in
     /// `notice()`; one needing more channels than the bus has does not light and says how many it needs.
     void playOutput(Output which, bool on);
+    /// Message thread: what the remote interface reports, and a request through it granted as the page grants it.
+    bambi::DecoderReport remoteReport() const;
+    void remoteRequest(const bambi::DecoderRequest& request);
+    /// Message thread: where the host that plays the outputs has put them; none in any other host.
+    const std::optional<bambi::HostOutputs>& hostOutputs() const { return host_; }
+    /// Message thread: a click on the map under that host -- `output` 1 headphones, 2 speakers, to start on `at`, a
+    /// channel of the host's row; the host reads it with the report and carries it out.
+    void askHostToPlace(int output, int at) {
+        placeOut_.store(output);
+        placeAt_.store(at);
+        placeSerial_.fetch_add(1);
+    }
     /// The current state, copied: for the editor.
     bambi::DecoderState decoderState() const;
     /*  Message thread: a decoder as filters from a SOFA FIR-E file (tools/matrix/jconvolver-to-sofa.py writes one
@@ -260,4 +278,10 @@ private:
 
     Diagnostics diag_;
     juce::String notice_;
+    std::optional<bambi::HostOutputs> host_;
+    std::atomic<int> placeSerial_{0}, placeOut_{0}, placeAt_{0};  ///< what `askHostToPlace` said last, and how often
+    bambi::host::RemoteAnswer remote_{
+        bambi::kDecoderRemoteKind, bambi::kDecoderRemoteVersion,
+        [this] { return bambi::toJson(remoteReport()).dump(0); },
+        [this](std::string_view json) { remoteRequest(bambi::requestFrom(bambi::Json::parse(json))); }};
 };

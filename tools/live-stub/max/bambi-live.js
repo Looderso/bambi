@@ -4,9 +4,13 @@
 //  routing the host asks for. It decides nothing. Messages to and from the host are JSON lines carried by
 //  the Node script; `send` goes out, `fromhost` comes in.
 //
-//  On: the tree goes to the host, observers report every change, and the host's `route` is applied -- each
-//  track's routing remembered first. Off: every remembered routing is put back. A pair p is the loop device's
-//  channels 2p+1/2p+2, which on the "bambi bridge" aggregate are Live's outputs 2p+3/2p+4, the speakers being 1/2.
+//  On while the host is connected: the tree goes to the host, observers report every change, and the host's `route`
+//  is applied -- each track's routing remembered first. The host decides which tracks go to bambi, none until the
+//  user takes one there, so connecting moves nothing; the bambi track is made with the first. Every remembered
+//  routing is put back when the host takes every track out, when it goes away -- or, the set opened with tracks on
+//  bambi, never comes -- and when the device is removed. A pair p is the loop device's
+//  channels 2p+3/2p+4: 1/2 carry Live's Main, where Live sends its Master, and the bambi track's input -- the
+//  host's copy back to Live -- comes in on them too.
 //
 //  Everything that must outlive the session -- each track's key with its place and name, the remembered routings,
 //  the host's state -- lives in the device's unnamed dict, a parameter, whose contents Live saves with the set and
@@ -14,8 +18,8 @@
 //  device's patcher, not with the set.) A track is known to the host by its key, never by Live's id, which lasts only while the set
 //  is open; after a reopening it is found again by its place and name.
 //
-//  When the host goes away while bambi is on, the device waits five seconds for it (the Node script starts it
-//  again); then it turns bambi off, so the tracks play in Live again.
+//  When the host goes away while bambi is on, or does not come to a set that has tracks on bambi, the device waits
+//  five seconds for it (the Node script starts it again); then it puts every track back, so they play in Live.
 //
 //  It changes nothing on its own besides that. When the set opens it saves every track's routing -- for a track
 //  it routed, the routing it remembers -- which changes nothing; restoring that is a press, confirmed by a second.
@@ -23,23 +27,24 @@
 
 autowatch = 1;
 inlets = 1;
-outlets = 5;  // 0: "send", "status", "detail", "meta", "saved", "notice" with their text; 1: the route button, set
-              //    without output; 2: the list's rows; 3: the restore button's label; 4: the connection light
+outlets = 4;  // 0: "send", "status", "detail", "meta", "saved", "notice" with their text; 1: the list's rows;
+              //    2: the restore button's label; 3: the connection light
 
 //  The connection light, a square as Live draws its own: green connected (the suite's green), yellow waiting --
 //  for a host that is starting, or one that went away -- red when it failed, grey when another device has it.
 const LIGHT = {connected: [0.494, 0.643, 0.494, 1], waiting: [0.98, 0.69, 0.23, 1],
                failed: [0.86, 0.27, 0.23, 1], busy: [0.45, 0.45, 0.45, 1]};
+let protocolNote = "";  // the host speaks another protocol: what the device says until it is replaced
 let failed = false;  // the host did not come back, or has no loop device: red until it connects again
 
 function light(state) {
-    outlet(4, "bgfillcolor", LIGHT[state]);
+    outlet(3, "bgfillcolor", LIGHT[state]);
 }
 
-const PROTOCOL = 1;
+const PROTOCOL = 3;  // with the host's (core/live/protocol.hpp): bumped when a message or its meaning changes
 const MAIN = ["Main", "Master"];  // Live 12 says Main, earlier versions Master
 const GRACE_MS = 5000;
-const RETURN_IN = "15/16";   // the host's binaural mix: the loop device's pair after the tracks' seven
+const RETURN_IN = "1/2";     // the host's copy back to Live: the loop device's first pair, as Main's goes out
 const RETURN_NAME = "bambi";
 const MONITOR_IN = 0;
 const RETURN_START_DB = -12;  // the bambi track starts low: the decoded mix of every track bambi plays can reach full scale
@@ -60,7 +65,7 @@ let info = {};         // what the host last said about the mix: latency, rate, 
 let confirming = false;  // restore pressed once, waiting for the second press
 const unconfirm = new Task(() => {
     confirming = false;
-    outlet(3, "text", "restore saved");
+    outlet(2, "text", "restore saved");
 });
 const grace = new Task(() => {
     if (!on || linked) return;
@@ -80,6 +85,10 @@ function notifydeleted() {
     relight.cancel();
     grace.cancel();
     unconfirm.cancel();
+    if (on) {  // removed while it routes: everything back to Live, as it was
+        restoreAll();
+        silence([]);
+    }
 }
 
 function dictionary(name) {
@@ -92,7 +101,7 @@ function bang() {
     post("bambi: loaded; the set kept " + (store === null ? "nothing (no dict)" : store.getkeys()) + "\n");
     identify();
     on = remembered().length > 0;
-    outlet(1, "set", on ? 1 : 0);
+    if (on) grace.schedule(GRACE_MS);  // a set saved with tracks on bambi: back to Live unless the host comes
     takeSnapshot(true);
     idle();
     showList();
@@ -100,11 +109,18 @@ function bang() {
 
 //  The status when nothing is happening.
 function idle() {
+    if (protocolNote !== "") {  // not a state to leave by itself: the host is deaf to this device until it is replaced
+        light("failed");
+        status("old device", protocolNote);
+        return;
+    }
     light(busy ? "busy" : failed ? "failed" : linked ? "connected" : "waiting");
     if (busy) status("busy", "another bambi device in this set has the host");
     else if (!linked) status("no host", "starting it… if it does not come, is bambi installed?");
-    else if (on) status("on · " + routedCount() + " tracks", "in the field; binaural back on the bambi track");
-    else status("connected", "press route to play the set in the field");
+    else if (on) status("on · " + routedCount() + " tracks",
+                        routedCount() === 0 ? "add an Encoder to a track in the host to play it in the field"
+                                            : "in the field; binaural back on the bambi track");
+    else status("connected", "everything plays in Live");
     const found = strays(identify());
     notice(found.length > 0 && !on
         ? found.length + " track" + (found.length === 1 ? "" : "s") + " still play to bambi's channels, not routed by " +
@@ -198,8 +214,9 @@ function connected(flag) {
         const state = kept("host", null);
         if (state !== null) send({type: "restore", state: state});
         idle();
-        if (on) start();
+        start();  // nothing moves until the host asks for it
     } else {
+        protocolNote = "";
         stopObserving();
         info = {};
         outlet(0, "meta", "");
@@ -238,8 +255,12 @@ function fromhost(sent) {
         return;
     }
     if (m.type === "welcome") {
-        if (m.protocol !== PROTOCOL) status("the host speaks protocol " + m.protocol + ", this device " + PROTOCOL);
-        else if (!m.loop) {
+        if (m.protocol !== PROTOCOL) {
+            //  a set keeps its device's own scripts, so this is an old device in a new host's session, or the other way about
+            protocolNote = "the host speaks protocol " + m.protocol + ", this device " + PROTOCOL +
+                           ": remove this device and add bambi again";
+            idle();
+        } else if (!m.loop) {
             failed = true;
             light("failed");
             status("no loop device", "the host found no bambi loop device; is it installed?");
@@ -254,35 +275,34 @@ function fromhost(sent) {
         showList();
     } else if (m.type === "status") {
         status(m.text);
+    } else if (m.type === "command") {
+        command(m);
+    } else if (m.type === "refresh") {
+        //  playing or not, but only as often as the last read's cost allows
+        if (on && mayRead()) sendArrangement();
     }
+}
+
+//  Live's transport, as the host asks for it: Live stays the clock, and its observers report back what it did.
+function command(m) {
+    const set = new LiveAPI("live_set");
+    if (m.action === "play") set.call("start_playing");
+    else if (m.action === "stop") set.call("stop_playing");
+    else if (m.action === "continue") set.call("continue_playing");
+    else if (m.action === "locate") set.set("current_song_time", Math.max(0, Number(m.ppq) || 0));
 }
 
 // ---- the button ------------------------------------------------------------------------------------------------
 
-function enable() {
-    if (!ready) return;
-    if (on) {
-        stop();
-    } else if (!linked) {
-        outlet(1, "set", 0);
-        idle();
-    } else {
-        start();
-    }
-}
-
 function start() {
     on = true;
     lastTree = "";
+    lastArrangement = "";
     lastValue = {};
-    outlet(1, "set", 1);
-    const listening = makeReturn();
     send({type: "bambi", on: 1});
     sendTree();
     observe();
-    if (!listening)
-        notice("the bambi track cannot hear Ext. In " + RETURN_IN + ": enable it as a stereo pair in Live's " +
-               "Input Config, with the bambi bridge as the input device");
+    sendArrangement();
 }
 
 function stop() {
@@ -294,13 +314,11 @@ function stop() {
     const back = restoreAll();
     silence([]);
     removeReturn();
-    outlet(1, "set", 0);
     send({type: "bambi", on: 0});
     info = {};
     outlet(0, "meta", "");
     showList();
-    status("off", back + " track" + (back === 1 ? "" : "s") + " back as they were; press route to play the set " +
-           "in the field");
+    status("off", back + " track" + (back === 1 ? "" : "s") + " back as they were");
 }
 
 function show() {
@@ -557,6 +575,122 @@ function observeLightly() {
 }
 const relight = new Task(() => observeLightly());
 
+// ---- the arrangement, as guidance --------------------------------------------------------------------------
+
+//  Every track's arrangement clips, the locators and the loop, read in one go and timed: what reading them holds Live
+//  up is sent along, measured rather than guessed. A group and a return have no clips of their own.
+const ARRANGEMENT_SETTLE_MS = 300;  // edits come in bursts: read once they stop
+const ARRANGEMENT_SHARE = 50;       // a read waits this many times its own last cost: Live's thread stays free
+let lastArrangement = "";
+let arrangementStale = false;
+let lastReadAt = 0, lastReadMs = 0;
+const arrangementLater = new Task(() => sendArrangement());
+
+//  Whether reading now keeps Live's own thread free enough: the last read's cost, fifty times over, has passed.
+function mayRead() {
+    return Date.now() - lastReadAt >= Math.max(ARRANGEMENT_SETTLE_MS, ARRANGEMENT_SHARE * lastReadMs);
+}
+
+function arrangementChanged() {
+    arrangementStale = true;
+    arrangementLater.cancel();
+    arrangementLater.schedule(Math.max(ARRANGEMENT_SETTLE_MS, ARRANGEMENT_SHARE * lastReadMs));
+}
+
+function sendArrangement() {
+    arrangementStale = false;
+    const began = Date.now();
+    lastReadAt = began;
+    const set = new LiveAPI("live_set");
+    const tracks = [], session = [];
+    for (const n of identify()) {
+        if (n.path.startsWith("live_set return_tracks") || Number(n.api.get("is_foldable")) === 1) continue;
+        const clips = [];
+        for (let i = 0; i < n.api.getcount("arrangement_clips"); ++i) {
+            const c = new LiveAPI(n.path + " arrangement_clips " + i);
+            clips.push({start: Number(c.get("start_time")), end: Number(c.get("end_time")), name: text(c, "name"),
+                        colour: hex(c.get("color")), midi: Number(c.get("is_midi_clip")) === 1});
+        }
+        clips.sort((a, b) => a.start - b.start);
+        tracks.push({id: n.key, clips: clips});
+        //  its session clips, slot by slot
+        const slots = [];
+        for (let s = 0; s < n.api.getcount("clip_slots"); ++s) {
+            if (Number(new LiveAPI(n.path + " clip_slots " + s).get("has_clip")) !== 1) continue;
+            const c = new LiveAPI(n.path + " clip_slots " + s + " clip");
+            slots.push({slot: s, name: text(c, "name"), colour: hex(c.get("color")),
+                        loopStart: Number(c.get("loop_start")), loopEnd: Number(c.get("loop_end")),
+                        looping: Number(c.get("looping")) === 1, midi: Number(c.get("is_midi_clip")) === 1});
+        }
+        session.push({id: n.key, clips: slots});
+    }
+    const locators = [];
+    for (let i = 0; i < set.getcount("cue_points"); ++i) {
+        const c = new LiveAPI("live_set cue_points " + i);
+        locators.push({time: Number(c.get("time")), name: text(c, "name")});
+    }
+    locators.sort((a, b) => a.time - b.time);
+    const message = {type: "arrangement", tracks: tracks, session: session, scenes: set.getcount("scenes"),
+                     locators: locators,
+                     loop: {on: Number(set.get("loop")) === 1, start: Number(set.get("loop_start")),
+                            length: Number(set.get("loop_length"))},
+                     readMs: Date.now() - began};
+    lastReadMs = message.readMs;
+    const same = JSON.stringify([tracks, session, message.scenes, locators, message.loop]);
+    if (same === lastArrangement) return;
+    lastArrangement = same;
+    post("bambi: the arrangement read in " + message.readMs + " ms\n");
+    send(message);
+}
+
+// ---- session clips, as Live plays them ------------------------------------------------------------------------
+
+//  Each track's session clip: which slot plays, and where in the clip Live is -- every report Live gives, sent on,
+//  so the host can learn how often a clip's position arrives before it projects one between them.
+let clipWatchers = [];
+//  Each watched track's way back to the arrangement, for Back to Arrangement.
+let sessionTracks = [];
+
+//  Whether the session has a track: from a clip launched on it, or its stop button pressed, until Back to
+//  Arrangement -- Live keeps the arrangement silent on it till then, whether a clip still plays or not.
+function watchSessionClip(track, key) {
+    let slot = -1, clip = null, taken = false;
+    const sendSlot = position => {
+        if (slot < 0 || clip === null) {
+            send({type: "slot", id: key, slot: -1, overrides: taken});
+            return;
+        }
+        send({type: "slot", id: key, slot: slot, position: position, loopStart: Number(clip.get("loop_start")),
+              loopEnd: Number(clip.get("loop_end")), looping: Number(clip.get("looping")) === 1, overrides: taken});
+    };
+    sessionTracks.push(() => {
+        if (!taken) return;
+        taken = false;
+        sendSlot(clip !== null ? Number(clip.get("playing_position")) : 0);
+    });
+    const position = new LiveAPI(args => {
+        if (args[0] === "playing_position" && slot >= 0) sendSlot(Number(args[1]));
+    }, track);
+    const playing = new LiveAPI(args => {
+        if (args[0] !== "playing_slot_index") return;
+        slot = Number(args[1]);
+        if (slot >= 0 || slot === -2) taken = true;  // a clip launched, or the track's stop button
+        clip = null;
+        position.property = "";
+        if (slot >= 0 && Number(new LiveAPI(track + " clip_slots " + slot).get("has_clip")) === 1) {
+            clip = new LiveAPI(track + " clip_slots " + slot + " clip");
+            position.path = track + " clip_slots " + slot + " clip";
+            position.property = "playing_position";
+        } else {
+            slot = -1;
+        }
+        sendSlot(clip !== null ? Number(clip.get("playing_position")) : 0);
+        arrangementChanged();  // a clip launched or stopped: the session's clips read again
+    }, track);
+    playing.property = "playing_slot_index";
+    clipWatchers.push(position, playing);
+}
+
 // ---- the set as the host sees it ----------------------------------------------------------------------------
 
 function sendTree() {
@@ -631,18 +765,19 @@ function outputOf(n) {
     return group !== null ? text(group, "name") : MAIN[0];
 }
 
-//  A tree of where the audio goes, not of how the tracks are filed: a track in a group belongs to it only
-//  while it plays into it -- by its routing as the user has it, not as bambi made it, so a track grouped while
-//  bambi plays it belongs to the group. Played to Main it is a path of its own; played anywhere else it is not on
-//  a path to Main at all, and the host leaves it alone.
+//  A tree of where the audio goes, and of how the tracks are filed. A track's `parent` is the group it plays into, by its
+//  routing as the user has it, not as bambi made it, so a track grouped while bambi plays it plays into the group; played
+//  to Main it is a path of its own; played anywhere else it is not on a path to Main at all, and the host leaves it alone.
+//  Its `group` is the group Live files it under, whatever its routing: where the host lists it, as Live does.
 function tree() {
     const list = identify().map(n => {
         const t = n.api;
         const output = outputOf(n);
-        let parent = null, path = "main";
+        let parent = null, path = "main", filed = null;
         if (Number(t.get("is_grouped")) === 1) {
             const group = new LiveAPI("id " + t.get("group_track")[1]);
-            if (output === text(group, "name") || output === "Group") parent = keyOfLive[Number(group.id)];
+            filed = keyOfLive[Number(group.id)] || null;  // where Live files it, whatever its routing
+            if (output === text(group, "name") || output === "Group") parent = filed;
         }
         if (parent === null && MAIN.indexOf(output) < 0 && !n.ret) path = "elsewhere";
         const mixer = new LiveAPI(n.path + " mixer_device");
@@ -656,7 +791,9 @@ function tree() {
             id: n.key,
             kind: n.ret ? "return" : Number(t.get("is_foldable")) === 1 ? "group" : "track",
             parent: parent,
+            group: filed,
             path: path,
+            output: output,  // what the parent and the path were read from; the host logs it, and reads nothing else of it
             name: n.name,
             colour: hex(t.get("color")),
             audio: n.ret ? 1 : Number(t.get("has_audio_output")),
@@ -691,18 +828,33 @@ function observe() {
     const all = identify();
     for (const n of all) set_[n.key] = routingOf(n.api);  // what the routing is now is the device's own
     watch(song, "current_song_time", transport);
-    watch(song, "is_playing", transport);
+    watch(song, "is_playing", v => {
+        transport();
+        if (!Number(v[0]) && arrangementStale) arrangementChanged();
+    });
     watch(song, "tempo", transport);
+    //  the arrangement, sent again when it changes -- never while Live plays, where reading it could stall
+    for (const prop of ["cue_points", "loop", "loop_start", "loop_length", "scenes"]) watch(song, prop, arrangementChanged);
+    //  Back to Arrangement: every track the session had goes back to the arrangement
+    watch(song, "back_to_arranger", v => {
+        if (!Number(v[0])) for (const back of sessionTracks) back();
+    });
     //  names, colours and the track list come with the tree, which the light observers' refresh sends
 
     for (const n of all) {
         const t = n.api, key = n.key, name = n.name;
         const value = (what, v) => sendValue(key, name, what, v);
+        if (!n.path.startsWith("live_set return_tracks") && Number(t.get("is_foldable")) !== 1) {
+            watch(n.path, "arrangement_clips", arrangementChanged);
+            watchSessionClip(n.path, key);
+        }
         watch(n.path, "mute", v => value("mute", Number(v[0])));  // also the track's on/off button
         watch(n.path, "solo", v => value("solo", Number(v[0])));
         watch(n.path, "output_routing_type", () => {
+            if (routing) return;  // the device's own change: half of a change is not a change to report
             const now = routingOf(t);
-            if (!routing && set_[key] !== now) value("routing", now);
+            if (set_[key] !== now) value("routing", now);
+            sendTree();  // where its audio goes may have moved with it: the host's tree follows, sent only if it differs
         });
         const volume = n.path + " mixer_device volume";
         watch(volume, "value", v => value("fader", db(volume, Number(v[0]))));
@@ -718,6 +870,9 @@ function observe() {
 function stopObserving() {
     for (const o of observers) o.property = "";
     observers = [];
+    for (const o of clipWatchers) o.property = "";
+    clipWatchers = [];
+    sessionTracks = [];
 }
 
 // ---- routing ------------------------------------------------------------------------------------------------
@@ -771,6 +926,10 @@ function route(m) {
     }
     remember(list);
     silence(m.silent || []);
+    //  the bambi track, with the first track on bambi
+    if (wanted.size > 0 && !makeReturn())
+        notice("the bambi track cannot hear Ext. In " + RETURN_IN + ": enable it as a stereo pair in Live's " +
+               "Input Config, with the bambi bridge as the input device");
     routing = false;
     send({type: "routed", tracks: results});
     idle();
@@ -791,10 +950,19 @@ function originalOf(key, t) {
     return {type: DEFAULT_ROUTING, channel: ""};
 }
 
+//  Where a track goes back to when bambi gives it to Live: what it was remembered playing to, except Main for a track
+//  filed in a group -- a routing remembered from before it was grouped, or one bambi's own channels hid when the set was
+//  saved -- which goes back into its group. Pure: no Live, so it can be tested outside Max.
+function givenBackTo(type, grouped) {
+    return grouped && MAIN.indexOf(type) >= 0 ? DEFAULT_ROUTING : type;
+}
+
 function restore(entry) {
     post("bambi: " + entry.name + " back to " + entry.type + " " + entry.channel + "\n");  // @default: its group or Main
     const t = trackOf(entry.key);
-    if (t === null || !chooseNamed(t, "output_routing_type", resolved(entry.type, {api: t}))) return false;  // gone, or refused
+    if (t === null) return false;  // gone
+    const type = givenBackTo(entry.type, groupOf({api: t}) !== null);
+    if (!chooseNamed(t, "output_routing_type", resolved(type, {api: t}))) return false;  // refused
     chooseNamed(t, "output_routing_channel", entry.channel);  // Main has no channel to choose
     set_[entry.key] = routingOf(t);
     return true;
@@ -877,7 +1045,7 @@ function showList() {
     const count = on ? kept_.length : stray.length;
     const head = count === 0 ? "no tracks on bambi"
                : count + " track" + (count === 1 ? "" : "s") + (on ? " on bambi" : " on bambi's channels");
-    outlet(2, "rows", JSON.stringify({head: head, sub: all.filter(n => !n.ret).length + " in the set", rows: rows}));
+    outlet(1, "rows", JSON.stringify({head: head, sub: all.filter(n => !n.ret).length + " in the set", rows: rows}));
 }
 
 // ---- the routing snapshot ----------------------------------------------------------------------------------
@@ -920,19 +1088,19 @@ function save() {
 //  Two presses: the first asks, the second does it.
 function restoreSaved() {
     if (!ready) return;
-    if (on) {
-        notice("turn route off to restore");
+    if (on && routedCount() > 0) {
+        notice("take every track out of bambi in the host first: all to Live");
         return;
     }
     if (!confirming) {
         confirming = true;
-        outlet(3, "text", "restore? press again");
+        outlet(2, "text", "restore? press again");
         unconfirm.schedule(4000);
         return;
     }
     unconfirm.cancel();
     confirming = false;
-    outlet(3, "text", "restore saved");
+    outlet(2, "text", "restore saved");
     const s = kept("snapshot", null);
     const all = identify();
     const stray = strays(all).map(n => n.key);

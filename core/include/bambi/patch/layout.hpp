@@ -27,6 +27,9 @@ struct Layout {
 
 /// The widest bus a layout may use: outputs counted from its first channel, and the link's record of it.
 inline constexpr int kMaxDecoderOutputs = 64;
+/// The most channels a VST3 bus carries: each names a speaker, and VST3 has 61. A host asking a VST3 Decoder for
+/// its bus stops here.
+inline constexpr int kMaxVst3BusChannels = 61;
 
 /// The loudspeakers that are fed: every one that is not imaginary.
 inline int realLoudspeakers(const std::vector<Loudspeaker>& layout) {

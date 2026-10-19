@@ -54,6 +54,19 @@ public:
     /// Press a corner toggle and drag from it, to prove the press starts no orbit.
     void dragCornerToggle(bool regionsAlways, float dx, float dy);
     bool clickFull();
+    //  the `decoder` toggle and its list, through the painted areas as the mouse would, on whichever view carries it (the globe,
+    //  or the equirect while it has the row): each paints first, and is false when the control is not there
+    bool clickDecoderToggle();
+    bool clickDecoderTriangle();
+    bool clickDecoderRow(int index);
+    bool pressKeyOnScene(const juce::KeyPress& key);
+    bool decoderOverlayOn() const { return effectControls_.sphere.decoders.selection().master(); }
+    bool decoderListOpen() const { return effectControls_.sphere.decoders.open(); }
+    int decoderRowsListed() const { return static_cast<int>(effectControls_.sphere.decoders.rows().size()); }
+    const ui::DecoderOverlayDrawn& decodersDrawn() const {
+        return equirectFull() ? equirect.decoderOverlayDrawn() : globe.decoderOverlayDrawn();
+    }
+    juce::Rectangle<float> decoderRowArea(int index) const;
     void setEquirectFull(bool full) {
         effectControls_.sphere.equirectFull = full;
         relayout();

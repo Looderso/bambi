@@ -84,6 +84,13 @@ void drawFramedButton(juce::Graphics& g, juce::Rectangle<float> area, const juce
                       bool on = false);
 /// How wide `drawFramedButton` wants to be for `label`.
 float framedButtonWidth(const juce::String& label);
+/*  A dropdown: the small triangle, pointing down, that opens a list beside what it belongs to -- the scene's overlay
+    toggle, a chip on the live host's routing page. The one look for a list behind a control, everywhere. `box` is
+    what takes the press, its height the control's; while the list is open the triangle sits on a block, as an open
+    tab does, `blockHeight` tall; greyed when it offers nothing. */
+void drawDropdown(juce::Graphics& g, juce::Rectangle<float> box, bool open, bool offered, float blockHeight);
+/// How wide a dropdown's box is: the triangle and its pad either side.
+float dropdownWidth();
 /// A chevron in its box. `dx`/`dy` are the direction it points -- (1, 0) right, (0, 1) down -- one of them zero.
 void strokeChevron(juce::Graphics& g, juce::Rectangle<float> box, int dx, int dy, juce::Colour c);
 /// A group's name with a rule under it, `width` wide from `x`. Returns the y to carry on at.
@@ -94,6 +101,10 @@ void drawFactRow(juce::Graphics& g, juce::Rectangle<float> row, const juce::Stri
 /// Something waiting for the user's next act -- learn listening for a note, the live host's sidechain slot waiting
 /// for a source: a block in the learning colour, its label in the ground's.
 void drawWaiting(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& label, const juce::Font& f);
+/// What a waiting pick may take: a dashed ring in the waiting colour round `box`.
+void drawTakes(juce::Graphics& g, juce::Rectangle<float> box);
+/// What a waiting pick cannot take: the ground laid thinly over `box`, so it reads as out of reach.
+void drawOutOfReach(juce::Graphics& g, juce::Rectangle<float> box);
 /*  A chip: a small framed label, a thing offered or held for a click -- a preset's folder, an insert on the live host's
     page. `accent`, when given, is a bar on its left in its owner's colour; `closable` puts a cross at its right,
     whose area is returned. */
@@ -105,6 +116,29 @@ Chip drawChip(juce::Graphics& g, juce::Point<float> topLeft, float height, const
               std::optional<juce::Colour> accent = std::nullopt, bool closable = false);
 /// How wide `drawChip` draws `label`, at `height`, with a bar and a cross or without.
 float chipWidth(const juce::String& label, float height, bool accent, bool closable);
+/// Whether an output plays, as the Decoder's tabs mark it: a light well, a dark square in it while it plays.
+/// `onBlock` draws its frame light, for a mark on a chosen block.
+void drawPlayMark(juce::Graphics& g, juce::Rectangle<float> box, bool plays, bool onBlock = false);
+
+/*  A menu: a list dropped from `topLeft`, framed, an item a line -- its name, and a note right of it -- and an
+    explanation under them all. An item not `offered` is greyed and is to take no press. Whoever draws it registers
+    the presses on the items it offers, and closes it on a press anywhere else. */
+struct MenuItem {
+    juce::String label, note;
+    bool offered{true};
+};
+struct Menu {
+    juce::Rectangle<float> box;
+    std::vector<juce::Rectangle<float>> items;
+};
+Menu drawMenu(juce::Graphics& g, juce::Point<float> topLeft, float width, const std::vector<MenuItem>& items,
+              const juce::String& foot);
+/// The panel every menu stands on: the ground, outlined in the strong rule. `drawMenu` and the overlay list both start here.
+void paintMenuFrame(juce::Graphics& g, juce::Rectangle<float> box);
+
+/// A live host page's band, along its top: the ground, a rule under it. Returns the room inside its insets.
+juce::Rectangle<float> drawPageBand(juce::Graphics& g, float width);
+
 /// The cross that closes something temporary, in `box`. Returns the area a press on it should take.
 juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> box);
 

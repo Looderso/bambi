@@ -97,6 +97,9 @@ public:
     /// A region handle under the pointer is drawn as if held, with a grab cursor.
     void mouseMove(const juce::MouseEvent& e) override;
     void mouseExit(const juce::MouseEvent& e) override;
+    bool keyPressed(const juce::KeyPress& key) override;
+    /// What the last paint drew of the session's decoders: for a tool.
+    const DecoderOverlayDrawn& decoderOverlayDrawn() const { return overlayDrawn_; }
 
     /// Once a frame, from the editor's tick, after it has re-read the patch. Repaints when a region
     /// is no longer where it was drawn: one turning under a rate moves with nothing on screen
@@ -131,6 +134,7 @@ private:
     void paintRegions(juce::Graphics& g, const Viewport& vp);
 
     State& state_;
+    DecoderOverlayDrawn overlayDrawn_;
     Projection projection_;
     ProbeAnswer answer_;
     std::function<void()> changed_;

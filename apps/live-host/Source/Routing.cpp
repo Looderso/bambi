@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 #include "bambi/ui/Draw.h"
 #include "bambi/ui/Widgets.h"
@@ -14,56 +15,41 @@ namespace {
 namespace colour = ui::theme::colour;
 namespace rt = ui::theme::routing;
 using live::Node;
+using live::Target;
 
-const juce::String kDot = juce::String::fromUTF8(" \xc2\xb7 ");
+using ui::kSeparator;
 
-juce::String nameOf(live::Effect e) { return e == live::Effect::Reverb ? "reverb" : "echo"; }
+juce::String effectName(live::Effect e) { return e == live::Effect::Reverb ? "reverb" : "echo"; }
 
 juce::Colour colourOf(live::Effect e) {
     return colour::identity(e == live::Effect::Reverb ? Product::Reverb : Product::Echo);
 }
 
-//  A frame, solid or dashed as what Live plays outside the field is.
-void frame(juce::Graphics& g, juce::Rectangle<float> box, juce::Colour c, float weight, bool dashed) {
-    g.setColour(c);
-    if (!dashed) {
-        g.drawRect(box, weight);
-        return;
-    }
-    juce::Path p;
-    p.addRectangle(box);
-    ui::strokeDashed(g, p, ui::theme::stroke::outsideDash, juce::PathStrokeType(weight));
+//  A level as a wire says it: one decimal, a true minus, silence as such.
+juce::String dB(double v) {
+    if (v <= live::kSilentDb) return juce::String::fromUTF8("\xe2\x88\x92\xe2\x88\x9e");
+    return (v > 0.05 ? "+" : "") + ui::signedNumber(v, 1);
 }
 
-//  The ring round a node under the pointer, outside its frame.
-void hoverRing(juce::Graphics& g, juce::Rectangle<float> box) {
+juce::Font nameFont() { return ui::font(ui::theme::type::body); }
+
+//  The ring round the chosen node, and round what it reaches.
+void ring(juce::Graphics& g, juce::Rectangle<float> box) {
     g.setColour(colour::touched);
     g.drawRect(box.expanded(rt::ringGap), ui::theme::stroke::rule);
 }
 
-//  A connector: from a child's right edge to its parent's left edge, across and down.
-void connect(juce::Graphics& g, juce::Point<float> from, juce::Point<float> to, bool field) {
-    juce::Path p;
-    const float mid = (from.x + to.x) / 2.0f;
-    p.startNewSubPath(from);
-    p.lineTo(mid, from.y);
-    p.lineTo(mid, to.y);
-    p.lineTo(to);
-    g.setColour(field ? colour::ruleStrong : colour::rule);
-    if (field) {
-        g.strokePath(p, juce::PathStrokeType(ui::theme::stroke::rule));
-        return;
-    }
-    ui::strokeDashed(g, p, ui::theme::stroke::outsideDash, juce::PathStrokeType(ui::theme::stroke::rule));
+//  A box one line tall, or two when what follows its name does not fit before "send": its chain then goes on the
+//  second line.
+juce::Rectangle<float> lineBox(float x, float y, float width, bool twoLines) {
+    return {x, y + (rt::row - rt::boxHeight) / 2.0f, width, rt::boxHeight + (twoLines ? rt::row : 0.0f)};
 }
 
-//  A send's level as the row under a node says it.
-juce::String dB(double v) {
-    const double r = std::round(v);
-    return std::abs(r) < 0.5
-               ? juce::String("0")
-               : (r < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : "") + juce::String(static_cast<int>(std::abs(r)));
-}
+float bottomOf(juce::Rectangle<float> box) { return box.getBottom() + (rt::row - rt::boxHeight) / 2.0f; }
+
+const juce::String kSendWaits = "click where it goes";
+const juce::String kSourceWaits = "click a source";
+const juce::String kAttachWaits = "click a part of the field";
 
 }  // namespace
 
@@ -79,7 +65,15 @@ void RoutingPage::show(const live::Tree& tree, const live::Shape& shape, const l
     shape_ = shape;
     field_ = field;
     pairs_ = pairs;
-    layout_ = live::layOutPage(tree_);
+    if (chosen_ && *chosen_ != live::kMain && partOf(*chosen_) == nullptr &&
+        std::none_of(field_.returns.begin(), field_.returns.end(),
+                     [&](const live::FieldReturn& r) { return r.node == *chosen_; }))
+        chosen_.reset();
+    repaint();
+}
+
+void RoutingPage::showDecoders(std::vector<live::PlayingDecoder> decoders) {
+    playing_ = std::move(decoders);
     repaint();
 }
 
@@ -96,55 +90,94 @@ int RoutingPage::pairOf(live::TrackId id) const {
     return p == pairs_.end() ? -1 : p->pair;
 }
 
+bool RoutingPage::canBeSource(live::TrackId id) const {
+    const live::Part* part = partOf(id);
+    return part != nullptr && !part->bus && pairOf(id) >= 0;
+}
+
+juce::String RoutingPage::nameOf(live::TrackId id) const {
+    if (id == live::kMain) return "main";
+    for (const Node& n : tree_.nodes)
+        if (n.id == id) return juce::String(n.name);
+    for (const live::HostInput& in : shape_.inputs)
+        if (in.id == id) return juce::String(in.name);
+    return "?";
+}
+
+juce::String RoutingPage::nameOf(const Target& t) const {
+    if (t.kind == Target::Kind::Main) return "main";
+    if (t.kind == Target::Kind::Node) return nameOf(t.id);
+    for (std::size_t k = 0; k < field_.decoders.size(); ++k)
+        if (field_.decoders[k] == t.id)
+            return field_.decoders.size() > 1 ? "decoder " + juce::String(static_cast<int>(k) + 1)
+                                              : juce::String("decoder");
+    return "a decoder";
+}
+
 void RoutingPage::change(const std::function<void(live::Shape&)>& edit) {
     live::Shape next = shape_;
     edit(next);
     if (reshape) reshape(std::move(next));
 }
 
-bool RoutingPage::canBeSource(live::TrackId id) const {
-    const live::Part* part = partOf(id);
-    return part != nullptr && !part->bus && pairOf(id) >= 0;
-}
-
-juce::String RoutingPage::slotLabel(live::TrackId heard) const {
-    if (heard == 0) return juce::String("sc ") + juce::String::fromUTF8("\xe2\x80\x93");
-    const auto n = std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == heard; });
-    if (n == tree_.nodes.end()) return "sc lost";
-    return "sc " + juce::String(n->name) + (canBeSource(heard) ? "" : " lost");
-}
-
-float RoutingPage::slotWidth(live::TrackId heard, bool waiting) const {
-    return ui::textWidth(ui::smallFont(), waiting ? juce::String("sc none") : slotLabel(heard)) + 2.0f * rt::padX;
-}
-
-//  A sidechain's slot: what it hears, or, armed, a block waiting for a source whose click clears it.
-float RoutingPage::slot(juce::Graphics& g, float x, float y, live::TrackId heard, bool waiting,
-                        std::function<void()> armIt, std::function<void()> clear) {
-    const juce::Rectangle<float> box{x, y - rt::control / 2.0f, slotWidth(heard, waiting), rt::control};
-    if (waiting) {
-        ui::drawWaiting(g, box, "sc none", ui::smallFont());
-        addClickArea(box, std::move(clear));
-        return box.getRight();
+bool RoutingPage::keyPressed(const juce::KeyPress& key) {
+    if (key != juce::KeyPress::escapeKey) return false;
+    if (menu_) {
+        menu_.reset();
+    } else if (!armed_.escape()) {
+        if (!chosen_) return false;
+        chosen_.reset();
     }
-    g.setColour(colour::rule);
-    g.drawRect(box, ui::theme::stroke::rule);
-    const bool lost = heard != 0 && !canBeSource(heard);
-    ui::text(g, slotLabel(heard), ui::smallFont(), lost ? colour::inactive : colour::label, box,
-             juce::Justification::centred);
-    if (!pick_.armed()) addClickArea(box, std::move(armIt));
-    return box.getRight();
+    repaint();
+    return true;
 }
 
-void RoutingPage::arm(Pick pick) {
-    pick_ = pick;
+// ---- what waits for a click -----------------------------------------------------------------------
+
+void RoutingPage::begin(Waiting w) {
+    menu_.reset();
+    armed_.begin(w);
     grabKeyboardFocus();
     repaint();
 }
 
-void RoutingPage::choose(live::TrackId from) {
-    const Pick pick = pick_;
-    pick_ = {};
+bool RoutingPage::waits(Waiting::Kind kind, live::TrackId node, std::uint64_t insert) const {
+    const auto& w = armed_.what();
+    return w && w->kind == kind && w->node == node && w->insert == insert;
+}
+
+bool RoutingPage::takes(live::TrackId node) const {
+    const auto& w = armed_.what();
+    if (!w) return false;
+    switch (w->kind) {
+        case Waiting::Kind::Send:
+            return w->node != node &&
+                   live::canWire(field_, w->node, node == live::kMain ? Target::main() : Target::node(node));
+        case Waiting::Kind::Orphan:
+            return node == live::kMain || partOf(node) != nullptr ||
+                   std::any_of(field_.returns.begin(), field_.returns.end(),
+                               [&](const live::FieldReturn& r) { return r.node == node; });
+        case Waiting::Kind::Sidechain: return canBeSource(node) && (w->insert != 0 || w->node != node);
+    }
+    return false;
+}
+
+void RoutingPage::take(live::TrackId node) {
+    const Waiting w = *armed_.what();
+    armed_.end();
+    switch (w.kind) {
+        case Waiting::Kind::Send: {
+            const Target to = node == live::kMain ? Target::main() : Target::node(node);
+            change([this, w, to](live::Shape& s) { live::setWire(s, field_, w.node, {to, 0.0}); });
+            break;
+        }
+        case Waiting::Kind::Orphan: attachTo(w.node, node); break;
+        case Waiting::Kind::Sidechain: setSidechain(w, node); break;
+    }
+    repaint();
+}
+
+void RoutingPage::setSidechain(Waiting pick, live::TrackId from) {
     change([pick, from](live::Shape& s) {
         if (pick.insert != 0) {
             for (live::Chain& c : s.chains)
@@ -152,402 +185,36 @@ void RoutingPage::choose(live::TrackId from) {
                     if (i.id == pick.insert) i.sidechain = from;
             return;
         }
-        s.sidechains.erase(std::remove_if(s.sidechains.begin(), s.sidechains.end(),
-                                          [&](const live::Sidechain& c) { return c.source == pick.source; }),
-                           s.sidechains.end());
-        if (from != 0) s.sidechains.push_back({pick.source, from});
+        std::erase_if(s.sidechains, [&](const live::Sidechain& c) { return c.source == pick.node; });
+        if (from != 0) s.sidechains.push_back({pick.node, from});
     });
-    repaint();
 }
 
-void RoutingPage::attachTo(live::TrackId target) {
-    const live::TrackId orphan = pick_.orphan;
-    pick_ = {};
+void RoutingPage::attachTo(live::TrackId orphan, live::TrackId target) {
     change([orphan, target](live::Shape& s) {
         std::vector<live::Insert> moved;
         for (const live::Chain& c : s.chains)
             if (c.node == orphan) moved = c.inserts;
-        s.chains.erase(
-            std::remove_if(s.chains.begin(), s.chains.end(), [&](const live::Chain& c) { return c.node == orphan; }),
-            s.chains.end());
+        std::erase_if(s.chains, [&](const live::Chain& c) { return c.node == orphan; });
         auto to =
             std::find_if(s.chains.begin(), s.chains.end(), [&](const live::Chain& c) { return c.node == target; });
         if (to == s.chains.end()) to = s.chains.insert(s.chains.end(), live::Chain{target, {}});
         to->inserts.insert(to->inserts.end(), moved.begin(), moved.end());
     });
-    repaint();
 }
 
-//  What the band says while a slot waits.
-juce::String RoutingPage::picking() const {
-    if (pick_.orphan != 0)
-        return "attach the orphaned chain" + kDot + "click a part of the field" + kDot + "esc cancels";
-    juce::String what;
-    if (pick_.source != 0) {
-        const auto n =
-            std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == pick_.source; });
-        what = (n != tree_.nodes.end() ? juce::String(n->name) : juce::String()) + "'s encoder";
-    } else {
-        for (const live::Chain& c : shape_.chains)
-            for (const live::Insert& i : c.inserts)
-                if (i.id == pick_.insert) {
-                    const auto n = std::find_if(tree_.nodes.begin(), tree_.nodes.end(),
-                                                [&](const Node& x) { return x.id == c.node; });
-                    what = nameOf(i.effect) + " on " +
-                           (c.node == live::kMain    ? juce::String("main")
-                            : n != tree_.nodes.end() ? juce::String(n->name)
-                                                     : juce::String());
-                }
-    }
-    return "sidechain for " + what + kDot + "click a source" + kDot + "esc cancels";
-}
-
-bool RoutingPage::keyPressed(const juce::KeyPress& key) {
-    if (key != juce::KeyPress::escapeKey || !pick_.armed()) return false;
-    pick_ = {};
-    repaint();
-    return true;
-}
-
-void RoutingPage::mouseMove(const juce::MouseEvent& e) {
-    live::TrackId now = 0;
-    for (const auto& [area, id] : rows_)
-        if (area.contains(e.position)) now = id;
-    if (now != hover_) {
-        hover_ = now;
-        repaint();
-    }
-}
-
-void RoutingPage::mouseExit(const juce::MouseEvent&) {
-    if (hover_ == 0) return;
-    hover_ = 0;
-    repaint();
-}
-
-void RoutingPage::paint(juce::Graphics& g) {
-    g.fillAll(colour::ground);
-    clearRegions();
-    rows_.clear();
-    const auto top = static_cast<float>(ui::theme::metrics::headerHeight);
-    setViewport(top, static_cast<float>(getHeight()));
-    {
-        const ContentClip clip(*this, g);
-        body(g, top + rt::top - scroll());
-    }
-    band(g);
-}
-
-void RoutingPage::band(juce::Graphics& g) {
-    const auto w = static_cast<float>(getWidth());
-    const auto h = static_cast<float>(ui::theme::metrics::headerHeight);
-    g.setColour(colour::ground);
-    g.fillRect(0.0f, 0.0f, w, h);
-    const int sources = static_cast<int>(field_.sources().size());
-    const int paired = static_cast<int>(pairs_.size());
-    const juce::String count =
-        juce::String(sources) + (sources == 1 ? " source" : " sources") + kDot + juce::String(paired) + " on pairs";
-    const juce::String toMain = juce::String("field ") + juce::String::fromUTF8("\xe2\x86\x92") + " main";
-    const auto f = ui::labelFont();
-    ui::text(g, "live", f, colour::label, {rt::left, 0.0f, ui::textWidth(f, "live") + 2.0f, h});
-    const juce::String middle = pick_.armed() ? picking() : count;
-    ui::text(g, middle, f, pick_.armed() ? colour::text : colour::label,
-             {rt::left + rt::boxWidth, 0.0f, ui::textWidth(f, middle) + 2.0f, h});
-    const float tw = ui::textWidth(f, toMain) + 2.0f;
-    ui::text(g, toMain, f, colour::label, {w - rt::left - tw, 0.0f, tw, h});
-    g.setColour(colour::rule);
-    g.fillRect(0.0f, h - ui::theme::stroke::rule, w, ui::theme::stroke::rule);
-}
-
-void RoutingPage::body(juce::Graphics& g, float top) {
-    const auto w = static_cast<float>(getWidth());
-    //  armed, a click anywhere else cancels: this lies under everything drawn after it
-    if (pick_.armed())
-        addClickArea(getLocalBounds().toFloat(), [this] {
-            pick_ = {};
-            repaint();
-        });
-    //  each column as wide as its widest node with its controls; the gutters narrow for a deep set
-    const int mainColumn = layout_.main.column;
-    std::vector<float> widest(static_cast<std::size_t>(mainColumn), rt::boxWidth);
-    for (const live::Place& p : layout_.places) {
-        const auto n =
-            std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == p.node; });
-        if (n != tree_.nodes.end() && p.column < mainColumn)
-            widest[static_cast<std::size_t>(p.column)] =
-                std::max(widest[static_cast<std::size_t>(p.column)], rt::boxWidth + controlsWidth(*n));
-    }
-    float span = 0.0f;
-    for (const float c : widest) span += c;
-    const float room = w - 2.0f * rt::left - rt::mainWidth - rt::chainRoom - span;
-    const float gutter = std::clamp(room / static_cast<float>(std::max(1, mainColumn)), rt::gutterLeast, rt::gutter);
-    std::vector<float> columnX(static_cast<std::size_t>(mainColumn) + 1, rt::left);
-    for (int c = 0; c < mainColumn; ++c)
-        columnX[static_cast<std::size_t>(c) + 1] =
-            columnX[static_cast<std::size_t>(c)] + widest[static_cast<std::size_t>(c)] + gutter;
-    const auto at = [&](const live::Place& p) {
-        return juce::Point<float>{columnX[static_cast<std::size_t>(std::clamp(p.column, 0, mainColumn))],
-                                  top + static_cast<float>(p.row) * rt::row + rt::boxHeight / 2.0f};
-    };
-    const auto placeOf = [&](live::TrackId id) -> const live::Place* {
-        const auto p = std::find_if(layout_.places.begin(), layout_.places.end(),
-                                    [&](const live::Place& x) { return x.node == id; });
-        return p == layout_.places.end() ? nullptr : &*p;
-    };
-
-    //  the connectors first, under the boxes
-    for (const Node& n : tree_.nodes) {
-        const auto* p = placeOf(n.id);
-        if (p == nullptr) continue;
-        const live::Place* to = n.parent ? placeOf(*n.parent) : nullptr;
-        //  from where the node's switch and chips end, so the line runs through none of them
-        const auto from = at(*p) + juce::Point<float>{rt::boxWidth + controlsWidth(n), 0.0f};
-        connect(g, from, at(to != nullptr ? *to : layout_.main), partOf(n.id) != nullptr);
-    }
-    for (const Node& n : tree_.nodes)
-        if (const auto* p = placeOf(n.id)) node(g, n, at(*p));
-
-    //  Main, its chain, the decoder
-    {
-        const auto m = at(layout_.main);
-        const juce::Rectangle<float> box{m.x, m.y - rt::boxHeight / 2.0f, rt::mainWidth, rt::boxHeight};
-        const auto offers = offersFor(nullptr, live::kMain);
-        rows_.push_back(
-            {{box.getX(), box.getY(),
-              std::max(rt::mainWidth + chainWidth(live::kMain) + rt::gap * 3.0f, offersWidth(offers)), rt::row},
-             kHoverMain});
-        frame(g, box, colour::ruleStrong, ui::theme::stroke::rule, false);
-        if (hover_ == kHoverMain) hoverRing(g, box);
-        ui::text(g, "main", ui::labelFont(), colour::text, box.withTrimmedLeft(rt::padX));
-        if (pick_.orphan != 0) addClickArea(box, [this] { attachTo(live::kMain); });
-        float x = chain(g, live::kMain, box.getRight() + rt::gap * 2.0f, m.y);
-        if (hover_ == kHoverMain) offer(g, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f, offers);
-        //  the decoder, a node of its own after Main's chain, in its plugin's colour; a click shows it
-        const float dx = std::min(x + rt::gutterLeast, w - rt::left - rt::mainWidth);
-        connect(g, {x - rt::gap, m.y}, {dx, m.y}, true);
-        const juce::Rectangle<float> decoder{dx, box.getY(), rt::mainWidth, rt::boxHeight};
-        g.setColour(colour::ground);
-        g.fillRect(decoder);
-        frame(g, decoder, colour::identity(Product::Decoder), ui::theme::stroke::rule, false);
-        rows_.push_back({decoder, kHoverDecoder});
-        if (hover_ == kHoverDecoder) hoverRing(g, decoder);
-        ui::text(g, "decoder", ui::labelFont(), colour::text, decoder.withTrimmedLeft(rt::padX));
-        addClickArea(decoder, [this] {
-            if (showDecoder) showDecoder();
-        });
-    }
-
-    //  the returns, under the tracks, after a heading
-    float y = top + static_cast<float>(layout_.rows) * rt::row + rt::returnsGap;
-    y = ui::drawGroupHeading(g, rt::left, y, w - 2.0f * rt::left, "returns");
-    for (const Node& r : tree_.nodes) {
-        if (r.kind != Node::Kind::Return) continue;
-        const bool field = std::find(shape_.returns.begin(), shape_.returns.end(), r.id) != shape_.returns.end();
-        const float cy = y + rt::boxHeight / 2.0f;
-        const juce::Rectangle<float> box{rt::left, y, rt::boxWidth, rt::boxHeight};
-        rows_.push_back({{0.0f, y, w, rt::row}, r.id});
-        frame(g, box, field ? colour::ruleStrong : colour::rule, ui::theme::stroke::rule, !field);
-        if (hover_ == r.id) hoverRing(g, box);
-        ui::text(g, juce::String(r.name), ui::labelFont(), colour::text, box.withTrimmedLeft(rt::padX));
-        if (field && pick_.orphan != 0) {
-            const auto rid = r.id;
-            addClickArea(box, [this, rid] { attachTo(rid); });
-        }
-        ui::text(g, field ? "return" : "live", ui::smallFont(), colour::label, box.withTrimmedRight(rt::padX),
-                 juce::Justification::centredRight);
-        const juce::Rectangle<float> sw{box.getRight() + rt::gap * 2.0f, cy - rt::control / 2.0f,
-                                        ui::segmentsWidth({"live", "bambi"}), rt::control};
-        const auto cells = ui::drawSegments(g, sw, {"live", "bambi"}, field ? 1 : 0, true);
-        const auto id = r.id;
-        addClickArea(cells[0], [this, id] {
-            change([id](live::Shape& s) {
-                s.returns.erase(std::remove(s.returns.begin(), s.returns.end(), id), s.returns.end());
-            });
-        });
-        addClickArea(cells[1], [this, id] {
-            change([id](live::Shape& s) {
-                if (std::find(s.returns.begin(), s.returns.end(), id) == s.returns.end()) s.returns.push_back(id);
-            });
-        });
-        if (field) {
-            chain(g, r.id, sw.getRight() + rt::gap * 2.0f, cy);
-            if (hover_ == r.id)
-                offer(g, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f, offersFor(nullptr, r.id));
-            else
-                ui::text(g, "hears its sends after the faders", ui::smallFont(), colour::label,
-                         {box.getX() + rt::padX, box.getBottom(), w - box.getX(), rt::sendsLine});
-        }
-        y += rt::row;
-    }
-    //  the chains whose track Live no longer has: kept, never dropped unseen, removable insert by insert
-    bool headed = false;
-    for (const live::Chain& c : shape_.chains) {
-        if (c.node == live::kMain || c.inserts.empty()) continue;
-        if (std::any_of(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& n) { return n.id == c.node; }))
-            continue;
-        if (!headed) {
-            y = ui::drawGroupHeading(g, rt::left, y + rt::returnsGap, w - 2.0f * rt::left, "orphaned");
-            headed = true;
-        }
-        const float cy = y + rt::boxHeight / 2.0f;
-        ui::text(g, "a track Live no longer has", ui::smallFont(), colour::label,
-                 {rt::left, y, rt::boxWidth, rt::boxHeight});
-        float x = rt::left + rt::boxWidth + rt::gap * 2.0f;
-        const auto node = c.node;
-        const juce::Rectangle<float> attach{x, cy - rt::control / 2.0f, ui::framedButtonWidth("pick a part"),
-                                            rt::control};
-        if (pick_.orphan == node) {
-            ui::drawWaiting(g, attach, "pick a part", ui::font(ui::theme::type::body));
-            addClickArea(attach, [this] {
-                pick_ = {};
-                repaint();
-            });
-        } else {
-            ui::drawFramedButton(g, attach.withWidth(ui::framedButtonWidth("attach")), "attach", !pick_.armed());
-            if (!pick_.armed())
-                addClickArea(attach.withWidth(ui::framedButtonWidth("attach")), [this, node] { arm({0, 0, node}); });
-        }
-        x = attach.getRight() + rt::gap * 2.0f;
-        for (const live::Insert& ins : c.inserts) {
-            const auto chip = ui::drawChip(g, {x, cy - rt::control / 2.0f}, rt::control, nameOf(ins.effect),
-                                           colour::text, colourOf(ins.effect), true);
-            addClickArea(chip.cross, removal(c.node, ins.id, nameOf(ins.effect)));
-            x = chip.box.getRight() + rt::gap;
-        }
-        y += rt::row;
-    }
-    noteContentBottom(y + scroll());
-}
-
-float RoutingPage::node(juce::Graphics& g, const Node& n, juce::Point<float> at) {
-    const live::Part* part = partOf(n.id);
-    const int pair = pairOf(n.id);
-    const bool unpaired = part != nullptr && !part->bus && pair < 0;
-    const juce::Rectangle<float> box{at.x, at.y - rt::boxHeight / 2.0f, rt::boxWidth, rt::boxHeight};
-    const auto offers = offersFor(&n, n.id);
-    rows_.push_back(
-        {{box.getX(), box.getY(), std::max(rt::boxWidth + controlsWidth(n) + rt::gap, offersWidth(offers)), rt::row},
-         n.id});
-    const bool hovered = hover_ == n.id;
-
-    //  outside the field dashed in the rule; a source the encoder's, a bus ink; a source with no pair not chosen.
-    //  While a sidechain slot waits, all that cannot be its source is greyed.
-    const bool pickable =
-        pick_.orphan != 0 ? part != nullptr : pick_.armed() && canBeSource(n.id) && pick_.source != n.id;
-    const bool greyed = unpaired || (pick_.armed() && !pickable);
-    const juce::Colour c = greyed && pick_.armed() ? colour::inactive
-                           : part == nullptr       ? colour::rule
-                           : part->bus             ? colour::ruleStrong
-                           : unpaired              ? colour::inactive
-                                                   : colour::identity(Product::Encoder);
-    frame(g, box, c, ui::theme::stroke::rule, part == nullptr);
-    if (hovered && (!pick_.armed() || pickable)) hoverRing(g, box);
-    ui::text(g, juce::String(n.name), ui::labelFont(), greyed ? colour::inactive : colour::text,
-             box.withTrimmedLeft(rt::padX));
-    const auto id = n.id;
-    if (pickable)
-        addClickArea(box, [this, id] {
-            if (pick_.orphan != 0)
-                attachTo(id);
-            else
-                choose(id);
-        });
-    else if (!pick_.armed() && part != nullptr && !part->bus && pair >= 0)
-        addClickArea(box, [this, id] {
-            if (showSource) showSource(id);
-        });
-    const juce::String kind = part == nullptr ? (n.parent ? "" : "live")
-                              : part->bus     ? "bus"
-                              : unpaired      ? "no pair"
-                                              : "source";
-    ui::text(g, kind, ui::smallFont(), colour::label, box.withTrimmedRight(rt::padX),
-             juce::Justification::centredRight);
-
-    float x = box.getRight() + rt::gap * 2.0f;
-    //  a source's Encoder's sidechain
-    if (part != nullptr && !part->bus) {
-        const bool waiting = pick_.source == id;
-        x = slot(
-                g, x, at.y, part->sidechain, waiting, [this, id] { arm({id, 0}); }, [this] { choose(0); }) +
-            rt::gap * 2.0f;
-    }
-    //  the switch, at the top only
-    if (!n.parent) {
-        const bool inLive = std::find(shape_.inLive.begin(), shape_.inLive.end(), id) != shape_.inLive.end();
-        const juce::Rectangle<float> sw{x, at.y - rt::control / 2.0f, ui::segmentsWidth({"live", "bambi"}),
-                                        rt::control};
-        const auto cells = ui::drawSegments(g, sw, {"live", "bambi"}, inLive ? 0 : 1, true);
-        addClickArea(cells[0], [this, id] {
-            change([id](live::Shape& s) {
-                if (std::find(s.inLive.begin(), s.inLive.end(), id) == s.inLive.end()) s.inLive.push_back(id);
-            });
-        });
-        addClickArea(cells[1], [this, id] {
-            change([id](live::Shape& s) {
-                s.inLive.erase(std::remove(s.inLive.begin(), s.inLive.end(), id), s.inLive.end());
-            });
-        });
-        x = sw.getRight() + rt::gap * 2.0f;
-    }
-    if (part != nullptr) x = chain(g, id, x, at.y);
-
-    //  under the pointer: what the row offers, on the line under the box, in place of the sends
-    if (hovered && !offers.empty() && !pick_.armed()) {
-        offer(g, box.getX(), box.getBottom() + rt::control / 2.0f + rt::gap / 2.0f, offers);
-        return x;
-    }
-
-    //  the sends to the returns the field plays, on a second line
-    float sx = box.getX() + rt::padX;
-    int send = 0;
-    for (const Node& r : tree_.nodes) {
-        if (r.kind != Node::Kind::Return) continue;
-        const int index = send++;
-        if (std::find(shape_.returns.begin(), shape_.returns.end(), r.id) == shape_.returns.end()) continue;
-        if (index >= static_cast<int>(n.sends.size()) || !n.sends[static_cast<std::size_t>(index)]) continue;
-        const juce::String t = juce::String(r.name).substring(0, 1) + " " +
-                               dB(*n.sends[static_cast<std::size_t>(index)]) + (part == nullptr ? " lost" : "");
-        ui::text(g, t, ui::smallFont(), part == nullptr ? colour::inactive : colour::label,
-                 {sx, box.getBottom(), ui::textWidth(ui::smallFont(), t) + 2.0f, rt::sendsLine});
-        sx += ui::textWidth(ui::smallFont(), t) + rt::padX;
-    }
-    return x;
-}
-
-float RoutingPage::chain(juce::Graphics& g, live::TrackId owner, float x, float y) {
-    for (const live::Insert& ins : shape_.insertsOn(owner)) {
-        const juce::String name = nameOf(ins.effect);
-        const auto chip =
-            ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, name, colour::text, colourOf(ins.effect), true);
-        const auto id = ins.id;
-        const auto effect = ins.effect;
-        if (!pick_.armed())
-            addClickArea(chip.box, [this, id, effect] {
-                if (showInsert) showInsert(id, effect);
-            });
-        addClickArea(chip.cross, removal(owner, id, name));
-        x = slot(
-                g, chip.box.getRight(), y, ins.sidechain, pick_.insert == id, [this, id] { arm({0, id}); },
-                [this] { choose(0); }) +
-            rt::gap;
-    }
-    return x;
-}
+// ---- inserts --------------------------------------------------------------------------------------
 
 //  Removing an insert, after asking: its settings go with it, and the host has no undo.
-std::function<void()> RoutingPage::removal(live::TrackId owner, std::uint64_t id, juce::String name) {
-    return [this, owner, id, name] {
-        confirm_.ask("remove this " + name + "?", "its settings go with it; the host has no undo yet", "remove",
-                     [this, owner, id] {
-                         change([owner, id](live::Shape& s) {
-                             for (live::Chain& c : s.chains)
-                                 if (c.node == owner)
-                                     c.inserts.erase(std::remove_if(c.inserts.begin(), c.inserts.end(),
-                                                                    [&](const live::Insert& i) { return i.id == id; }),
-                                                     c.inserts.end());
-                         });
+void RoutingPage::removeInsert(live::TrackId owner, std::uint64_t id, juce::String name) {
+    confirm_.ask("remove this " + name + "?", "its settings go with it; the host has no undo yet", "remove",
+                 [this, owner, id] {
+                     change([owner, id](live::Shape& s) {
+                         for (live::Chain& c : s.chains)
+                             if (c.node == owner)
+                                 std::erase_if(c.inserts, [&](const live::Insert& i) { return i.id == id; });
                      });
-    };
+                 });
 }
 
 void RoutingPage::addInsert(live::TrackId owner, live::Effect effect) {
@@ -562,63 +229,730 @@ void RoutingPage::addInsert(live::TrackId owner, live::Effect effect) {
     });
 }
 
-//  What a row offers under the pointer: inserts for whatever the field plays -- a part, Main, a return in it -- and
-//  for a bus "encode whole"; for a track inside a group the field takes whole, "encode here".
-std::vector<RoutingPage::Offer> RoutingPage::offersFor(const Node* n, live::TrackId owner) {
-    std::vector<Offer> out;
-    const live::Part* part = n != nullptr ? partOf(n->id) : nullptr;
-    if (n == nullptr || part != nullptr)
-        for (const live::Effect e : {live::Effect::Echo, live::Effect::Reverb})
-            out.push_back({"+ " + nameOf(e), [this, owner, e] { addInsert(owner, e); }});
-    if (part != nullptr && part->bus)
-        out.push_back({"encode whole", [this, owner] {
-                           change([owner](live::Shape& s) {
-                               s.split.erase(std::remove(s.split.begin(), s.split.end(), owner), s.split.end());
-                           });
-                       }});
-    const live::Part* group = n != nullptr && n->parent ? partOf(*n->parent) : nullptr;
-    if (n != nullptr && part == nullptr && group != nullptr && !group->bus) {
-        const auto parent = *n->parent;
-        out.push_back(
-            {"encode here", [this, parent] { change([parent](live::Shape& s) { s.split.push_back(parent); }); }});
+//  A sidechain that is set, after its chip: what it hears; a click picks another. While it waits for its source,
+//  the waiting block. Nothing when none is set and none is picked.
+float RoutingPage::sidechainSlot(juce::Graphics& g, live::TrackId heard, Waiting pick, float x, float y) {
+    if (waits(Waiting::Kind::Sidechain, pick.node, pick.insert)) {
+        const juce::Rectangle<float> box{x, y - rt::control / 2.0f, ui::Armed<Waiting>::width(kSourceWaits),
+                                         rt::control};
+        armed_.block(*this, g, box, kSourceWaits, [this] { repaint(); });
+        return box.getRight() + rt::gap;
     }
-    return out;
+    if (heard == 0) return x;
+    const bool lost = !canBeSource(heard);
+    const juce::String label = "sc " + nameOf(heard) + (lost ? " lost" : "");
+    const juce::Rectangle<float> box{x, y - rt::control / 2.0f, ui::framedButtonWidth(label), rt::control};
+    ui::drawFramedButton(g, box, label, idle());
+    if (idle()) addClickArea(box, [this, pick] { begin(pick); });
+    return box.getRight() + rt::gap;
 }
 
-float RoutingPage::offersWidth(const std::vector<Offer>& offers) {
-    float w = 0.0f;
-    for (const Offer& o : offers) w += ui::framedButtonWidth(o.label) + rt::gap;
-    return w;
+float RoutingPage::sidechainWidth(live::TrackId heard, Waiting pick) const {
+    if (waits(Waiting::Kind::Sidechain, pick.node, pick.insert))
+        return ui::Armed<Waiting>::width(kSourceWaits) + rt::gap;
+    if (heard == 0) return 0.0f;
+    return ui::framedButtonWidth("sc " + nameOf(heard) + (canBeSource(heard) ? "" : " lost")) + rt::gap;
 }
 
-//  The buttons, on a backing in the ground as wide as they are, so they read over a connector or a column they reach.
-void RoutingPage::offer(juce::Graphics& g, float x, float y, const std::vector<Offer>& offers) {
-    if (offers.empty()) return;
-    g.setColour(colour::ground);
-    g.fillRect(x, y - rt::control / 2.0f - rt::gap / 2.0f, offersWidth(offers), rt::control + rt::gap);
-    for (const Offer& o : offers) {
-        const juce::Rectangle<float> b{x, y - rt::control / 2.0f, ui::framedButtonWidth(o.label), rt::control};
-        ui::drawFramedButton(g, b, o.label, true);
-        addClickArea(b, o.act);
-        x = b.getRight() + rt::gap;
+float RoutingPage::chain(juce::Graphics& g, live::TrackId owner, float x, float y) {
+    for (const live::Insert& ins : shape_.insertsOn(owner)) {
+        const juce::String name = effectName(ins.effect);
+        const auto chip =
+            ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, name, colour::text, colourOf(ins.effect), false);
+        const auto id = ins.id;
+        chips_[owner].push_back(chip.box);
+        if (idle())
+            addGestureArea(
+                chip.box, [](juce::Point<float>) {},
+                [this, owner, id](juce::Point<float> p, bool) {
+                    moving_ = Moving{owner, id, p.x};
+                    repaint();
+                },
+                [this] {
+                    if (!moving_) return;
+                    const Moving m = *moving_;
+                    moving_.reset();
+                    const std::size_t to = placeAt(m.owner, m.x);
+                    change([m, to](live::Shape& s) { live::moveInsert(s, m.owner, m.id, to); });
+                },
+                [this, id, effect = ins.effect] {
+                    if (showInsert) showInsert(id, effect);
+                },
+                {});
+        if (moving_ && moving_->id == id) ui::drawOutOfReach(g, chip.box);
+        const float after = dropdown(g, {Menu::Kind::Insert, owner, id, {}}, chip.box);
+        x = sidechainSlot(g, ins.sidechain, {Waiting::Kind::Sidechain, owner, id}, after + rt::gap, y);
     }
+    if (moving_ && moving_->owner == owner && !chips_[owner].empty()) {
+        //  where it would land: a rule before that chip, or after the last
+        const auto& boxes = chips_[owner];
+        const auto& inserts = shape_.insertsOn(owner);
+        std::size_t seen = 0;
+        float markX = boxes.back().getRight() + rt::gap / 2.0f;
+        const std::size_t to = placeAt(owner, moving_->x);
+        for (std::size_t k = 0; k < boxes.size() && k < inserts.size(); ++k) {
+            if (inserts[k].id == moving_->id) continue;
+            if (seen == to) {
+                markX = boxes[k].getX() - rt::gap / 2.0f;
+                break;
+            }
+            ++seen;
+        }
+        ui::ruleV(g, markX, y - rt::control / 2.0f, y + rt::control / 2.0f, colour::ruleStrong);
+    }
+    return x;
 }
 
 float RoutingPage::chainWidth(live::TrackId owner) const {
     float w = 0.0f;
     for (const live::Insert& ins : shape_.insertsOn(owner))
-        w += ui::chipWidth(nameOf(ins.effect), rt::control, true, true) +
-             slotWidth(ins.sidechain, pick_.insert == ins.id) + rt::gap;
-    return w;
+        w += ui::chipWidth(effectName(ins.effect), rt::control, true, false) + ui::dropdownWidth() + rt::gap +
+             sidechainWidth(ins.sidechain, {Waiting::Kind::Sidechain, owner, ins.id});
+    return w + ui::framedButtonWidth("+") + rt::gap;
 }
 
-float RoutingPage::controlsWidth(const Node& n) const {
-    float w = 0.0f;
-    if (!n.parent) w += rt::gap * 2.0f + ui::segmentsWidth({"live", "bambi"});
-    if (const live::Part* part = partOf(n.id); part != nullptr && !part->bus)
-        w += rt::gap * 2.0f + slotWidth(part->sidechain, pick_.source == n.id);
-    if (partOf(n.id) != nullptr) w += rt::gap * 2.0f + chainWidth(n.id);
-    return w;
+std::size_t RoutingPage::placeAt(live::TrackId owner, float x) const {
+    const auto c = chips_.find(owner);
+    if (c == chips_.end()) return 0;
+    //  the place before the first chip whose middle is right of `x`, counted without the chip being moved
+    std::size_t place = 0, at = 0;
+    const auto& inserts = shape_.insertsOn(owner);
+    for (std::size_t k = 0; k < c->second.size() && k < inserts.size(); ++k) {
+        if (moving_ && inserts[k].id == moving_->id) continue;
+        if (c->second[k].getCentreX() < x) place = at + 1;
+        ++at;
+    }
+    return place;
+}
+
+//  "+": the menu of the inserts to add to `owner`.
+float RoutingPage::plus(juce::Graphics& g, live::TrackId owner, float x, float y) {
+    const juce::Rectangle<float> box{x, y - rt::control / 2.0f, ui::framedButtonWidth("+"), rt::control};
+    const bool open = menu_ && menu_->kind == Menu::Kind::Add && menu_->owner == owner;
+    ui::drawFramedButton(g, box, "+", idle() || open, open);
+    if (idle()) addClickArea(box, [this, owner, box] { openMenu({Menu::Kind::Add, owner, 0, box.getBottomLeft()}); });
+    return box.getRight() + rt::gap;
+}
+
+void RoutingPage::openMenu(Menu m) {
+    menu_ = m;
+    repaint();
+}
+
+void RoutingPage::menu(juce::Graphics& g) {
+    menuItems_.clear();
+    if (!menu_) return;
+    const Menu m = *menu_;
+    addClickArea(getLocalBounds().toFloat(), [this] {
+        menu_.reset();
+        repaint();
+    });
+    struct Item {
+        ui::MenuItem shown;
+        std::function<void()> act;
+    };
+    std::vector<Item> items;
+    juce::String foot;
+    if (m.kind == Menu::Kind::Add) {
+        items = {{{"echo", "", true}, [this, m] { addInsert(m.owner, live::Effect::Echo); }},
+                 {{"reverb", "", true}, [this, m] { addInsert(m.owner, live::Effect::Reverb); }},
+                 {{"colour", "later", false}, {}}};
+        foot = "an insert, after what " + nameOf(m.owner) + " has";
+    } else if (m.kind == Menu::Kind::Encoder) {
+        const live::Part* part = partOf(m.owner);
+        const live::TrackId heard = part != nullptr ? part->sidechain : 0;
+        const auto n =
+            std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == m.owner; });
+        const bool top = n == tree_.nodes.end() || !n->parent;
+        items.push_back({{"sidechain", heard != 0 ? nameOf(heard) : juce::String(), true},
+                         [this, m] { begin({Waiting::Kind::Sidechain, m.owner, 0}); }});
+        if (heard != 0)
+            items.push_back(
+                {{"no sidechain", "", true}, [this, m] { setSidechain({Waiting::Kind::Sidechain, m.owner, 0}, 0); }});
+        if (top && !live::isInput(m.owner))
+            items.push_back({{"back to Live", "", true}, [this, m] {
+                                 change([this, m](live::Shape& s) { live::removeEncoder(s, tree_, field_, m.owner); });
+                             }});
+        foot = nameOf(m.owner) + "'s encoder";
+    } else {
+        live::Insert ins;
+        for (const live::Insert& i : shape_.insertsOn(m.owner))
+            if (i.id == m.insert) ins = i;
+        items.push_back({{"sidechain", ins.sidechain != 0 ? nameOf(ins.sidechain) : juce::String(), true},
+                         [this, m] { begin({Waiting::Kind::Sidechain, m.owner, m.insert}); }});
+        if (ins.sidechain != 0)
+            items.push_back({{"no sidechain", "", true},
+                             [this, m] { setSidechain({Waiting::Kind::Sidechain, m.owner, m.insert}, 0); }});
+        items.push_back(
+            {{"remove", "", true}, [this, m, ins] { removeInsert(m.owner, m.insert, effectName(ins.effect)); }});
+        foot = effectName(ins.effect) + " on " + nameOf(m.owner);
+    }
+    std::vector<ui::MenuItem> shown;
+    for (const Item& i : items) shown.push_back(i.shown);
+    const auto drawn = ui::drawMenu(g, m.at, rt::menuWidth, shown, foot);
+    addClickArea(drawn.box, [] {});
+    for (std::size_t i = 0; i < items.size() && i < drawn.items.size(); ++i)
+        menuItems_.push_back({items[i].shown.label, drawn.items[i]});
+    for (std::size_t i = 0; i < items.size() && i < drawn.items.size(); ++i)
+        if (items[i].shown.offered)
+            addClickArea(drawn.items[i], [this, act = items[i].act] {
+                menu_.reset();
+                repaint();
+                if (act) act();
+            });
+}
+
+// ---- wires ----------------------------------------------------------------------------------------
+
+//  "send" at the first line's right end; while it waits, the waiting block there instead.
+void RoutingPage::sendButton(juce::Graphics& g, live::TrackId from, juce::Rectangle<float> box) {
+    const float cy = box.getY() + rt::boxHeight / 2.0f;
+    if (waits(Waiting::Kind::Send, from)) {
+        const float w = ui::Armed<Waiting>::width(kSendWaits);
+        armed_.block(*this, g, {box.getRight() - rt::gap - w, cy - rt::control / 2.0f, w, rt::control}, kSendWaits,
+                     [this] { repaint(); });
+        return;
+    }
+    const float w = ui::framedButtonWidth("send");
+    const juce::Rectangle<float> at{box.getRight() - rt::gap - w, cy - rt::control / 2.0f, w, rt::control};
+    ui::drawFramedButton(g, at, "send", idle());
+    if (idle()) addClickArea(at, [this, from] { begin({Waiting::Kind::Send, from, 0}); });
+}
+
+//  The chosen node's wires, under its line, each a chip: dragged sideways for its level, its cross to remove it.
+float RoutingPage::wireChips(juce::Graphics& g, live::TrackId from, float x, float y, float width) {
+    const auto& wires = field_.wiresOf(from);
+    float cx = x;
+    if (wires.empty())
+        ui::text(g, "wired nowhere: heard by no decoder", ui::smallFont(), colour::label, {x, y, width, rt::row},
+                 juce::Justification::centredLeft);
+    for (const live::Wire& w : wires) {
+        const juce::String label = juce::String::fromUTF8("\xe2\x86\x92 ") + nameOf(w.to) + "  " + dB(w.db) + " dB";
+        if (cx + ui::chipWidth(label, rt::control, false, true) > x + width) {
+            cx = x;
+            y += rt::row;
+        }
+        const auto chip = ui::drawChip(g, {cx, y + (rt::row - rt::control) / 2.0f}, rt::control, label, colour::text,
+                                       w.to.kind == Target::Kind::Decoder
+                                           ? std::optional<juce::Colour>{colour::identity(Product::Decoder)}
+                                           : std::nullopt,
+                                       true);
+        const Target to = w.to;
+        const double at = w.db;
+        auto pressX = std::make_shared<float>(0.0f);
+        if (idle()) {
+            addGestureArea(
+                chip.box.withTrimmedRight(chip.cross.getWidth()),
+                [this, pressX](juce::Point<float> p) {
+                    *pressX = p.x;
+                    dragging_ = shape_;
+                },
+                [this, pressX, from, to, at](juce::Point<float> p, bool fine) {
+                    const double db = std::clamp(
+                        std::round((at + (p.x - *pressX) * rt::levelDrag * (fine ? 0.1 : 1.0)) * 10.0) / 10.0,
+                        live::kSilentDb, live::kLoudestDb);
+                    live::Shape next = dragging_;
+                    live::setWire(next, field_, from, {to, db});
+                    shape_ = next;
+                    field_ = live::layOut(tree_, shape_);
+                    if (preview) preview(shape_);
+                    repaint();
+                },
+                [this] {
+                    if (reshape) reshape(shape_);
+                },
+                {},
+                [this, from, to] {
+                    change([this, from, to](live::Shape& s) { live::setWire(s, field_, from, {to, 0.0}); });
+                });
+            addClickArea(chip.cross, [this, from, to] {
+                change([this, from, to](live::Shape& s) { live::removeWire(s, field_, from, to); });
+            });
+        }
+        cx = chip.box.getRight() + rt::gap;
+    }
+    return y + rt::row;
+}
+
+void RoutingPage::wires(juce::Graphics& g) {
+    //  what the chosen node reaches, along its wires
+    std::set<live::TrackId> lit;
+    std::set<std::uint64_t> litDecoders;
+    if (chosen_) {
+        std::vector<live::TrackId> todo{*chosen_};
+        while (!todo.empty()) {
+            const live::TrackId at = todo.back();
+            todo.pop_back();
+            if (!lit.insert(at).second) continue;
+            for (const live::Wire& w : field_.wiresOf(at)) {
+                if (w.to.kind == Target::Kind::Decoder)
+                    litDecoders.insert(w.to.id);
+                else
+                    todo.push_back(w.to.kind == Target::Kind::Main ? live::kMain : w.to.id);
+            }
+        }
+    }
+    for (const auto& [from, spot] : spots_) {
+        for (const live::Wire& w : field_.wiresOf(from)) {
+            juce::Point<float> to;
+            bool intoRight = false;  // a bus in the same column: entered from its right, round the column's edge
+            if (w.to.kind == Target::Kind::Decoder) {
+                const auto d = decoderAt_.find(w.to.id);
+                if (d == decoderAt_.end()) continue;
+                to = {d->second.getX(), d->second.getY() + rt::boxHeight / 2.0f};
+            } else {
+                const auto s = spots_.find(w.to.kind == Target::Kind::Main ? live::kMain : w.to.id);
+                if (s == spots_.end()) continue;
+                const auto& box = s->second.box;
+                const float cy = box.getY() + rt::boxHeight / 2.0f;
+                intoRight = box.getX() < spot.out.x - 1.0f && box.getRight() >= spot.out.x - 1.0f;
+                to = intoRight ? juce::Point<float>{box.getRight(), cy + rt::control / 4.0f}
+                               : juce::Point<float>{box.getX(), cy};
+            }
+            const auto from0 = spot.out;
+            juce::Path p;
+            p.startNewSubPath(from0);
+            if (intoRight) {
+                const float out = std::max(from0.x, to.x) + rt::wireGutter / 2.0f;
+                p.cubicTo({out, from0.y}, {out, to.y}, to);
+            } else {
+                const float mid = (from0.x + to.x) / 2.0f;
+                p.cubicTo({mid, from0.y}, {mid, to.y}, to);
+            }
+            const bool on = lit.count(from) > 0;
+            const juce::Colour ink = on                                   ? colour::ruleStrong
+                                     : w.to.kind == Target::Kind::Decoder ? colour::identity(Product::Decoder)
+                                                                          : colour::rule;
+            g.setColour(ink);
+            g.strokePath(p, juce::PathStrokeType(on ? ui::theme::stroke::litWire : ui::theme::stroke::rule));
+            if (std::abs(w.db) > 0.05) {
+                const juce::String t = dB(w.db);
+                const auto mid = p.getPointAlongPath(p.getLength() / 2.0f);
+                const float tw = ui::textWidth(ui::smallFont(), t) + 2.0f * rt::labelPad;
+                const juce::Rectangle<float> label{mid.x - tw / 2.0f, mid.y - rt::control / 2.0f, tw, rt::control};
+                g.setColour(colour::ground);
+                g.fillRect(label);
+                ui::text(g, t, ui::smallFont(), colour::label, label, juce::Justification::centred);
+            }
+        }
+    }
+    for (const live::TrackId id : lit)
+        if (id != *chosen_)
+            if (const auto s = spots_.find(id); s != spots_.end()) ring(g, s->second.box);
+    for (const std::uint64_t d : litDecoders)
+        if (const auto b = decoderAt_.find(d); b != decoderAt_.end()) ring(g, b->second);
+}
+
+// ---- the page -------------------------------------------------------------------------------------
+
+void RoutingPage::paint(juce::Graphics& g) {
+    g.fillAll(colour::ground);
+    const auto top = static_cast<float>(ui::theme::metrics::headerHeight);
+    setViewport(top, static_cast<float>(getHeight()));
+    const float at = top + rt::top - scroll();
+    //  where everything goes, drawn into nothing, so the wires can run under the boxes
+    spots_.clear();
+    decoderAt_.clear();
+    chips_.clear();
+    {
+        juce::Graphics::ScopedSaveState none(g);
+        g.reduceClipRegion(juce::Rectangle<int>());
+        body(g, at);
+    }
+    clearRegions();
+    chips_.clear();
+    {
+        const ContentClip clip(*this, g);
+        armed_.ground(*this, getLocalBounds().toFloat(), [this] { repaint(); });
+        wires(g);
+        body(g, at);
+    }
+    band(g);
+    menu(g);
+}
+
+void RoutingPage::band(juce::Graphics& g) {
+    const auto inner = ui::drawPageBand(g, static_cast<float>(getWidth()));
+    const float h = inner.getHeight();
+    const int sources = static_cast<int>(field_.sources().size());
+    const int paired = static_cast<int>(pairs_.size());
+    const auto f = ui::labelFont();
+    const juce::String count = juce::String(sources) + (sources == 1 ? " source" : " sources") + kSeparator +
+                               juce::String(paired) + " on pairs";
+    ui::text(g, count, f, colour::label, {inner.getX(), 0.0f, ui::textWidth(f, count) + 2.0f, h});
+    //  every node at the top into the field at once, or every one back to Live
+    float x = inner.getRight();
+    const auto action = [&](const juce::String& label, std::function<void(live::Shape&)> how) {
+        const float aw = ui::framedButtonWidth(label);
+        x -= aw;
+        const juce::Rectangle<float> at{x, (h - rt::control) / 2.0f, aw, rt::control};
+        ui::drawFramedButton(g, at, label, idle());
+        if (idle()) addClickArea(at, [this, edit = std::move(how)] { change(edit); });
+        x -= rt::gap;
+    };
+    action("all to Live", [](live::Shape& s) { s.taken.clear(); });
+    action("route all", [this](live::Shape& s) { live::takeAll(s, tree_); });
+}
+
+juce::Rectangle<float> RoutingPage::frame(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& name,
+                                          juce::Colour stripe, bool inField, live::TrackId id) {
+    spots_[id] = {box, {box.getRight(), box.getY() + rt::boxHeight / 2.0f}};
+    g.setColour(colour::ground);
+    g.fillRect(box);
+    ui::drawFrame(g, box, inField ? colour::ruleStrong : colour::rule, ui::theme::stroke::rule, !inField);
+    g.setColour(stripe);
+    g.fillRect(box.withWidth(rt::stripe));
+    const juce::Rectangle<float> nameAt{box.getX() + rt::padX, box.getY(), rt::nameWidth, rt::boxHeight};
+    ui::text(g, name, nameFont(), colour::text, nameAt, juce::Justification::centredLeft);
+    if (chosen_ == id) ring(g, box);
+    if (idle() && inField)
+        addClickArea(nameAt, [this, id] {
+            chosen_ = chosen_ == id ? std::nullopt : std::optional<live::TrackId>{id};
+            repaint();
+        });
+    return nameAt;
+}
+
+float RoutingPage::tagWidth() { return ui::textWidth(ui::smallFont(), "in group") + 2.0f * rt::tagPad; }
+
+//  What the node is, in a small outlined tag: in ink while bambi plays it, in the label's colour while Live does.
+float RoutingPage::tag(juce::Graphics& g, float x, float cy, const juce::String& label, bool inField) {
+    const juce::Rectangle<float> box{x, cy - rt::tagHeight / 2.0f, tagWidth(), rt::tagHeight};
+    g.setColour(inField ? colour::ruleStrong : colour::rule);
+    g.drawRect(box, ui::theme::stroke::rule);
+    ui::text(g, label, ui::smallFont(), inField ? colour::text : colour::label, box, juce::Justification::centred);
+    return box.getRight() + rt::gap * 2.0f;
+}
+
+float RoutingPage::encoderChip(juce::Graphics& g, live::TrackId id, float x, float y, bool removable) {
+    (void)removable;
+    const auto chip = ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, "encoder", colour::text,
+                                   colour::identity(Product::Encoder), false);
+    if (idle() && pairOf(id) >= 0)
+        addClickArea(chip.box, [this, id] {
+            if (showSource) showSource(id);
+        });
+    return dropdown(g, {Menu::Kind::Encoder, id, 0, {}}, chip.box) + rt::gap;
+}
+
+//  The dropdown right after a chip: its menu -- sidechain, taking it away -- while a click on the chip opens it.
+float RoutingPage::dropdown(juce::Graphics& g, Menu m, juce::Rectangle<float> chip) {
+    const juce::Rectangle<float> box{chip.getRight(), chip.getY(), ui::dropdownWidth(), chip.getHeight()};
+    const bool open = menu_ && menu_->kind == m.kind && menu_->owner == m.owner && menu_->insert == m.insert;
+    ui::drawDropdown(g, box, open, idle() || open, chip.getHeight());
+    m.at = box.getBottomLeft();
+    if (idle()) addClickArea(box, [this, m] { openMenu(m); });
+    return box.getRight();
+}
+
+float RoutingPage::liveNeed(const Node& n, int depth) const {
+    const live::Role role = live::roleOf(tree_, field_, n.id);
+    float w = rt::indent * static_cast<float>(depth) + rt::padX + rt::nameWidth + rt::gap + tagWidth() + rt::gap * 2.0f;
+    if (role == live::Role::Live || role == live::Role::InGroup)
+        return w + ui::framedButtonWidth("+ encoder") + rt::padX;
+    if (role == live::Role::Bus)
+        w += ui::framedButtonWidth("encode whole") + rt::gap * 2.0f;
+    else if (const live::Part* part = partOf(n.id))
+        w += ui::chipWidth("encoder", rt::control, true, false) + ui::dropdownWidth() + rt::gap +
+             sidechainWidth(part->sidechain, {Waiting::Kind::Sidechain, n.id, 0});
+    return w + chainWidth(n.id) + rt::sendRoom;
+}
+
+float RoutingPage::liveLine(juce::Graphics& g, const Node& n, int depth, float x, float y, float width) {
+    const live::Role role = live::roleOf(tree_, field_, n.id);
+    const bool inField = role == live::Role::Source || role == live::Role::Bus;
+    const bool unpaired = role == live::Role::Source && pairOf(n.id) < 0;
+    const juce::String label = role == live::Role::Live      ? "live"
+                               : role == live::Role::Bus     ? "bus"
+                               : role == live::Role::InGroup ? "in group"
+                               : unpaired                    ? "no pair"
+                                                             : "bambi";
+    const float indent = rt::indent * static_cast<float>(depth);
+    const bool twoLines = inField && liveNeed(n, depth) > width;
+    const auto box = lineBox(x + indent, y, width - indent, twoLines);
+    const auto nameAt =
+        frame(g, box, juce::String(n.name), colour::ofLive(juce::String(n.colour), colour::rule), inField, n.id);
+    //  listed under its group as Live files it, but routed past it by hand: where its audio goes, after its name
+    if (n.group && n.parent != n.group) {
+        const juce::String mark =
+            juce::String::fromUTF8("\xe2\x86\x92 ") + (n.path == Node::Path::Main ? "Main" : "elsewhere");
+        const float after =
+            std::min(nameAt.getRight(), nameAt.getX() + ui::textWidth(nameFont(), juce::String(n.name)) + rt::gap);
+        ui::text(g, mark, ui::smallFont(), colour::label,
+                 {after, nameAt.getY(), nameAt.getRight() - after, nameAt.getHeight()},
+                 juce::Justification::centredLeft);
+    }
+    const float cy = box.getY() + rt::boxHeight / 2.0f;
+    float cx = tag(g, nameAt.getRight() + rt::gap, cy, label, inField && !unpaired);
+    const auto id = n.id;
+    if (role == live::Role::Live || role == live::Role::InGroup) {
+        const juce::Rectangle<float> add{cx, cy - rt::control / 2.0f, ui::framedButtonWidth("+ encoder"), rt::control};
+        ui::drawFramedButton(g, add, "+ encoder", idle());
+        if (idle())
+            addClickArea(add, [this, id] { change([this, id](live::Shape& s) { live::addEncoder(s, tree_, id); }); });
+    } else if (role == live::Role::Bus) {
+        const juce::Rectangle<float> whole{cx, cy - rt::control / 2.0f, ui::framedButtonWidth("encode whole"),
+                                           rt::control};
+        ui::drawFramedButton(g, whole, "encode whole", idle());
+        if (idle())
+            addClickArea(whole, [this, id] {
+                change([this, id](live::Shape& s) { live::removeEncoder(s, tree_, field_, id); });
+            });
+        cx = whole.getRight() + rt::gap * 2.0f;
+    } else {
+        cx = encoderChip(g, n.id, cx, cy, !n.parent) + rt::gap;
+    }
+    if (inField) {
+        //  the Encoder's sidechain leads the chain: on the second line with it when the first has no room
+        const float chainY = twoLines ? cy + rt::row : cy;
+        float chainX = twoLines ? nameAt.getRight() + rt::gap : cx;
+        if (const live::Part* part = partOf(n.id); part != nullptr && !part->bus)
+            chainX = sidechainSlot(g, part->sidechain, {Waiting::Kind::Sidechain, n.id, 0}, chainX, chainY);
+        plus(g, n.id, chain(g, n.id, chainX, chainY), chainY);
+        sendButton(g, n.id, box);
+    }
+    if (!waits(Waiting::Kind::Send, n.id)) armed_.over(*this, g, box, takes(n.id), [this, id] { take(id); });
+    float bottom = bottomOf(box);
+    if (chosen_ == n.id && inField) bottom = wireChips(g, n.id, box.getX() + rt::padX, bottom, box.getWidth());
+    return bottom;
+}
+
+float RoutingPage::inputLine(juce::Graphics& g, const live::HostInput& in, float x, float y, float width) {
+    const live::Part* part = partOf(in.id);
+    const float need = rt::padX + rt::nameWidth + rt::gap + tagWidth() + rt::gap * 2.0f +
+                       ui::chipWidth("encoder", rt::control, true, false) + ui::dropdownWidth() + rt::gap +
+                       sidechainWidth(part != nullptr ? part->sidechain : 0, {Waiting::Kind::Sidechain, in.id, 0}) +
+                       chainWidth(in.id) + rt::sendRoom;
+    const bool twoLines = need > width;
+    const auto box = lineBox(x, y, width, twoLines);
+    const auto nameAt = frame(g, box, juce::String(in.name), colour::label, true, in.id);
+    const float cy = box.getY() + rt::boxHeight / 2.0f;
+    float cx = tag(g, nameAt.getRight() + rt::gap, cy, in.width == 2 ? "stereo" : "mono", true);
+    cx = encoderChip(g, in.id, cx, cy, false) + rt::gap;
+    const float chainY = twoLines ? cy + rt::row : cy;
+    const float chainX = sidechainSlot(g, part != nullptr ? part->sidechain : 0, {Waiting::Kind::Sidechain, in.id, 0},
+                                       twoLines ? nameAt.getRight() + rt::gap : cx, chainY);
+    plus(g, in.id, chain(g, in.id, chainX, chainY), chainY);
+    sendButton(g, in.id, box);
+    const auto id = in.id;
+    if (!waits(Waiting::Kind::Send, in.id)) armed_.over(*this, g, box, takes(in.id), [this, id] { take(id); });
+    float bottom = bottomOf(box);
+    if (chosen_ == in.id) bottom = wireChips(g, in.id, box.getX() + rt::padX, bottom, box.getWidth());
+    return bottom;
+}
+
+float RoutingPage::returnLine(juce::Graphics& g, const Node& r, float x, float y, float width) {
+    const bool inField = std::find(shape_.returns.begin(), shape_.returns.end(), r.id) != shape_.returns.end();
+    const float need = rt::padX + rt::nameWidth + rt::gap + tagWidth() + rt::gap * 2.0f +
+                       ui::theme::controls::closeGlyph + rt::gap * 2.0f + chainWidth(r.id) + rt::sendRoom;
+    const bool twoLines = inField && need > width;
+    const auto box = lineBox(x, y, width, twoLines);
+    const auto nameAt =
+        frame(g, box, juce::String(r.name), colour::ofLive(juce::String(r.colour), colour::rule), inField, r.id);
+    const float cy = box.getY() + rt::boxHeight / 2.0f;
+    float cx = tag(g, nameAt.getRight() + rt::gap, cy, inField ? "bambi" : "live", inField);
+    const auto id = r.id;
+    if (!inField) {
+        const juce::Rectangle<float> add{cx, cy - rt::control / 2.0f, ui::framedButtonWidth("+ to bambi"), rt::control};
+        ui::drawFramedButton(g, add, "+ to bambi", idle());
+        if (idle())
+            addClickArea(add, [this, id] {
+                change([id](live::Shape& s) {
+                    if (std::find(s.returns.begin(), s.returns.end(), id) == s.returns.end()) s.returns.push_back(id);
+                });
+            });
+    } else {
+        //  the cross after the tag gives the return back to Live
+        const float glyph = ui::theme::controls::closeGlyph;
+        const juce::Rectangle<float> cross{cx - rt::gap, cy - glyph / 2.0f, glyph, glyph};
+        const auto hit = ui::drawCloseCross(g, cross);
+        if (idle()) addClickArea(hit, [this, id] { change([id](live::Shape& s) { std::erase(s.returns, id); }); });
+        cx = cross.getRight() + rt::gap * 2.0f;
+        const float chainY = twoLines ? cy + rt::row : cy;
+        plus(g, r.id, chain(g, r.id, twoLines ? nameAt.getRight() + rt::gap : cx, chainY), chainY);
+        sendButton(g, r.id, box);
+    }
+    if (!waits(Waiting::Kind::Send, r.id)) armed_.over(*this, g, box, takes(r.id), [this, id] { take(id); });
+    float bottom = bottomOf(box);
+    if (chosen_ == r.id && inField) bottom = wireChips(g, r.id, box.getX() + rt::padX, bottom, box.getWidth());
+    return bottom;
+}
+
+float RoutingPage::mainLine(juce::Graphics& g, float x, float y, float width) {
+    const bool twoLines = rt::padX + rt::nameWidth + rt::gap + chainWidth(live::kMain) + rt::sendRoom > width;
+    const auto box = lineBox(x, y, width, twoLines);
+    const auto nameAt = frame(g, box, "main", colour::ruleStrong, true, live::kMain);
+    const float cy = box.getY() + rt::boxHeight / 2.0f;
+    const float chainY = twoLines ? cy + rt::row : cy;
+    plus(g, live::kMain, chain(g, live::kMain, nameAt.getRight() + rt::gap, chainY), chainY);
+    sendButton(g, live::kMain, box);
+    if (!waits(Waiting::Kind::Send, live::kMain))
+        armed_.over(*this, g, box, takes(live::kMain), [this] { take(live::kMain); });
+    float bottom = bottomOf(box);
+    if (chosen_ == live::kMain) bottom = wireChips(g, live::kMain, box.getX() + rt::padX, bottom, box.getWidth());
+    return bottom;
+}
+
+//  A Decoder: its name and cross, what it plays, and what it hears -- all in its box.
+float RoutingPage::decoderBox(juce::Graphics& g, std::size_t k, float x, float y, float width) {
+    const std::uint64_t id = field_.decoders[k];
+    const auto heard = live::heardBy(field_, id);
+    //  what it plays, as it reports it; a line only when it has reported
+    juce::String plays;
+    for (const live::PlayingDecoder& d : playing_)
+        if (d.id == id) {
+            if (d.report.headphonesOn) plays = "headphones";
+            if (d.report.speakersOn)
+                plays += (plays.isEmpty() ? juce::String() : kSeparator) +
+                         (d.report.layoutName.empty() ? juce::String("speakers") : juce::String(d.report.layoutName));
+            if (plays.isEmpty()) plays = "nothing plays";
+        }
+    const int lines = (plays.isEmpty() ? 0 : 1) + std::max(1, static_cast<int>(heard.size()));
+    const juce::Rectangle<float> box{x, y + (rt::row - rt::boxHeight) / 2.0f, width,
+                                     rt::boxHeight + static_cast<float>(lines) * rt::hearsLine + rt::gap};
+    g.setColour(colour::ground);
+    g.fillRect(box);
+    ui::drawFrame(g, box, colour::identity(Product::Decoder), ui::theme::stroke::rule, false);
+    decoderAt_[id] = box;
+    const juce::String name = nameOf(Target::decoder(id));
+    const juce::Rectangle<float> nameAt{box.getX() + rt::padX, box.getY(), rt::nameWidth, rt::boxHeight};
+    ui::text(g, name, nameFont(), colour::text, nameAt, juce::Justification::centredLeft);
+    if (idle())
+        addClickArea(nameAt, [this, id] {
+            if (showDecoder) showDecoder(id);
+        });
+    if (field_.decoders.size() > 1) {
+        const float glyph = ui::theme::controls::closeGlyph;
+        const juce::Rectangle<float> cross{box.getRight() - rt::padX - glyph,
+                                           box.getY() + (rt::boxHeight - glyph) / 2.0f, glyph, glyph};
+        const auto hit = ui::drawCloseCross(g, cross);
+        if (idle())
+            addClickArea(hit, [this, id, name] {
+                confirm_.ask("remove " + name + "?", "its settings go with it; the host has no undo yet", "remove",
+                             [this, id] {
+                                 change([this, id](live::Shape& s) {
+                                     if (s.decoders.empty()) s.decoders = field_.decoders;
+                                     std::erase(s.decoders, id);
+                                 });
+                             });
+            });
+    }
+    float hy = box.getY() + rt::boxHeight - rt::gap;
+    const float inner = width - 2.0f * rt::padX;
+    if (plays.isNotEmpty()) {
+        ui::text(g, plays, ui::smallFont(), colour::label, {box.getX() + rt::padX, hy, inner, rt::hearsLine},
+                 juce::Justification::centredLeft);
+        hy += rt::hearsLine;
+    }
+    if (heard.empty())
+        ui::text(g, "hears nothing: silent", ui::smallFont(), colour::label,
+                 {box.getX() + rt::padX, hy, inner, rt::hearsLine}, juce::Justification::centredLeft);
+    for (const live::Heard& h : heard) {
+        const juce::Rectangle<float> line{box.getX() + rt::padX, hy, inner, rt::hearsLine};
+        ui::text(g, nameOf(h.node) + (h.twice ? "  heard twice" : ""), ui::smallFont(),
+                 h.twice ? colour::text : colour::label, line, juce::Justification::centredLeft);
+        ui::text(g, dB(h.db) + " dB", ui::smallFont(), colour::label, line, juce::Justification::centredRight);
+        hy += rt::hearsLine;
+    }
+    const auto& waiting = armed_.what();
+    const bool sending = waiting && waiting->kind == Waiting::Kind::Send;
+    const Target t = Target::decoder(id);
+    armed_.over(*this, g, box, sending && live::canWire(field_, waiting->node, t), [this, t] {
+        const Waiting w = *armed_.what();
+        armed_.end();
+        change([this, w, t](live::Shape& s) { live::setWire(s, field_, w.node, {t, 0.0}); });
+    });
+    return box.getBottom() + rt::gap * 2.0f;
+}
+
+float RoutingPage::orphans(juce::Graphics& g, float y, float width) {
+    bool headed = false;
+    for (const live::Chain& c : shape_.chains) {
+        if (c.node == live::kMain || c.inserts.empty() || live::isInput(c.node)) continue;
+        if (std::any_of(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& n) { return n.id == c.node; }))
+            continue;
+        if (!headed) {
+            y = ui::drawGroupHeading(g, rt::left, y + rt::headingGap, width, "orphaned");
+            headed = true;
+        }
+        const float cy = y + rt::row / 2.0f;
+        ui::text(g, "a track Live no longer has", ui::smallFont(), colour::label,
+                 {rt::left, y, rt::nameWidth + rt::padX, rt::row});
+        float x = rt::left + rt::nameWidth + rt::padX * 2.0f;
+        const auto node = c.node;
+        if (waits(Waiting::Kind::Orphan, node)) {
+            const juce::Rectangle<float> box{x, cy - rt::control / 2.0f, ui::Armed<Waiting>::width(kAttachWaits),
+                                             rt::control};
+            armed_.block(*this, g, box, kAttachWaits, [this] { repaint(); });
+            x = box.getRight() + rt::gap * 2.0f;
+        } else {
+            const juce::Rectangle<float> at{x, cy - rt::control / 2.0f, ui::framedButtonWidth("attach"), rt::control};
+            ui::drawFramedButton(g, at, "attach", idle());
+            if (idle()) addClickArea(at, [this, node] { begin({Waiting::Kind::Orphan, node, 0}); });
+            x = at.getRight() + rt::gap * 2.0f;
+        }
+        for (const live::Insert& ins : c.inserts) {
+            const auto chip = ui::drawChip(g, {x, cy - rt::control / 2.0f}, rt::control, effectName(ins.effect),
+                                           colour::text, colourOf(ins.effect), true);
+            const auto owner = c.node;
+            const auto insert = ins.id;
+            const auto name = effectName(ins.effect);
+            if (idle()) addClickArea(chip.cross, [this, owner, insert, name] { removeInsert(owner, insert, name); });
+            x = chip.box.getRight() + rt::gap;
+        }
+        y += rt::row;
+    }
+    return y;
+}
+
+void RoutingPage::body(juce::Graphics& g, float top) {
+    const auto w = static_cast<float>(getWidth());
+    //  Live's column as wide as its widest line, within bounds; the others after it at even gaps
+    const auto lines = live::linesOf(tree_);
+    float need = rt::liveLeast;
+    for (const live::Line& line : lines) {
+        const auto n =
+            std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == line.node; });
+        if (n != tree_.nodes.end()) need = std::max(need, liveNeed(*n, line.depth));
+    }
+    const float room = w - 2.0f * rt::left - 2.0f * rt::wireGutter - rt::fieldColumn - rt::decoderColumn;
+    const float liveWidth = std::clamp(need, rt::liveLeast, std::max(rt::liveLeast, std::min(rt::liveMost, room)));
+    const float fieldX = rt::left + liveWidth + rt::wireGutter;
+    const float decoderX = fieldX + rt::fieldColumn + rt::wireGutter;
+
+    float y = ui::drawGroupHeading(g, rt::left, top, liveWidth, "live's tracks");
+    for (const live::Line& line : lines) {
+        const auto n =
+            std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == line.node; });
+        if (n != tree_.nodes.end()) y = liveLine(g, *n, line.depth, rt::left, y, liveWidth);
+    }
+    if (!shape_.inputs.empty()) {
+        y = ui::drawGroupHeading(g, rt::left, y + rt::headingGap, liveWidth, "inputs");
+        for (const live::HostInput& in : shape_.inputs) y = inputLine(g, in, rt::left, y, liveWidth);
+    }
+    y = orphans(g, y, liveWidth);
+
+    //  the returns and Main, one group
+    float fy = ui::drawGroupHeading(g, fieldX, top, rt::fieldColumn, "returns and main");
+    for (const Node& r : tree_.nodes)
+        if (r.kind == Node::Kind::Return) fy = returnLine(g, r, fieldX, fy, rt::fieldColumn);
+    fy = mainLine(g, fieldX, fy, rt::fieldColumn);
+
+    //  the Decoders, each with what it plays and hears
+    float dy = ui::drawGroupHeading(g, decoderX, top, rt::decoderColumn, "decoders");
+    for (std::size_t k = 0; k < field_.decoders.size(); ++k) dy = decoderBox(g, k, decoderX, dy, rt::decoderColumn);
+    const juce::Rectangle<float> add{decoderX, dy, ui::framedButtonWidth("+ decoder"), rt::control};
+    ui::drawFramedButton(g, add, "+ decoder", idle());
+    if (idle())
+        addClickArea(add, [this] {
+            change([this](live::Shape& s) {
+                if (s.decoders.empty()) s.decoders = field_.decoders;
+                std::uint64_t next = live::kFirstDecoder;
+                for (const std::uint64_t d : s.decoders) next = std::max(next, d + 1);
+                s.decoders.push_back(next);
+            });
+        });
+    noteContentBottom(std::max({y, fy, add.getBottom()}) + rt::top + scroll());
 }
 
 }  // namespace bambi::livehost

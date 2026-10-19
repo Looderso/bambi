@@ -30,6 +30,27 @@ function(bambi_check_codes manufacturer plugin_code)
 endfunction()
 
 # ---- dependencies: JUCE (submodule), clap-juce-extensions (vendored, patched) ------------------
+# JUCE as pinned, with the patches in third_party/patches: each put in at configure, once, and left alone when it is
+# already in -- so a fresh checkout and CI build the same JUCE. One that neither applies nor is in stops the build.
+set(_juce ${PROJECT_SOURCE_DIR}/third_party/JUCE)
+file(GLOB _juce_patches ${PROJECT_SOURCE_DIR}/third_party/patches/juce-*.patch)
+foreach(_patch IN LISTS _juce_patches)
+  execute_process(COMMAND git -C ${_juce} apply --check ${_patch} RESULT_VARIABLE _applies OUTPUT_QUIET ERROR_QUIET)
+  if(_applies EQUAL 0)
+    execute_process(COMMAND git -C ${_juce} apply ${_patch} RESULT_VARIABLE _applied)
+    if(NOT _applied EQUAL 0)
+      message(FATAL_ERROR "JUCE: ${_patch} would not apply")
+    endif()
+    message(STATUS "JUCE: applied ${_patch}")
+  else()
+    execute_process(COMMAND git -C ${_juce} apply --reverse --check ${_patch} RESULT_VARIABLE _in OUTPUT_QUIET
+                    ERROR_QUIET)
+    if(NOT _in EQUAL 0)
+      message(FATAL_ERROR "JUCE: ${_patch} neither applies nor is in")
+    endif()
+  endif()
+endforeach()
+
 # Added once here, so a second plugin costs no extra configure time.
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/JUCE
                  ${CMAKE_BINARY_DIR}/third_party/JUCE EXCLUDE_FROM_ALL)

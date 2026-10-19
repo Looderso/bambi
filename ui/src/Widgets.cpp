@@ -163,6 +163,22 @@ float framedButtonWidth(const juce::String& label) {
     return textWidth(font(theme::type::body), label) + 2.0f * theme::settings::buttonPadX;
 }
 
+float dropdownWidth() { return theme::controls::dropdownWidth + 2.0f * theme::controls::dropdownPad; }
+
+void drawDropdown(juce::Graphics& g, juce::Rectangle<float> box, bool open, bool offered, float blockHeight) {
+    namespace ct = theme::controls;
+    if (open && offered) {
+        g.setColour(theme::colour::chosen);
+        g.fillRect(box.withSizeKeepingCentre(box.getWidth(), std::min(blockHeight, box.getHeight())));
+    }
+    juce::Path glyph;
+    const auto c = box.getCentre();
+    glyph.addTriangle(c.x - ct::dropdownWidth / 2.0f, c.y - ct::dropdownHeight / 2.0f, c.x + ct::dropdownWidth / 2.0f,
+                      c.y - ct::dropdownHeight / 2.0f, c.x, c.y + ct::dropdownHeight / 2.0f);
+    g.setColour(!offered ? theme::colour::inactive : open ? theme::colour::textInverse : theme::colour::label);
+    g.fillPath(glyph);
+}
+
 void strokeChevron(juce::Graphics& g, juce::Rectangle<float> box, int dx, int dy, juce::Colour c) {
     namespace hdr = theme::header;
     const auto cx = box.getCentreX(), cy = box.getCentreY();
@@ -206,6 +222,18 @@ void drawWaiting(juce::Graphics& g, juce::Rectangle<float> box, const juce::Stri
     text(g, label, f, theme::colour::textInverse, box, juce::Justification::centred);
 }
 
+void drawTakes(juce::Graphics& g, juce::Rectangle<float> box) {
+    juce::Path p;
+    p.addRectangle(box.expanded(theme::controls::takesGap));
+    g.setColour(theme::colour::learning);
+    strokeDashed(g, p, theme::stroke::takesDash, juce::PathStrokeType(theme::stroke::rule));
+}
+
+void drawOutOfReach(juce::Graphics& g, juce::Rectangle<float> box) {
+    g.setColour(theme::colour::ground.withAlpha(theme::controls::outOfReach));
+    g.fillRect(box.expanded(theme::controls::takesGap + 1.0f));
+}
+
 float chipWidth(const juce::String& label, float height, bool accent, bool closable) {
     return textWidth(labelFont(), label) + 2.0f * static_cast<float>(theme::scene::presetChipPadX) +
            (accent ? theme::stroke::selectionBar : 0.0f) + (closable ? height : 0.0f);
@@ -232,6 +260,60 @@ juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> 
     g.drawLine(box.getX(), box.getY(), box.getRight(), box.getBottom(), theme::stroke::glyph);
     g.drawLine(box.getRight(), box.getY(), box.getX(), box.getBottom(), theme::stroke::glyph);
     return box.expanded(theme::controls::closeGap / 2.0f);
+}
+
+void drawPlayMark(juce::Graphics& g, juce::Rectangle<float> box, bool plays, bool onBlock) {
+    namespace colour = theme::colour;
+    g.setColour(colour::textInverse);
+    g.fillRect(box);
+    g.setColour(onBlock ? colour::textInverse : colour::text);
+    g.drawRect(box, theme::stroke::toggle);
+    if (plays) {
+        g.setColour(colour::text);
+        g.fillRect(box.reduced(theme::header::toggleWell));
+    }
+}
+
+void paintMenuFrame(juce::Graphics& g, juce::Rectangle<float> box) {
+    g.setColour(theme::colour::ground);
+    g.fillRect(box);
+    g.setColour(theme::colour::ruleStrong);
+    g.drawRect(box, theme::stroke::rule);
+}
+
+Menu drawMenu(juce::Graphics& g, juce::Point<float> topLeft, float width, const std::vector<MenuItem>& items,
+              const juce::String& foot) {
+    namespace colour = theme::colour;
+    namespace sh = theme::sheet;
+    const float footHeight = foot.isEmpty() ? 0.0f : sh::menuLine;
+    Menu menu;
+    menu.box = {topLeft.x, topLeft.y, width,
+                2.0f * sh::menuPad + sh::menuLine * static_cast<float>(items.size()) + footHeight};
+    paintMenuFrame(g, menu.box);
+    auto inner = menu.box.reduced(sh::menuPad, sh::menuPad);
+    for (const MenuItem& item : items) {
+        const auto row = inner.removeFromTop(sh::menuLine);
+        const auto ink = item.offered ? colour::text : colour::inactive;
+        text(g, item.label, labelFont(), ink, row, juce::Justification::centredLeft);
+        text(g, item.note, smallFont(), item.offered ? colour::label : colour::inactive, row,
+             juce::Justification::centredRight);
+        menu.items.push_back(row);
+    }
+    if (!foot.isEmpty()) {
+        g.setColour(colour::rule);
+        g.drawHorizontalLine(static_cast<int>(inner.getY()), inner.getX(), inner.getRight());
+        text(g, foot, smallFont(), colour::label, inner.removeFromTop(footHeight), juce::Justification::centredLeft);
+    }
+    return menu;
+}
+
+juce::Rectangle<float> drawPageBand(juce::Graphics& g, float width) {
+    const auto h = static_cast<float>(theme::metrics::headerHeight);
+    g.setColour(theme::colour::ground);
+    g.fillRect(0.0f, 0.0f, width, h);
+    g.setColour(theme::colour::rule);
+    g.fillRect(0.0f, h - theme::stroke::rule, width, theme::stroke::rule);
+    return {theme::metrics::bandInset, 0.0f, width - 2.0f * theme::metrics::bandInset, h};
 }
 
 float sceneToggleWidth(const juce::String& label) {

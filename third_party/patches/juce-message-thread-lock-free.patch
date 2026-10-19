@@ -1,0 +1,56 @@
+diff --git a/modules/juce_events/messages/juce_MessageManager.cpp b/modules/juce_events/messages/juce_MessageManager.cpp
+index 0c61d0c..1f1a619 100644
+--- a/modules/juce_events/messages/juce_MessageManager.cpp
++++ b/modules/juce_events/messages/juce_MessageManager.cpp
+@@ -190,9 +190,8 @@ void MessageManager::deregisterBroadcastListener (ActionListener* const listener
+ //==============================================================================
+ bool MessageManager::isThisTheMessageThread() const noexcept
+ {
+-    const std::lock_guard<std::mutex> lock { messageThreadIdMutex };
+-
+-    return Thread::getCurrentThreadId() == messageThreadId;
++    // bambi: read without the mutex -- a hosted plugin's parameter set on the audio thread asks this
++    return Thread::getCurrentThreadId() == messageThreadId.load();
+ }
+ 
+ void MessageManager::setCurrentThreadAsMessageThread()
+@@ -201,7 +200,7 @@ void MessageManager::setCurrentThreadAsMessageThread()
+ 
+     const std::lock_guard<std::mutex> lock { messageThreadIdMutex };
+ 
+-    if (std::exchange (messageThreadId, thisThread) != thisThread)
++    if (messageThreadId.exchange (thisThread) != thisThread)
+     {
+        #if JUCE_WINDOWS
+         // This is needed on windows to make sure the message window is created by this thread
+@@ -214,7 +213,7 @@ void MessageManager::setCurrentThreadAsMessageThread()
+ bool MessageManager::currentThreadHasLockedMessageManager() const noexcept
+ {
+     auto thisThread = Thread::getCurrentThreadId();
+-    return thisThread == messageThreadId || thisThread == threadWithLock;
++    return thisThread == messageThreadId.load() || thisThread == threadWithLock;
+ }
+ 
+ bool MessageManager::existsAndIsLockedByCurrentThread() noexcept
+diff --git a/modules/juce_events/messages/juce_MessageManager.h b/modules/juce_events/messages/juce_MessageManager.h
+index 68f13fd..127b76f 100644
+--- a/modules/juce_events/messages/juce_MessageManager.h
++++ b/modules/juce_events/messages/juce_MessageManager.h
+@@ -203,7 +203,7 @@ public:
+         (Best to ignore this method unless you really know what you're doing.)
+         @see setCurrentThreadAsMessageThread
+     */
+-    Thread::ThreadID getCurrentMessageThread() const noexcept            { return messageThreadId; }
++    Thread::ThreadID getCurrentMessageThread() const noexcept            { return messageThreadId.load(); }
+ 
+     /** Returns true if the caller thread has currently got the message manager locked.
+ 
+@@ -408,7 +408,7 @@ private:
+ 
+     std::unique_ptr<ActionBroadcaster> broadcaster;
+     std::atomic<bool> quitMessagePosted { false }, quitMessageReceived { false };
+-    Thread::ThreadID messageThreadId;
++    std::atomic<Thread::ThreadID> messageThreadId;  // bambi: atomic, so isThisTheMessageThread takes no lock
+     std::atomic<Thread::ThreadID> threadWithLock;
+     mutable std::mutex messageThreadIdMutex;
+ 

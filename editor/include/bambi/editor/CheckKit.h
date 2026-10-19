@@ -5,10 +5,13 @@
 #include <cstdio>
 #include <functional>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "bambi/host/TestPlayHead.h"
+#include "bambi/link/link.hpp"
+#include "bambi/math/vec3.hpp"
 #include "bambi/patch/state.hpp"
 
 /*  What every plugin's check suite is built from: reporting, layouts, parameters, a deterministic test
@@ -19,6 +22,37 @@ using Layout = juce::AudioProcessor::BusesLayout;
 using Channels = std::vector<std::vector<float>>;  ///< per output channel, every sample of a render
 
 inline constexpr double kCheckRate = 48000.0;
+
+// ---- a Decoder on the bus ---------------------------------------------------------------------
+
+/*  Stands in for a Decoder in `session`: publishes what a real one does -- its layout in the static section, what it plays and
+    where its head looks in the dynamic -- so a plugin that draws decoders is checked on its own side of the bus. `speakers` points
+    on a ring, the last one imaginary from four on; `flags` is `LinkDynamic::playFlags`. Released with the bus. */
+inline std::unique_ptr<LinkBus> standInDecoder(const Uuid& session, const char* name, int speakers, std::uint8_t flags,
+                                               Vec3 gaze) {
+    auto bus = std::make_unique<LinkBus>();
+    bus->open(session, Uuid::generate(), Product::Decoder);
+    LinkStatic st;
+    st.setLabel(name);
+    st.speakerCount = static_cast<std::uint32_t>(speakers);
+    for (int i = 0; i < speakers; ++i) {
+        st.speakers[i].azimuthDeg = static_cast<float>(i * 360.0 / std::max(speakers, 1));
+        st.speakers[i].elevationDeg = (i % 2) ? 20.0f : 0.0f;
+        st.speakers[i].channel = static_cast<std::uint8_t>(i + 1);
+        st.speakers[i].imaginary = (i == speakers - 1 && speakers > 3) ? 1 : 0;
+    }
+    bus->publishStatic(st);
+    LinkDynamic d;
+    d.playFlags = flags;
+    d.headGazeX = static_cast<float>(gaze.x);
+    d.headGazeY = static_cast<float>(gaze.y);
+    d.headGazeZ = static_cast<float>(gaze.z);
+    d.headLeftX = static_cast<float>(-gaze.y);
+    d.headLeftY = static_cast<float>(gaze.x);
+    d.headLeftZ = 0.0f;
+    bus->publishDynamic(d);
+    return bus;
+}
 
 // ---- reporting --------------------------------------------------------------------------------
 

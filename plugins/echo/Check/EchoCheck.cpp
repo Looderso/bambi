@@ -137,6 +137,8 @@ int main(int argc, char** argv) {
 
     bambi::editor::checkEffectLinkBus(spec);
 
+    bambi::editor::checkDecoderOverlay<Processor, BambiEchoEditor>(spec);
+
     std::printf("\nthe shared parameter page\n");
     {
         /*  The proof that `ui::ParameterPage` is shared and not merely extracted: a plugin with a

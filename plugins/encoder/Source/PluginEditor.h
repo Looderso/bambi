@@ -70,6 +70,21 @@ public:
     /// Select an instance in the scene, as a click on its source does.
     void selectInstance(const bambi::Uuid& instance);
 
+    //  the `decoder` toggle and its list, through the painted areas as the mouse would, on whichever view carries it (the
+    //  globe, or the equirect while it has the row): each paints first, and is false when the control is not there
+    bool clickDecoderToggle();
+    bool clickDecoderTriangle();
+    bool clickDecoderRow(int index);
+    bool pressKeyOnScene(const juce::KeyPress& key);
+    bool decoderOverlayOn() const { return state.decoders.selection().master(); }
+    bool decoderListOpen() const { return state.decoders.open(); }
+    int decoderRowsListed() const { return static_cast<int>(state.decoders.rows().size()); }
+    /// What the view that carries the toggle drew of the decoders at its last paint.
+    const bambi::ui::DecoderOverlayDrawn& decodersDrawn() const {
+        return state.equirectFull ? equirect.decoderOverlayDrawn() : globe.decoderOverlayDrawn();
+    }
+    juce::Rectangle<float> decoderRowArea(int index) const;
+
     void setEquirectFull(bool full);
     bool equirectFull() const { return state.equirectFull; }
     void clickFull();

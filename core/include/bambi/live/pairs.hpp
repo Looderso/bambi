@@ -10,9 +10,13 @@
  *  jump to another encoder. A new track takes the lowest pair nobody holds.
  *
  *  A track is an opaque id the Live side chooses; keeping it stable is that side's business. Pair p is the
- *  loop device's channels 2p and 2p + 1, counted from 0. Runs on the host's message thread and allocates.
+ *  loop device's channels 2p + 2 and 2p + 3, counted from 0: the first two are Live's Main's, where Live sends its
+ *  Master unless told otherwise. Runs on the host's message thread and allocates.
  */
 namespace bambi::live {
+
+/// The loop device's first channel a track's pair is on, from 0: channels 0 and 1 carry Live's Main.
+inline constexpr int kFirstTrackChannel = 2;
 
 using TrackId = std::uint64_t;
 

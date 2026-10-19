@@ -9,6 +9,15 @@ namespace {
 constexpr std::array<const char*, DecoderControlState::kOutputs> kOutputNames{"headphones", "speakers"};
 }  // namespace
 
+void DecoderControlState::refreshSourceRows() {
+    std::vector<OverlayRow> rows;
+    for (const auto& entry : scene.entries()) {
+        if (!entry.hasPosition || entry.product == Product::Decoder) continue;
+        rows.push_back({{entry.instance, 0}, juce::String(entry.label()), theme::colour::otherInstance, false});
+    }
+    sources.setRows(std::move(rows));
+}
+
 DecoderControlState::DecoderControlState(BambiDecoderProcessor& p)
     : editor::PatchControls(p, decodeParams(), decodeMod(), 1), processor(p) {}
 

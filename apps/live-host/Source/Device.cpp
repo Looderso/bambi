@@ -4,6 +4,7 @@
 #include <chrono>
 #include <variant>
 
+#include "HostLog.h"
 #include "loop.hpp"
 
 namespace bambi::livehost {
@@ -11,10 +12,18 @@ namespace bambi::livehost {
 DeviceServer::DeviceServer(live::SessionSettings settings)
     : juce::Thread("bambi live device"), server_(live::serialise(live::Busy{})), session_(settings) {}
 
-DeviceServer::~DeviceServer() { stopThread(1000); }
+DeviceServer::~DeviceServer() {
+    hostLog("host closing");
+    stopThread(1000);
+}
 
 bool DeviceServer::start(std::string* error) {
-    if (!server_.listen(kPort, error)) return false;
+    if (!server_.listen(kPort, error)) {
+        hostLog("could not listen on 127.0.0.1:" + std::to_string(kPort) + ": " +
+                (error != nullptr ? *error : std::string()));
+        return false;
+    }
+    hostLog("listening on 127.0.0.1:" + std::to_string(kPort) + ", protocol " + std::to_string(live::kProtocol));
     self_ = this;
     startThread();
     return true;
@@ -27,6 +36,7 @@ void DeviceServer::run() {
     const net::LineServer::Events events{[self](Connection c) {
                                              juce::MessageManager::callAsync([self, c] {
                                                  if (self == nullptr) return;
+                                                 hostLog("a device connected");
                                                  self->device_ = c;
                                                  if (self->changed) self->changed();
                                              });
@@ -54,7 +64,25 @@ void DeviceServer::handle(net::LineServer::Connection from, const std::string& l
     const auto message = live::parse(line, &error);
     if (!message) {
         DBG("bambi live host: not understood (" << error << "): " << line);
+        hostLog("a line the host does not understand (" + error + "): " + line.substr(0, 120));
         return;
+    }
+    if (const auto* hello = std::get_if<live::Hello>(&*message)) {
+        hostLog("hello from Live " + hello->live + ", protocol " + std::to_string(hello->protocol) +
+                (live::accepts(*hello) ? ""
+                                       : ": NOT the host's protocol " + std::to_string(live::kProtocol) +
+                                             " -- an old device in a saved set; it is told so and not heard"));
+    } else if (const auto* tree = std::get_if<live::Tree>(&*message)) {
+        if (!session_.compatible())
+            hostLog("a tree of " + std::to_string(tree->nodes.size()) +
+                    " nodes, ignored: the device is in another protocol");
+        else if (line != lastTree_)
+            //  the whole tree as the device sent it, each track's group and output with it: what a routing page that
+            //  disagrees with Live's is checked against
+            hostLog("the set's tree, " + std::to_string(tree->nodes.size()) + " nodes: " + line);
+        lastTree_ = line;
+    } else if (const auto* switched = std::get_if<live::Switched>(&*message)) {
+        hostLog(std::string("the route button: bambi ") + (switched->on ? "on" : "off"));
     }
     const int shows = session_.shows();
     for (const live::Message& answer : session_.answer(*message)) server_.send(from, live::serialise(answer));
@@ -62,6 +90,7 @@ void DeviceServer::handle(net::LineServer::Connection from, const std::string& l
     if (std::holds_alternative<live::Tree>(*message) || (value != nullptr && value->what == "name"))
         (void)loop::nameChannels(session_.channelNames());
     if (const auto* t = std::get_if<live::TransportMessage>(&*message); t != nullptr && transport) transport(*t, stamp);
+    if (const auto* p = std::get_if<live::SlotPlay>(&*message); p != nullptr && slot) slot(*p, stamp);
     if (std::holds_alternative<live::Restore>(*message) && restored) restored();
     if (session_.shows() != shows && show) show();
     if (changed) changed();
@@ -80,9 +109,19 @@ void DeviceServer::reshape(live::Shape shape) {
     if (changed) changed();
 }
 
+void DeviceServer::command(const live::Command& c) {
+    if (device_ != 0) server_.send(device_, live::serialise(c));
+}
+
+void DeviceServer::refresh() {
+    if (device_ != 0) server_.send(device_, live::serialise(live::Refresh{}));
+}
+
 void DeviceServer::gone(net::LineServer::Connection from) {
     if (from != device_) return;
+    hostLog("the device disconnected");
     device_ = 0;
+    lastTree_.clear();
     session_.disconnected();
     if (changed) changed();
 }

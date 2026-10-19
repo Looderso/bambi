@@ -26,7 +26,11 @@
  */
 namespace bambi::live {
 
-inline constexpr int kProtocol = 1;
+/*  Bump whenever a message, or what one means, changes so that a device and a host of different builds would misread each other.
+ *  A saved Live set keeps the device's own copy of its scripts, so an old device meets a new host: it is told by the welcome and
+ *  heard no more, rather than left to misbehave. 2: the transport and clips asked of Live, the host deciding which tracks play
+ *  in bambi, the routing in groups and returns. 3: a node's group, as Live files it, beside the group it plays into. */
+inline constexpr int kProtocol = 3;
 
 //  ---- the device to the host ------------------------------------------------------------------------------------
 
@@ -48,6 +52,10 @@ struct Node {
     TrackId id{0};
     Kind kind{Kind::Track};
     std::optional<TrackId> parent;  ///< the group it plays into; none when it plays to Main
+    /// The group it is filed under in Live, whatever its routing says: where the routing page lists it, as Live does. A
+    /// member routed by hand past its group has this and no `parent`. A device that does not send it files a node where
+    /// it plays: `filedUnder` says which.
+    std::optional<TrackId> group;
     Path path{Path::Main};
     std::string name;
     std::string colour;                        ///< "#rrggbb"
@@ -59,6 +67,9 @@ struct Node {
     double pan{0.0};  ///< -1 left .. 1 right
     friend bool operator==(const Node&, const Node&) = default;
 };
+
+/// The group a node is listed under: its own `group` when the device said, else the one it plays into.
+inline std::optional<TrackId> filedUnder(const Node& n) { return n.group ? n.group : n.parent; }
 
 struct Tree {
     std::vector<Node> nodes;
@@ -76,6 +87,68 @@ struct Value {
 
 struct Restore {
     Json state;
+};
+
+/*  Live's arrangement, as guidance for placing automation: every track's clips, read-only here; the locators; the
+ *  loop. Sent when bambi turns on and again when a track's clips change -- never while it plays. Times in quarter
+ *  notes from the song's start. */
+struct Clip {
+    double start{0.0}, end{0.0};
+    std::string name;
+    std::string colour;  ///< "#rrggbb"
+    bool midi{false};
+    friend bool operator==(const Clip&, const Clip&) = default;
+};
+struct TrackClips {
+    TrackId id{0};
+    std::vector<Clip> clips;  ///< in time order
+    friend bool operator==(const TrackClips&, const TrackClips&) = default;
+};
+struct Locator {
+    double time{0.0};
+    std::string name;
+    friend bool operator==(const Locator&, const Locator&) = default;
+};
+/*  A track's session clip as Live plays it: which slot, and where in the clip Live is, sent as Live reports it --
+ *  when the track's playing slot changes and as the clip's position moves. In quarter notes from the clip's start;
+ *  a looping clip's position runs from its loop's start to its end and back. */
+struct SlotPlay {
+    TrackId id{0};
+    int slot{-1};          ///< the scene's index; -1 when no session clip plays on the track
+    double position{0.0};  ///< where in the clip Live is
+    double loopStart{0.0}, loopEnd{0.0};
+    bool looping{false};
+    /// The session has the track, not the arrangement: from a clip launched on it until Back to Arrangement,
+    /// whether a clip still plays or not.
+    bool overrides{false};
+    friend bool operator==(const SlotPlay&, const SlotPlay&) = default;
+};
+
+/// A session clip in its slot: what the session view draws a clip lane against.
+struct SessionClip {
+    int slot{0};  ///< the scene's index
+    std::string name;
+    std::string colour;                   ///< "#rrggbb"
+    double loopStart{0.0}, loopEnd{0.0};  ///< quarter notes in the clip; the whole clip when it does not loop
+    bool looping{false};
+    bool midi{false};
+    friend bool operator==(const SessionClip&, const SessionClip&) = default;
+};
+struct TrackSlots {
+    TrackId id{0};
+    std::vector<SessionClip> clips;  ///< the slots that hold one, in scene order
+    friend bool operator==(const TrackSlots&, const TrackSlots&) = default;
+};
+
+struct Arrangement {
+    std::vector<TrackClips> tracks;
+    std::vector<TrackSlots> session;  ///< every track's session clips, read with the arrangement
+    int scenes{0};
+    std::vector<Locator> locators;  ///< in time order
+    bool loopOn{false};
+    double loopStart{0.0}, loopLength{0.0};
+    double readMs{0.0};  ///< how long reading it held Live up, as the device timed it
+    friend bool operator==(const Arrangement&, const Arrangement&) = default;
 };
 
 struct Routed {
@@ -134,8 +207,23 @@ struct CreateReturn {
     friend bool operator==(const CreateReturn&, const CreateReturn&) = default;
 };
 
-using Message = std::variant<Hello, Switched, Tree, Value, TransportMessage, Restore, Routed, Show, Welcome, Route,
-                             Save, Info, Status, Busy, CreateReturn>;
+/// The arrangement and the session's clips, read again and sent when they changed: the host asks while its timeline
+/// is open, since Live does not report every change. The device reads no more often than fifty times the last
+/// read's cost, so Live's own thread stays free while it plays.
+struct Refresh {
+    friend bool operator==(const Refresh&, const Refresh&) = default;
+};
+
+/// Live's transport, asked from the host: Live stays the clock, and reports back what it did as any transport.
+struct Command {
+    enum class Action { Play, Stop, Continue, Locate };
+    Action action{Action::Play};
+    double ppq{0.0};  ///< Locate's: where to, quarter notes from the song's start
+    friend bool operator==(const Command&, const Command&) = default;
+};
+
+using Message = std::variant<Hello, Switched, Tree, Value, TransportMessage, Restore, Arrangement, SlotPlay, Routed,
+                             Show, Welcome, Route, Save, Info, Status, Busy, CreateReturn, Command, Refresh>;
 
 /// A line as a message, or none with `error` set when it is not a JSON object or its type is unknown.
 std::optional<Message> parse(std::string_view line, std::string* error = nullptr);

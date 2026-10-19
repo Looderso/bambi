@@ -145,6 +145,10 @@ public:
     /// Whether the patch has moved from the preset it names. A preset whose file is gone counts as moved.
     bool presetModified();
     bool loadPreset(const PresetRef& ref);
+    /// `base` with the preset loaded over it, as loadPreset would leave it: for loading it on another instance. Nothing is committed here.
+    std::optional<PluginState> presetOver(const PresetRef& ref, const PluginState& base);
+    /// Whether `state` has moved from the preset it names, as presetModified asks of this instance's own.
+    bool presetModified(const PluginState& state) { return presets().modified(state); }
     /// The preset `delta` on from the current one in list order, loaded.
     bool stepPreset(int delta);
     /// Write the patch as it is now as a user preset, over one of the same name, and carry its name.

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <span>
 
 namespace bambi::host {
 namespace {
@@ -112,6 +113,7 @@ void RemoteTarget::follow(const LinkScene::Entry& peer, double dt) {
         instance_ = peer.instance;
         generation_ = 0;
         hasPending_ = false;
+        hasPendingPreset_ = false;
         held_ = {};
         energyGeneration_ = energyTaken_ = 0;
     }
@@ -140,8 +142,10 @@ void RemoteTarget::follow(const LinkScene::Entry& peer, double dt) {
 
     //  An edit shows until the target has applied it -- sequences only grow, so a later one covers it -- or
     //  until it has plainly been lost.
-    if (hasPending_ && (controls_.appliedEdit >= pendingSequence_ || (pendingSeconds_ += dt) > kPendingSeconds))
+    if (hasPending_ && (controls_.appliedEdit >= pendingSequence_ || (pendingSeconds_ += dt) > kPendingSeconds)) {
         hasPending_ = false;
+        hasPendingPreset_ = false;
+    }
 
     for (std::size_t i = 0; i < held_.size(); ++i) {
         auto& h = held_[i];
@@ -167,7 +171,47 @@ PluginState RemoteTarget::state() const {
     for (std::size_t i = 0; i < count; ++i) s.params[i] = controls_.params[i];
     for (std::size_t i = 0; i < held_.size(); ++i)
         if (held_[i].active) s.params[i] = held_[i].plain;
+    s.preset = hasPendingPreset_ ? pendingPreset_ : controls_.preset.get();
     return s;
+}
+
+bool RemoteTarget::loadWhole(std::string_view name, const PluginState& next) {
+    const auto& manifest = host_.linkHost().manifest();
+    const auto count = std::min<std::size_t>(static_cast<std::size_t>(manifest.size()), next.params.size());
+    LinkPatch packed;
+    packPatch(next, packed);
+    const auto sequence = host_.linkNode().sendWholeEdit(
+        instance_, packed, std::span<const float>(next.params.data(), count), next.preset, name);
+    if (sequence == 0) return false;
+    pending_ = packed;
+    pendingSequence_ = sequence;
+    hasPending_ = true;
+    pendingSeconds_ = 0.0;
+    pendingPreset_ = next.preset;
+    hasPendingPreset_ = true;
+    //  every parameter shows what was sent until the instance's own values arrive
+    for (std::size_t i = 0; i < count; ++i) {
+        auto& h = held_[i];
+        h.plain = next.params[i];
+        h.active = true;
+        h.open = false;
+        h.seconds = 0.0;
+    }
+    host_.linkNode().noteActivity();
+    return true;
+}
+
+bool RemoteTarget::setPreset(const PresetRef& ref) {
+    const auto sequence = host_.linkNode().sendPresetName(instance_, ref);
+    if (sequence == 0) return false;
+    pending_ = hasPending_ ? pending_ : controls_.patch;
+    pendingSequence_ = sequence;
+    hasPending_ = true;
+    pendingSeconds_ = 0.0;
+    pendingPreset_ = ref;
+    hasPendingPreset_ = true;
+    host_.linkNode().noteActivity();
+    return true;
 }
 
 void RemoteTarget::send(std::string_view name, std::string_view key, const UndoStack::Edit& change) {

@@ -606,29 +606,39 @@ void BambiDecoderProcessor::editDecoder(std::string_view name,
 bambi::DecoderState BambiDecoderProcessor::decoderState() const { return document().committed().decoder; }
 
 void BambiDecoderProcessor::playOutput(Output which, bool on) {
-    const int bus = getChannelCountOfBus(false, 0);
-    const bambi::DecoderState d = decoderState();
-    const bambi::Placement p = bambi::placeOutput(d, which, bus);
-    notice_.clear();
-    if (on && !p.fits) {
-        notice_ = p.needs == 0 ? juce::String("no layout")
-                               : juce::String(p.needs) + " channels needed; the bus has " + juce::String(bus);
-        return;
+    const bambi::DecoderState now = decoderState();
+    bambi::Lit lit = bambi::lightOutput(now, which, on, getChannelCountOfBus(false, 0));
+    notice_ = juce::String::fromUTF8(lit.notice.c_str());
+    if (lit.state == now) return;
+    const bambi::DecoderState next = std::move(lit.state);
+    editDecoder(on ? "play output" : "stop output", [next](bambi::DecoderState& s) { s = next; });
+}
+
+bambi::DecoderReport BambiDecoderProcessor::remoteReport() const {
+    const auto* level = hostParameter(bambi::decoderParam("output.level"));
+    auto report = bambi::reportOf(decoderState(), getChannelCountOfBus(false, 0),
+                                  level->convertFrom0to1(level->getValue()), notice_.toStdString());
+    report.placeSerial = placeSerial_.load();
+    report.placeOut = placeOut_.load();
+    report.placeAt = placeAt_.load();
+    return report;
+}
+
+void BambiDecoderProcessor::remoteRequest(const bambi::DecoderRequest& request) {
+    if (request.host) host_ = request.host;
+    const bambi::DecoderState now = decoderState();
+    bambi::Lit lit = bambi::grant(now, request, getChannelCountOfBus(false, 0));
+    notice_ = juce::String::fromUTF8(lit.notice.c_str());
+    if (lit.state != now) {
+        const bambi::DecoderState next = std::move(lit.state);
+        editDecoder("outputs", [next](bambi::DecoderState& s) { s = next; });
     }
-    const Output other = which == Output::Headphones ? Output::Speakers : Output::Headphones;
-    const bool moves = on && p.moves, stops = on && p.stops;
-    if (moves)
-        notice_ = juce::String(which == Output::Headphones ? "headphones" : "speakers") + " moved to " +
-                  juce::String(p.movedTo) + juce::String::fromUTF8("\xe2\x80\x93") +
-                  juce::String(p.movedTo + p.span - 1);
-    else if (stops)
-        notice_ = juce::String(other == Output::Headphones ? "headphones" : "speakers") + " stopped: the same channels";
-    const int movedTo = p.movedTo;
-    editDecoder(on ? "play output" : "stop output", [which, on, moves, stops, movedTo, other](bambi::DecoderState& s) {
-        (which == Output::Headphones ? s.headphonesPlay : s.speakersPlay) = on;
-        if (moves) (which == Output::Headphones ? s.headphoneChannel : s.speakerFirstChannel) = movedTo;
-        if (stops) (other == Output::Headphones ? s.headphonesPlay : s.speakersPlay) = false;
-    });
+    if (request.levelDb) {
+        auto* level = hostParameter(bambi::decoderParam("output.level"));
+        level->beginChangeGesture();
+        level->setValueNotifyingHost(level->convertTo0to1(static_cast<float>(*request.levelDb)));
+        level->endChangeGesture();
+    }
 }
 
 juce::String BambiDecoderProcessor::notice() const { return notice_; }
@@ -761,6 +771,21 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         diag_.headYaw.store(static_cast<float>(y), std::memory_order_relaxed);
         diag_.headPitch.store(static_cast<float>(pt), std::memory_order_relaxed);
         diag_.headRoll.store(static_cast<float>(r), std::memory_order_relaxed);
+        //  where the head looks and what plays, for every other instance's scene: a wait-free copy that linkTick publishes
+        bambi::LinkDynamic published;
+        const bambi::Vec3 gaze = bambi::apply(head, bambi::Vec3{1, 0, 0}),
+                          left = bambi::apply(head, bambi::Vec3{0, 1, 0});
+        published.headGazeX = static_cast<float>(gaze.x);
+        published.headGazeY = static_cast<float>(gaze.y);
+        published.headGazeZ = static_cast<float>(gaze.z);
+        published.headLeftX = static_cast<float>(left.x);
+        published.headLeftY = static_cast<float>(left.y);
+        published.headLeftZ = static_cast<float>(left.z);
+        published.playFlags = static_cast<std::uint8_t>((d.speakersPlay ? bambi::kLinkPlaySpeakers : 0) |
+                                                        (d.headphonesPlay ? bambi::kLinkPlayHeadphones : 0) |
+                                                        (d.throughLayout ? bambi::kLinkPlayThroughLayout : 0));
+        published.sampledUs = bambi::linkNowMicros();
+        link().publish(published);
         bambi::yprOf(scene, y, pt, r);
         diag_.sceneYaw.store(static_cast<float>(y), std::memory_order_relaxed);
         diag_.scenePitch.store(static_cast<float>(pt), std::memory_order_relaxed);

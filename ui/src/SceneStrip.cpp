@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bambi/ui/SceneStrip.h"
 
+#include "bambi/ui/DecoderOverlay.h"
 #include "bambi/ui/Draw.h"
 #include "bambi/ui/HitArea.h"
 #include "bambi/ui/Theme.h"
@@ -18,8 +19,13 @@ void orbitView(SceneViewState& view, double dx, double dy) {
     view.preset = ViewPreset::Free;
 }
 
-SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection projection, const SceneViewState& view,
-                                bool withRegions) {
+void refreshSceneOverlays(SceneViewState& view, const LinkScene& scene) {
+    view.linkScene = &scene;
+    view.decoders.setRows(decoderRows(scene));
+}
+
+SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection projection, SceneViewState& view,
+                                bool withRegions, bool withDecoders) {
     SceneStripAreas areas;
     const bool globe = projection == Projection::Globe;
     const auto strip = static_cast<float>(sc::labelStrip);
@@ -42,6 +48,12 @@ SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection project
         }
         for (std::size_t i = 0; i < kViewPresets.size(); ++i)
             drawChoice(g, areas.presets[i], kViewPresetNames[i], f, view.preset == kViewPresets[i]);
+        //  the decoder overlay beside the presets, unless the equirect has the row and carries it instead
+        if (withDecoders && !view.equirectFull) {
+            const juce::Rectangle<float> row{0.0f, 0.0f, wide, strip};
+            view.decoders.paintToggle(g, row, areas.presets[0].getX() - sc::toggleGroupGap);
+            areas.decodersHere = true;
+        }
         return areas;
     }
 
@@ -61,7 +73,12 @@ SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection project
     areas.energy = energy.hit;
     right = energy.left - sc::toggleGroupGap;
     //  the whole row, with the globe hidden: the same sphere, four times the size
-    areas.full = paintSceneToggle(g, row, right, "full", view.equirectFull).hit;
+    const auto full = paintSceneToggle(g, row, right, "full", view.equirectFull);
+    areas.full = full.hit;
+    if (withDecoders && view.equirectFull) {
+        view.decoders.paintToggle(g, row, full.left - sc::toggleGroupGap);
+        areas.decodersHere = true;
+    }
     return areas;
 }
 
@@ -93,6 +110,27 @@ void addSceneStripClicks(HitArea& on, const SceneStripAreas& areas, SceneViewSta
             if (relayout) relayout();
             notify();
         });
+    //  the decoder list over everything this view has registered, its presses first to be taken
+    if (areas.decodersHere) view.decoders.addClicks(on, on.getLocalBounds().toFloat(), notify);
+}
+
+DecoderOverlayDrawn paintSceneOverlays(juce::Graphics& g, Projection projection, const Viewport& vp,
+                                       const SceneViewState& view) {
+    if (view.linkScene == nullptr || !view.decoders.selection().master()) return {};
+    return paintDecoderOverlay(g, projection, view.camera, vp, *view.linkScene, view.decoders);
+}
+
+void paintSceneStripList(juce::Graphics& g, const SceneStripAreas& areas, SceneViewState& view) {
+    if (areas.decodersHere) view.decoders.paintList(g, static_cast<float>(sc::labelStrip));
+}
+
+bool sceneStripPointer(SceneViewState& view, const SceneStripAreas& areas, std::optional<juce::Point<float>> at) {
+    if (!areas.decodersHere) return false;
+    return at.has_value() ? view.decoders.mouseMove(*at) : view.decoders.mouseExit();
+}
+
+bool sceneStripKey(SceneViewState& view, const SceneStripAreas& areas, const juce::KeyPress& key) {
+    return areas.decodersHere && view.decoders.keyPressed(key);
 }
 
 }  // namespace bambi::ui

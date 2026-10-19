@@ -26,8 +26,12 @@ add_library(bambi-ui STATIC
   src/Strokes.cpp
   src/TextField.cpp
   src/PresetBrowser.cpp
+  src/ChannelStrip.cpp
   src/ConfirmBox.cpp
+  src/Sheet.cpp
   src/Tooltips.cpp
+  src/DecoderOverlay.cpp
+  src/OverlayMenu.cpp
   src/Widgets.cpp
 )
 target_include_directories(bambi-ui PUBLIC include)

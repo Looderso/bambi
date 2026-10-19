@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Writes bambi-live.amxd, the Max for Live audio effect that talks to the host: the route button, "open host", a
+# Writes bambi-live.amxd, the Max for Live audio effect that talks to the host: "open host", a
 # status, the track list (bambi-live-list.js, a v8ui), the routing snapshot's save and restore, an unnamed dict
 # parameter the set keeps the device's memory in, and the track's audio passed through untouched. bambi-live.js holds the Live side, bambi-live-node.js
 # the connection. An .amxd is three chunks -- "ampf" with the device type, an empty "meta", and "ptch"
@@ -41,7 +41,7 @@ def label(id, text, rect, presentation):
                fontname="Arial", fontsize=10.0)
 
 
-#  Three columns in Live's device height: the route button, "open host" and the status; the track list; the
+#  Three columns in Live's device height: "open host" and the status; the track list; the
 #  routing snapshot.
 boxes = [
     obj("in", "plugin~", [20, 20, 60, 22], 2, 2, ["signal", "signal"]),
@@ -56,21 +56,14 @@ boxes = [
         saved_attribute_attributes={"valueof": {
             "parameter_longname": "bambi state", "parameter_shortname": "state", "parameter_type": 3,
             "parameter_invisible": 1}}),
-    #  a parameter, so it lights as Live's toggles do; hidden, so it is neither automated nor saved
-    box("toggle", "live.text", [400, 20, 80, 20], 1, 2, outlettype=["", ""], mode=1, text="route", texton="route",
-        parameter_enable=1, presentation=1, presentation_rect=[8, 8, 120, 26],
-        saved_attribute_attributes={"valueof": {
-            "parameter_longname": "bambi route", "parameter_shortname": "route", "parameter_type": 2,
-            "parameter_enum": ["off", "on"], "parameter_mmax": 1, "parameter_invisible": 2}}),
-    obj("prepend", "prepend enable", [400, 50, 90, 22], 1, 1),
-    button("open", "open host", [500, 20, 80, 20], [8, 40, 120, 18]),
+    button("open", "open host", [500, 20, 80, 20], [8, 8, 120, 26]),
     obj("toshow", "prepend show", [500, 50, 80, 22], 1, 1),
     button("save", "save routing", [600, 20, 80, 20], [408, 56, 104, 18]),
     obj("tosave", "prepend save", [600, 50, 80, 22], 1, 1),
     button("restore", "restore saved", [700, 20, 80, 20], [408, 78, 104, 18]),
     obj("torestore", "prepend restoreSaved", [700, 50, 120, 22], 1, 1),
     obj("defer", "deferlow", [120, 120, 60, 22], 1, 1),
-    obj("js", "v8 bambi-live.js", [120, 160, 120, 22], 1, 5),
+    obj("js", "v8 bambi-live.js", [120, 160, 120, 22], 1, 4),
     obj("split", "route send status detail meta saved notice", [120, 200, 260, 22], 1, 7),
     obj("tohost", "prepend send", [120, 240, 80, 22], 1, 1),
     obj("node", "node.script bambi-live-node.js @autostart 1", [120, 380, 240, 22], 1, 2),
@@ -95,8 +88,6 @@ lines = [
     line("order", 1, "store", 0),
     line("store", 0, "js", 0),
     line("order", 0, "defer", 0),
-    line("toggle", 0, "prepend", 0),
-    line("prepend", 0, "defer", 0),
     line("open", 0, "toshow", 0),
     line("toshow", 0, "defer", 0),
     line("save", 0, "tosave", 0),
@@ -108,10 +99,9 @@ lines = [
     line("js", 0, "split", 0),
     line("split", 0, "tohost", 0),
     line("tohost", 0, "node", 0),
-    line("js", 1, "toggle", 0),
-    line("js", 2, "list", 0),
-    line("js", 3, "restore", 0),
-    line("js", 4, "light", 0),
+    line("js", 1, "list", 0),
+    line("js", 2, "restore", 0),
+    line("js", 3, "light", 0),
     #  what the host says, back to the script outside the Node process's thread
     line("node", 0, "fromnode", 0),
     line("fromnode", 0, "js", 0),
@@ -124,7 +114,7 @@ patcher = json.loads(raw[raw.index(b"ptch") + 8:].rstrip(b"\0").decode())
 p = patcher["patcher"]
 p["boxes"] = boxes
 p["lines"] = lines
-p["parameters"] = {"store": ["bambi state", "state", 0], "toggle": ["bambi route", "route", 0]}
+p["parameters"] = {"store": ["bambi state", "state", 0]}
 p["openinpresentation"] = 1
 p["devicewidth"] = 520.0
 

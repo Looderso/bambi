@@ -7,7 +7,9 @@
 #include "../PluginProcessor.h"
 #include "bambi/editor/PatchControls.h"
 #include "bambi/link/link.hpp"
+#include "bambi/scene/overlay.hpp"
 #include "bambi/ui/InstanceModel.h"
+#include "bambi/ui/OverlayMenu.h"
 #include "bambi/ui/SceneStrip.h"
 
 namespace bambi::ui {
@@ -55,7 +57,11 @@ struct DecoderControlState final : public editor::PatchControls, public Instance
     //  ---- the scene ---------------------------------------------------------------------------
     SceneViewState sphere;
     bool headFrame{false};  ///< the scene turned with the gaze instead of the room's frame
-    bool showSources{true};
+    /*  Which of the session's other instances the scene draws, and the list that says: the window's own choices, not a
+        parameter and not saved. A source that joins is drawn until it is switched off. */
+    OverlayMenu sources{"sources"};
+    /// Names the instances the scene can draw -- every other one that has published a position -- in the list.
+    void refreshSourceRows();
     LinkScene scene;  ///< the session's instances, for the sources the scene draws
 
     const DecoderState& decoder() const { return patch.decoder; }

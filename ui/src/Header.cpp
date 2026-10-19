@@ -328,14 +328,7 @@ void Header::paint(juce::Graphics& g) {
             if (mark >= 0) {
                 const float side = theme::scene::toggleBox;
                 tab.mark = {label.getX(), cy - side / 2.0f, side, side};
-                g.setColour(colour::textInverse);
-                g.fillRect(tab.mark);
-                g.setColour(on ? colour::textInverse : colour::text);
-                g.drawRect(tab.mark, theme::stroke::toggle);
-                if (mark > 0) {
-                    g.setColour(colour::text);
-                    g.fillRect(tab.mark.reduced(hdr::toggleWell));
-                }
+                drawPlayMark(g, tab.mark, mark > 0, on);
                 label = label.withTrimmedLeft(side + theme::scene::toggleGap);
             }
             text(g, tab.label, labelFont(), on ? colour::textInverse : colour::text, label,

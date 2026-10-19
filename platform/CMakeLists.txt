@@ -15,3 +15,12 @@ if(UNIX)
   target_include_directories(bambi-net PUBLIC net)
   bambi_warnings(bambi-net)
 endif()
+
+# The system's audio devices and the live host's private aggregate of them.
+add_library(bambi-devices STATIC devices/devices.cpp)
+target_include_directories(bambi-devices PUBLIC devices)
+target_link_libraries(bambi-devices PUBLIC bambi-live)
+if(APPLE)
+  target_link_libraries(bambi-devices PRIVATE "-framework CoreAudio" "-framework CoreFoundation")
+endif()
+bambi_warnings(bambi-devices)

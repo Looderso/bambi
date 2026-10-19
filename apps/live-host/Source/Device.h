@@ -38,12 +38,17 @@ public:
     /// The user's new shape: the field laid out again over the set, its routing and the state with it sent to the
     /// device at once when one is connected, the loop device's channels named again.
     void reshape(live::Shape shape);
+    /// Live's transport, asked of it; nothing while no device is connected.
+    void command(const live::Command& c);
+    /// The arrangement asked for again; nothing while no device is connected.
+    void refresh();
 
     using Stamp = std::int64_t;  ///< nanoseconds of std::chrono::steady_clock, when a line was read
 
     std::function<void()> changed;                                        ///< something the session knows has changed
     std::function<void()> show;                                           ///< "open host" was pressed on the device
     std::function<void(const live::TransportMessage&, Stamp)> transport;  ///< Live's transport, as it came
+    std::function<void(const live::SlotPlay&, Stamp)> slot;               ///< a track's session clip, as it came
     std::function<void()> restored;  ///< the set gave back what it kept: session().kept() has it
 
 private:
@@ -54,6 +59,7 @@ private:
     net::LineServer server_;
     live::DeviceSession session_;
     net::LineServer::Connection device_{0};  ///< the connection the session answers; 0 for none
+    std::string lastTree_;                   ///< the tree as last logged, so the log says it again only when it changes
     juce::WeakReference<DeviceServer> self_;
     JUCE_DECLARE_WEAK_REFERENCEABLE(DeviceServer)
 };

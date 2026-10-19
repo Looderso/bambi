@@ -3,24 +3,30 @@
 #include <cmath>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <memory>
+#include <vector>
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "bambi/decode/layouts.hpp"
+#include "bambi/host/LinkNode.h"
 #include "bambi/host/ShotScale.h"
 #include "bambi/host/TestPlayHead.h"
+#include "bambi/link/link.hpp"
 #include "bambi/math/sh.hpp"
+#include "bambi/math/sphere.hpp"
 
-/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers | --energy] [--scale N]
+/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers | --energy | --sources] [--scale N]
  *  The default shows the headphones page with the array's 7.1.4 layout loaded and a source moving; --speakers
  *  opens the speakers page, which draws the hull, and plays the layout; --loudspeakers opens its table too;
- *  --energy switches the energy picture on. */
+ *  --energy switches the energy picture on; --sources puts six Encoders on the bus and opens the sources list. */
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/decoder.png";
     const float scale = bambi::host::takeShotScale(argc, argv);
     const bool table = argc > 2 && juce::String(argv[2]) == "--loudspeakers";
     const bool energy = argc > 2 && juce::String(argv[2]) == "--energy";
+    const bool sources = argc > 2 && juce::String(argv[2]) == "--sources";
     const bool speakers = table || (argc > 2 && juce::String(argv[2]) == "--speakers");
     BambiDecoderProcessor proc;
     juce::AudioProcessor::BusesLayout l;
@@ -43,6 +49,30 @@ int main(int argc, char** argv) {
         dec->showEnergy();
         dec->tick();  // the window asks for the picture before the field runs
     }
+    //  six Encoders of another window, on the Decoder's own bus: the sources its scene draws and its list names
+    std::vector<std::unique_ptr<bambi::LinkBus>> others;
+    if (sources) {
+        for (int i = 0; i < bambi::host::LinkNode::kTickHz / 10 + 4; ++i) proc.linkTick();
+        const char* names[] = {"kick", "bass", "pad", "vox", "room", "lead"};
+        for (int i = 0; i < 6; ++i) {
+            auto bus = std::make_unique<bambi::LinkBus>();
+            if (!bus->open(proc.identity().session, bambi::Uuid::generate(), bambi::Product::Encoder)) return 1;
+            bambi::LinkStatic st;
+            st.setLabel(names[i]);
+            bus->publishStatic(st);
+            bambi::LinkDynamic d;
+            const bambi::Vec3 at = bambi::fromAzEl((i * 60.0 - 100.0) * bambi::kDeg2Rad, (i % 3 - 1) * 0.35);
+            d.x = static_cast<float>(at.x);
+            d.y = static_cast<float>(at.y);
+            d.z = static_cast<float>(at.z);
+            bus->publishDynamic(d);
+            others.push_back(std::move(bus));
+        }
+        for (int i = 0; i < 4; ++i) {
+            proc.linkTick();
+            dec->tick();
+        }
+    }
     juce::MemoryBlock none;
     //  A field with a source in it, so the meters and the readouts have something to show.
     std::vector<double> y(16, 0.0);
@@ -61,6 +91,13 @@ int main(int argc, char** argv) {
         proc.processBlock(buffer, midi);
     }
     if (speakers) dec->showOutput(1);
+    if (sources) {
+        dec->tick();
+        dec->clickSourcesTriangle();  // the list opens
+        dec->clickSourcesRow(1);      // the second source off
+        dec->tick();
+        dec->paintNow();
+    }
     if (table) dec->openTemp(bambi::ui::TempTab::Loudspeakers);
     dec->tick();
     dec->paintNow();

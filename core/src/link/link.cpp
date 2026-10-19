@@ -118,8 +118,11 @@ static_assert(4 * kMaxRegions + 4 <= 24);
 static_assert(sizeof(LinkPatch) == 8 + 24 + 8 * kMaxGenParams + 80 * kMaxNodes + 16 * kLinkMaxCells +
                                        40 * kLinkTriggers + 20 * kLinkMaxSources);
 static_assert(kNumSources <= kLinkMaxSources);
-static_assert(sizeof(LinkControls) == 16 + 4 * kLinkMaxParams + 8 + 2 * kLinkEditNameBytes + sizeof(LinkPatch) - 8);
-static_assert(sizeof(LinkPatchEdit) == 24 + 2 * kLinkEditNameBytes + sizeof(LinkPatch));
+static_assert(sizeof(LinkPreset) == 8 + 2 * kLinkPresetBytes);
+static_assert(sizeof(LinkControls) ==
+              16 + 4 * kLinkMaxParams + 8 + 2 * kLinkEditNameBytes + sizeof(LinkPreset) + sizeof(LinkPatch) - 8);
+static_assert(sizeof(LinkPatchEdit) ==
+              24 + 2 * kLinkEditNameBytes + 8 + sizeof(LinkPreset) + 4 * kLinkMaxParams + sizeof(LinkPatch));
 static_assert(std::tuple_size_v<decltype(PluginState::envTriggers)> == kLinkTriggers);
 
 //  The segment's own layout, not just its payloads. `join()` refuses a slotStride it does not recognise, so a
@@ -131,7 +134,7 @@ static_assert(std::tuple_size_v<decltype(PluginState::envTriggers)> == kLinkTrig
 static_assert(alignof(Slot) == 8);
 static_assert(sizeof(LinkRegionShape) == 8 + 13 * 4 + 4 * kRegionWeights);  // 316, no padding: all 4-byte fields
 static_assert(sizeof(LinkEnergy) == 8 + 8 * kLinkEnergyValues);
-static_assert(sizeof(Slot) == 87944);  ///< pins the layout; a change here is a kLinkVersion bump
+static_assert(sizeof(Slot) == 89024);  ///< pins the layout; a change here is a kLinkVersion bump
 static_assert(sizeof(Header) == 48);
 static_assert(sizeof(Segment) == sizeof(Header) + kLinkMaxInstances * sizeof(Slot));
 
@@ -302,6 +305,22 @@ void LinkPatchEdit::setName(std::string_view s) { setText(name, sizeof name, s);
 void LinkPatchEdit::setKey(std::string_view s) { setText(key, sizeof key, s); }
 std::string LinkPatchEdit::nameString() const { return getText(name, sizeof name); }
 std::string LinkPatchEdit::keyString() const { return getText(key, sizeof key); }
+
+bool LinkPreset::set(const PresetRef& ref) {
+    if (ref.folder.size() >= sizeof folder || ref.name.size() >= sizeof name) return false;
+    factory = ref.factory ? 1 : 0;
+    setText(folder, sizeof folder, ref.folder);
+    setText(name, sizeof name, ref.name);
+    return true;
+}
+
+PresetRef LinkPreset::get() const {
+    PresetRef ref;
+    ref.factory = factory != 0;
+    ref.folder = getText(folder, sizeof folder);
+    ref.name = getText(name, sizeof name);
+    return ref;
+}
 
 void LinkControls::setUndoNames(std::string_view undo, std::string_view redo) {
     setText(undoName, sizeof undoName, undo);

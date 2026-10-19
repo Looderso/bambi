@@ -45,7 +45,7 @@ bool PatchControls::refresh() {
     const bool same = sameParams(params_, next, patch) && sameMatrix(next, patch) &&
                       next.trajectory == patch.trajectory && sameTriggers(next, patch) &&
                       next.regions == patch.regions && next.sources == patch.sources &&
-                      next.renderQuality == patch.renderQuality;
+                      next.renderQuality == patch.renderQuality && next.preset == patch.preset;
     patch = std::move(next);
     if (provisional != kNoParamId && isRow(provisional)) {
         provisional = kNoParamId;  // it has a row of its own now: nothing left to hold open

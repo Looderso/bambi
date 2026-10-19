@@ -79,6 +79,19 @@ std::vector<Message> DeviceSession::onTree(const Tree& t, bool adopt) {
             });
             if (holdsSource) shape_.split.push_back(g.id);
         }
+        //  and the group at the top that now holds them, taken as they were
+        for (const TrackId s : before) {
+            const auto n = std::find_if(t.nodes.begin(), t.nodes.end(), [&](const Node& x) { return x.id == s; });
+            if (n == t.nodes.end() || !n->parent) continue;
+            TrackId top = *n->parent;
+            for (int depth = 0; depth < 64; ++depth) {
+                const auto p = std::find_if(t.nodes.begin(), t.nodes.end(), [&](const Node& x) { return x.id == top; });
+                if (p == t.nodes.end() || !p->parent) break;
+                top = *p->parent;
+            }
+            if (std::find(shape_.taken.begin(), shape_.taken.end(), top) == shape_.taken.end())
+                shape_.taken.push_back(top);
+        }
     }
     tree_ = t;
     treed_ = true;
@@ -103,7 +116,13 @@ std::vector<Message> DeviceSession::answer(const Message& in) {
         hello_ = *h;
         return {Welcome{kProtocol, s_.loop}};
     }
+    //  another protocol's messages mean something else: not answered, and nothing taken from them
+    if (!compatible()) return {};
     if (const auto* t = std::get_if<Tree>(&in)) return onTree(*t, true);
+    if (const auto* a = std::get_if<Arrangement>(&in)) {
+        arrangement_ = *a;
+        return {};
+    }
     if (const auto* r = std::get_if<Restore>(&in)) {
         pairs_.clear();
         kept_ = Json::object();
@@ -148,11 +167,11 @@ std::vector<std::string> DeviceSession::channelNames() const {
         const auto node =
             std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& n) { return n.id == p.track; });
         if (node == tree_.nodes.end()) continue;
-        names[static_cast<std::size_t>(2 * p.pair)] = node->name + " L";
-        names[static_cast<std::size_t>(2 * p.pair + 1)] = node->name + " R";
+        names[static_cast<std::size_t>(kFirstTrackChannel + 2 * p.pair)] = node->name + " L";
+        names[static_cast<std::size_t>(kFirstTrackChannel + 2 * p.pair + 1)] = node->name + " R";
     }
-    names[static_cast<std::size_t>(2 * s_.pairCount)] = "bambi return L";
-    names[static_cast<std::size_t>(2 * s_.pairCount + 1)] = "bambi return R";
+    names[0] = "main L";
+    names[1] = "main R";
     return names;
 }
 

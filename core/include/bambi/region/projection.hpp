@@ -42,6 +42,10 @@ public:
     /// The own-frame matrix of a dense kind, row-major.
     std::span<const double> dense() const { return dense_; }
     bool isAxial() const { return axialKind_; }
+    /// How much of a plane wave from `direction` the region passes: the matrix's gain on that one wave, an
+    /// energy-free number from 0 to 1. Smooth in every setting, unlike the region's value at the point, which
+    /// steps where its edge crosses the direction. Real-time safe; not const, since it runs apply().
+    double gainAt(Vec3 direction) noexcept;
     /// apply() copies the field unchanged: a refused kind, or "everywhere" from the inside.
     bool passesEverything() const { return refused_ || (identity_ && !outside_); }
 
@@ -53,6 +57,8 @@ private:
     std::vector<double> nodeZ_, nodeW_;  ///< Gauss-Legendre on [-1, 1], mapped onto each stretch
     std::vector<double> terms_, blocks_, rotation_, dense_;
     std::vector<float> axial_, denseF_, toOwn_, fromOwn_, a_, b_;
+    std::vector<double> probeY_;  ///< gainAt's plane wave, as doubles
+    std::vector<float> probeIn_, probeOut_;
 
     //  ---- the dense kinds ----
     /*  Gamma by matrix entry: entry (i, j) sums `gauntV_[e] * a[gauntK_[e]]` over its run [begin, end),

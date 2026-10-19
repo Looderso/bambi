@@ -3,30 +3,38 @@
 
 #include <vector>
 
+#include "bambi/live/field.hpp"
 #include "bambi/live/protocol.hpp"
 
-/*  Where the routing page puts Live's tracks and groups, in the page's own grid: a column per depth, the deepest on
- *  the left and Main on the right of the top level; a row per track that holds nothing, in Live's order, and each
- *  group on the row midway between its first and its last child. A group that holds nothing takes a row of its
- *  own, as a track does. Returns are not in it: they are laid out apart, as Live shows them.
+/*  What the routing page shows of Live's tracks and groups, and what its two acts on them do to the shape.
  *
- *  Rows are counted in rows, a midway one as a half. Allocates; for the message thread.
+ *  The page lists them as Live does: in Live's order, a group before what it holds, each line one deeper than its
+ *  group -- the group Live files it under, whatever its routing. What it is, and what an Encoder on it does, follow where
+ *  its audio goes: a member routed past its group by hand is its own path, encoded on its own and never with the group. Returns are not among them: they are listed apart, beside Main. A node whose group the tree does not have
+ *  counts as at the top.
+ *
+ *  Each is, as the field has it now: in Live; a source of its own, encoded; a bus, a group split into its sources;
+ *  or inside a group the field encodes whole. An Encoder added to a node in Live takes it into the field: one at the
+ *  top is taken; one inside a group splits every group from the top down to it, the top taken, so it is encoded on
+ *  its own -- its siblings with it, as a split group's children all are. Taking a node's Encoder away gives a node at
+ *  the top back to Live, and encodes a bus whole again.
+ *
+ *  Allocates; for the message thread.
  */
 namespace bambi::live {
 
-struct Place {
+struct Line {
     TrackId node{0};
-    int column{0};    ///< 0 the leftmost
-    double row{0.0};  ///< 0 the topmost
-    friend bool operator==(const Place&, const Place&) = default;
+    int depth{0};  ///< 0 at the top
+    friend bool operator==(const Line&, const Line&) = default;
 };
 
-struct PageLayout {
-    std::vector<Place> places;  ///< in Live's order, a group after what it holds
-    Place main;                 ///< node 0: Main
-    int rows{0};                ///< the rows the tracks take
-};
+std::vector<Line> linesOf(const Tree& tree);
 
-PageLayout layOutPage(const Tree& tree);
+enum class Role { Live, Source, Bus, InGroup };
+Role roleOf(const Tree& tree, const Field& field, TrackId node);
+
+void addEncoder(Shape& shape, const Tree& tree, TrackId node);
+void removeEncoder(Shape& shape, const Tree& tree, const Field& field, TrackId node);
 
 }  // namespace bambi::live

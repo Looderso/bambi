@@ -2,8 +2,11 @@
 #include "bambi/decode/outputs.hpp"
 
 #include <algorithm>
+#include <utility>
 
 namespace bambi {
+
+const char* outputName(Output which) { return which == Output::Headphones ? "headphones" : "speakers"; }
 
 std::vector<int> outputChannels(const DecoderState& d, Output which) {
     if (which == Output::Headphones) return {d.headphoneChannel, d.headphoneChannel + 1};
@@ -36,6 +39,29 @@ Placement placeOutput(const DecoderState& d, Output which, int bus) {
     p.moves = clash && p.movedTo + p.span - 1 <= bus;
     p.stops = clash && !p.moves;
     return p;
+}
+
+Lit lightOutput(DecoderState d, Output which, bool on, int bus) {
+    const Placement p = placeOutput(d, which, bus);
+    Lit lit;
+    if (on && !p.fits) {
+        lit.notice = p.needs == 0 ? std::string("no layout")
+                                  : std::to_string(p.needs) + " channels needed; the bus has " + std::to_string(bus);
+        lit.state = std::move(d);
+        return lit;
+    }
+    const Output other = which == Output::Headphones ? Output::Speakers : Output::Headphones;
+    const bool moves = on && p.moves, stops = on && p.stops;
+    if (moves)
+        lit.notice = std::string(outputName(which)) + " moved to " + std::to_string(p.movedTo) + "\xe2\x80\x93" +
+                     std::to_string(p.movedTo + p.span - 1);
+    else if (stops)
+        lit.notice = std::string(outputName(other)) + " stopped: the same channels";
+    (which == Output::Headphones ? d.headphonesPlay : d.speakersPlay) = on;
+    if (moves) (which == Output::Headphones ? d.headphoneChannel : d.speakerFirstChannel) = p.movedTo;
+    if (stops) (other == Output::Headphones ? d.headphonesPlay : d.speakersPlay) = false;
+    lit.state = std::move(d);
+    return lit;
 }
 
 }  // namespace bambi

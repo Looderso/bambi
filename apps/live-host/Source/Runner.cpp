@@ -2,6 +2,7 @@
 #include "Runner.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "bambi/math/denormals.hpp"
 
@@ -9,21 +10,38 @@ namespace bambi::livehost {
 
 namespace {
 
-//  A slot's sidechain, the two channels after its main input's from `first`: the pair its step names, faded as the
-//  sources are; silent, as the scratch was cleared, for a step that names none.
-void sidechain(const live::Op& op, juce::AudioBuffer<float>& scratch, int first, const juce::AudioBuffer<float>& loop,
-               int loopStart, int frames, float fade0, float fade1) noexcept {
-    if (op.sidechain < 0) return;
+//  `width` channels of the input row from `from` onto two of `scratch` from `first`, faded as the sources are: a
+//  pair as it is, one channel on both sides.
+void arrive(juce::AudioBuffer<float>& scratch, int first, const Runner::Inputs& in, int from, int width, int inStart,
+            int frames, float fade0, float fade1) noexcept {
     for (int ch = 0; ch < 2 && first + ch < scratch.getNumChannels(); ++ch)
-        scratch.copyFromWithRamp(first + ch, 0, loop.getReadPointer(2 * op.sidechain + ch, loopStart), frames, fade0,
-                                 fade1);
+        if (const float* source = in.at(from + (width == 2 ? ch : 0), inStart))
+            scratch.copyFromWithRamp(first + ch, 0, source, frames, fade0, fade1);
+}
+
+//  A slot's sidechain, the two channels after its main input's from `first`; silent, as the scratch was cleared,
+//  for a step that names none.
+void sidechain(const live::Op& op, juce::AudioBuffer<float>& scratch, int first, const Runner::Inputs& in,
+               int inStart, int frames, float fade0, float fade1) noexcept {
+    if (op.sidechain >= 0)
+        arrive(scratch, first, in, op.sidechain, op.sidechainWidth, inStart, frames, fade0, fade1);
 }
 
 }  // namespace
 
+std::vector<Runner::Route> Runner::mainOf(const std::vector<Route>& routes) {
+    std::vector<Route> out;
+    for (const Route& r : routes)
+        if (r.main) out.push_back(r);
+    return out;
+}
+
 std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
                                                const std::vector<juce::AudioProcessor*>& slots, int levels,
-                                               juce::String& error, Keep keep) {
+                                               juce::String& error, Keep keep,
+                                               std::optional<std::vector<Route>> given) {
+    const bool straight = !given.has_value();
+    std::vector<Route> routes = given.value_or(std::vector<Route>{});
     //  every index a step names, checked here, so that process() can trust them
     const auto buffer = [&](int b) { return b >= 0 && b < compiled.buffers; };
     for (const live::Op& op : compiled.ops) {
@@ -37,13 +55,31 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
         const bool readsBuffer = op.step == live::Step::Add || op.step == live::Step::Decode;
         const bool writesBuffer = op.step != live::Step::Decode;
         if ((readsBuffer && !buffer(op.from)) || (writesBuffer && !buffer(op.to)) ||
-            (op.step == live::Step::Encode && (op.from < 0 || 2 * op.from + 1 >= setup_.loopChannels)) ||
-            2 * op.sidechain + 1 >= setup_.loopChannels) {
-            error = "a step reads or writes a buffer or pair the plan does not have";
+            (op.step == live::Step::Encode && (op.from < 0 || op.from + op.width > setup_.inputChannels)) ||
+            op.sidechain + op.sidechainWidth > setup_.inputChannels) {
+            error = "a step reads or writes a buffer or input the plan does not have";
             return nullptr;
         }
         if (op.gain >= levels) {
             error = "a send reads level " + juce::String(op.gain) + " of " + juce::String(levels);
+            return nullptr;
+        }
+    }
+    std::vector<int> decoderWidth;  // by the decoder's place among the plan's
+    for (const live::Op& op : compiled.ops)
+        if (op.step == live::Step::Decode) {
+            decoderWidth.resize(std::max(decoderWidth.size(), static_cast<std::size_t>(op.to) + 1), 0);
+            decoderWidth[static_cast<std::size_t>(op.to)] =
+                slots[static_cast<std::size_t>(op.slot)]->getTotalNumOutputChannels();
+        }
+    for (const Route& r : routes) {
+        const bool decoder = r.decoder >= 0 && r.decoder < static_cast<int>(decoderWidth.size());
+        const bool from = r.main ? r.from == 0 || r.from == 1
+                                 : decoder && r.from >= 0 && r.from < decoderWidth[static_cast<std::size_t>(r.decoder)];
+        const bool late = r.delay >= 0 && (!r.main || r.delay <= setup_.maxMainDelay);
+        const bool heard = !r.main || (setup_.mainInput >= 0 && setup_.mainInput + 1 < setup_.inputChannels);
+        if (!from || !late || !heard || r.to < 0 || r.to >= setup_.outputChannels) {
+            error = "a route reads or writes a channel the host does not have, or is later than Main may be";
             return nullptr;
         }
     }
@@ -67,34 +103,90 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
         }
         p->lines.push_back(std::move(l));
     }
+    for (const Route& r : routes) {
+        Line l;
+        if (!r.main) p->longest = std::max(p->longest, r.delay);
+        if (!r.main && r.delay > 0) {
+            l.length = r.delay;
+            l.memory.setSize(1, r.delay);
+            l.memory.clear();
+        }
+        p->routeLines.push_back(std::move(l));
+    }
+    p->routes = std::move(routes);
+    p->straight = straight;
     p->levelCount = std::max(levels, 0);
     p->levels = std::make_unique<Program::Level[]>(static_cast<std::size_t>(p->levelCount));
     return p;
 }
 
 bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                     const Setup& setup, juce::String& error, Keep keep) {
+                     const Setup& setup, juce::String& error, Keep keep,
+                     std::optional<std::vector<Route>> routes) {
     setup_ = setup;
     field_ = (setup.order + 1) * (setup.order + 1);
-    auto p = build(compiled, slots, levels, error, std::move(keep));
+    auto p = build(compiled, slots, levels, error, std::move(keep), std::move(routes));
     if (p == nullptr) return false;
     for (juce::AudioProcessor* plugin : slots) ready(plugin);  // no audio runs yet
     latest_ = p.get();
     handoff_.begin(std::move(p));
-    midi_.ensureSize(256);
+    midi_.ensureSize(kMidiPerPiece * 16);  // each event: its bytes, its size and sample
     playhead_.set({}, setup.rate);
     sample_ = 0;
     fade_ = Fade::None;
+    mainLines_.setSize(2, std::max(1, setup.maxMainDelay + setup.maxBlock));
+    mainLines_.clear();
+    mainAt_ = 0;
     return true;
 }
 
 bool Runner::swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                  juce::String& error, Keep keep) {
-    auto p = build(compiled, slots, levels, error, std::move(keep));
+                  juce::String& error, Keep keep, std::optional<std::vector<Route>> routes) {
+    auto p = build(compiled, slots, levels, error, std::move(keep), std::move(routes));
     if (p == nullptr) return false;
+    //  sticky while a program is still waiting: what the audio thread adopts must fade Main if any program posted since
+    //  it last adopted plays Main otherwise; published to it by the post below
+    const bool differs = latest_ == nullptr || mainOf(latest_->routes) != mainOf(p->routes);
+    mainMoves_.store(differs || (handoff_.pending() && mainMoves_.load(std::memory_order_relaxed)),
+                     std::memory_order_release);
     latest_ = p.get();
     (void)handoff_.post(std::move(p));  // one posted and never taken goes here, on this thread
     return true;
+}
+
+void Runner::setAutomation(std::vector<Driven> lanes, Keep keep) {
+    auto a = std::make_unique<Automation>();
+    a->last.assign(lanes.size(), -1.0f);  // nothing set yet: each lane sets its value at its first piece
+    a->lanes = std::move(lanes);
+    a->keep = std::move(keep);
+    (void)automation_.post(std::move(a));
+}
+
+//  Every lane's value where Live is, set on its parameter when it moved.
+void Runner::drive(const live::Playhead& at) noexcept {
+    if (automation_.pending()) (void)automation_.adopt();
+    const Automation* a = automation_.current();
+    if (a == nullptr) return;
+    for (std::size_t i = 0; i < a->lanes.size(); ++i) {
+        const Driven& d = a->lanes[i];
+        //  a clip lane where its clip is, while it plays; a song lane where the song is, unless its track plays a
+        //  session clip, which takes it over as it takes the arrangement over
+        std::optional<double> where;
+        if (d.slot >= 0) {
+            //  a clip runs on only while Live plays; stopped, it stands where Live last said
+            if (clips_ != nullptr)
+                where = clips_->position(d.clipTrack, d.slot, sample_, at.playing ? at.bpm : 0.0, setup_.rate);
+        } else if (d.heldBy == 0 || clips_ == nullptr || !clips_->overridden(d.heldBy)) {
+            where = at.ppq;
+        }
+        if (!where) continue;
+        const auto v = live::valueAt(d.points, *where);
+        if (!v) continue;
+        const auto value = static_cast<float>(std::clamp(*v, 0.0, 1.0));
+        if (std::abs(value - a->last[i]) < 1e-6f) continue;
+        a->last[i] = value;
+        d.parameter->setValue(value);
+    }
 }
 
 void Runner::ready(juce::AudioProcessor* plugin) {
@@ -111,10 +203,15 @@ void Runner::setLevel(int entry, float level) noexcept {
 //  A plugin over `scratch`, already sized to the piece: its inputs as the caller filled them, its outputs left there.
 void Runner::run(const Program& p, int slot, juce::AudioBuffer<float>& scratch) noexcept {
     midi_.clear();
+    for (int i = 0; i < takenCount_; ++i) {
+        const live::MidiEvent& e = taken_[static_cast<std::size_t>(i)];
+        const auto at = static_cast<int>(std::clamp<std::int64_t>(e.sample - sample_, 0, scratch.getNumSamples() - 1));
+        midi_.addEvent(e.bytes.data(), e.size, at);
+    }
     p.slots[static_cast<std::size_t>(slot)]->processBlock(scratch, midi_);
 }
 
-void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<float>& output, int frames) noexcept {
+void Runner::process(const Inputs& loop, juce::AudioBuffer<float>& output, int frames) noexcept {
     //  the runner's own sums and delays, as flushed as the plugins' processing
     ScopedFlushDenormals noDenormals;
     const SnapshotCensus::InAudioBlock inBlock;
@@ -124,26 +221,32 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
         if (fade_ == Fade::None && handoff_.pending()) {
             fade_ = Fade::Out;
             faded_ = 0;
+            mainFading_ = mainMoves_.load(std::memory_order_acquire);
         }
         //  a piece ends where a phase of the fade does, so the swap falls between two pieces, and at a grid point,
         //  where the sends take their levels
         int n = std::min({frames - done, setup_.maxBlock, kLevelGrid - static_cast<int>(sample_ % kLevelGrid)});
         const int length = fade_ == Fade::Hold ? hold_ : kFade;
         if (fade_ != Fade::None) n = std::min(n, length - faded_);
-        float g0 = 1.0f, g1 = 1.0f;  // the fade's gain at the piece's first sample, and just after its last
+        //  the fade's gains at the piece's first sample, and just after its last: the field's, and Main's
+        float g0 = 1.0f, g1 = 1.0f, m0 = 1.0f, m1 = 1.0f;
         const auto ramp = [&](int at) { return static_cast<float>(at) / static_cast<float>(kFade); };
-        if (fade_ == Fade::Out) {
-            g0 = 1.0f - ramp(faded_);
-            g1 = 1.0f - ramp(faded_ + n);
+        if (fade_ == Fade::Out || fade_ == Fade::MainOut) {
+            m0 = 1.0f - ramp(faded_);
+            m1 = 1.0f - ramp(faded_ + n);
+            g0 = fade_ == Fade::Out ? m0 : 0.0f;
+            g1 = fade_ == Fade::Out ? m1 : 0.0f;
         } else if (fade_ == Fade::Hold) {
-            g0 = g1 = 0.0f;
+            g0 = g1 = m0 = m1 = 0.0f;
         } else if (fade_ == Fade::In) {
-            g0 = ramp(faded_);
-            g1 = ramp(faded_ + n);
+            g0 = m0 = ramp(faded_);
+            g1 = m1 = ramp(faded_ + n);
         }
         piece(*handoff_.current(), loop, done, output, done, n, g0, g1);
+        if (fade_ != Fade::None) output.applyGainRamp(done, n, g0, g1);
+        const bool mainFades = fade_ != Fade::None && mainFading_;
+        main(*handoff_.current(), loop, done, output, done, n, mainFades ? m0 : 1.0f, mainFades ? m1 : 1.0f);
         if (fade_ != Fade::None) {
-            output.applyGainRamp(done, n, g0, g1);
             faded_ += n;
             if (faded_ == length) {
                 faded_ = 0;
@@ -151,7 +254,12 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
                     //  silence through the old program's longest delay, so the lines it drops hold nothing
                     fade_ = Fade::Hold;
                     hold_ = handoff_.current()->longest;
-                } else if (fade_ == Fade::Out || fade_ == Fade::Hold) {
+                } else if ((fade_ == Fade::Out || fade_ == Fade::Hold) && !mainFading_ &&
+                           mainMoves_.load(std::memory_order_acquire)) {
+                    //  a program posted while the field faded plays Main otherwise: Main fades out too, first
+                    fade_ = Fade::MainOut;
+                    mainFading_ = true;
+                } else if (fade_ == Fade::Out || fade_ == Fade::Hold || fade_ == Fade::MainOut) {
                     //  the new program, faded in -- or, with no room to retire the old one, the old one again
                     if (const Program* next = handoff_.adopt())
                         for (int i = 0; i < next->levelCount; ++i) {
@@ -169,9 +277,17 @@ void Runner::process(const juce::AudioBuffer<float>& loop, juce::AudioBuffer<flo
     }
 }
 
-void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int loopStart,
+void Runner::piece(const Program& p, const Inputs& loop, int loopStart,
                    juce::AudioBuffer<float>& output, int outStart, int frames, float fade0, float fade1) noexcept {
-    if (clock_ != nullptr) playhead_.set(clock_->reading(sample_), setup_.rate);
+    if (clock_ != nullptr) {
+        const live::Playhead reading = clock_->reading(sample_);
+        playhead_.set(reading, setup_.rate);
+        drive(reading);
+        shownPpq_.store(reading.ppq, std::memory_order_relaxed);
+        shownBpm_.store(reading.bpm, std::memory_order_relaxed);
+        shownPlaying_.store(reading.playing, std::memory_order_relaxed);
+    }
+    takenCount_ = midiFrom_ != nullptr ? midiFrom_->take(sample_ + frames, taken_.data(), kMidiPerPiece) : 0;
     const int offset = static_cast<int>(sample_ % kLevelGrid);
     if (offset == 0)
         for (int i = 0; i < p.levelCount; ++i) {
@@ -189,10 +305,7 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
                 s.setSize(s.getNumChannels(), frames, false, false, true);
                 s.clear(0, frames);
                 //  faded with the output through a swap, so no insert or line kept across it hears a step
-                for (int ch = 0; ch < 2; ++ch)
-                    if (2 * op.from + ch < loop.getNumChannels())
-                        s.copyFromWithRamp(ch, 0, loop.getReadPointer(2 * op.from + ch, loopStart), frames, fade0,
-                                           fade1);
+                arrive(s, 0, loop, op.from, op.width, loopStart, frames, fade0, fade1);
                 sidechain(op, s, 2, loop, loopStart, frames, fade0, fade1);
                 run(p, op.slot, s);
                 for (int ch = 0; ch < field_; ++ch)
@@ -250,13 +363,62 @@ void Runner::piece(const Program& p, const juce::AudioBuffer<float>& loop, int l
                 s.clear(0, frames);
                 for (int ch = 0; ch < field_; ++ch) s.copyFrom(ch, 0, b, ch, 0, frames);
                 run(p, op.slot, s);
-                const int channels = std::min({output.getNumChannels(), setup_.outputChannels, s.getNumChannels()});
-                for (int ch = 0; ch < channels; ++ch) output.copyFrom(ch, outStart, s, ch, 0, frames);
+                if (p.straight) {
+                    if (op.to != 0) break;  // the first decoder alone, straight out
+                    const int channels =
+                        std::min({output.getNumChannels(), setup_.outputChannels, s.getNumChannels()});
+                    for (int ch = 0; ch < channels; ++ch) output.copyFrom(ch, outStart, s, ch, 0, frames);
+                    break;
+                }
+                for (std::size_t r = 0; r < p.routes.size(); ++r) {
+                    const Route& route = p.routes[r];
+                    if (route.main || route.decoder != op.to || route.to >= output.getNumChannels()) continue;
+                    Line& line = p.routeLines[r];
+                    if (line.length == 0) {
+                        output.addFrom(route.to, outStart, s, route.from, 0, frames);
+                        continue;
+                    }
+                    float* mem = line.memory.getWritePointer(0);
+                    const float* in = s.getReadPointer(route.from);
+                    float* dst = output.getWritePointer(route.to, outStart);
+                    int at = line.at;
+                    for (int i = 0; i < frames; ++i) {
+                        dst[i] += mem[at];
+                        mem[at] = in[i];
+                        if (++at == line.length) at = 0;
+                    }
+                    line.at = at;
+                }
                 break;
             }
         }
     }
     sample_ += frames;
+}
+
+void Runner::main(const Program& p, const Inputs& in, int inStart, juce::AudioBuffer<float>& output,
+                  int outStart, int frames, float g0, float g1) noexcept {
+    const int capacity = mainLines_.getNumSamples();
+    if (setup_.mainInput < 0 || setup_.mainInput + 1 >= in.count || capacity < frames) return;
+    for (int ch = 0; ch < 2; ++ch) {
+        const float* src = in.at(setup_.mainInput + ch, inStart);
+        float* line = mainLines_.getWritePointer(ch);
+        for (int i = 0, at = mainAt_; i < frames; ++i, at = at + 1 == capacity ? 0 : at + 1)
+            line[at] = src != nullptr ? src[i] : 0.0f;
+    }
+    const float step = (g1 - g0) / static_cast<float>(frames);
+    for (const Route& r : p.routes) {
+        if (!r.main || r.to >= output.getNumChannels()) continue;
+        const float* line = mainLines_.getReadPointer(r.from);
+        float* dst = output.getWritePointer(r.to, outStart);
+        int at = mainAt_ - r.delay;
+        if (at < 0) at += capacity;
+        for (int i = 0; i < frames; ++i) {
+            dst[i] += (g0 + step * static_cast<float>(i)) * line[at];
+            if (++at == capacity) at = 0;
+        }
+    }
+    mainAt_ = (mainAt_ + frames) % capacity;
 }
 
 }  // namespace bambi::livehost

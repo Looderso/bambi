@@ -126,6 +126,17 @@ namespace colour
     // a source's settings: sources · generators
     inline const juce::Colour envelopeGrid  = palette::grey4;    ///< its axis, and a line at each stage's edge
 
+    /// Where Live is heard now, on the live host's timeline: what happens now is grey
+    inline const juce::Colour playhead    = now;
+
+    /// A colour that is data, not the theme's -- a Live track's or clip's, "#rrggbb" -- opaque; `otherwise` when
+    /// the text is not one.
+    inline juce::Colour ofLive(const juce::String& hex, juce::Colour otherwise)
+    {
+        if (hex.length() != 7 || !hex.startsWithChar('#')) return otherwise;
+        return juce::Colour::fromString("ff" + hex.substring(1));
+    }
+
     /*  Which plugin this is: the rule under the header and the rule over the footer, and what modulates,
         in the plugin's own colour. The encoder, where sound comes in, wears the incoming orange; the
         decoder, where it goes out, the added blue. */
@@ -199,6 +210,8 @@ namespace stroke
     inline constexpr float foreignRegionDash[2] = { 1.0f, 3.0f };
     inline constexpr float unplacedDash[2] = { 3.0f, 3.0f };   ///< the probe's ring before it is placed
     inline constexpr float outsideDash[2] = { 3.0f, 3.0f };    ///< the live host's routing page: what Live plays, outside the field
+    inline constexpr float takesDash[2] = { 2.0f, 2.0f };      ///< the ring round what an armed pick may take
+    inline constexpr float litWire      = 2.0f;   ///< a wire the chosen node reaches along
     inline constexpr float toggle       = 1.3f;   ///< an unset toggle square's outline
     inline constexpr float glyph        = 1.3f;   ///< pictograms: 0/45/90 degrees only, one weight, no fills
     inline constexpr float underline    = 2.0f;   ///< a modulated parameter's label
@@ -278,6 +291,7 @@ namespace scene
     inline constexpr float strokeMaxChord  = 24.0f;  ///< pixels: the longest straight element a path is drawn with
     inline constexpr std::size_t strokeRunCap = 64;  ///< points one element may stand for, so the check stays cheap
     inline constexpr float hoverLabelGap  = 10.0f;   ///< a hovered source's name, beside its dot
+    inline constexpr float hoverRing      = 3.0f;    ///< the ring round a dot the pointer names in an overlay's list, off the dot
 
     //  editing a custom chain; hit radii are the core's
     inline constexpr float nodeRadius     = 4.5f;
@@ -400,6 +414,11 @@ namespace controls
     inline constexpr float pairChoiceWidth = 112.0f;  ///< the strip's two-entry segments row: head · scene
     inline constexpr float tableColumns[6] = {24.0f, 40.0f, 40.0f, 40.0f, 40.0f, 44.0f};  ///< ch, az, el, dist, gain, delay
     inline constexpr float learnSlotWidth  = 44.0f;   ///< a learned address's slot column
+    inline constexpr float dropdownWidth  = 7.0f;  ///< a dropdown's triangle, the one look for a list behind a control
+    inline constexpr float dropdownHeight = 5.0f;
+    inline constexpr float dropdownPad    = 3.0f;  ///< round it, the part that takes a press
+    inline constexpr float outOfReach = 0.6f;  ///< the ground's alpha over what a waiting pick cannot take
+    inline constexpr float takesGap   = 2.0f;  ///< from a box to the dashed ring round it, a waiting pick may take it
 } // namespace controls
 
 // ---- the settings page -------------------------------------------------------------------------
@@ -431,7 +450,6 @@ namespace presets
 // ---- a question over the whole window: the one thing an undo does not bring back -----------------
 namespace confirm
 {
-    inline constexpr float scrim = 0.35f;   ///< how far the window dims under it
     inline constexpr float width = 320.0f;
     inline constexpr float pad   = 18.0f;
     inline constexpr float line  = 20.0f;   ///< the question, and the note under it
@@ -446,6 +464,48 @@ namespace tooltip
     inline constexpr float below   = 18.0f;  ///< from the pointer to the tooltip's top edge
 } // namespace tooltip
 
+// ---- a sheet over the window: the live host's audio sheet, and the menus on it ------------------
+namespace sheet
+{
+    inline constexpr float scrim     = 0.35f;    ///< how far the window dims under a sheet, a question's among them
+    inline constexpr float width     = 880.0f;   ///< at most; never past the window less an inset either side
+    inline constexpr float height    = 600.0f;
+    inline constexpr float inset     = 24.0f;    ///< from the window's edge, at the least
+    inline constexpr float pad       = 20.0f;    ///< inside its frame
+    inline constexpr float head      = 36.0f;    ///< the title and the tabs
+    inline constexpr float line      = 24.0f;    ///< a row of a list
+    inline constexpr float gap       = 16.0f;    ///< between blocks
+    inline constexpr float cell      = 22.0f;    ///< a channel of the map
+    inline constexpr float cellGap   = 2.0f;
+    inline constexpr float groupGap  = 10.0f;    ///< between two devices on the map
+    inline constexpr float barWidth  = 180.0f;   ///< the level, the load
+    inline constexpr float menuWidth = 300.0f;
+    inline constexpr float menuLine  = 22.0f;
+    inline constexpr float menuPad   = 6.0f;
+    //  the overlay list the scenes open from a corner toggle's triangle
+    inline constexpr float overlayRowPad      = 8.0f;   ///< a row's inset from the list's edges
+    inline constexpr float overlayRowGap      = 8.0f;   ///< between a row's box, its dot and its name
+    inline constexpr float overlayPartIndent  = 18.0f;  ///< a part, under its item
+    inline constexpr float overlayMinWidth    = 150.0f;
+    inline constexpr int   overlayMaxRows     = 10;     ///< lines shown at once, the head included; more scroll
+    inline constexpr float control   = 20.0f;    ///< every button, chip and segment on a sheet
+    inline constexpr float noteLine  = 18.0f;    ///< a line of small text: a note, a device's name over the map
+    //  the columns of a row, from its left
+    inline constexpr float nameColumn   = 260.0f;  ///< a device's name
+    inline constexpr float ioColumn     = 120.0f;  ///< its channels
+    inline constexpr float roleColumn   = 110.0f;  ///< the clock, or drift corrected
+    inline constexpr float latencyColumn = 70.0f;
+    inline constexpr float labelColumn  = 120.0f;  ///< a setting's name, before its control
+    inline constexpr float wideLabel    = 200.0f;  ///< a longer one: the load
+    inline constexpr float valueColumn  = 120.0f;  ///< a value after its bar
+    inline constexpr float outputName   = 90.0f;
+    inline constexpr float outputWhere  = 130.0f;
+    inline constexpr float inputName    = 120.0f;
+    inline constexpr float inputWhere   = 150.0f;
+    inline constexpr float layoutsWidth = 520.0f;
+    inline constexpr int   layoutColumns = 5;
+} // namespace sheet
+
 // ---- the live host's column, left of the plugin it shows ---------------------------------------
 namespace rail
 {
@@ -457,24 +517,74 @@ namespace rail
     inline constexpr int   problemLines = 8;  ///< what went wrong, wrapped this far at most
 } // namespace rail
 
+// ---- a run of channels in one row: the live host's channel map, the decoder's bus ------------------
+namespace channelStrip
+{
+    inline constexpr float cell     = 22.0f;   ///< a channel, whatever the run's length
+    inline constexpr float cellGap  = 2.0f;    ///< between two cells of one group
+    inline constexpr float groupGap = 10.0f;   ///< between two groups
+    inline constexpr float barGap   = 4.0f;    ///< from the cells to the bar showing where the window is
+    inline constexpr float bar      = 2.0f;    ///< its thickness
+}
+
+// ---- the live host's timeline: Live's arrangement, as guidance --------------------------------
+namespace timeline
+{
+    inline constexpr float tree      = 200.0f;  ///< the column of Live's tracks, the rows' headers
+    inline constexpr float ruler     = 28.0f;
+    inline constexpr float row       = 40.0f;   ///< a track's clips
+    inline constexpr float indent    = 14.0f;   ///< a track inside a group
+    inline constexpr float clipInset = 4.0f;    ///< a clip's block inside its row, above and below
+    inline constexpr float clipBar   = 3.0f;    ///< its colour along its top
+    inline constexpr float clipFill  = 0.45f;   ///< how strongly its colour fills it
+    inline constexpr float locator   = 5.0f;    ///< a locator's mark
+    inline constexpr float loopBrace = 4.0f;    ///< the loop's band at the ruler's top
+    inline constexpr float reach     = 6.0f;    ///< pixels within which a click finds a locator
+    inline constexpr float barLabel  = 40.0f;   ///< the least room between two numbered bars
+    inline constexpr float pad       = 14.0f;   ///< the tree's inset
+    inline constexpr float gap       = 3.0f;    ///< from a mark to its label: a bar's number, a locator's name
+    inline constexpr int   frameMs   = 33;      ///< the playhead redrawn this often while Live plays
+    inline constexpr int   refreshMs = 2000;    ///< Live's arrangement asked for again this often while the page is open
+    inline constexpr float lane      = 36.0f;   ///< an automation lane under its row
+    inline constexpr float laneInset = 6.0f;    ///< its curve inside it, above and below
+    inline constexpr float panel     = 230.0f;  ///< the chosen row's lanes, on the right
+    inline constexpr float slotGap   = 2.0f;
+    inline constexpr float sessionColumn = 120.0f; ///< a track's column in the session grid
+    inline constexpr float sceneNumbers = 28.0f;  ///< the column of the scenes' numbers, left of it
+    inline constexpr float sceneRow  = 26.0f;   ///< a scene's row in it
+    inline constexpr float slotMark  = 6.0f;    ///< the mark on the clip Live plays
+    inline constexpr int   paneLanes = 4;       ///< the most lanes the chosen clip's pane shows at once
+    inline constexpr float wheelStep = 40.0f;   ///< pixels the grid, or the song, moves sideways for a wheel notch
+    inline constexpr double zoomRate = 2.0;     ///< how far a wheel notch zooms: the view's width times e^(notch x this)
+} // namespace timeline
+
 // ---- the live host's routing page: Live's tracks, the field, Main ------------------------------
 namespace routing
 {
-    inline constexpr float row        = 40.0f;   ///< a node and, under it, its sends
-    inline constexpr float boxWidth   = 132.0f;
+    inline constexpr float row        = 26.0f;   ///< a node's line
     inline constexpr float boxHeight  = 22.0f;
-    inline constexpr float mainWidth  = 70.0f;
+    inline constexpr float indent     = 14.0f;   ///< a line inside a group, per depth
+    inline constexpr float nameWidth  = 104.0f;  ///< a node's name, before its marker and chain
+    inline constexpr float stripe     = 3.0f;    ///< Live's colour, down a node's left edge
     inline constexpr float left       = 16.0f;   ///< the page's inset, either side
     inline constexpr float top        = 14.0f;   ///< from the band to the first row
-    inline constexpr float gutter      = 40.0f;  ///< between a column's widest node and the next column: the connectors
-    inline constexpr float gutterLeast = 16.0f;  ///< as narrow as it gets for a deep set; never a sideways scroll
-    inline constexpr float chainRoom  = 200.0f;  ///< kept right of Main for its chain and the decoder
-    inline constexpr float control    = 16.0f;   ///< a switch's, a chip's, a button's height
+    inline constexpr float liveLeast     = 360.0f;  ///< Live's column, at its narrowest
+    inline constexpr float liveMost      = 560.0f;  ///< and at its widest, however long its lines
+    inline constexpr float fieldColumn   = 300.0f;  ///< the returns and Main
+    inline constexpr float decoderColumn = 220.0f;
+    inline constexpr float tagHeight  = 14.0f;   ///< a node's tag: live, bambi, bus, in group
+    inline constexpr float tagPad     = 5.0f;    ///< text inside a tag
+    inline constexpr float wireGutter    = 72.0f;   ///< between the columns, where the wires run
+    inline constexpr float control    = 16.0f;   ///< a marker's, a chip's, a button's height
     inline constexpr float gap        = 4.0f;    ///< between controls on a row
     inline constexpr float padX       = 8.0f;    ///< text inside a box or a chip
-    inline constexpr float sendsLine  = 16.0f;   ///< the line under a box that holds its sends
-    inline constexpr float returnsGap = 24.0f;   ///< from the last track to the returns' heading
-    inline constexpr float ringGap    = 2.0f;    ///< from a box to the ring round it under the pointer
+    inline constexpr float hearsLine  = 14.0f;   ///< a line of what a Decoder hears
+    inline constexpr float headingGap = 18.0f;   ///< before a group's heading
+    inline constexpr float ringGap    = 2.0f;    ///< from a box to the ring round it
+    inline constexpr float levelDrag  = 0.25f;   ///< dB per pixel a wire's level moves; a tenth of it with shift
+    inline constexpr float menuWidth  = 150.0f;
+    inline constexpr float labelPad   = 4.0f;    ///< round a level on a wire, over what it crosses
+    inline constexpr float sendRoom   = 48.0f;   ///< kept at a line's right end for "send"
 } // namespace routing
 
 // ---- the header, in every plugin --------------------------------------------------------------
@@ -537,6 +647,7 @@ namespace metrics
     inline constexpr int windowWidth   = 1020;
     inline constexpr int windowHeight  = 600;   ///< the matrix scrolls under its heads
     inline constexpr int headerHeight  = 44;
+    inline constexpr float bandInset   = 16.0f; ///< a live host page's band: its text from either side
     inline constexpr int sceneTop      = 8;     ///< from the header to the scene panels
     inline constexpr int footerHeight  = 22;    ///< the matrix's global amount; the panel's switches and readout
     inline constexpr int leftColumn    = 620;   ///< scene above, matrix below: two panels and their insets

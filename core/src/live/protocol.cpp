@@ -8,6 +8,16 @@ namespace bambi::live {
 
 namespace {
 
+const char* actionName(Command::Action a) {
+    switch (a) {
+        case Command::Action::Play: return "play";
+        case Command::Action::Stop: return "stop";
+        case Command::Action::Continue: return "continue";
+        case Command::Action::Locate: return "locate";
+    }
+    return "play";
+}
+
 const Json* member(const Json& o, std::string_view key) { return o.find(key); }
 
 double number(const Json& o, std::string_view key, double fallback = 0.0) {
@@ -56,6 +66,8 @@ Node node(const Json& o) {
     n.kind = kind == "group" ? Node::Kind::Group : kind == "return" ? Node::Kind::Return : Node::Kind::Track;
     if (const Json* p = member(o, "parent"); p != nullptr && p->isNumber() && p->numberOr(0) > 0)
         n.parent = static_cast<TrackId>(std::llround(p->numberOr(0)));
+    if (const Json* g = member(o, "group"); g != nullptr && g->isNumber() && g->numberOr(0) > 0)
+        n.group = static_cast<TrackId>(std::llround(g->numberOr(0)));
     n.path = text(o, "path") == "elsewhere" ? Node::Path::Elsewhere : Node::Path::Main;
     n.name = text(o, "name");
     n.colour = text(o, "colour");
@@ -74,6 +86,7 @@ Json json(const Node& n) {
     o.set("id", number(n.id));
     o.set("kind", Json(kindName(n.kind)));
     o.set("parent", n.parent ? number(*n.parent) : Json());
+    o.set("group", n.group ? number(*n.group) : Json());
     o.set("path", Json(n.path == Node::Path::Elsewhere ? "elsewhere" : "main"));
     o.set("name", Json(n.name));
     o.set("colour", Json(n.colour));
@@ -199,6 +212,81 @@ struct Writer {
         o.set("name", Json(m.name));
         return o;
     }
+    Json operator()(const Refresh&) const { return typed("refresh"); }
+    Json operator()(const Command& m) const {
+        Json o = typed("command");
+        o.set("action", Json(actionName(m.action)));
+        if (m.action == Command::Action::Locate) o.set("ppq", Json(m.ppq));
+        return o;
+    }
+    Json operator()(const SlotPlay& m) const {
+        Json o = typed("slot");
+        o.set("id", number(m.id));
+        o.set("slot", Json(m.slot));
+        o.set("position", Json(m.position));
+        o.set("loopStart", Json(m.loopStart));
+        o.set("loopEnd", Json(m.loopEnd));
+        o.set("looping", Json(m.looping));
+        o.set("overrides", Json(m.overrides));
+        return o;
+    }
+    Json operator()(const Arrangement& m) const {
+        Json o = typed("arrangement");
+        Json tracks = Json::array();
+        for (const TrackClips& t : m.tracks) {
+            Json clips = Json::array();
+            for (const Clip& c : t.clips) {
+                Json j = Json::object();
+                j.set("start", Json(c.start));
+                j.set("end", Json(c.end));
+                j.set("name", Json(c.name));
+                j.set("colour", Json(c.colour));
+                j.set("midi", Json(c.midi));
+                clips.push(std::move(j));
+            }
+            Json tr = Json::object();
+            tr.set("id", number(t.id));
+            tr.set("clips", std::move(clips));
+            tracks.push(std::move(tr));
+        }
+        o.set("tracks", std::move(tracks));
+        Json session = Json::array();
+        for (const TrackSlots& t : m.session) {
+            Json clips = Json::array();
+            for (const SessionClip& c : t.clips) {
+                Json j = Json::object();
+                j.set("slot", Json(c.slot));
+                j.set("name", Json(c.name));
+                j.set("colour", Json(c.colour));
+                j.set("loopStart", Json(c.loopStart));
+                j.set("loopEnd", Json(c.loopEnd));
+                j.set("looping", Json(c.looping));
+                j.set("midi", Json(c.midi));
+                clips.push(std::move(j));
+            }
+            Json tr = Json::object();
+            tr.set("id", number(t.id));
+            tr.set("clips", std::move(clips));
+            session.push(std::move(tr));
+        }
+        o.set("session", std::move(session));
+        o.set("scenes", Json(m.scenes));
+        Json locators = Json::array();
+        for (const Locator& l : m.locators) {
+            Json j = Json::object();
+            j.set("time", Json(l.time));
+            j.set("name", Json(l.name));
+            locators.push(std::move(j));
+        }
+        o.set("locators", std::move(locators));
+        Json loop = Json::object();
+        loop.set("on", Json(m.loopOn));
+        loop.set("start", Json(m.loopStart));
+        loop.set("length", Json(m.loopLength));
+        o.set("loop", std::move(loop));
+        o.set("readMs", Json(m.readMs));
+        return o;
+    }
 };
 
 }  // namespace
@@ -264,6 +352,60 @@ std::optional<Message> parse(std::string_view line, std::string* error) {
     if (type == "status") return Status{text(o, "text")};
     if (type == "busy") return Busy{};
     if (type == "createReturn") return CreateReturn{text(o, "name")};
+    if (type == "refresh") return Refresh{};
+    if (type == "command") {
+        const std::string action = text(o, "action");
+        const auto a = action == "stop"       ? Command::Action::Stop
+                       : action == "continue" ? Command::Action::Continue
+                       : action == "locate"   ? Command::Action::Locate
+                       : action == "play"     ? Command::Action::Play
+                                              : std::optional<Command::Action>{};
+        if (!a) {
+            if (error != nullptr) *error = "no transport command \"" + action + "\"";
+            return std::nullopt;
+        }
+        return Command{*a, number(o, "ppq")};
+    }
+    if (type == "slot")
+        return SlotPlay{id(o),
+                        static_cast<int>(std::llround(number(o, "slot", -1.0))),
+                        number(o, "position"),
+                        number(o, "loopStart"),
+                        number(o, "loopEnd"),
+                        flag(o, "looping"),
+                        flag(o, "overrides")};
+    if (type == "arrangement") {
+        Arrangement a;
+        if (const Json* tracks = member(o, "tracks"); tracks != nullptr && tracks->isArray())
+            for (const Json& t : tracks->items()) {
+                TrackClips tc{id(t), {}};
+                if (const Json* clips = member(t, "clips"); clips != nullptr && clips->isArray())
+                    for (const Json& c : clips->items())
+                        tc.clips.push_back({number(c, "start"), number(c, "end"), text(c, "name"), text(c, "colour"),
+                                            flag(c, "midi")});
+                if (tc.id != 0) a.tracks.push_back(std::move(tc));
+            }
+        if (const Json* session = member(o, "session"); session != nullptr && session->isArray())
+            for (const Json& t : session->items()) {
+                TrackSlots ts{id(t), {}};
+                if (const Json* clips = member(t, "clips"); clips != nullptr && clips->isArray())
+                    for (const Json& c : clips->items())
+                        ts.clips.push_back({static_cast<int>(std::llround(number(c, "slot"))), text(c, "name"),
+                                            text(c, "colour"), number(c, "loopStart"), number(c, "loopEnd"),
+                                            flag(c, "looping"), flag(c, "midi")});
+                if (ts.id != 0) a.session.push_back(std::move(ts));
+            }
+        a.scenes = static_cast<int>(std::llround(number(o, "scenes")));
+        if (const Json* locators = member(o, "locators"); locators != nullptr && locators->isArray())
+            for (const Json& l : locators->items()) a.locators.push_back({number(l, "time"), text(l, "name")});
+        if (const Json* loop = member(o, "loop"); loop != nullptr && loop->isObject()) {
+            a.loopOn = flag(*loop, "on");
+            a.loopStart = number(*loop, "start");
+            a.loopLength = number(*loop, "length");
+        }
+        a.readMs = number(o, "readMs");
+        return a;
+    }
     if (error != nullptr) *error = "no message of type \"" + type + "\"";
     return std::nullopt;
 }

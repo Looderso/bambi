@@ -37,7 +37,7 @@ juce_add_binary_data(bambi-decoder-data SOURCES
     ${PROJECT_SOURCE_DIR}/core/data/decode/ku100.json)
 set_target_properties(bambi-decoder-data PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bambi-decode bambi-decoder-data qrcodegen juce::juce_osc
+bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bambi-decode bambi-decoder-data bambi-remote qrcodegen juce::juce_osc
     SOURCES
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp

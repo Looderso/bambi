@@ -44,6 +44,14 @@ void HitArea::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDe
     //  Only below the pinned part, and only when there is somewhere to go: a wheel that moves nothing reads
     //  as a broken control, and one that scrolls the heading away defeats pinning it.
     constexpr float kWheelPixels = 140.0f;
+    //  a row that scrolls sideways takes the wheel over it, a trackpad's sideways swipe or the wheel
+    for (auto it = regions_.rbegin(); it != regions_.rend(); ++it)
+        if (it->wheel && it->area.contains(e.position)) {
+            const float d = !juce::approximatelyEqual(wheel.deltaX, 0.0f) ? wheel.deltaX : wheel.deltaY;
+            it->wheel(-d * kWheelPixels);
+            repaint();
+            return;
+        }
     const auto limit = maxScroll();
     if (limit <= 0.0f || e.position.y < viewTop_) return;
     const auto next = std::clamp(scroll_ - wheel.deltaY * kWheelPixels, 0.0f, limit);
@@ -132,12 +140,20 @@ std::vector<juce::Rectangle<float>> HitArea::paintTabRow(juce::Graphics& g, floa
                                                          std::function<void(int)> select,
                                                          std::function<bool(int)> offered) {
     namespace ctl = theme::controls;
+    return paintTabRowAt(g, x, ctl::matrixTabsTop, ctl::tabBarHeight - ctl::matrixTabsTop, names, selected,
+                         std::move(select), std::move(offered));
+}
+
+std::vector<juce::Rectangle<float>> HitArea::paintTabRowAt(juce::Graphics& g, float x, float top, float height,
+                                                           std::span<const juce::String> names, int selected,
+                                                           std::function<void(int)> select,
+                                                           std::function<bool(int)> offered) {
+    namespace ctl = theme::controls;
     const auto tabFont = font(theme::type::body, theme::type::trackingTab);
-    const float height = ctl::tabBarHeight - ctl::matrixTabsTop;
     std::vector<juce::Rectangle<float>> boxes;
     for (std::size_t i = 0; i < names.size(); ++i) {
-        const juce::Rectangle<float> box{x - ctl::tabPadX, ctl::matrixTabsTop,
-                                         textWidth(tabFont, names[i]) + 2.0f * ctl::tabPadX, height};
+        const juce::Rectangle<float> box{x - ctl::tabPadX, top, textWidth(tabFont, names[i]) + 2.0f * ctl::tabPadX,
+                                         height};
         const int index = static_cast<int>(i);
         const bool open = !offered || offered(index);
         drawChoice(g, box, names[i], tabFont, index == selected, open);

@@ -121,6 +121,7 @@ add_library(bambi-decode STATIC
   src/decode/orientation.cpp
   src/decode/params.cpp
   src/decode/outputs.cpp
+  src/decode/remote.cpp
 )
 target_link_libraries(bambi-decode PUBLIC bambi-core PRIVATE convhull_3d libmysofa)
 bambi_warnings(bambi-decode PEDANTIC)
@@ -135,10 +136,15 @@ add_library(bambi-live STATIC
   src/live/field.cpp
   src/live/page.cpp
   src/live/arrival.cpp
+  src/live/io.cpp
+  src/live/timeline.cpp
+  src/live/lanes.cpp
+  src/live/clips.cpp
+  src/live/midi.cpp
 )
 target_include_directories(bambi-live PUBLIC include)
 #  the protocol reads and writes through patch/'s Json
-target_link_libraries(bambi-live PUBLIC bambi-core)
+target_link_libraries(bambi-live PUBLIC bambi-core bambi-decode)
 bambi_warnings(bambi-live PEDANTIC)
 
 # ---- one test binary over all of them ----------------------------------------------------------
@@ -189,6 +195,7 @@ add_executable(bambi-tests
 
   tests/scene/test_view.cpp
   tests/scene/test_energy.cpp
+  tests/scene/test_overlay.cpp
   tests/io/test_wav.cpp
 
   tests/encode/test_encoder.cpp
@@ -217,6 +224,7 @@ add_executable(bambi-tests
   tests/decode/test_sofafile.cpp
   tests/decode/test_layoutfile.cpp
   tests/decode/test_outputs.cpp
+  tests/decode/test_remote.cpp
   tests/dsp/test_resample.cpp
   tests/decode/test_binaural.cpp
   tests/decode/test_convolver.cpp
@@ -236,6 +244,11 @@ add_executable(bambi-tests
   tests/live/test_field.cpp
   tests/live/test_page.cpp
   tests/live/test_arrival.cpp
+  tests/live/test_io.cpp
+  tests/live/test_timeline.cpp
+  tests/live/test_lanes.cpp
+  tests/live/test_clips.cpp
+  tests/live/test_midi.cpp
 )
 target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode bambi-live)
 # The tests read the shipped head model and its fixtures from the source tree.

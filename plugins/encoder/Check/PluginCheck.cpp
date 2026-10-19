@@ -2150,6 +2150,55 @@ int main() {
             check(speed != nullptr && std::abs(speed->convertFrom0to1(speed->getValue()) - 45.0f) < 0.01f,
                   "a parameter dragged in another window lands on the target's own host parameter");
 
+            {
+                //  A preset loaded from another window: every parameter and the patch, applied on the target as one
+                //  undo step of its own, and its name carried -- the load a local window makes, over the bus.
+                const bambi::PresetRef saved{false, "", "remote check"};
+                const bool wrote = first->savePreset(saved);  // the speed is 45 here
+                const auto speedNow = [&] {
+                    return speed != nullptr ? speed->convertFrom0to1(speed->getValue()) : -1.0f;
+                };
+                control.beginParameter(bambi::EncoderParam::MotionSpeed);
+                control.setParameter(bambi::EncoderParam::MotionSpeed,
+                                     static_cast<float>(bambi::ui::normalised(bambi::encodeParams(),
+                                                                              bambi::EncoderParam::MotionSpeed, 70.0)));
+                control.endParameter(bambi::EncoderParam::MotionSpeed);
+                control.setPreset(
+                    {false, "", "before"});  // not the name of what is loaded, so an undo has one to return to
+                tick({first.get(), second.get()}, 2);
+                follow();
+                const float before = speedNow();
+                const auto next = second->presetOver(saved, control.state());
+                const bool sentOk = next.has_value() && control.loadWhole("load preset", *next);
+                const bool shownAtOnce = sentOk && std::abs(control.state().params[speedAt] - 45.0f) < 0.01f &&
+                                         control.state().preset == saved;
+                tick({first.get(), second.get()}, 2);
+                follow();
+                check(wrote && std::abs(before - 70.0f) < 0.01f && shownAtOnce &&
+                          std::abs(speedNow() - 45.0f) < 0.01f && first->currentPreset() == saved &&
+                          first->canUndoEdit(),
+                      "a preset loaded from another window sets the target's parameters and its name, shown at once "
+                      "there");
+                check(control.state().preset == saved && std::abs(control.state().params[speedAt] - 45.0f) < 0.01f,
+                      "and that window reads the preset's name and parameters back from the target");
+                control.undo();
+                tick({first.get(), second.get()}, 2);
+                follow();
+                check(std::abs(speedNow() - 70.0f) < 0.01f && first->currentPreset().name == "before",
+                      "the load is one undo step on the target: undone from that window, the parameters and the name "
+                      "return (speed " +
+                          juce::String(speedNow(), 2) + ", preset '" + first->currentPreset().name + "')");
+
+                const bool named = control.setPreset({false, "", "renamed"});
+                tick({first.get(), second.get()}, 2);
+                follow();
+                check(named && first->currentPreset().name == "renamed" && std::abs(speedNow() - 70.0f) < 0.01f &&
+                          control.state().preset.name == "renamed",
+                      "a save names the target's preset without touching its parameters");
+                check(!control.setPreset({false, std::string(80, 'x'), "n"}),
+                      "a preset name too long for the bus is refused, not cut");
+            }
+
             control.learn(2);
             tick({first.get(), second.get()}, 2);
             follow();
@@ -2659,6 +2708,102 @@ int main() {
     std::printf("\npresets\n");
     bambi::editor::checkPresets<BambiEncoderProcessor>({"render.width", "input.mode"},
                                                        [](bool ok, const juce::String& what) { check(ok, what); });
+
+    //  The `decoder` overlay: the session's decoders drawn in the Encoder's scene, behind a toggle and a list. The Decoder is
+    //  stood in for by buses that publish what a real one does -- the layout in the static section, what it plays and where its
+    //  head looks in the dynamic -- so the Encoder's side is checked on its own; the Decoder's own publishing is in its suite.
+    std::printf("\nthe decoder overlay\n");
+    {
+        const int joinTicks = BambiEncoderProcessor::kLinkTickHz / 10 + 2;
+        auto encoder = std::make_unique<BambiEncoderProcessor>();
+        for (int i = 0; i < joinTicks; ++i) encoder->linkTick();
+        const auto session = encoder->identity().session;
+
+        auto a = bambi::editor::standInDecoder(session, "Decoder A", 5,
+                                               bambi::kLinkPlaySpeakers | bambi::kLinkPlayHeadphones, {0.0, 1.0, 0.0});
+        auto b = bambi::editor::standInDecoder(session, "Decoder B", 0, bambi::kLinkPlayHeadphones, {0.0, 0.0, 1.0});
+        //  a decoder that has published a layout and plays nothing: neither its loudspeakers nor its head are drawn
+        auto c = bambi::editor::standInDecoder(session, "Decoder C", 3, 0, {1.0, 0.0, 0.0});
+
+        std::unique_ptr<juce::AudioProcessorEditor> window(encoder->createEditor());
+        auto* shell = dynamic_cast<BambiEncoderEditor*>(window.get());
+        check(shell != nullptr, "the window opens");
+        if (shell != nullptr) {
+            const auto settle = [&] {
+                for (int i = 0; i < 4; ++i) encoder->linkTick();
+                shell->tick();
+                shell->paintNow();
+            };
+            settle();
+            //  Catches: the overlay on without being asked, which would put loudspeakers over every encoder's scene.
+            check(
+                !shell->decoderOverlayOn() && shell->decodersDrawn().speakers == 0 && shell->decodersDrawn().heads == 0,
+                "off when the window opens: the decoders are on the bus and nothing is drawn");
+            check(shell->decoderRowsListed() == 9, "the list names each decoder and its speakers and head: " +
+                                                       juce::String(shell->decoderRowsListed()) + " rows");
+
+            //  Catches: the layout or the head not arriving, or drawn for a decoder that does not play them.
+            shell->clickDecoderToggle();
+            shell->paintNow();
+            check(
+                shell->decoderOverlayOn() && shell->decodersDrawn().speakers == 5 && shell->decodersDrawn().heads == 2,
+                "on, every decoder is drawn: Decoder A's five loudspeakers and both heads (" +
+                    juce::String(shell->decodersDrawn().speakers) + " loudspeakers, " +
+                    juce::String(shell->decodersDrawn().heads) + " heads)");
+            const bambi::Vec3 gaze = shell->decodersDrawn().gaze;
+            check(std::abs(gaze.y) + std::abs(gaze.z) > 0.99 && std::abs(gaze.x) < 1e-6,
+                  "and a head looks where its decoder published it: (" + juce::String(gaze.x, 2) + ", " +
+                      juce::String(gaze.y, 2) + ", " + juce::String(gaze.z, 2) + ")");
+
+            //  Catches: a row's box not wired to its own part, so that switching a decoder's head off takes its speakers too.
+            shell->clickDecoderTriangle();
+            shell->paintNow();
+            check(shell->decoderListOpen() && !shell->decoderRowArea(5).isEmpty(), "the triangle opens the list");
+            shell->clickDecoderRow(1);  // Decoder A's speakers
+            shell->paintNow();
+            check(shell->decodersDrawn().speakers == 0 && shell->decodersDrawn().heads == 2,
+                  "a decoder's speakers off leave its head");
+            shell->clickDecoderRow(1);
+            shell->clickDecoderRow(3);  // Decoder B itself
+            shell->paintNow();
+            check(shell->decodersDrawn().speakers == 5 && shell->decodersDrawn().heads == 1,
+                  "a decoder off takes both its parts, and the other stays");
+            shell->clickDecoderRow(3);
+
+            //  Catches: Escape ignored, or taken while no list is open.
+            check(shell->pressKeyOnScene(juce::KeyPress(juce::KeyPress::escapeKey)) && !shell->decoderListOpen() &&
+                      !shell->pressKeyOnScene(juce::KeyPress(juce::KeyPress::escapeKey)),
+                  "Escape closes the list and is not taken without one");
+
+            //  Catches: the toggle unreachable while the equirect has the row, where the globe is not drawn.
+            shell->setEquirectFull(true);
+            settle();
+            check(shell->clickDecoderTriangle() && shell->decoderListOpen(),
+                  "with the equirect full the toggle is on its strip, and its list opens there");
+            shell->clickDecoderTriangle();
+            shell->setEquirectFull(false);
+
+            //  Catches: a decoder that leaves staying drawn, or its rows staying listed.
+            b.reset();
+            for (int i = 0; i < 6; ++i) {
+                for (int k = 0; k < 2; ++k) encoder->linkTick();
+                shell->tick();
+            }
+            shell->paintNow();
+            check(shell->decoderRowsListed() == 6 && shell->decodersDrawn().heads == 1,
+                  "a decoder that leaves leaves the list and the scene");
+
+            shell->clickDecoderToggle();
+            shell->paintNow();
+            check(
+                !shell->decoderOverlayOn() && shell->decodersDrawn().speakers == 0 && shell->decodersDrawn().heads == 0,
+                "the toggle is the master: off draws nothing");
+        }
+        window.reset();
+        a.reset();
+        c.reset();
+        bambi::LinkBus::unlinkSession(session);
+    }
 
     return checkVerdict();
 }

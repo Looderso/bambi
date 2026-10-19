@@ -44,7 +44,7 @@ void SphereView::paint(juce::Graphics& g) {
 
     g.fillAll(colour::panel);
     /*  The caption, the globe's view presets and the equirect's corner are every scene view's. */
-    strip_ = paintSceneStrip(g, getWidth(), projection_, state_);
+    strip_ = paintSceneStrip(g, getWidth(), projection_, state_, true, true);
     energyToggle_ = strip_.energy;
     regionsToggle_ = strip_.regions;
     fullToggle_ = strip_.full;
@@ -93,6 +93,9 @@ void SphereView::paint(juce::Graphics& g) {
                  juce::Rectangle<float>(0.0f, 0.0f, strip, strip).withCentre({x, y}), juce::Justification::centred);
         }
     }
+
+    //  the session's decoders, when asked for: the layout this is placed against, and the head that listens
+    overlayDrawn_ = paintSceneOverlays(g, projection_, vp, state_);
 
     /*  The region, over the graticule and under the paths and sources: it is the ground a source
         moves over, so the thing being read has to sit on top of it. Its handles while
@@ -208,7 +211,8 @@ void SphereView::paint(juce::Graphics& g) {
         }
     }
 
-    //  last: what was drawn is what can be clicked, at the coordinates it was drawn at
+    //  the decoder list over everything, then last: what was drawn is what can be clicked, at the coordinates it was drawn at
+    paintSceneStripList(g, strip_, state_);
     buildRegions();
 }
 
@@ -536,6 +540,9 @@ void SphereView::carryHeld() {
 }
 
 void SphereView::mouseMove(const juce::MouseEvent& e) {
+    if (sceneStripPointer(state_, strip_, e.position)) notify();
+    //  over the decoder list nothing below it is hovered either
+    if (strip_.decodersHere && state_.decoders.open() && state_.decoders.listAreas().box.contains(e.position)) return;
     //  over a corner toggle nothing below it is hovered: they lie on top, so they hide what they cover
     if (regionsToggle_.contains(e.position) || fullToggle_.contains(e.position)) return;
     if (hoverChain(e.position)) return;
@@ -551,7 +558,14 @@ void SphereView::mouseMove(const juce::MouseEvent& e) {
     }
 }
 
+bool SphereView::keyPressed(const juce::KeyPress& key) {
+    if (!sceneStripKey(state_, strip_, key)) return false;
+    notify();
+    return true;
+}
+
 void SphereView::mouseExit(const juce::MouseEvent&) {
+    if (sceneStripPointer(state_, strip_, std::nullopt)) notify();
     if (grip_.unhover()) repaint();
     setMouseCursor(juce::MouseCursor::NormalCursor);
     if (state_.hoveredNode >= 0 || state_.hoveredHandle || state_.insert.found) {
