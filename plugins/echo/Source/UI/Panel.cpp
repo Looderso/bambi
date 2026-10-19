@@ -271,8 +271,8 @@ float EchoPanel::paintAxis(juce::Graphics& g, juce::Rectangle<float> content, fl
     return paintGroup(g, content, y, {}, {state_.tapParam(tap, "axis_az"), state_.tapParam(tap, "axis_el")});
 }
 
-/*  `every pass` reads as two pairs, one to a row: `degrees` beside `skew` -- where each pass goes,
-    along and around the axis -- and `feedback` beside `vaguer` -- how each pass differs from the
+/*  `every pass` reads as two pairs, one to a row: `spin` beside `skew` -- where each pass goes,
+    along and around the axis -- and `feedback` beside `blur` -- how each pass differs from the
     one before it. The band follows beneath. The row is the pairing device the grid already has, so
     the pairs need no titles of their own: naming them costs 23 px and says nothing the row does
     not. */

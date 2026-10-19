@@ -5,6 +5,7 @@
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "bambi/host/ShotScale.h"
 #include "bambi/host/TestPlayHead.h"
 #include "bambi/math/sh.hpp"
 #include "bambi/ui/RegionClipboard.h"
@@ -12,6 +13,7 @@
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/reverb.png";
+    const float scale = bambi::host::takeShotScale(argc, argv);
 
     BambiReverbProcessor proc;
     juce::AudioProcessor::BusesLayout l;
@@ -118,7 +120,7 @@ int main(int argc, char** argv) {
         rev->showSource(juce::String(argv[3]).getIntValue());
         rev->tick();
     }
-    const juce::Image shot = rev->createComponentSnapshot(rev->getLocalBounds(), true, 2.0f);
+    const juce::Image shot = rev->createComponentSnapshot(rev->getLocalBounds(), true, scale);
     juce::File file(out);
     file.deleteFile();
     juce::FileOutputStream stream(file);
