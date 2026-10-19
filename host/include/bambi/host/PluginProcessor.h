@@ -79,6 +79,9 @@ public:
     juce::AudioProcessorParameter* getBypassParameter() const final { return bypass_; }
     /// How long a bypass takes to fade in or out, in seconds.
     static constexpr double kBypassFade = 0.01;
+    /// A switch of the bypass starts its fade on a multiple of this many samples since prepare, so where
+    /// it lands does not depend on the host's block size.
+    static constexpr int kBypassGrid = 256;
 
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
@@ -389,6 +392,8 @@ private:
     juce::AudioBuffer<float> bypassed_;  ///< the block as bypass plays it; sized in prepareToPlay
     int bypassInputs_{0};                ///< the main bus's input channels, as prepared
     float bypassMix_{0.0f};              ///< 0 plays the engine, 1 the bypass; audio thread
+    float bypassTarget_{0.0f};           ///< where the mix is heading, taken from the parameter on the grid
+    std::int64_t bypassClock_{0};        ///< samples since prepare; audio thread
     float bypassStep_{1.0f};             ///< how far the mix moves a sample
     std::array<std::atomic<int>, kMaxRegions> zeroRegionTurns_{};  ///< a bit per axis, per slot
     std::atomic<int> learnArmed_{-1};  ///< the envelope waiting for a note: message thread -> audio thread

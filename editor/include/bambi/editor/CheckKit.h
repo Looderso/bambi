@@ -227,53 +227,69 @@ void checkBypass(const Layout& l, const char* what, const std::function<float(in
     check(param != nullptr && param->getParameterID() == "bypass", "the bypass parameter is declared, keyed bypass");
     if (param == nullptr) return;
 
-    constexpr int block = 128;
-    host::TestPlayHead head;
-    proc.setPlayHead(&head);
-    proc.setRateAndBufferSizeDetails(kCheckRate, block);
-    proc.prepareToPlay(kCheckRate, block);
     const int inChannels = l.getMainInputChannelSet().size();
     const int outChannels = l.getMainOutputChannelSet().size();
     const int width = std::max({inChannels + l.getChannelSet(true, 1).size(), outChannels, 1});
-    const auto on = static_cast<juce::int64>(kCheckRate / 4), off = 3 * on, frames = 4 * on;
-    const auto fade = static_cast<juce::int64>(std::ceil(host::PluginProcessor::kBypassFade * kCheckRate));
-
-    Channels out(static_cast<std::size_t>(outChannels));
-    juce::AudioBuffer<float> buffer(width, block);
-    juce::MidiBuffer midi;
-    for (juce::int64 at = 0; at < frames; at += block) {
-        if (at == on / block * block) param->setValueNotifyingHost(1.0f);
-        if (at == off / block * block) param->setValueNotifyingHost(0.0f);
-        head.time = at;
-        buffer.clear();
-        for (int c = 0; c < inChannels; ++c)
-            for (int i = 0; i < block; ++i) buffer.setSample(c, i, fieldSample(c, at + i));
-        proc.processBlock(buffer, midi);
-        for (int c = 0; c < outChannels; ++c) {
-            const float* y = buffer.getReadPointer(c);
-            out[static_cast<std::size_t>(c)].insert(out[static_cast<std::size_t>(c)].end(), y, y + block);
+    //  Switches whose blocks, of 128 and of 100, start between the same two points of the grid.
+    const juce::int64 on = 12037, off = 36237, frames = static_cast<juce::int64>(kCheckRate);
+    //  A render with the bypass switched on at sample `on` and off at `off`, or at the first block after.
+    const auto render = [&](Processor& proc, int block) {
+        host::TestPlayHead head;
+        proc.setPlayHead(&head);
+        proc.setRateAndBufferSizeDetails(kCheckRate, block);
+        proc.prepareToPlay(kCheckRate, block);
+        auto* bypass = proc.getBypassParameter();
+        bypass->setValueNotifyingHost(0.0f);
+        Channels out(static_cast<std::size_t>(outChannels));
+        juce::AudioBuffer<float> buffer(width, block);
+        juce::MidiBuffer midi;
+        for (juce::int64 at = 0; at < frames; at += block) {
+            if (at <= on && on < at + block) bypass->setValueNotifyingHost(1.0f);
+            if (at <= off && off < at + block) bypass->setValueNotifyingHost(0.0f);
+            head.time = at;
+            buffer.clear();
+            for (int c = 0; c < inChannels; ++c)
+                for (int i = 0; i < block; ++i) buffer.setSample(c, i, fieldSample(c, at + i));
+            proc.processBlock(buffer, midi);
+            for (int c = 0; c < outChannels; ++c) {
+                const float* y = buffer.getReadPointer(c);
+                out[static_cast<std::size_t>(c)].insert(out[static_cast<std::size_t>(c)].end(), y, y + block);
+            }
         }
-    }
+        return out;
+    };
+    const Channels out = render(proc, 128);
+
     const auto distance = [&](juce::int64 i) {
         float d = 0.0f;
         for (int c = 0; c < outChannels; ++c)
             d = std::max(d, std::abs(out[static_cast<std::size_t>(c)][static_cast<std::size_t>(i)] - bypassed(c, i)));
         return d;
     };
-    const juce::int64 switchedOn = on / block * block, switchedOff = off / block * block;
+    const juce::int64 grid = host::PluginProcessor::kBypassGrid;
+    const auto fade = static_cast<juce::int64>(std::ceil(host::PluginProcessor::kBypassFade * kCheckRate));
+    //  Set at the start of the block holding `on`; the fade starts on the grid after that.
+    const juce::int64 startsOn = (on / 128 * 128 + grid - 1) / grid * grid;
+    const juce::int64 startsOff = (off / 128 * 128 + grid - 1) / grid * grid;
     float held = 0.0f;
-    for (juce::int64 i = switchedOn + fade; i < switchedOff; ++i) held = std::max(held, distance(i));
+    for (juce::int64 i = startsOn + fade; i < startsOff; ++i) held = std::max(held, distance(i));
     //  Catches: a bypassed output that is not the plugin's own (the input handed back to a Decoder, the Encoder's
     //  other channels left as they arrived).
     check(held < 1e-6f, "once faded in, every channel is exactly that");
     float fading = 0.0f;
-    for (juce::int64 i = switchedOn; i < switchedOn + fade / 2; ++i) fading = std::max(fading, distance(i));
+    for (juce::int64 i = startsOn + 1; i < startsOn + fade / 2; ++i) fading = std::max(fading, distance(i));
     //  Catches: a switch that steps rather than fades.
-    check(fading > 1e-4f, "halfway through the fade it is not yet there");
+    check(fading > 1e-4f, "it fades in rather than stepping");
     float back = 0.0f;
-    for (juce::int64 i = switchedOff + fade; i < frames; ++i) back = std::max(back, distance(i));
+    for (juce::int64 i = startsOff + fade; i < frames; ++i) back = std::max(back, distance(i));
     //  Catches: a bypass that latches.
     check(back > 1e-4f, "and switched off, the engine plays again");
+
+    //  Catches: a fade that starts where the host's block does, so a bounce with the bypass automated
+    //  depends on the block size.
+    Processor other;
+    other.setBusesLayout(l);
+    check(identical(out, render(other, 100)), "and a block of 100 switches it on the same samples as 128");
 }
 
 }  // namespace bambi::editor

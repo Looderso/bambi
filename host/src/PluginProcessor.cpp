@@ -91,6 +91,7 @@ PluginState PluginProcessor::documentState() const {
     PluginState st = document_.committed();
     st.identity = identity();
     st.windowScale = windowScale();
+    st.bypassed = bypass_->get();
     for (int i = 0; i < spec_.params.size(); ++i) st.params[static_cast<std::size_t>(i)] = params_.live(i);
     return st;
 }
@@ -113,6 +114,7 @@ void PluginProcessor::setStateInformation(const void* data, int sizeInBytes) {
         must not move it to another session or hand it another instance's id. */
     identity_.fromState(st.identity);
     setWindowScale(st.windowScale);  // what the next window opens at; one open now keeps its size
+    if (bypass_->get() != st.bypassed) bypass_->setValueNotifyingHost(st.bypassed ? 1.0f : 0.0f);
 
     //  A loaded state is a new document: the history before it is not this document's.
     document_.adopt(st);
@@ -302,7 +304,8 @@ void PluginProcessor::prepareToPlay(double sampleRate, int maximumExpectedSample
     bypassed_.setSize(std::max({1, getTotalNumInputChannels(), getTotalNumOutputChannels()}), block);
     bypassInputs_ = getMainBusNumInputChannels();
     bypassStep_ = static_cast<float>(1.0 / std::max(1.0, kBypassFade * (sampleRate > 0.0 ? sampleRate : 48000.0)));
-    bypassMix_ = bypass_->get() ? 1.0f : 0.0f;
+    bypassMix_ = bypassTarget_ = bypass_->get() ? 1.0f : 0.0f;
+    bypassClock_ = 0;
     prepare(sampleRate, maximumExpectedSamplesPerBlock);
 }
 
@@ -315,10 +318,10 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const SnapshotCensus::InAudioBlock inBlock;
     const int n = buffer.getNumSamples();
     const int width = buffer.getNumChannels();
-    const float target = bypass_->get() ? 1.0f : 0.0f;
+    const float wanted = bypass_->get() ? 1.0f : 0.0f;
     //  A block wider or longer than prepared has no room beside it: it plays the engine, or silence.
     const bool fits = n <= bypassed_.getNumSamples() && width <= bypassed_.getNumChannels();
-    const bool fading = (bypassMix_ != 0.0f || target != 0.0f) && fits;
+    const bool fading = (bypassMix_ != 0.0f || bypassTarget_ != 0.0f || wanted != 0.0f) && fits;
     if (fading) {
         for (int c = 0; c < width; ++c) bypassed_.copyFrom(c, 0, buffer, c, 0, n);
         renderBypassed(bypassed_.getArrayOfWritePointers(), width, std::min(bypassInputs_, width), n);
@@ -326,24 +329,26 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     renderBlock(buffer, midi);
     if (fading) {
         const int outputs = std::min(width, getTotalNumOutputChannels());
-        const auto towards = [&](float g) {
-            return target > g ? std::min(target, g + bypassStep_) : std::max(target, g - bypassStep_);
-        };
-        float g = bypassMix_;
-        for (int c = 0; c < outputs; ++c) {
-            float* out = buffer.getWritePointer(c);
-            const float* by = bypassed_.getReadPointer(c);
+        //  The same walk for every channel: the target moves only on the grid, then the mix steps toward it.
+        float g = bypassMix_, target = bypassTarget_;
+        for (int c = 0; c < std::max(outputs, 1); ++c) {
+            float* out = c < outputs ? buffer.getWritePointer(c) : nullptr;
+            const float* by = c < outputs ? bypassed_.getReadPointer(c) : nullptr;
             g = bypassMix_;
+            target = bypassTarget_;
             for (int i = 0; i < n; ++i) {
-                g = towards(g);
-                out[i] += g * (by[i] - out[i]);
+                if ((bypassClock_ + i) % kBypassGrid == 0) target = wanted;
+                g = target > g ? std::min(target, g + bypassStep_) : std::max(target, g - bypassStep_);
+                if (out != nullptr) out[i] += g * (by[i] - out[i]);
             }
         }
-        bypassMix_ = outputs > 0 ? g : target;
-    } else if (!fits && target != 0.0f) {
+        bypassMix_ = g;
+        bypassTarget_ = target;
+    } else if (!fits && wanted != 0.0f) {
         buffer.clear();
-        bypassMix_ = target;
+        bypassMix_ = bypassTarget_ = wanted;
     }
+    bypassClock_ += n;
     load_.end(n, loadRate_);
 }
 
