@@ -41,7 +41,7 @@ function light(state) {
     outlet(3, "bgfillcolor", LIGHT[state]);
 }
 
-const PROTOCOL = 2;  // with the host's (core/live/protocol.hpp): bumped when a message or its meaning changes
+const PROTOCOL = 3;  // with the host's (core/live/protocol.hpp): bumped when a message or its meaning changes
 const MAIN = ["Main", "Master"];  // Live 12 says Main, earlier versions Master
 const GRACE_MS = 5000;
 const RETURN_IN = "1/2";     // the host's copy back to Live: the loop device's first pair, as Main's goes out
@@ -765,18 +765,19 @@ function outputOf(n) {
     return group !== null ? text(group, "name") : MAIN[0];
 }
 
-//  A tree of where the audio goes, not of how the tracks are filed: a track in a group belongs to it only
-//  while it plays into it -- by its routing as the user has it, not as bambi made it, so a track grouped while
-//  bambi plays it belongs to the group. Played to Main it is a path of its own; played anywhere else it is not on
-//  a path to Main at all, and the host leaves it alone.
+//  A tree of where the audio goes, and of how the tracks are filed. A track's `parent` is the group it plays into, by its
+//  routing as the user has it, not as bambi made it, so a track grouped while bambi plays it plays into the group; played
+//  to Main it is a path of its own; played anywhere else it is not on a path to Main at all, and the host leaves it alone.
+//  Its `group` is the group Live files it under, whatever its routing: where the host lists it, as Live does.
 function tree() {
     const list = identify().map(n => {
         const t = n.api;
         const output = outputOf(n);
-        let parent = null, path = "main";
+        let parent = null, path = "main", filed = null;
         if (Number(t.get("is_grouped")) === 1) {
             const group = new LiveAPI("id " + t.get("group_track")[1]);
-            if (output === text(group, "name") || output === "Group") parent = keyOfLive[Number(group.id)];
+            filed = keyOfLive[Number(group.id)] || null;  // where Live files it, whatever its routing
+            if (output === text(group, "name") || output === "Group") parent = filed;
         }
         if (parent === null && MAIN.indexOf(output) < 0 && !n.ret) path = "elsewhere";
         const mixer = new LiveAPI(n.path + " mixer_device");
@@ -790,7 +791,9 @@ function tree() {
             id: n.key,
             kind: n.ret ? "return" : Number(t.get("is_foldable")) === 1 ? "group" : "track",
             parent: parent,
+            group: filed,
             path: path,
+            output: output,  // what the parent and the path were read from; the host logs it, and reads nothing else of it
             name: n.name,
             colour: hex(t.get("color")),
             audio: n.ret ? 1 : Number(t.get("has_audio_output")),
@@ -848,8 +851,10 @@ function observe() {
         watch(n.path, "mute", v => value("mute", Number(v[0])));  // also the track's on/off button
         watch(n.path, "solo", v => value("solo", Number(v[0])));
         watch(n.path, "output_routing_type", () => {
+            if (routing) return;  // the device's own change: half of a change is not a change to report
             const now = routingOf(t);
-            if (!routing && set_[key] !== now) value("routing", now);
+            if (set_[key] !== now) value("routing", now);
+            sendTree();  // where its audio goes may have moved with it: the host's tree follows, sent only if it differs
         });
         const volume = n.path + " mixer_device volume";
         watch(volume, "value", v => value("fader", db(volume, Number(v[0]))));
@@ -945,10 +950,19 @@ function originalOf(key, t) {
     return {type: DEFAULT_ROUTING, channel: ""};
 }
 
+//  Where a track goes back to when bambi gives it to Live: what it was remembered playing to, except Main for a track
+//  filed in a group -- a routing remembered from before it was grouped, or one bambi's own channels hid when the set was
+//  saved -- which goes back into its group. Pure: no Live, so it can be tested outside Max.
+function givenBackTo(type, grouped) {
+    return grouped && MAIN.indexOf(type) >= 0 ? DEFAULT_ROUTING : type;
+}
+
 function restore(entry) {
     post("bambi: " + entry.name + " back to " + entry.type + " " + entry.channel + "\n");  // @default: its group or Main
     const t = trackOf(entry.key);
-    if (t === null || !chooseNamed(t, "output_routing_type", resolved(entry.type, {api: t}))) return false;  // gone, or refused
+    if (t === null) return false;  // gone
+    const type = givenBackTo(entry.type, groupOf({api: t}) !== null);
+    if (!chooseNamed(t, "output_routing_type", resolved(type, {api: t}))) return false;  // refused
     chooseNamed(t, "output_routing_channel", entry.channel);  // Main has no channel to choose
     set_[entry.key] = routingOf(t);
     return true;

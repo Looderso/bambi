@@ -9,7 +9,8 @@
 /*  What the routing page shows of Live's tracks and groups, and what its two acts on them do to the shape.
  *
  *  The page lists them as Live does: in Live's order, a group before what it holds, each line one deeper than its
- *  group. Returns are not among them: they are listed apart, beside Main. A node whose group the tree does not have
+ *  group -- the group Live files it under, whatever its routing. What it is, and what an Encoder on it does, follow where
+ *  its audio goes: a member routed past its group by hand is its own path, encoded on its own and never with the group. Returns are not among them: they are listed apart, beside Main. A node whose group the tree does not have
  *  counts as at the top.
  *
  *  Each is, as the field has it now: in Live; a source of its own, encoded; a bus, a group split into its sources;

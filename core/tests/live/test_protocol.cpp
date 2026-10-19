@@ -33,8 +33,9 @@ T again(const T& m) {
 
 TEST_CASE("the device's own lines are read as it means them") {
     //  Catches: a field read under another name than the script writes, or Max's 0 and 1 not taken as flags.
-    const Hello h = read<Hello>(R"({"type":"hello","protocol":2,"live":"12.4","rate":0})");
-    CHECK(h.protocol == 2);
+    const Hello h =
+        read<Hello>(R"({"type":"hello","protocol":)" + std::to_string(kProtocol) + R"(,"live":"12.4","rate":0})");
+    CHECK(h.protocol == kProtocol);
     CHECK(h.live == "12.4");
     CHECK(accepts(h));
 
@@ -160,10 +161,12 @@ TEST_CASE("every message comes back from the wire as it went") {
 TEST_CASE("a hello in another protocol is read, and refused by accepts") {
     //  Catches: a version check that accepts anything, or one that makes the line unreadable -- the answer to a hello
     //  in the wrong protocol is still a welcome saying which this side speaks.
-    const Hello h = read<Hello>(R"({"type":"hello","protocol":1,"live":"13.0","rate":0})");
-    CHECK(h.protocol == 1);
+    const Hello h =
+        read<Hello>(R"({"type":"hello","protocol":)" + std::to_string(kProtocol - 1) + R"(,"live":"13.0","rate":0})");
+    CHECK(h.protocol == kProtocol - 1);
     CHECK_FALSE(accepts(h));
-    CHECK(accepts(read<Hello>(R"({"type":"hello","protocol":2,"live":"13.0","rate":0})")));
+    CHECK(accepts(
+        read<Hello>(R"({"type":"hello","protocol":)" + std::to_string(kProtocol) + R"(,"live":"13.0","rate":0})")));
 }
 
 TEST_CASE("an unknown type, or a line that is no object, is refused; an unknown field is not") {
@@ -187,4 +190,20 @@ TEST_CASE("a field missing takes its default") {
     CHECK(t.nodes[0].sends.empty());
     CHECK_FALSE(t.nodes[0].fader.has_value());
     CHECK(read<TransportMessage>(R"({"type":"transport"})").bpm == 120.0);
+}
+
+TEST_CASE("a node's group, as Live files it, is read apart from the group it plays into, and written back") {
+    //  Catches: `group` not read, read from `parent`, or dropped on the way back -- a member routed past its group would
+    //  then be listed at the top.
+    const Tree t = read<Tree>(
+        R"({"type":"tree","nodes":[{"id":3,"kind":"track","parent":null,"group":1,"path":"main",)"
+        R"("output":"Main","name":"clap"},{"id":4,"kind":"track","parent":1,"path":"main","name":"kick"}]})");
+    REQUIRE(t.nodes.size() == 2);
+    CHECK_FALSE(t.nodes[0].parent.has_value());
+    CHECK(t.nodes[0].group == TrackId{1});
+    CHECK(filedUnder(t.nodes[0]) == TrackId{1});
+    CHECK_FALSE(t.nodes[1].group.has_value());
+    CHECK(filedUnder(t.nodes[1]) == TrackId{1});  // no group sent: filed where it plays
+    const Tree again = read<Tree>(serialise(Message{t}));
+    CHECK(again == t);
 }

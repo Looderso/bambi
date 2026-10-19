@@ -14,7 +14,8 @@ const Node* find(const Tree& tree, TrackId id) {
     return n == tree.nodes.end() ? nullptr : &*n;
 }
 
-//  `n`'s groups, the nearest first, as far as the tree has them; the count guards a cycle a device could send.
+//  The groups `n`'s audio goes through, the nearest first, as far as the tree has them -- by where it plays, not where Live
+//  files it, since what a group encodes is what plays into it. The count guards a cycle a device could send.
 std::vector<TrackId> groupsOf(const Tree& tree, const Node& n) {
     std::vector<TrackId> out;
     for (std::optional<TrackId> up = n.parent; up && out.size() < 64;) {
@@ -38,10 +39,11 @@ std::vector<Line> linesOf(const Tree& tree) {
         out.push_back({n.id, depth});
         if (depth < 64)
             for (const Node& child : tree.nodes)
-                if (listed(child) && child.parent == n.id && child.id != n.id) self(self, child, depth + 1);
+                if (listed(child) && filedUnder(child) == n.id && child.id != n.id) self(self, child, depth + 1);
     };
+    //  listed where Live files it, not where its audio goes: a member routed by hand past its group is still its member here
     for (const Node& n : tree.nodes)
-        if (listed(n) && (!n.parent || find(tree, *n.parent) == nullptr)) add(add, n, 0);
+        if (listed(n) && (!filedUnder(n) || find(tree, *filedUnder(n)) == nullptr)) add(add, n, 0);
     return out;
 }
 

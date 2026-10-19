@@ -59,8 +59,7 @@ private:
     net::LineServer server_;
     live::DeviceSession session_;
     net::LineServer::Connection device_{0};  ///< the connection the session answers; 0 for none
-    std::size_t lastTreeSize_{
-        static_cast<std::size_t>(-1)};  ///< what the log last said of the tree, so it says it when it changes
+    std::string lastTree_;                   ///< the tree as last logged, so the log says it again only when it changes
     juce::WeakReference<DeviceServer> self_;
     JUCE_DECLARE_WEAK_REFERENCEABLE(DeviceServer)
 };

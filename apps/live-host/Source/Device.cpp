@@ -76,9 +76,11 @@ void DeviceServer::handle(net::LineServer::Connection from, const std::string& l
         if (!session_.compatible())
             hostLog("a tree of " + std::to_string(tree->nodes.size()) +
                     " nodes, ignored: the device is in another protocol");
-        else if (tree->nodes.size() != lastTreeSize_)
-            hostLog("the set's tree: " + std::to_string(tree->nodes.size()) + " nodes");
-        lastTreeSize_ = tree->nodes.size();
+        else if (line != lastTree_)
+            //  the whole tree as the device sent it, each track's group and output with it: what a routing page that
+            //  disagrees with Live's is checked against
+            hostLog("the set's tree, " + std::to_string(tree->nodes.size()) + " nodes: " + line);
+        lastTree_ = line;
     } else if (const auto* switched = std::get_if<live::Switched>(&*message)) {
         hostLog(std::string("the route button: bambi ") + (switched->on ? "on" : "off"));
     }
@@ -119,7 +121,7 @@ void DeviceServer::gone(net::LineServer::Connection from) {
     if (from != device_) return;
     hostLog("the device disconnected");
     device_ = 0;
-    lastTreeSize_ = static_cast<std::size_t>(-1);
+    lastTree_.clear();
     session_.disconnected();
     if (changed) changed();
 }

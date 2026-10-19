@@ -196,7 +196,8 @@ void RoutingPage::attachTo(live::TrackId orphan, live::TrackId target) {
         for (const live::Chain& c : s.chains)
             if (c.node == orphan) moved = c.inserts;
         std::erase_if(s.chains, [&](const live::Chain& c) { return c.node == orphan; });
-        auto to = std::find_if(s.chains.begin(), s.chains.end(), [&](const live::Chain& c) { return c.node == target; });
+        auto to =
+            std::find_if(s.chains.begin(), s.chains.end(), [&](const live::Chain& c) { return c.node == target; });
         if (to == s.chains.end()) to = s.chains.insert(s.chains.end(), live::Chain{target, {}});
         to->inserts.insert(to->inserts.end(), moved.begin(), moved.end());
     });
@@ -221,7 +222,8 @@ void RoutingPage::addInsert(live::TrackId owner, live::Effect effect) {
         std::uint64_t next = 1;
         for (const live::Chain& c : s.chains)
             for (const live::Insert& i : c.inserts) next = std::max(next, i.id + 1);
-        auto c = std::find_if(s.chains.begin(), s.chains.end(), [&](const live::Chain& ch) { return ch.node == owner; });
+        auto c =
+            std::find_if(s.chains.begin(), s.chains.end(), [&](const live::Chain& ch) { return ch.node == owner; });
         if (c == s.chains.end()) c = s.chains.insert(s.chains.end(), live::Chain{owner, {}});
         c->inserts.push_back({next, effect, 0});
     });
@@ -255,8 +257,8 @@ float RoutingPage::sidechainWidth(live::TrackId heard, Waiting pick) const {
 float RoutingPage::chain(juce::Graphics& g, live::TrackId owner, float x, float y) {
     for (const live::Insert& ins : shape_.insertsOn(owner)) {
         const juce::String name = effectName(ins.effect);
-        const auto chip = ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, name, colour::text,
-                                       colourOf(ins.effect), false);
+        const auto chip =
+            ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, name, colour::text, colourOf(ins.effect), false);
         const auto id = ins.id;
         chips_[owner].push_back(chip.box);
         if (idle())
@@ -645,8 +647,7 @@ float RoutingPage::dropdown(juce::Graphics& g, Menu m, juce::Rectangle<float> ch
 
 float RoutingPage::liveNeed(const Node& n, int depth) const {
     const live::Role role = live::roleOf(tree_, field_, n.id);
-    float w =
-        rt::indent * static_cast<float>(depth) + rt::padX + rt::nameWidth + rt::gap + tagWidth() + rt::gap * 2.0f;
+    float w = rt::indent * static_cast<float>(depth) + rt::padX + rt::nameWidth + rt::gap + tagWidth() + rt::gap * 2.0f;
     if (role == live::Role::Live || role == live::Role::InGroup)
         return w + ui::framedButtonWidth("+ encoder") + rt::padX;
     if (role == live::Role::Bus)
@@ -671,6 +672,16 @@ float RoutingPage::liveLine(juce::Graphics& g, const Node& n, int depth, float x
     const auto box = lineBox(x + indent, y, width - indent, twoLines);
     const auto nameAt =
         frame(g, box, juce::String(n.name), colour::ofLive(juce::String(n.colour), colour::rule), inField, n.id);
+    //  listed under its group as Live files it, but routed past it by hand: where its audio goes, after its name
+    if (n.group && n.parent != n.group) {
+        const juce::String mark =
+            juce::String::fromUTF8("\xe2\x86\x92 ") + (n.path == Node::Path::Main ? "Main" : "elsewhere");
+        const float after =
+            std::min(nameAt.getRight(), nameAt.getX() + ui::textWidth(nameFont(), juce::String(n.name)) + rt::gap);
+        ui::text(g, mark, ui::smallFont(), colour::label,
+                 {after, nameAt.getY(), nameAt.getRight() - after, nameAt.getHeight()},
+                 juce::Justification::centredLeft);
+    }
     const float cy = box.getY() + rt::boxHeight / 2.0f;
     float cx = tag(g, nameAt.getRight() + rt::gap, cy, label, inField && !unpaired);
     const auto id = n.id;

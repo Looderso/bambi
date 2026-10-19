@@ -29,8 +29,8 @@ namespace bambi::live {
 /*  Bump whenever a message, or what one means, changes so that a device and a host of different builds would misread each other.
  *  A saved Live set keeps the device's own copy of its scripts, so an old device meets a new host: it is told by the welcome and
  *  heard no more, rather than left to misbehave. 2: the transport and clips asked of Live, the host deciding which tracks play
- *  in bambi, the routing in groups and returns. */
-inline constexpr int kProtocol = 2;
+ *  in bambi, the routing in groups and returns. 3: a node's group, as Live files it, beside the group it plays into. */
+inline constexpr int kProtocol = 3;
 
 //  ---- the device to the host ------------------------------------------------------------------------------------
 
@@ -52,6 +52,10 @@ struct Node {
     TrackId id{0};
     Kind kind{Kind::Track};
     std::optional<TrackId> parent;  ///< the group it plays into; none when it plays to Main
+    /// The group it is filed under in Live, whatever its routing says: where the routing page lists it, as Live does. A
+    /// member routed by hand past its group has this and no `parent`. A device that does not send it files a node where
+    /// it plays: `filedUnder` says which.
+    std::optional<TrackId> group;
     Path path{Path::Main};
     std::string name;
     std::string colour;                        ///< "#rrggbb"
@@ -63,6 +67,9 @@ struct Node {
     double pan{0.0};  ///< -1 left .. 1 right
     friend bool operator==(const Node&, const Node&) = default;
 };
+
+/// The group a node is listed under: its own `group` when the device said, else the one it plays into.
+inline std::optional<TrackId> filedUnder(const Node& n) { return n.group ? n.group : n.parent; }
 
 struct Tree {
     std::vector<Node> nodes;

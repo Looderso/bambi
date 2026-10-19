@@ -66,6 +66,8 @@ Node node(const Json& o) {
     n.kind = kind == "group" ? Node::Kind::Group : kind == "return" ? Node::Kind::Return : Node::Kind::Track;
     if (const Json* p = member(o, "parent"); p != nullptr && p->isNumber() && p->numberOr(0) > 0)
         n.parent = static_cast<TrackId>(std::llround(p->numberOr(0)));
+    if (const Json* g = member(o, "group"); g != nullptr && g->isNumber() && g->numberOr(0) > 0)
+        n.group = static_cast<TrackId>(std::llround(g->numberOr(0)));
     n.path = text(o, "path") == "elsewhere" ? Node::Path::Elsewhere : Node::Path::Main;
     n.name = text(o, "name");
     n.colour = text(o, "colour");
@@ -84,6 +86,7 @@ Json json(const Node& n) {
     o.set("id", number(n.id));
     o.set("kind", Json(kindName(n.kind)));
     o.set("parent", n.parent ? number(*n.parent) : Json());
+    o.set("group", n.group ? number(*n.group) : Json());
     o.set("path", Json(n.path == Node::Path::Elsewhere ? "elsewhere" : "main"));
     o.set("name", Json(n.name));
     o.set("colour", Json(n.colour));

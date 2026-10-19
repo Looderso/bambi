@@ -77,3 +77,48 @@ TEST_CASE("taking an Encoder away gives a node at the top back to Live, and enco
     removeEncoder(s, set(), layOut(set(), s), 5);
     CHECK(s.taken == std::vector<TrackId>{1});
 }
+
+//  A group 1 holding track 2, which plays into it, and track 3, filed under it in Live and routed by hand to Main.
+Tree handRouted() {
+    Node playing = node(2, Node::Kind::Track, TrackId{1});
+    playing.group = TrackId{1};
+    Node past = node(3, Node::Kind::Track);  // plays to Main
+    past.group = TrackId{1};
+    return Tree{{node(1, Node::Kind::Group), playing, past}};
+}
+
+TEST_CASE("a member routed past its group is listed under it, as Live files it") {
+    //  Catches: the page nesting by where audio goes, which lists a member routed to Main at the top and the page no
+    //  longer looks like Live's.
+    const auto lines = linesOf(handRouted());
+    REQUIRE(lines.size() == 3);
+    CHECK(lines[0] == Line{1, 0});
+    CHECK(lines[1] == Line{2, 1});
+    CHECK(lines[2] == Line{3, 1});
+    //  and a device that sends no group files a node where it plays, as before
+    const auto old = linesOf(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1})}});
+    REQUIRE(old.size() == 2);
+    CHECK(old[1] == Line{2, 1});
+}
+
+TEST_CASE("what a member is follows where its audio goes: one routed past its group is its own path") {
+    /*  Catches: a hand-routed member read as inside the group the group encodes -- it would never be heard in the field,
+        since its audio does not reach the group -- or an Encoder on it splitting the group it does not play into, or one
+        on a member that does play into it leaving the group whole, which plays that member twice. */
+    const Tree t = handRouted();
+    Shape s;
+    s.taken = {1};
+    const Field whole = layOut(t, s);
+    CHECK(roleOf(t, whole, 2) == Role::InGroup);
+    CHECK(roleOf(t, whole, 3) == Role::Live);
+
+    Shape own = s;
+    addEncoder(own, t, 3);
+    CHECK(own.split.empty());
+    CHECK(own.taken == std::vector<TrackId>{1, 3});
+
+    Shape split = s;
+    addEncoder(split, t, 2);
+    CHECK(split.split == std::vector<TrackId>{1});
+    CHECK(split.taken == std::vector<TrackId>{1});
+}
