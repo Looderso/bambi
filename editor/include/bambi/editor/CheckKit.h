@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "bambi/host/PluginProcessor.h"
 #include "bambi/host/TestPlayHead.h"
 #include "bambi/link/link.hpp"
 #include "bambi/math/vec3.hpp"
@@ -209,6 +210,70 @@ Channels renderField(const Layout& l, int block, double seconds, const std::func
         timeline += block;
     }
     return captured;
+}
+
+/*  The host's bypass is the plugin's own parameter, keyed `bypass`: switched on a quarter-second in and
+    off at three quarters, the output fades over `PluginProcessor::kBypassFade` to what `bypassed` says the
+    plugin plays for the test field (main output channel, sample), and back to the engine. */
+template <class Processor>
+void checkBypass(const Layout& l, const char* what, const std::function<float(int, juce::int64)>& bypassed) {
+    std::printf("\nthe host's bypass is the plugin's own parameter, and bypassed it plays %s\n", what);
+    Processor proc;
+    if (!proc.setBusesLayout(l)) {
+        check(false, "the layout is accepted");
+        return;
+    }
+    auto* param = dynamic_cast<juce::HostedAudioProcessorParameter*>(proc.getBypassParameter());
+    check(param != nullptr && param->getParameterID() == "bypass", "the bypass parameter is declared, keyed bypass");
+    if (param == nullptr) return;
+
+    constexpr int block = 128;
+    host::TestPlayHead head;
+    proc.setPlayHead(&head);
+    proc.setRateAndBufferSizeDetails(kCheckRate, block);
+    proc.prepareToPlay(kCheckRate, block);
+    const int inChannels = l.getMainInputChannelSet().size();
+    const int outChannels = l.getMainOutputChannelSet().size();
+    const int width = std::max({inChannels + l.getChannelSet(true, 1).size(), outChannels, 1});
+    const auto on = static_cast<juce::int64>(kCheckRate / 4), off = 3 * on, frames = 4 * on;
+    const auto fade = static_cast<juce::int64>(std::ceil(host::PluginProcessor::kBypassFade * kCheckRate));
+
+    Channels out(static_cast<std::size_t>(outChannels));
+    juce::AudioBuffer<float> buffer(width, block);
+    juce::MidiBuffer midi;
+    for (juce::int64 at = 0; at < frames; at += block) {
+        if (at == on / block * block) param->setValueNotifyingHost(1.0f);
+        if (at == off / block * block) param->setValueNotifyingHost(0.0f);
+        head.time = at;
+        buffer.clear();
+        for (int c = 0; c < inChannels; ++c)
+            for (int i = 0; i < block; ++i) buffer.setSample(c, i, fieldSample(c, at + i));
+        proc.processBlock(buffer, midi);
+        for (int c = 0; c < outChannels; ++c) {
+            const float* y = buffer.getReadPointer(c);
+            out[static_cast<std::size_t>(c)].insert(out[static_cast<std::size_t>(c)].end(), y, y + block);
+        }
+    }
+    const auto distance = [&](juce::int64 i) {
+        float d = 0.0f;
+        for (int c = 0; c < outChannels; ++c)
+            d = std::max(d, std::abs(out[static_cast<std::size_t>(c)][static_cast<std::size_t>(i)] - bypassed(c, i)));
+        return d;
+    };
+    const juce::int64 switchedOn = on / block * block, switchedOff = off / block * block;
+    float held = 0.0f;
+    for (juce::int64 i = switchedOn + fade; i < switchedOff; ++i) held = std::max(held, distance(i));
+    //  Catches: a bypassed output that is not the plugin's own (the input handed back to a Decoder, the Encoder's
+    //  other channels left as they arrived).
+    check(held < 1e-6f, "once faded in, every channel is exactly that");
+    float fading = 0.0f;
+    for (juce::int64 i = switchedOn; i < switchedOn + fade / 2; ++i) fading = std::max(fading, distance(i));
+    //  Catches: a switch that steps rather than fades.
+    check(fading > 1e-4f, "halfway through the fade it is not yet there");
+    float back = 0.0f;
+    for (juce::int64 i = switchedOff + fade; i < frames; ++i) back = std::max(back, distance(i));
+    //  Catches: a bypass that latches.
+    check(back > 1e-4f, "and switched off, the engine plays again");
 }
 
 }  // namespace bambi::editor

@@ -49,7 +49,9 @@ public:
     double getTailLengthSeconds() const override { return 0.0; }
 
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
-    void prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    void prepare(double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    /// Bypassed, the source is heard unplaced: its inputs' mean in W, every other channel silent.
+    void renderBypassed(float* const* channels, int numChannels, int mainInputs, int samples) noexcept override;
 
     juce::AudioProcessorEditor* createEditor() override;
 

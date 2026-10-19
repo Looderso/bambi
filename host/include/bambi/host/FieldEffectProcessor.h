@@ -54,7 +54,7 @@ public:
     ~FieldEffectProcessor() override { stopLink(); }
 
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
-    void prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    void prepare(double sampleRate, int maximumExpectedSamplesPerBlock) override;
 
     const Diagnostics& diagnostics() const noexcept { return diag_; }
 

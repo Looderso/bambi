@@ -35,6 +35,8 @@ PluginProcessor::PluginProcessor(const Spec& spec, const BusesProperties& buses,
         the same stable key the state format uses. Adding a parameter is a manifest edit, never a
         plugin edit -- which is the point of having a manifest. */
     params_.attach(spec_.params, apvts_);
+    bypass_ = dynamic_cast<juce::AudioParameterBool*>(apvts_.getParameter(kBypassKey));
+    jassert(bypass_ != nullptr);
     //  Which plugin's parameters the shared engine is reading, set before anything else it does.
     mod_.useManifest(spec_.mod);
 }
@@ -295,11 +297,54 @@ void PluginProcessor::shareEnergy() {
 
 // ---- audio ---------------------------------------------------------------------------
 
+void PluginProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) {
+    const int block = std::max(1, maximumExpectedSamplesPerBlock);
+    bypassed_.setSize(std::max({1, getTotalNumInputChannels(), getTotalNumOutputChannels()}), block);
+    bypassInputs_ = getMainBusNumInputChannels();
+    bypassStep_ = static_cast<float>(1.0 / std::max(1.0, kBypassFade * (sampleRate > 0.0 ? sampleRate : 48000.0)));
+    bypassMix_ = bypass_->get() ? 1.0f : 0.0f;
+    prepare(sampleRate, maximumExpectedSamplesPerBlock);
+}
+
+void PluginProcessor::renderBypassed(float* const* channels, int numChannels, int mainInputs, int samples) noexcept {
+    for (int c = std::max(0, mainInputs); c < numChannels; ++c) std::fill_n(channels[c], samples, 0.0f);
+}
+
 void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
     load_.begin();
     const SnapshotCensus::InAudioBlock inBlock;
+    const int n = buffer.getNumSamples();
+    const int width = buffer.getNumChannels();
+    const float target = bypass_->get() ? 1.0f : 0.0f;
+    //  A block wider or longer than prepared has no room beside it: it plays the engine, or silence.
+    const bool fits = n <= bypassed_.getNumSamples() && width <= bypassed_.getNumChannels();
+    const bool fading = (bypassMix_ != 0.0f || target != 0.0f) && fits;
+    if (fading) {
+        for (int c = 0; c < width; ++c) bypassed_.copyFrom(c, 0, buffer, c, 0, n);
+        renderBypassed(bypassed_.getArrayOfWritePointers(), width, std::min(bypassInputs_, width), n);
+    }
     renderBlock(buffer, midi);
-    load_.end(buffer.getNumSamples(), loadRate_);
+    if (fading) {
+        const int outputs = std::min(width, getTotalNumOutputChannels());
+        const auto towards = [&](float g) {
+            return target > g ? std::min(target, g + bypassStep_) : std::max(target, g - bypassStep_);
+        };
+        float g = bypassMix_;
+        for (int c = 0; c < outputs; ++c) {
+            float* out = buffer.getWritePointer(c);
+            const float* by = bypassed_.getReadPointer(c);
+            g = bypassMix_;
+            for (int i = 0; i < n; ++i) {
+                g = towards(g);
+                out[i] += g * (by[i] - out[i]);
+            }
+        }
+        bypassMix_ = outputs > 0 ? g : target;
+    } else if (!fits && target != 0.0f) {
+        buffer.clear();
+        bypassMix_ = target;
+    }
+    load_.end(n, loadRate_);
 }
 
 void PluginProcessor::prepareEnergy(int order, double sampleRate, bool withArrived) {

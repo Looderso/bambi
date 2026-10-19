@@ -105,7 +105,7 @@ bool BambiDecoderProcessor::clapAudioPortsConfigSelect(clap_id configId) {
 
 // ---- lifecycle -----------------------------------------------------------------------------
 
-void BambiDecoderProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) {
+void BambiDecoderProcessor::prepare(double sampleRate, int maximumExpectedSamplesPerBlock) {
     //  The committed state first and on its own: committed() takes the document's lock itself, and the work lock
     //  never nests inside it the other way round than in committing().
     const bambi::DecoderState state = document().committed().decoder;
