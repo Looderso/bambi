@@ -5,6 +5,7 @@
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "bambi/host/ShotScale.h"
 #include "bambi/host/TestPlayHead.h"
 #include "bambi/math/sh.hpp"
 #include "bambi/region/projection.hpp"
@@ -12,6 +13,7 @@
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/echo.png";
+    const float scale = bambi::host::takeShotScale(argc, argv);
 
     /*  --presets, --presets-name, --presets-delete: the browser over the panel, with a name being
         typed, and with the question asked. In a directory of the tool's own, set before the
@@ -155,7 +157,7 @@ int main(int argc, char** argv) {
         echo->tick();
     }
 
-    const juce::Image shot = echo->createComponentSnapshot(echo->getLocalBounds(), true, 2.0f);
+    const juce::Image shot = echo->createComponentSnapshot(echo->getLocalBounds(), true, scale);
     juce::File file(out);
     file.deleteFile();
     juce::FileOutputStream stream(file);
