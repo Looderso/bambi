@@ -237,8 +237,8 @@ TEST_CASE("sources serialise sparsely — defaults do not appear") {
     s.sources[4].input = SourceInput::Link;
     s.sources[4].link = Uuid::generate();
     const std::string text = saveState(Product::Encoder, encodeParams(), s);
-    CHECK(text.find("\"4\"") != std::string::npos);
-    CHECK(text.find("\"0\"") == std::string::npos);  // untouched slots stay absent
+    CHECK(text.find("\"mid\"") != std::string::npos);
+    CHECK(text.find("\"level\"") == std::string::npos);  // untouched slots stay absent
 
     PluginState out{encodeParams()};
     REQUIRE(loadState(Product::Encoder, encodeParams(), text, out).ok);
@@ -407,11 +407,11 @@ TEST_CASE("a document without regions, or with one that cannot be, loads with a 
     CHECK(s.params[static_cast<std::size_t>(EncoderParam::Region1Side)] == 0.0f);  // "sideways" is not a side
 }
 
-TEST_CASE("a cell on the region's tab is saved by name; one on a tab this build lacks is dropped") {
+TEST_CASE("a cell on the region's tab is saved by its source's name; one on a tab this build lacks is dropped") {
     PluginState a{encodeParams()};
     a.matrix.push_back(MatrixCell{MatrixTab::Region, 0, EncoderParam::MotionSpeed, 0.4});
     const std::string text = saveState(Product::Encoder, encodeParams(), a);
-    CHECK(text.find("\"region\"") != std::string::npos);
+    CHECK(text.find("\"source\": \"region1\"") != std::string::npos);
     PluginState b{encodeParams()};
     REQUIRE(loadState(Product::Encoder, encodeParams(), text, b).ok);
     REQUIRE(b.matrix.size() == 1);
@@ -433,10 +433,44 @@ TEST_CASE("a slot key that is not a whole number is ignored, not read as slot 0"
     PluginState a{encodeParams()};
     a.sources[1].input = SourceInput::Sidechain;
     std::string text = saveState(Product::Encoder, encodeParams(), a);
-    const auto at = text.find("\"1\"", text.find("\"sources\""));
+    const auto at = text.find("\"attack\"", text.find("\"sources\""));
     REQUIRE(at != std::string::npos);
-    text.replace(at, 3, "\"1x\"");
+    text.replace(at, 8, "\"1x\"");
     PluginState b{encodeParams()};
     REQUIRE(loadState(Product::Encoder, encodeParams(), text, b).ok);
     CHECK(b.sources[1].input == SourceInput::Self);
+}
+
+TEST_CASE("a modulation source is saved by its name, and a document that numbered them still loads") {
+    //  Catches: any of the three writers emitting the slot number instead of the name, and a reader
+    //  that maps a name to the wrong slot (every slot is checked by round trip).
+    PluginState a{encodeParams()};
+    a.matrix.push_back(MatrixCell{MatrixTab::Generators, 4, EncoderParam::MotionSpeed, 0.3});  // env2
+    a.sources[9].input = SourceInput::Sidechain;                                               // sc_low
+    a.envTriggers[0].input = TriggerInput::Audio;
+    a.envTriggers[0].source = 7;  // sc_attack
+    const std::string text = saveState(Product::Encoder, encodeParams(), a);
+    CHECK(text.find("\"source\": \"env2\"") != std::string::npos);
+    CHECK(text.find("\"sc_low\": {") != std::string::npos);
+    CHECK(text.find("\"source\": \"sc_attack\"") != std::string::npos);
+    PluginState b{encodeParams()};
+    REQUIRE(loadState(Product::Encoder, encodeParams(), text, b).ok);
+    REQUIRE(b.matrix.size() == 1);
+    CHECK(b.matrix[0].tab == MatrixTab::Generators);
+    CHECK(b.matrix[0].source == 4);
+    CHECK(b.sources[9].input == SourceInput::Sidechain);
+    CHECK(b.envTriggers[0].source == 7);
+    for (int slot = 0; slot < kNumSources; ++slot) CHECK(sourceNamed(sourceName(slot)) == slot);
+
+    PluginState c{encodeParams()};
+    REQUIRE(loadState(Product::Encoder, encodeParams(), R"({"version":1,"product":"encoder",
+        "matrix":[{"tab":"generators","source":4,"target":"motion.speed","depth":0.3}],
+        "sources":{"9":{"input":"sidechain"}},
+        "env_triggers":{"0":{"input":"audio","source":7}}})",
+                      c)
+                .ok);
+    REQUIRE(c.matrix.size() == 1);
+    CHECK(c.matrix[0].source == 4);
+    CHECK(c.sources[9].input == SourceInput::Sidechain);
+    CHECK(c.envTriggers[0].source == 7);
 }
