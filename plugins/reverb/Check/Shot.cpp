@@ -5,6 +5,7 @@
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "bambi/host/ShotScale.h"
 #include "bambi/host/TestPlayHead.h"
 #include "bambi/math/sh.hpp"
 #include "bambi/ui/RegionClipboard.h"
@@ -12,16 +13,7 @@
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/reverb.png";
-    /*  --scale N, anywhere after the output file: the picture's pixels per window point, 2 unless
-        asked. Taken out of argv, so the options after it read as they would without it. */
-    float scale = 2.0f;
-    for (int i = 2; i + 1 < argc; ++i)
-        if (juce::String(argv[i]) == "--scale") {
-            scale = juce::String(argv[i + 1]).getFloatValue();
-            for (int j = i; j + 2 < argc; ++j) argv[j] = argv[j + 2];
-            argc -= 2;
-            break;
-        }
+    const float scale = bambi::host::takeShotScale(argc, argv);
 
     BambiReverbProcessor proc;
     juce::AudioProcessor::BusesLayout l;
