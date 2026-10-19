@@ -31,3 +31,12 @@ target_link_libraries(bambi-live-host-check
     PRIVATE bambi-live bambi-decode bambi-encode bambi-echo bambi-reverb bambi-loop bambi-devices bambi-remote bambi-ui juce::juce_audio_processors juce::juce_audio_devices
             juce::juce_gui_basics
             juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+
+# Draws the window to a PNG over a set built in the tool: no Live, no audio device, no installed plugin.
+juce_add_console_app(bambi-live-host-shot PRODUCT_NAME "bambi-live-host-shot")
+target_sources(bambi-live-host-shot PRIVATE Check/Shot.cpp Source/Rail.cpp Source/Routing.cpp Source/Timeline.cpp Source/AudioSheet.cpp Source/Plugins.cpp)
+target_compile_definitions(bambi-live-host-shot PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+target_link_libraries(bambi-live-host-shot
+    PRIVATE bambi-live bambi-decode bambi-encode bambi-echo bambi-reverb bambi-remote bambi-ui juce::juce_audio_processors juce::juce_gui_basics
+            juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+target_include_directories(bambi-live-host-shot PRIVATE ${PROJECT_SOURCE_DIR}/host/include)  # ShotScale.h, inline
