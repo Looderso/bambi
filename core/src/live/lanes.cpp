@@ -42,7 +42,10 @@ std::size_t putPoint(Lane& lane, LanePoint p) {
         at->value = p.value;
         return static_cast<std::size_t>(at - pts.begin());
     }
-    return static_cast<std::size_t>(pts.insert(at, p) - pts.begin());
+    //  the insert first, on its own: it can reallocate, and the order in which one expression's operands are evaluated is not
+    //  fixed, so a begin() taken beside it may be of the storage it left
+    const auto put = pts.insert(at, p);
+    return static_cast<std::size_t>(put - pts.begin());
 }
 
 std::size_t movePoint(Lane& lane, std::size_t index, LanePoint to) {

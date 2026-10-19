@@ -445,11 +445,29 @@ public:
     /*  Closing the window hides it, as a Mac app's window does: the host keeps playing, its plugins and their link stay as they
         are, and "open host" on the device or a second launch brings it back. Quitting is the menu's (Cmd-Q); the host also quits
         by itself a minute after Live's device has gone. */
-    void closeButtonPressed() override { setVisible(false); }
+    void closeButtonPressed() override {
+        setVisible(false);
+        juce::Process::
+            hide();  // the app too, so the next click on its icon brings it to the front, and the window with it
+    }
     void reveal() {
         setVisible(true);
         toFront(true);
     }
+
+private:
+    /*  The Dock's click on a running app makes it active and nothing more -- JUCE does not take the Mac's "reopen" -- so the
+        window is shown when the host becomes the frontmost app while hidden: a click on its icon, Cmd-Tab, "open host". */
+    struct Reopen final : juce::Timer {
+        explicit Reopen(Window& w) : window(w) { startTimerHz(4); }
+        void timerCallback() override {
+            const bool front = juce::Process::isForegroundProcess();
+            if (front && !wasFront && !window.isVisible()) window.reveal();
+            wasFront = front;
+        }
+        Window& window;
+        bool wasFront{true};
+    } reopen_{*this};
 };
 
 class App final : public juce::JUCEApplication {
