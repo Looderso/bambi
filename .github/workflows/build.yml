@@ -117,10 +117,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p out/VST3 out/CLAP
-          for p in Encoder Echo Reverb Decoder; do
-            dir="build-plugin/plugins/$(echo "$p" | tr '[:upper:]' '[:lower:]')/Bambi${p}_artefacts/Release"
-            cp -R "$dir/VST3/bambi $p.vst3" out/VST3/
-            cp -R "$dir/CLAP/bambi $p.clap" out/CLAP/
+          #  folder:target:name -- the Encoder's folder and target keep the old word, its bundles the new name
+          for p in "encoder:Encoder:Path Encoder" "echo:Echo:Echo" "reverb:Reverb:Reverb" "decoder:Decoder:Decoder"; do
+            IFS=: read -r folder target name <<< "$p"
+            dir="build-plugin/plugins/$folder/Bambi${target}_artefacts/Release"
+            cp -R "$dir/VST3/bambi $name.vst3" out/VST3/
+            cp -R "$dir/CLAP/bambi $name.clap" out/CLAP/
           done
           cp "tools/release/INSTALL-${{ matrix.system }}.txt" out/INSTALL.txt
           cp LICENSE LICENSE-AGPL-3.0.md THIRD-PARTY-NOTICES.txt out/

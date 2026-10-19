@@ -62,6 +62,8 @@ public:
     void onHome(std::function<void()> home) { onHome_ = std::move(home); }
     /// Where the icon, the wordmark and the plugin's name were drawn. For a check that clicks them.
     juce::Rectangle<float> homeArea() const { return homeArea_; }
+    /// Where the plugin's name is written: as wide as the widest plugin's, in every plugin.
+    juce::Rectangle<float> productArea() const { return productArea_; }
     void onPreset(std::function<void()> toggleBrowser, std::function<void(int)> step);
     /// Where the name and the two chevrons were last drawn. For a check that clicks them as the mouse does.
     juce::Rectangle<float> presetNameArea() const { return presetName_; }
@@ -120,7 +122,7 @@ private:
     Preset preset_;
     std::function<void()> onPresetName_;
     std::function<void()> onHome_;
-    juce::Rectangle<float> homeArea_;
+    juce::Rectangle<float> homeArea_, productArea_;
     std::function<void(int)> onPresetStep_;
     juce::Rectangle<float> presetName_, presetPrev_, presetNext_;
     bool canUndo_{false}, canRedo_{false};

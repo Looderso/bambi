@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/ProductName.h"
 #include "bambi/ui/Widgets.h"
 
 namespace bambi::ui {
@@ -216,11 +217,12 @@ void Header::paint(juce::Graphics& g) {
     g.setColour(colour::rule);
     g.fillRect(x, cy - hdr::dividerHeight / 2.0f, theme::stroke::rule, hdr::dividerHeight);
     x += theme::stroke::rule + hdr::gap;
-    //  reserved at "encoder"'s width, the longest word in the suite -- every other plugin's is
-    //  shorter, so this is the one word that never moves what follows it, and the header does not
-    //  jump when an instance switches product
-    const auto productWidth = textWidth(labelFont(), "encoder");
-    text(g, plugin_, labelFont(), colour::label, {x, 0.0f, productWidth + 2.0f, h});
+    //  reserved at the widest product name, so what follows never moves and the header does not jump
+    //  when an instance switches product
+    auto productWidth = 0.0f;
+    for (const Product p : kProducts) productWidth = std::max(productWidth, textWidth(labelFont(), productName(p)));
+    productArea_ = {x, 0.0f, productWidth + 2.0f, h};
+    text(g, productName(productFromName(plugin_.toStdString())), labelFont(), colour::label, productArea_);
     homeArea_ = {hdr::inset, 0.0f, x + productWidth + 2.0f - hdr::inset, h};  // icon, wordmark and name
     x += productWidth + hdr::gap;
     g.setColour(colour::rule);
@@ -288,10 +290,12 @@ void Header::paint(juce::Graphics& g) {
     strokeChevron(g, presetNext_, 1, 0, live ? colour::text : colour::inactive);
     right = presetNext_.getX() - hdr::gap / 4.0f;
 
-    const auto presetName =
-        (preset_.name.isEmpty() ? juce::String("-") : preset_.name) + (preset_.modified ? " *" : "");
+    //  The name's box is one width whatever the name, so stepping through presets moves nothing; a name too long for
+    //  it is cut, and keeps its modified mark. The browser shows it whole.
+    const auto nameWidth = hdr::presetName;
+    const auto presetName = elided(labelFont(), preset_.name.isEmpty() ? juce::String("-") : preset_.name,
+                                   nameWidth - 2.0f, preset_.modified ? " *" : "");
     const auto presetLabel = "preset " + juce::String::fromUTF8("\xc2\xb7") + " ";
-    const auto nameWidth = std::min(hdr::presetName, textWidth(labelFont(), presetName) + 2.0f);
     const auto presetWidth = textWidth(labelFont(), presetLabel);
     presetName_ = {right - nameWidth - presetWidth, 0.0f, presetWidth + nameWidth, h};
     if (preset_.open) openBlock(presetName_.getX(), presetName_.getRight());

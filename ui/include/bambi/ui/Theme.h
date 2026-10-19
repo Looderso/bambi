@@ -607,7 +607,7 @@ namespace header
     inline constexpr float togglePadX  = 4.0f;     ///< either side of settings' or the preset's block while open
     inline constexpr float tabWheel    = 140.0f;   ///< pixels per wheel notch, when they overflow
     inline constexpr float chevronBox  = 16.0f;    ///< reserved at each end, only while they overflow
-    inline constexpr float presetName  = 150.0f;   ///< the most the preset's name is given before it is cut
+    inline constexpr float presetName  = 150.0f;   ///< the preset's name, whatever its length; a longer one is cut
     inline constexpr float presetStep  = 14.0f;    ///< the preset's chevron box, either side of its name
     inline constexpr float chevronW    = 4.0f;
     inline constexpr float chevronH    = 5.0f;

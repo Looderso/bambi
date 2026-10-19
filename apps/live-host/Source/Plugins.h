@@ -31,7 +31,7 @@ struct Loaded {
     juce::String status;                                ///< what was loaded and how, or why not
 };
 
-/// `name` as installed, "bambi Encoder". `outputs` is the Decoder's; the others ignore it.
+/// `name` as installed, "bambi Path Encoder". `outputs` is the Decoder's; the others ignore it.
 Loaded loadInstalled(const juce::String& name, Role role, int order, double rate, int maxBlock, int outputs = 2);
 
 /// `channels` channels as a VST3 plugin can be asked for them: that many distinct speakers, since JUCE passes a

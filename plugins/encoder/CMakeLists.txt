@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# bambi Encoder. The suite's shared plugin setup -- JUCE, clap-juce-extensions, the manufacturer
+# bambi Path Encoder. The suite's shared plugin setup -- JUCE, clap-juce-extensions, the manufacturer
 # identity and the format code rules -- is in ../CMakeLists.txt.
 
 # ---- identity: configurable while developing, frozen at release -------------
-set(BAMBI_PLUGIN_NAME "bambi Encoder"     CACHE STRING "Plugin name shown by hosts")
-set(BAMBI_PLUGIN_CODE "Benc"               CACHE STRING "Four characters, exactly one upper-case (AU)")
-set(BAMBI_BUNDLE_ID   "org.bambi.encoder" CACHE STRING "Reverse-DNS bundle id, also the CLAP id")
+set(BAMBI_PLUGIN_NAME "bambi Path Encoder" CACHE STRING "Plugin name shown by hosts")
+set(BAMBI_PLUGIN_CODE "Bpat"               CACHE STRING "Four characters, exactly one upper-case (AU)")
+set(BAMBI_BUNDLE_ID   "org.bambi.path-encoder" CACHE STRING "Reverse-DNS bundle id, also the CLAP id")
 
 bambi_check_codes("${BAMBI_MANUFACTURER_CODE}" "${BAMBI_PLUGIN_CODE}")
 message(STATUS "plugin identity: ${BAMBI_COMPANY_NAME} (${BAMBI_MANUFACTURER_CODE}) / "

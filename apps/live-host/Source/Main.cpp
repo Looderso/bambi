@@ -20,6 +20,7 @@
 #include "Settings.h"
 #include "Timeline.h"
 #include "bambi/live/midi.hpp"
+#include "bambi/ui/ProductName.h"
 #include "bambi/ui/Theme.h"
 #include "devices.hpp"
 #include "loop.hpp"
@@ -362,12 +363,12 @@ private:
         return nullptr;
     }
 
-    static const char* nameOf(View v) {
+    static juce::String nameOf(View v) {
         switch (v) {
-            case View::Encoder: return "encoder";
-            case View::Echo: return "echo";
-            case View::Reverb: return "reverb";
-            case View::Decoder: return "decoder";
+            case View::Encoder: return ui::productName(Product::Encoder);
+            case View::Echo: return ui::productName(Product::Echo);
+            case View::Reverb: return ui::productName(Product::Reverb);
+            case View::Decoder: return ui::productName(Product::Decoder);
             case View::Routing: return "routing";
             case View::Timeline: return "timeline";
             case View::Audio: return "audio";

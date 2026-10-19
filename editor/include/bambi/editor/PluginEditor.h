@@ -46,6 +46,8 @@ public:
     /// Drive one frame, as the timer does.
     void tick();
     void paintNow();
+    /// The shared header, as a check drives and measures it.
+    ui::Header& header() noexcept { return header_; }
     /// How the scene is looked at now. For checks.
     const ui::SceneViewState& sceneView() const { return view_; }
     /// The equirect, as the shared region checks drive it: through the mouse, and asked what it drew.
@@ -231,7 +233,6 @@ protected:
     /// Bring the footer in front of whatever covers the window, as the settings page has it.
     void footerToFront();
     void showSettings(bool open);
-    ui::Header& header() noexcept { return header_; }
     ui::MatrixView& matrix() noexcept { return matrix_; }
 
 private:
