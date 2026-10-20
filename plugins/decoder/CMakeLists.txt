@@ -37,7 +37,7 @@ juce_add_binary_data(bambi-decoder-data SOURCES
     ${PROJECT_SOURCE_DIR}/core/data/decode/ku100.json)
 set_target_properties(bambi-decoder-data PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bambi-decode bambi-decoder-data bambi-remote qrcodegen juce::juce_osc
+bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bambi-decode bambi-decoder-data bambi-remote qrcodegen
     SOURCES
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
@@ -46,6 +46,11 @@ bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bamb
         Source/UI/SceneView.cpp
         Source/UI/HeadStrip.cpp
         Source/UI/Panel.cpp)
+#  OSC, for the head tracker: its one source compiled here, beside the code that calls it, and not the module, which
+#  would compile its dependencies (JUCE's core and events) into this library and every binary that links it. Those
+#  come from the binary's own JUCE. In the same archive as its callers, a linker that reads archives once in order
+#  still finds it.
+target_sources(bambi-decoder-code PRIVATE ${PROJECT_SOURCE_DIR}/third_party/JUCE/modules/juce_osc/juce_osc.cpp)
 #  Automatic reference counting for the launcher: it keeps the helper's NSRunningApplication across calls. On the
 #  other platforms the file is its C++ stub, compiled as C++.
 if(APPLE)

@@ -63,13 +63,26 @@ add_compile_definitions(JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE
 
 # JUCE, compiled once, for the tools. A module links its sources into every target that links it, so the
 # libraries below take only its headers and settings (bambi-juce-headers), and each binary gets exactly one
-# copy of JUCE: a plugin the one JUCE's plugin wrapper compiles into it, a tool this one.
+# copy of JUCE: a plugin the one JUCE's plugin wrapper compiles into it, a tool this one. No library links a
+# module itself: one that did would compile a copy into every binary that links it, beside that binary's own.
 add_library(bambi-juce STATIC)
 target_link_libraries(bambi-juce PRIVATE juce::juce_audio_processors PUBLIC juce::juce_recommended_config_flags)
 add_library(bambi-juce-headers INTERFACE)
 target_include_directories(bambi-juce-headers INTERFACE $<TARGET_PROPERTY:bambi-juce,INCLUDE_DIRECTORIES>)
 target_compile_definitions(bambi-juce-headers INTERFACE $<TARGET_PROPERTY:bambi-juce,COMPILE_DEFINITIONS>)
 target_link_libraries(bambi-juce INTERFACE bambi-juce-headers)
+
+# JUCE, compiled once more, for what hosts plugins: the live host and the conformance suite. Built to load VST3,
+# and with modal loops, which a check that drives a window needs; the shared one above is neither.
+add_library(bambi-juce-hosting STATIC)
+target_compile_definitions(bambi-juce-hosting PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(bambi-juce-hosting
+    PRIVATE juce::juce_audio_processors juce::juce_audio_devices juce::juce_gui_basics
+    PUBLIC juce::juce_recommended_config_flags)
+add_library(bambi-juce-hosting-headers INTERFACE)
+target_include_directories(bambi-juce-hosting-headers INTERFACE $<TARGET_PROPERTY:bambi-juce-hosting,INCLUDE_DIRECTORIES>)
+target_compile_definitions(bambi-juce-hosting-headers INTERFACE $<TARGET_PROPERTY:bambi-juce-hosting,COMPILE_DEFINITIONS>)
+target_link_libraries(bambi-juce-hosting INTERFACE bambi-juce-hosting-headers)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/ui ${CMAKE_BINARY_DIR}/ui)
 add_subdirectory(${PROJECT_SOURCE_DIR}/host ${CMAKE_BINARY_DIR}/host)
@@ -88,17 +101,17 @@ function(bambi_plugin_code target)
               juce::juce_recommended_warning_flags)
 endfunction()
 
-# A console app over plugin code, with no host: a check suite, a picture tool, a bench. It links the shared
-# JUCE, and no link-time optimisation of its own: that is for the plugins. OWN_JUCE compiles a copy of its
-# own instead, for a tool that needs JUCE configured differently. Its main thread gets the 8 MB stack macOS
-# gives, where Windows would give 1 MB: a check holds several processors on the stack, at about 290 KB each.
+# A console app over plugin code: a check suite, a picture tool, a bench. It links the shared JUCE, and no
+# link-time optimisation of its own: that is for the plugins. HOSTING links the JUCE built to host plugins. Its
+# main thread gets the 8 MB stack macOS gives, where Windows would give 1 MB: a check holds several processors on
+# the stack, at about 290 KB each.
 function(bambi_plugin_tool target)
-  cmake_parse_arguments(T "OWN_JUCE" "NAME" "SOURCES;LIBRARIES" ${ARGN})
+  cmake_parse_arguments(T "HOSTING" "NAME" "SOURCES;LIBRARIES" ${ARGN})
   juce_add_console_app(${target} PRODUCT_NAME "${target}")
   target_sources(${target} PRIVATE ${T_SOURCES})
   target_compile_definitions(${target} PRIVATE "JucePlugin_Name=\"${T_NAME}\"")
-  if(T_OWN_JUCE)
-    target_link_libraries(${target} PRIVATE juce::juce_audio_processors)
+  if(T_HOSTING)
+    target_link_libraries(${target} PRIVATE bambi-juce-hosting)
   else()
     target_link_libraries(${target} PRIVATE bambi-juce)
   endif()
