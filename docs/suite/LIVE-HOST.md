@@ -135,7 +135,8 @@ Three columns with wires: Live's tracks and groups plus the host's inputs; retur
 Encoder's chip, its inserts (click opens, drag reorders), "+" for inserts, and "send": pressed, it rings what it may
 reach and a click wires it at 0 dB; wires open under the chosen node as chips, dragged for level. The set opens with
 everything in Live; *route all* and *all to Live* sit in the band. A sidechain is picked by arming a slot
-(`ui::Armed`) and clicking a source.
+(`ui::Armed`) and clicking a source. The three columns always fit the page: the gutters where the wires run narrow
+until they do, so every Decoder and its cross stay in view; more Decoders than the page's height holds scroll down.
 
 ## Outputs and the I/O page
 

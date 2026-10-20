@@ -573,7 +573,8 @@ namespace routing
     inline constexpr float decoderColumn = 220.0f;
     inline constexpr float tagHeight  = 14.0f;   ///< a node's tag: live, bambi, bus, in group
     inline constexpr float tagPad     = 5.0f;    ///< text inside a tag
-    inline constexpr float wireGutter    = 72.0f;   ///< between the columns, where the wires run
+    inline constexpr float wireGutter    = 72.0f;   ///< between the columns, where the wires run, at its widest
+    inline constexpr float wireGutterLeast = 40.0f; ///< and as narrow as it gets, so the columns fit the page
     inline constexpr float control    = 16.0f;   ///< a marker's, a chip's, a button's height
     inline constexpr float gap        = 4.0f;    ///< between controls on a row
     inline constexpr float padX       = 8.0f;    ///< text inside a box or a chip

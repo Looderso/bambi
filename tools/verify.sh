@@ -63,7 +63,7 @@ if [ "${1:-}" != "--core" ]; then
     # the live host's window, when the tree is configured with -DBAMBI_BUILD_HOST=ON
     if grep -q '^BAMBI_BUILD_HOST:BOOL=ON' build-plugin/CMakeCache.txt 2>/dev/null; then
         host_shot="build-plugin/apps/live-host/bambi-live-host-shot_artefacts/Release/bambi-live-host-shot"
-        for mode in --routing --wires --timeline --session --interface --outputs --inputs --midi; do
+        for mode in --routing --wires --decoders --timeline --session --interface --outputs --inputs --midi; do
             step "live host $mode" "$host_shot" "$shot" $mode
         done
     fi

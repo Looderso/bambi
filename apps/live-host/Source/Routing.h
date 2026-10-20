@@ -12,6 +12,7 @@
 #include "bambi/ui/Armed.h"
 #include "bambi/ui/ConfirmBox.h"
 #include "bambi/ui/HitArea.h"
+#include "bambi/ui/Theme.h"
 
 /*  The live host's routing page: where everything the host plays sends its audio. Three columns, wires between
  *  them: Live's tracks and groups, as Live lists them, then the host's own inputs; Live's returns and Main; the
@@ -70,6 +71,9 @@ public:
         const auto d = decoderAt_.find(id);
         return d == decoderAt_.end() ? std::nullopt : std::optional<juce::Rectangle<float>>{d->second};
     }
+    /// Whether a removal waits on its confirmation, and its answer. For checks.
+    bool confirming() const { return confirm_.asking(); }
+    void confirm(bool yes) { confirm_.answer(yes); }
     /// The open menu's items, as last drawn: what each says and where; none while no menu is open. For checks.
     const std::vector<std::pair<juce::String, juce::Rectangle<float>>>& drawnMenu() const { return menuItems_; }
     /// The node whose wires are open under its line; none when none is chosen. For checks.
@@ -165,6 +169,7 @@ private:
     std::vector<live::PlayingDecoder> playing_;
     std::map<live::TrackId, Spot> spots_;                                 ///< every line, as last drawn
     std::map<std::uint64_t, juce::Rectangle<float>> decoderAt_;           ///< each Decoder's box, as last drawn
+    float gutter_{ui::theme::routing::wireGutter};  ///< between the columns, as last laid out
     std::map<live::TrackId, std::vector<juce::Rectangle<float>>> chips_;  ///< each chain's insert chips, as drawn
     std::optional<live::TrackId> chosen_;  ///< the node whose wires are open
     ui::Armed<Waiting> armed_;

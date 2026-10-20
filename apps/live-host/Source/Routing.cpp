@@ -514,7 +514,7 @@ void RoutingPage::wires(juce::Graphics& g) {
             juce::Path p;
             p.startNewSubPath(from0);
             if (intoRight) {
-                const float out = std::max(from0.x, to.x) + rt::wireGutter / 2.0f;
+                const float out = std::max(from0.x, to.x) + gutter_ / 2.0f;
                 p.cubicTo({out, from0.y}, {out, to.y}, to);
             } else {
                 const float mid = (from0.x + to.x) / 2.0f;
@@ -917,10 +917,14 @@ void RoutingPage::body(juce::Graphics& g, float top) {
             std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == line.node; });
         if (n != tree_.nodes.end()) need = std::max(need, liveNeed(*n, line.depth));
     }
-    const float room = w - 2.0f * rt::left - 2.0f * rt::wireGutter - rt::fieldColumn - rt::decoderColumn;
+    //  the gutters give way first, so the three columns fit the page at Live's narrowest; past that, Live's column
+    //  takes the room up to its widest
+    const float fixed = 2.0f * rt::left + rt::fieldColumn + rt::decoderColumn;
+    gutter_ = std::clamp((w - fixed - rt::liveLeast) / 2.0f, rt::wireGutterLeast, rt::wireGutter);
+    const float room = w - fixed - 2.0f * gutter_;
     const float liveWidth = std::clamp(need, rt::liveLeast, std::max(rt::liveLeast, std::min(rt::liveMost, room)));
-    const float fieldX = rt::left + liveWidth + rt::wireGutter;
-    const float decoderX = fieldX + rt::fieldColumn + rt::wireGutter;
+    const float fieldX = rt::left + liveWidth + gutter_;
+    const float decoderX = fieldX + rt::fieldColumn + gutter_;
 
     float y = ui::drawGroupHeading(g, rt::left, top, liveWidth, "live's tracks");
     for (const live::Line& line : lines) {

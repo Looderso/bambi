@@ -1315,6 +1315,58 @@ int timelineHolds() {
     return ok ? 0 : 1;
 }
 
+//  Six Decoders on a page as wide as the host's window, beside a track whose chain is longer than Live's column: each
+//  Decoder's box inside the page, and a press on its cross asks to remove it; the last one answered, and removed.
+//  Catches: the columns laid out with their widest gutters on a page too narrow for them, so the Decoders' column
+//  and its crosses fall past the page's right edge.
+int decodersFitHolds() {
+    livehost::RoutingPage page;
+    page.setSize(ui::theme::metrics::windowWidth, ui::theme::metrics::windowHeight);
+    live::Tree tree;
+    live::Node track;
+    track.id = 1;
+    track.kind = live::Node::Kind::Track;
+    track.name = "a track with a long name";
+    track.colour = "#e0b552";
+    tree.nodes = {track};
+    live::Shape shape;
+    shape.taken = {1};
+    shape.decoders = {1, 2, 3, 4, 5, 6};
+    shape.chains = {{1,
+                     {{7, live::Effect::Echo, 0},
+                      {8, live::Effect::Reverb, 0},
+                      {9, live::Effect::Echo, 0},
+                      {10, live::Effect::Reverb, 0}}}};
+    std::size_t left = shape.decoders.size();
+    page.reshape = [&](live::Shape s) { left = s.decoders.size(); };
+    page.preview = [](const live::Shape&) {};
+    page.show(tree, shape, live::layOut(tree, shape), {{1, 0}});
+    juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
+    const auto paint = [&] {
+        juce::Graphics g(image);
+        page.paint(g);
+    };
+    paint();
+    namespace rt = ui::theme::routing;
+    int inside = 0, asks = 0;
+    for (const std::uint64_t id : shape.decoders) {
+        const auto box = page.drawnDecoderAt(id);
+        if (!box) continue;
+        if (box->getX() >= 0.0f && box->getRight() <= static_cast<float>(page.getWidth())) ++inside;
+        const float glyph = ui::theme::controls::closeGlyph;
+        page.clickAt({box->getRight() - rt::padX - glyph / 2.0f, box->getY() + rt::boxHeight / 2.0f});
+        paint();
+        if (page.confirming()) ++asks;
+        page.confirm(id == shape.decoders.back());
+        paint();
+    }
+    const int n = static_cast<int>(shape.decoders.size());
+    const int failed = (inside == n && asks == n && left == shape.decoders.size() - 1) ? 0 : 1;
+    std::printf("  %d of %d Decoders inside a %d px page, %d crosses ask, the last removed: %s %s\n", inside, n,
+                page.getWidth(), asks, left == shape.decoders.size() - 1 ? "yes" : "no", failed ? "  FAIL" : "");
+    return failed;
+}
+
 //  The routing page over a set of a group with two tracks, a track, a return and two Decoders: painted in every state
 //  -- nothing chosen, a node chosen with its wires open, "send" waiting, the menu open -- and pressed everywhere on a
 //  grid, painted again after each press; then one track taken, sent to the second Decoder, its level dragged, the
@@ -2217,6 +2269,8 @@ int main() {
 
     std::printf("the routing page\n");
     failed += routingHolds();
+    std::printf("every Decoder within reach\n");
+    failed += decodersFitHolds();
 
     std::printf("the column's transport\n");
     failed += railTransportHolds();
