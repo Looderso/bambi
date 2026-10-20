@@ -313,6 +313,10 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
     return root;
 }
 
+namespace {
+
+/// Every field held to the range the window gives it, so a session written by hand or by an older build opens
+/// without a value the engine cannot take: a head of size 0, a loudspeaker at no distance, a port below 1.
 void sanitiseDecoder(DecoderState& d) {
     d.hrtf = std::clamp(d.hrtf, 0, 2);
     d.headSize = std::clamp(d.headSize, 0.75f, 1.3f);
@@ -333,6 +337,8 @@ void sanitiseDecoder(DecoderState& d) {
         l.gain = std::max(0.0, l.gain);
     }
 }
+
+}  // namespace
 
 LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginState& out) {
     LoadResult r;

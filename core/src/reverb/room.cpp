@@ -14,7 +14,10 @@ constexpr double kDriest = 0.95;              // a room cannot absorb more than 
 
 double lerp(double a, double b, double t) { return a + (b - a) * t; }
 
-}  // namespace
+/// width : depth : height of a shape -- room 1 : 1.25 : 0.65, hall 1 : 1.8 : 0.6, tall 1 : 1.1 : 1.2.
+struct Proportions {
+    double width, depth, height;
+};
 
 Proportions proportionsOf(RoomShape shape) {
     switch (shape) {
@@ -24,6 +27,8 @@ Proportions proportionsOf(RoomShape shape) {
     }
     return {1.0, 1.25, 0.65};
 }
+
+}  // namespace
 
 double eyringAbsorption(double volume, double surface, double rt60) {
     return 1.0 - std::exp(-0.161 * volume / (surface * rt60));

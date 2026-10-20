@@ -20,6 +20,18 @@ enum class ParamType : std::uint8_t { Float, Choice, Bool };
 /// How a parameter answers modulation. `NotModulatable` is a parameter no cell can reach.
 enum class DestKind : std::uint8_t { NotModulatable, Rate, DirectScalar, DirectAngle };
 
+/// How fast a destination of each kind follows its modulation, unless its plugin says otherwise: a rate and a level
+/// in seconds (a rate's 90 % of target in about 46 ms), an angle in degrees a second. 0 for what is not modulated.
+constexpr double defaultSmoothing(DestKind d) {
+    switch (d) {
+        case DestKind::Rate: return 0.020;
+        case DestKind::DirectScalar: return 0.040;
+        case DestKind::DirectAngle: return 720.0;
+        case DestKind::NotModulatable: break;
+    }
+    return 0.0;
+}
+
 enum class ParamGroup : std::uint8_t { Transform, Motion, Render, Input, Modulation, Lfo, Envelope, Region };
 
 /// The largest parameter list any plugin may have; shared machinery sizes its fixed arrays by

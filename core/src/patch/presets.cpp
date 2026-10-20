@@ -81,10 +81,16 @@ std::optional<PresetRef> parsePresetPath(std::string_view typed) {
 
 std::string presetPath(const PresetRef& ref) { return ref.folder.empty() ? ref.name : ref.folder + "/" + ref.name; }
 
+namespace {
+
+/// The keys a preset leaves as they are: the encoder's input mode says what is plugged in, not
+/// how it sounds, and loading a preset must not silently rewire the track.
 std::span<const std::string_view> presetKeptKeys(Product p) {
     static constexpr std::array<std::string_view, 1> kEncoder{"input.mode"};
     return p == Product::Encoder ? std::span<const std::string_view>(kEncoder) : std::span<const std::string_view>{};
 }
+
+}  // namespace
 
 std::string presetText(Product p, const ParamManifest& m, const PluginState& s) {
     Json j = toJson(p, m, s);

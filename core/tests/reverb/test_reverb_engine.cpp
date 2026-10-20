@@ -289,8 +289,8 @@ TEST_CASE("the room does not care how the audio is cut, a reset is a fresh start
 }
 
 TEST_CASE("a setting handed over only when it changed renders as it would however the audio is cut") {
-    //  The hop a level is brought in over can begin anywhere in a caller's pieces; a chunk that straddled
-    //  its end took one decision for both sides (found in Echo's review, the same shape here).
+    //  The hop a level is brought in over can begin anywhere in a caller's pieces.
+    //  Catches: a chunk that straddles the hop's end and takes one decision for both sides.
     const int C = 16, frames = 4000;
     std::vector<float> in(static_cast<std::size_t>(C * frames));
     unsigned seed = 6u;

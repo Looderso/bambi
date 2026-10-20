@@ -5,23 +5,11 @@
 #include <cmath>
 #include <type_traits>
 
+#include "bambi/dsp/ramp.hpp"
 #include "bambi/math/vec3.hpp"
 #include "bambi/mod/manifest.hpp"
 
 namespace bambi {
-namespace {
-
-/// One-pole coefficient. `tauSeconds` is in seconds, named for its unit on purpose: a millisecond
-/// argument under the same name once made every destination slew 1000x too long.
-double smoothCoef(double dt, double tauSeconds) { return 1.0 - std::exp(-dt / std::max(tauSeconds, 1e-5)); }
-
-double wrap01(double x) {
-    x -= std::floor(x);
-    return (x < 0.0 || x >= 1.0) ? 0.0 : x;
-}
-
-}  // namespace
-
 double lfoShapeValue(LfoShape shape, double phaseTurns) {
     switch (shape) {
         case LfoShape::Sine: return std::sin(2.0 * kPi * phaseTurns);
@@ -217,7 +205,7 @@ void ModulationEngine::setState(const PluginState& st) {
     owned_ = ModulationPatch::compile(manifest(), st);
     patch_ = &owned_;
     params_ = st.params;
-    seedLfos();  // seeds are fixed, so this restarts the LFOs -- as setState always has
+    seedLfos();  // seeds are fixed, so this restarts the LFOs
 }
 
 void ModulationEngine::reset() {

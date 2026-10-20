@@ -160,9 +160,8 @@ TEST_CASE("Level rises with amplitude") {
     CHECK(b > a + 0.1);
 }
 
-/*  The regression test for the block-based rewrite: process() copies in runs and indexes the
- *  ring with a mask, and a source fed 128 samples at a time must produce bit-identical features
- *  to the same source fed 777 samples at a time, or the hop alignment is wrong and every
+/*  process() copies in runs and indexes the ring with a mask, and a source fed 128 samples at a time must produce
+ *  bit-identical features to the same source fed 777 samples at a time, or the hop alignment is wrong and every
  *  calibrated constant is read at the wrong moment. 777 is deliberately not a divisor of the hop. */
 TEST_CASE("results do not depend on the block size the host happens to use") {
     const auto x = sine(300.0, 1.0, 0.4f);

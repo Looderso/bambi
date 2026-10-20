@@ -64,16 +64,10 @@ constexpr DestKind kDestTable[] = {
 };
 
 constexpr double smoothingOfKey(std::string_view k) {
-    switch (destOf(k)) {
-        case DestKind::Rate: return 0.020;
-        case DestKind::DirectScalar:
-            // Room size rebuilds and crossfades the delay network when it moves far enough, so it is
-            // smoothed harder than a gain: a size that jitters would fade forever.
-            return k == "room.size" ? 0.250 : 0.040;
-        case DestKind::DirectAngle: return 720.0;  // degrees a second
-        case DestKind::NotModulatable: break;
-    }
-    return 0.0;
+    // Room size rebuilds and crossfades the delay network when it moves far enough, so it is
+    // smoothed harder than a gain: a size that jitters would fade forever.
+    if (k == "room.size") return 0.250;
+    return defaultSmoothing(destOf(k));
 }
 
 constexpr double kSmoothingTable[] = {

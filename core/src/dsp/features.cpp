@@ -5,14 +5,11 @@
 #include <cmath>
 
 #include "bambi/dsp/fft.hpp"
+#include "bambi/dsp/ramp.hpp"
 #include "bambi/math/vec3.hpp"
 
 namespace bambi {
 namespace {
-
-/// One-pole coefficient. The argument is SECONDS — named so, because writing a time
-/// constant in milliseconds into a function that divides dt by it costs a factor of 1000.
-double smoothCoef(double dt, double tauSeconds) { return 1.0 - std::exp(-dt / std::max(tauSeconds, 1e-5)); }
 
 double normRange(double v, double lo, double hi) { return clampd((v - lo) / (hi - lo), 0.0, 1.0); }
 

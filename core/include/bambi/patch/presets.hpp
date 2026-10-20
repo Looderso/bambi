@@ -31,10 +31,6 @@ std::optional<PresetRef> parsePresetPath(std::string_view typed);
 /// "folder/name", or "name": what `parsePresetPath` reads back.
 std::string presetPath(const PresetRef& ref);
 
-/// The keys a preset leaves as they are: the encoder's input mode says what is plugged in, not
-/// how it sounds, and loading a preset must not silently rewire the track.
-std::span<const std::string_view> presetKeptKeys(Product p);
-
 std::string presetText(Product p, const ParamManifest& m, const PluginState& s);
 LoadResult loadPresetText(Product p, const ParamManifest& m, std::string_view text, PluginState& out);
 

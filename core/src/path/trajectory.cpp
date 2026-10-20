@@ -58,18 +58,9 @@ int lutSizeFor(double lengthRad) {
     return static_cast<int>(std::clamp(wanted, static_cast<double>(kMinLutSize), static_cast<double>(kMaxLutSize)));
 }
 
-std::vector<PathSample> samplePath(const TrajectoryState& s) {
-    std::vector<PathSample> pts;
-    samplePathInto(s, pts);
-    return pts;
-}
+namespace {
 
-void PathScratch::reserveParametric() {
-    const auto most = static_cast<std::size_t>(kMaxLutSize * kParametricSamplesPerLutPoint);
-    samples.reserve(most);
-    cumulative.reserve(most);
-}
-
+/// The path's samples into `pts`, which it clears: no allocation while `pts` has the room.
 void samplePathInto(const TrajectoryState& s, std::vector<PathSample>& pts) {
     pts.clear();
 
@@ -109,6 +100,20 @@ void samplePathInto(const TrajectoryState& s, std::vector<PathSample>& pts) {
         }
     }
     if (!s.closed) pts.push_back({s.nodes.back().p, nSeg - 1, 1.0});
+}
+
+}  // namespace
+
+std::vector<PathSample> samplePath(const TrajectoryState& s) {
+    std::vector<PathSample> pts;
+    samplePathInto(s, pts);
+    return pts;
+}
+
+void PathScratch::reserveParametric() {
+    const auto most = static_cast<std::size_t>(kMaxLutSize * kParametricSamplesPerLutPoint);
+    samples.reserve(most);
+    cumulative.reserve(most);
 }
 
 void Trajectory::build(const TrajectoryState& s) {
