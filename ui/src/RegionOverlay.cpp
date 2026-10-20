@@ -39,6 +39,15 @@ Vec3 aboutAxis(Vec3 v, Vec3 axis, double angle) {
     const double c = std::cos(angle), s = std::sin(angle);
     return unit(v * c + cross(axis, v) * s + axis * (dot(axis, v) * (1.0 - c)));
 }
+/// Where a region's aim is drawn in `projection`: on the equirect, by `aimOnMap`, so a pole holds still.
+Vec3 aimShownIn(const Region& r, Projection projection) {
+    if (projection == Projection::Globe) return aimOf(r);
+    //  just off the pole, so the map keeps the azimuth the angles give
+    constexpr double kOffPole = 89.99 * kDeg2Rad;
+    const auto m = aimOnMap(r);
+    return fromAzEl(m.azimuth, std::clamp(m.elevation, -kOffPole, kOffPole));
+}
+
 }  // namespace
 
 /*  The reference dot of a set: the one nearest the axis that is not on it, ties broken by x then y
@@ -104,14 +113,6 @@ void regionHandles(const Region& r, std::vector<RegionHandle>& into) {
     auto onMap = aimShownIn(r, Projection::Equirect);
     if (aimOnMap(r).polar && roll != into.end()) onMap = fromAzEl(azimuth(roll->direction), elevation(onMap));
     into.push_back({RegionHandle::Kind::Aim, aimOf(r), onMap});
-}
-
-Vec3 aimShownIn(const Region& r, Projection projection) {
-    if (projection == Projection::Globe) return aimOf(r);
-    //  just off the pole, so the map keeps the azimuth the angles give
-    constexpr double kOffPole = 89.99 * kDeg2Rad;
-    const auto m = aimOnMap(r);
-    return fromAzEl(m.azimuth, std::clamp(m.elevation, -kOffPole, kOffPole));
 }
 
 /*  The wash and the contour, sampled through `valueAt` on a grid in screen space -- which is what

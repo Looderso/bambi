@@ -694,7 +694,7 @@ int main() {
             return heard;
         };
 
-        /*  A pure side, L = -R. `sum` hears nothing of it, as it always has. In mid/side it is on the
+        /*  A pure side, L = -R. `sum` hears nothing of it. In mid/side it is on the
             sphere and not in W, which is the whole reason the side is a difference of two points: a
             mono fold-down of the output is then the mid alone. Catches the side encoder not being
             run, being fed the mid, or being aimed at a sum. */
@@ -2523,7 +2523,7 @@ int main() {
             shell->setRegionTab(1);                     // on the transform sub-tab
             shell->doubleClickTile(bambi::parameterByKey("region1.yaw"));
             run(2);
-            //  Catches the half that was wrong: the angle goes back and the region stays turned.
+            //  Catches: the angle going back while the region stays turned.
             check(regionYaw() < 0.05, "and a double-click on its yaw takes the turn with it");
 
             /*  The placement's turn is not the region's. Catches the encoder's override forwarding a

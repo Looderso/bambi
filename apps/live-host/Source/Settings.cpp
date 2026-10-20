@@ -3,6 +3,8 @@
 
 namespace bambi::livehost {
 
+namespace {
+
 juce::File audioSettingsFile() {
     auto data = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
 #if JUCE_MAC
@@ -10,6 +12,8 @@ juce::File audioSettingsFile() {
 #endif
     return data.getChildFile("bambi").getChildFile("live-host.json");
 }
+
+}  // namespace
 
 live::AudioSettings loadAudioSettings() {
     const juce::File file = audioSettingsFile();
