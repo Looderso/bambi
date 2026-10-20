@@ -1,6 +1,6 @@
 # Status
 
-What exists now. What the suite is: [VISION](VISION.md). Why: [DECISIONS](DECISIONS.md). How the docs are filed:
+What exists now. What bambi is after: [VISION](VISION.md). Why: [DECISIONS](DECISIONS.md). How the docs are filed:
 [README](README.md).
 
 ## What is built
@@ -15,7 +15,7 @@ What exists now. What the suite is: [VISION](VISION.md). Why: [DECISIONS](DECISI
 | Decoder | built — binaural, loudspeakers, a pair; head tracking ([DECODER](decoder/DECODER.md)) |
 | live host | built, macOS — Live plays through the suite on bambi's loop device ([LIVE-HOST](suite/LIVE-HOST.md)) |
 | formats and platforms | VST3 and CLAP; macOS, Windows and Linux built and checked in CI; release zips on a `v*` tag ([PORTABILITY](suite/PORTABILITY.md)) |
-| hosts | checked in REAPER in both formats (`host-reaper-check` skill); Live through the live host; Logic waits for AU |
+| hosts | checked in REAPER in both formats ([HOST-CHECKS](HOST-CHECKS.md)); Live through the live host; Logic waits for AU |
 
 Costs are in [status/MEASURED.md](status/MEASURED.md), each with the run it came from.
 

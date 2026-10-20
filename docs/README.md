@@ -6,11 +6,12 @@ later. Documents are filed by what they apply to.
 
 | where | what |
 |---|---|
-| [VISION.md](VISION.md) | what the suite is, what is shared, how this project works |
+| [VISION.md](VISION.md) | what bambi is after: the goal, who it is for, where it is going |
+| [HOST-CHECKS.md](HOST-CHECKS.md) | the checklist a person runs in REAPER before a release |
 | [STATUS.md](STATUS.md) | the entry point: what exists, what is measured, what is next |
 | [DECISIONS.md](DECISIONS.md) | the index of the one numbered log for the whole suite; each entry is its own file in [decisions/](decisions/) |
 | [status/](status/) | the longer record behind STATUS: [measured](status/MEASURED.md) |
-| [suite/](suite/) | shared by every plugin: [the look](suite/LOOK.md), [the scene](suite/VISUALISATION.md), [modulation](suite/MODULATION.md), [regions](suite/REGIONS.md), [changing a delay time](suite/DELAY-TIME.md), [the picker](suite/PICKER.md), [presets](suite/PRESETS.md), [portability](suite/PORTABILITY.md), [the live host](suite/LIVE-HOST.md) |
+| [suite/](suite/) | shared by every plugin: [the look](suite/LOOK.md), [the scene](suite/VISUALISATION.md), [modulation](suite/MODULATION.md), [regions](suite/REGIONS.md), [changing a delay time](suite/DELAY-TIME.md), [the picker](suite/PICKER.md), [presets](suite/PRESETS.md), [portability](suite/PORTABILITY.md), [the link between instances](suite/LINK.md), [the live host](suite/LIVE-HOST.md) |
 | [encoder/](encoder/) | bambi Encoder: [features](encoder/ENCODER.md), [sources and the matrix](encoder/ENCODER-SOURCES.md), [the window](encoder/UI.md) |
 | [echo/](echo/) | bambi Echo, taps of the field by direction: [the model](echo/ECHO.md), [engine](echo/ECHO-ENGINE.md), [controls](echo/ECHO-CONTROLS.md), [visualisation](echo/ECHO-VISUALISATION.md) |
 | [reverb/](reverb/) | bambi Reverb, the room: [REVERB.md](reverb/REVERB.md) |

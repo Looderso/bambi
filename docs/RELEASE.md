@@ -8,12 +8,13 @@ Edited in place as items close, like every other doc (rule 5).*
 
 Hosts store these in sessions; changing them later breaks every project that used the plugin.
 
-- **Plugin identity** — manufacturer and per-plugin codes, bundle/CLAP IDs. Just changed with the
-  rename while there is still no migration debt to owe ([0123](DECISIONS.md));
-  this is the *last* time they move for free.
+- **Plugin identity** — manufacturer and per-plugin codes, bundle/CLAP IDs. Moved for the last time on 2026-10-20:
+  the Encoder is **bambi Path Encoder**, `org.bambi.path-encoder`, code `Bpat`, since it is one of possibly several
+  encoders and its path is what sets it apart ([0123](DECISIONS.md) for why identity moves only before a release).
+  Internal names stay "encoder": the state's product id, class names, CMake targets. From here on, frozen.
 - **Bus layout** — a fixed main input (mono/stereo for the encoder, (N+1)² for an effect), a
   stereo-only sidechain, ambisonic out at the highest order the channel count fits ([0029](DECISIONS.md)).
-  **Validated in REAPER in both formats, 2026-09-24** — the [REAPER checklist](../.claude/skills/host-reaper-check/SKILL.md); frozen at P6.
+  **Validated in REAPER in both formats, 2026-09-24** — the [REAPER checklist](HOST-CHECKS.md); frozen at P6.
 - **Parameter keys and the state format** — a frozen key list, migration by construction; since the
   pass before the beta each key's type, range, skew and choice count are frozen with it
   (`core/tests/patch/frozen-parameters.txt`), modulation sources are saved by name, and every plugin declares
@@ -38,7 +39,7 @@ block sizes or host quirks, not a cross-machine issue (that's [0038](DECISIONS.m
 | a tempo change **inside** a block | **decided** — taken at the first block that reports it; at most one block, the one residue |
 | CLAP's sub-blocks see the **host block's** transport | **closed** — a reading that has not moved is ignored; steps use the grid's own count |
 | `bambi-render` applied no input trim and accumulated ppq per step | **closed** — the same clock, and the trim; `trim-level-speed` is its golden |
-| a loop wrap the host doesn't split lands the reset at a block-size-dependent place | **closed in REAPER** — it splits the block at the loop's end; passes and buffer sizes null, 2026-09-24 ([REAPER checklist](../.claude/skills/host-reaper-check/SKILL.md)) |
+| a loop wrap the host doesn't split lands the reset at a block-size-dependent place | **closed in REAPER** — it splits the block at the loop's end; passes and buffer sizes null, 2026-09-24 ([REAPER checklist](HOST-CHECKS.md)) |
 | the gate's threshold a bare comparison, so a level rounded differently moves it by all of it | **closed** — a 3 dB ramp |
 | a host that gives no `timeInSamples` never resets | **closed** — timeline from seconds; with nothing at all, each play starts from zero |
 
@@ -98,6 +99,19 @@ outline page for each new part, is on the local branch `site-sections`, not comm
   The model is learned from HUTUBS and 3D3A alone ([0169](DECISIONS.md)), so no SONICOM licence is needed. Waits
   for the figures to be made and for the listening round ([LISTENING.md](LISTENING.md)).
 - [ ] **Thanks on about**: each person named only with their agreement.
+
+## The documents, last of all
+
+One pass once the code is settled, so nothing a reader meets describes an older suite. The published half (README,
+building and contributing notes, install notes, the site and bambi.wiki) is public issue
+[#52](https://github.com/Looderso/bambi/issues/52). The private half, here:
+
+- [ ] Concept pages under `docs/`: the Path Encoder's name, the renamed keys, the bypass, the Polygon path, the
+  header's link status ("link" only; the session in settings).
+- [ ] [STATUS.md](STATUS.md)'s phases and its "Next", [LISTENING.md](LISTENING.md) and the maintainer's backlog:
+  what is done leaves, what is open is still true.
+- [ ] Every decision's **Status** line, and the index's, against what the code does now.
+- [ ] `tools/check-docs.sh` clean, no page past its size budget.
 
 ## Needs access, not more code
 

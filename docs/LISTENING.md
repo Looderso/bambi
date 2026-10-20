@@ -76,5 +76,5 @@ set, blind where feasible. Write findings in the room; record the decode if the 
 ## Needs a host session
 
 - **REAPER checks never run**: stereo input modes, ducking and its release, the Decoder on a real bus
-  (`host-reaper-check` skill, checks 12–14).
+  ([HOST-CHECKS](HOST-CHECKS.md), checks 12–14).
 - **Logic** is untested and has no format until AU returns as its own phase.

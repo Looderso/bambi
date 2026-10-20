@@ -1,9 +1,7 @@
----
-name: host-reaper-check
-description: The REAPER host checklist for bambi's plugins (VST3 and CLAP) — channel counts, sidechain, MIDI, bounce determinism, automation, saved state, loops, the decoder's outputs. Use before a release, after a change to buses, layouts, parameter intake or the transport, and when only a real DAW can answer a host question.
----
+# Host checks — REAPER
 
-# REAPER host check
+A person's checklist, run before a release and after a change to buses, layouts, parameter intake or the
+transport.
 
 What no headless check can answer: how REAPER negotiates buses, sizes a sidechain, splits blocks and renders. About
 30 minutes. Each check says what passes and what to send back. Read the plugin's values off the **settings page's

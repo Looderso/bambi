@@ -1,7 +1,8 @@
 # apps/live-host/ — Ableton Live through bambi
 
-The app that plays a Live set's tracks through the suite's installed plugins, as Live's sound card. It has its own JUCE
-(built to host VST3) and sits above every library of the suite: nothing includes it. Its device and loop layer is
+The app that plays a Live set's tracks through the suite's installed plugins, as Live's sound card. It links the suite's
+JUCE built to host VST3 (`bambi-juce-hosting`), shared with the conformance suite, and sits above every library
+of the suite: nothing includes it. Its device and loop layer is
 `platform/`, the loop driver `driver/`, the messages `core/include/bambi/live/protocol.hpp`. Concept:
 `docs/suite/LIVE-HOST.md`.
 

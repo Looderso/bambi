@@ -84,5 +84,5 @@ a new number; the old one is never rewritten.
 - Published text — issues, pull requests, commit messages, code — names no one; code and commit messages carry no
   decision numbers (the docs link decisions freely).
 - Procedures for recurring tasks are in `.claude/skills/*/SKILL.md` — readable as plain instructions with any
-  tool: adding a parameter, adding a plugin, benchmarking, changing the link bus, a prototype, a doc, a comment
-  pass, the conformance suite, issues and pull requests.
+  tool: adding a parameter, adding a plugin, writing a doc, a comment pass, a prototype, issues and pull requests.
+  Four reviewers in `.claude/agents/` check finished work: architecture, real-time safety, DSP cost, UI uniformity.

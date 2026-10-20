@@ -6,7 +6,7 @@
 
 ## The docs
 
-[docs/VISION.md](docs/VISION.md) for what the suite is and what is shared, [docs/STATUS.md](docs/STATUS.md) for
+[docs/VISION.md](docs/VISION.md) for what bambi is after (the yardstick for whether an idea fits), [docs/STATUS.md](docs/STATUS.md) for
 what exists, [docs/DECISIONS.md](docs/DECISIONS.md) for why — an index with a status per entry; open only the
 entries you need. [docs/RELEASE.md](docs/RELEASE.md) is what must be true before the first build ships,
 [docs/LISTENING.md](docs/LISTENING.md) what waits on ears, an array or a host session. Pressing work is a GitHub
@@ -32,9 +32,20 @@ not a crutch.
 
 Several in parallel for a phase that touches several areas.
 
-**Skills** (`.claude/skills/`) hold the procedures and load when the task matches: `add-parameter`,
-`add-plugin-target`, `benchmark`, `link-bus-change`, `new-prototype`, `write-doc`, `comment-pass`,
-`conformance-suite`, `host-reaper-check`, `github-issues`.
+**Skills** (`.claude/skills/`) are procedures an agent carries out, loaded when the task matches:
+
+| skill | for |
+|---|---|
+| `add-parameter` | adding or changing a host-automatable key, or a modulation target |
+| `add-plugin-target` | a new plugin or plugin tool: CMake, identity, check suite, conformance, CI |
+| `write-doc` | where a fact goes; when a decision earns an entry |
+| `comment-pass` | comments and docstrings, proven to change nothing else |
+| `new-prototype` | settling feel or sound in the browser first, at safe levels |
+| `github-issues` | issues, labels, epics and pull requests |
+
+Measuring cost is the `dsp-performance` reviewer's job; changing the link bus is `docs/suite/LINK.md`; testing in a
+real host is a person's checklist, `docs/HOST-CHECKS.md`. A new skill earns its place only as a procedure an agent
+repeats — a rule belongs in an `AGENTS.md`, a fact on a concept page.
 
 ## Contributing as Claude
 

@@ -53,9 +53,9 @@ bambi is built to be worked on with coding agents, and everything they need is i
   `CLAUDE.md`.
 - **`docs/`** holds what is true now (concept pages) and why (`docs/decisions/`, each with a status; a *rejected*
   one is a dead end, so don't walk it again).
-- **`.claude/skills/`** holds the recurring procedures — adding a parameter or a plugin, benchmarking, changing the
-  link bus, a prototype, a doc, a comment pass, the conformance suite, the REAPER checklist, issues and pull
-  requests. They are plain Markdown, usable with any tool.
+- **`.claude/skills/`** holds the recurring procedures — adding a parameter or a plugin, writing a doc, a comment
+  pass, a prototype, issues and pull requests. They are plain Markdown, usable with any tool. Testing in a real host
+  is a person's checklist, `docs/HOST-CHECKS.md`.
 - **`.claude/agents/`** holds four reviewers to run over finished work: architecture, real-time safety, DSP cost
   and UI uniformity.
 

@@ -19,7 +19,7 @@ as worth doing.
 
 - **Core being framework-free means the switch buys core nothing.** What is JUCE-shaped is the editor
   and the host layer — exactly what is built and what passed REAPER's contract
-  ([P2-REAPER.md](../../.claude/skills/host-reaper-check/SKILL.md)). A port re-opens risk that is closed.
+  ([HOST-CHECKS](../HOST-CHECKS.md)). A port re-opens risk that is closed.
 - **The pain that prompted the question was AU's, not JUCE's**, and AU is gone
   ([0029](0029-vst3-and-clap-only-au-is-removed.md)). Ambisonic layouts are exotic in every wrapper.
 - **iPlug2's CMake support is a funding goal, not a shipped feature.** This project's cold build is
