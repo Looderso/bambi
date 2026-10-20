@@ -1,0 +1,7 @@
+<!-- bambi / suite mark: the wordmark's β, outlined, on a paper tile; the icon of every app and driver -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#efede7" fill-opacity="0.001"/>  <!-- the full frame: painted, so a renderer that fits what is drawn keeps the margin; too faint to show -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#efede7"/>
+  <path fill="#1b1a17" transform="translate(512 512) scale(0.69) translate(-298 270)"
+        d="M63 -523Q63 -572 79.5 -610.5Q96 -649 125 -676Q154 -703 194 -717Q234 -731 282 -731Q322 -731 360.5 -719Q399 -707 429 -684Q459 -661 477 -627.5Q495 -594 495 -551Q495 -500 470 -458Q445 -416 393 -400L393 -398Q456 -390 494.5 -341.5Q533 -293 533 -218Q533 -169 517.5 -127Q502 -85 472 -53.5Q442 -22 398.5 -4Q355 14 298 14Q260 14 230 4.5Q200 -5 177 -21L177 191L63 191ZM177 -136Q195 -110 224.5 -93Q254 -76 299 -76Q333 -76 356 -88.5Q379 -101 393 -121Q407 -141 413 -167Q419 -193 419 -219Q419 -259 405.5 -285Q392 -311 368.5 -326Q345 -341 312.5 -347Q280 -353 243 -355L243 -430Q271 -430 296.5 -435.5Q322 -441 340.5 -454Q359 -467 370 -488.5Q381 -510 381 -540Q381 -641 280 -641Q263 -641 244.5 -635.5Q226 -630 211 -615.5Q196 -601 186.5 -576Q177 -551 177 -511Z"/>
+</svg>
