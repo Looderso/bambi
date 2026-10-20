@@ -8,10 +8,10 @@
 #include "bambi/decode/remote.hpp"
 #include "bambi/live/field.hpp"
 #include "bambi/live/io.hpp"
-#include "bambi/ui/Sheet.h"
+#include "bambi/ui/HitArea.h"
 #include "bambi/ui/Theme.h"
 
-/*  The live host's audio sheet, over its window: where it plays and hears on this computer, in three tabs.
+/*  The live host's I/O page: where it plays and hears on this computer, in four tabs along its band.
  *
  *    - interface: the devices joined with the loop device, the clock first, each with its channels and latency;
  *      "+ device" offers the system's others, a wireless one listed and not offered. Live's rate, shown; the host's
@@ -29,12 +29,12 @@
  *      what it found to use.
  *
  *  It changes the settings, never the engine: `change` and `changeInputs` say what the user asked, and whoever
- *  owns the engine applies it and shows the sheet again. Clicks on release; escape cancels an armed copy or the
- *  menu, else closes. Message thread.
+ *  owns the engine applies it and shows the page again. Clicks on release; escape cancels an armed copy or the
+ *  menu. Message thread.
  */
 namespace bambi::livehost {
 
-class AudioSheet final : public ui::Sheet {
+class IoPage final : public ui::HitArea {
 public:
     struct Shown {
         live::AudioSettings settings;
@@ -69,12 +69,14 @@ public:
         repaint();
     }
 
+    IoPage() { setWantsKeyboardFocus(true); }  // a click gives it the keyboard, for escape
+
     void paint(juce::Graphics& g) override;
+    /// Escape: an armed copy or the open menu let go. Anything else passes on.
+    bool keyPressed(const juce::KeyPress& key) override;
 
 private:
-    void dismiss() override;
     void edit(const std::function<void(live::AudioSettings&)>& how);
-    juce::Rectangle<float> box() const;
     float interfacePage(juce::Graphics& g, juce::Rectangle<float> page);
     float outputsPage(juce::Graphics& g, juce::Rectangle<float> page);
     float inputsPage(juce::Graphics& g, juce::Rectangle<float> page);

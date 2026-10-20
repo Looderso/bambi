@@ -123,6 +123,12 @@ the shape and the lanes in the device's dict, so in the Live set; audio settings
 - **Latency alignment.** The plan delays every input of every sum to the slowest and holds all Decoders' mixes to one
   time. A swap of program fades what goes and what comes and waits for its lines to empty; send levels are taken on a
   256-sample grid with a ramp. Nothing in a block allocates, frees or locks.
+## The window
+
+A rail and a page. The rail lists the plugins' windows at the top and the host's own pages at its foot — I/O,
+routing, timeline — over the status (Live's link, the sources, the cost). Above them, beside every page, is Live's
+transport: play, filled while Live plays, and stop. The space bar plays or stops on every page.
+
 ## Routing page
 
 Three columns with wires: Live's tracks and groups plus the host's inputs; returns and Main; the Decoders. A node's line holds its marker (live, bambi, bus, in group), "+ encoder" or the
@@ -131,7 +137,7 @@ reach and a click wires it at 0 dB; wires open under the chosen node as chips, d
 everything in Live; *route all* and *all to Live* sit in the band. A sidechain is picked by arming a slot
 (`ui::Armed`) and clicking a source.
 
-## Outputs and the audio sheet
+## Outputs and the I/O page
 
 **Live plays on bambi's loop device alone.** Choosing "bambi" as Live's audio device is the whole setup. Live's Main
 goes to the pair 1/2; track pairs follow: pair p is channels 2p+3 and 2p+4 (1-based), 31 pairs on the 64-channel
@@ -143,7 +149,7 @@ name (the one Live's aggregate holds, else *bambi*, else BlackHole 16ch), never 
 field leave on the same devices, differing only by the plugins' latency, which the host knows. Without the host, Live
 is silent; the device says "no host: no sound".
 
-The **audio sheet**, opened from the foot of the host's rail, has four tabs:
+The **I/O page** has four tabs:
 
 | tab | holds |
 |---|---|
@@ -152,18 +158,19 @@ The **audio sheet**, opened from the foot of the host's rail, has four tabs:
 | inputs | each source of the field from any device, placed on a channel |
 | midi | the MIDI inputs heard, and the lead Live's MIDI is held back by |
 
-Which outputs play, their layout and level are each Decoder's own; the sheet places them. Outputs that do not come
-back into Live are not rendered by Live; the sheet says so beside them.
+Which outputs play, their layout and level are each Decoder's own; the I/O page places them. Outputs that do not come
+back into Live are not rendered by Live; the page says so beside them.
 
 ## Timeline, transport and MIDI
 
-The timeline is a rail view: a band with the transport, the song position as heard, tempo, the cost of Live's last
+The timeline is a rail view: a band with the song position as heard, tempo, the cost of Live's last
 arrangement read and an *arrangement | session* switch; the tree on the left; a panel for the chosen row with its lanes.
 
 - **Transport.** Play, stop, continue and locate go to the device as `command`; Live stays the clock. The playhead
   drawn is the one heard: the projected position (`TransportProjector`, `transport.hpp`) less the samples from the
-  plugins to the speakers. A transport message is stamped on arrival and placed on the audio thread's own samples at
-  the next block (`arrival.hpp`).
+  plugins to the speakers. The device stamps each transport message with the time it read Live's position; the host
+  takes that stamp onto its own clock and places the message on the audio thread's own samples at the next block
+  (`arrival.hpp`), so a message held up on its way is not taken for a locate.
 - **Arrangement view.** Per Live track a row of its clips (read-only named blocks) under bars, locators and loop; then
   Main, its chain and the Decoders. Zoom about the pointer down to a bar; scroll with shift and the wheel.
 - **Session view.** Live's grid with no time: a column per track, a row per scene, the playing clip marked; a chosen

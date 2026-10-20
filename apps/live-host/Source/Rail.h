@@ -5,9 +5,10 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <vector>
 
-/*  The live host's own column, left of the plugin it shows: the views to switch between -- a kind of plugin, or
- *  the routing page -- and at its foot what the host hears from Live, and what went wrong when something did. The plugin's window keeps the only header;
- *  the column leaves the header's height free and continues its line, and a strong rule parts it from the plugin.
+/*  The live host's own column, left of the plugin or page it shows. In the header's height at its top, Live's
+ *  transport: play and stop. Under it the kinds of plugin to switch between; at its foot the host's own pages, and
+ *  under them what the host hears from Live, and what went wrong when something did. It continues the plugin's header
+ *  line, and a strong rule parts it from the plugin.
  *
  *  Message thread.
  */
@@ -21,9 +22,17 @@ public:
         juce::String problem;             ///< what went wrong, if anything: wrapped above the lines
     };
 
-    /// The views, the open one, what a click on one does. A label after an empty one stands apart from those
-    /// before it.
+    /// The views, the open one, what a click on one does. The labels after the first empty one stand at the
+    /// column's foot, above its status.
     void setViews(std::vector<juce::String> labels, int open, std::function<void(int)> select);
+    /// Whether Live plays, as the top of the column shows it.
+    void setPlaying(bool playing);
+    /// A click on play (true) or stop (false).
+    std::function<void(bool)> transport;
+    /// Space: play when Live is stopped, stop when it plays. False for any other key, which passes on.
+    bool takeKey(const juce::KeyPress& key);
+    /// A press at `at`, as a click there does: on play, stop or a view. For checks too.
+    void pressAt(juce::Point<float> at);
     /// The column's width: its widest possible view name, every plugin's and the host's own pages, with its padding.
     static int width();
     void setStatus(Status status);
@@ -37,6 +46,8 @@ private:
     std::function<void(int)> select_;
     std::vector<juce::Rectangle<float>> areas_;
     Status status_;
+    bool playing_{false};
+    juce::Rectangle<float> play_, stop_;
 };
 
 }  // namespace bambi::livehost

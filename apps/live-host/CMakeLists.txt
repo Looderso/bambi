@@ -11,7 +11,7 @@ juce_add_gui_app(bambi-live-host PRODUCT_NAME "bambi live host" COMPANY_NAME "${
                  MICROPHONE_PERMISSION_TEXT "bambi live host plays the tracks Live sends it through the loop device.")
 # JUCE renders the icon while configuring; an edit to the mark configures again.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${BAMBI_MARK}")
-target_sources(bambi-live-host PRIVATE Source/Main.cpp Source/Device.cpp Source/Engine.cpp Source/Rail.cpp Source/Routing.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/AudioSheet.cpp Source/Timeline.cpp Source/Routing.cpp)
+target_sources(bambi-live-host PRIVATE Source/Main.cpp Source/Device.cpp Source/Engine.cpp Source/Rail.cpp Source/Routing.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/IoPage.cpp Source/Timeline.cpp)
 target_compile_definitions(bambi-live-host PRIVATE JUCE_APPLICATION_NAME_STRING="bambi live host"
                                                    JUCE_APPLICATION_VERSION_STRING="0.1.0")
 target_link_libraries(bambi-live-host
@@ -29,14 +29,14 @@ endif()
 
 # The runner against a direct render, through the real installed plugins, at every block size. Headless.
 juce_add_console_app(bambi-live-host-check PRODUCT_NAME "bambi-live-host-check")
-target_sources(bambi-live-host-check PRIVATE Check/RunnerCheck.cpp Source/Engine.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/AudioSheet.cpp Source/Timeline.cpp Source/Routing.cpp)
+target_sources(bambi-live-host-check PRIVATE Check/RunnerCheck.cpp Source/Engine.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/IoPage.cpp Source/Timeline.cpp Source/Routing.cpp Source/Rail.cpp)
 target_link_libraries(bambi-live-host-check
     PRIVATE bambi-live bambi-decode bambi-encode bambi-echo bambi-reverb bambi-loop bambi-devices bambi-remote bambi-ui bambi-juce-hosting
             juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # Draws the window to a PNG over a set built in the tool: no Live, no audio device, no installed plugin.
 juce_add_console_app(bambi-live-host-shot PRODUCT_NAME "bambi-live-host-shot")
-target_sources(bambi-live-host-shot PRIVATE Check/Shot.cpp Source/Rail.cpp Source/Routing.cpp Source/Timeline.cpp Source/AudioSheet.cpp Source/Plugins.cpp)
+target_sources(bambi-live-host-shot PRIVATE Check/Shot.cpp Source/Rail.cpp Source/Routing.cpp Source/Timeline.cpp Source/IoPage.cpp Source/Plugins.cpp)
 target_link_libraries(bambi-live-host-shot
     PRIVATE bambi-live bambi-decode bambi-encode bambi-echo bambi-reverb bambi-remote bambi-ui bambi-juce-hosting
             juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)

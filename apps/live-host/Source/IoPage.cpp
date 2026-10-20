@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "AudioSheet.h"
+#include "IoPage.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,36 +31,34 @@ juce::Rectangle<float> button(juce::Graphics& g, float x, float cy, const juce::
 
 }  // namespace
 
-void AudioSheet::show(Shown shown) {
+void IoPage::show(Shown shown) {
     s_ = std::move(shown);
     if (std::none_of(s_.inputs.begin(), s_.inputs.end(), [&](const live::HostInput& i) { return i.id == input_; }))
         input_ = s_.inputs.empty() ? 0 : s_.inputs.front().id;
     repaint();
 }
 
-void AudioSheet::setLoad(float load) {
+void IoPage::setLoad(float load) {
     s_.load = load;
-    if (isOpen() && tab_ == Tab::Interface) repaint();
+    if (isVisible() && tab_ == Tab::Interface) repaint();
 }
 
-void AudioSheet::setLead(double ms, double spreadMs, int count) {
+void IoPage::setLead(double ms, double spreadMs, int count) {
     s_.leadMs = ms;
     s_.leadSpreadMs = spreadMs;
     s_.leadCount = count;
-    if (isOpen() && tab_ == Tab::Midi) repaint();
+    if (isVisible() && tab_ == Tab::Midi) repaint();
 }
 
-void AudioSheet::dismiss() {
-    if (arming_ || menu_) {
-        arming_.reset();
-        menu_ = false;
-        repaint();
-        return;
-    }
-    close();
+bool IoPage::keyPressed(const juce::KeyPress& key) {
+    if (key != juce::KeyPress::escapeKey || !(arming_ || menu_)) return false;
+    arming_.reset();
+    menu_ = false;
+    repaint();
+    return true;
 }
 
-void AudioSheet::edit(const std::function<void(live::AudioSettings&)>& how) {
+void IoPage::edit(const std::function<void(live::AudioSettings&)>& how) {
     live::AudioSettings next = s_.settings;
     how(next);
     s_.settings = next;
@@ -68,12 +66,12 @@ void AudioSheet::edit(const std::function<void(live::AudioSettings&)>& how) {
     repaint();
 }
 
-live::Row AudioSheet::outputRow() const { return live::rowOf(live::aggregateOf(s_.settings.devices, s_.system)); }
-live::Row AudioSheet::inputRow() const {
+live::Row IoPage::outputRow() const { return live::rowOf(live::aggregateOf(s_.settings.devices, s_.system)); }
+live::Row IoPage::inputRow() const {
     return live::rowOf(live::aggregateOf(s_.settings.devices, s_.system), true);
 }
 
-juce::String AudioSheet::where(const live::Row& row, int at, int width) const {
+juce::String IoPage::where(const live::Row& row, int at, int width) const {
     const auto first = row.channel(at), last = row.channel(at + width - 1);
     if (first.none()) return "nowhere";
     const auto nameOn = [&](const live::DeviceChannel& c) {
@@ -88,42 +86,32 @@ juce::String AudioSheet::where(const live::Row& row, int at, int width) const {
     return nameOn(first) + " " + juce::String(first.number) + kDash + juce::String(last.number);
 }
 
-juce::Rectangle<float> AudioSheet::box() const {
-    const auto all = getLocalBounds().toFloat();
-    const float w = std::min(sh::width, all.getWidth() - 2.0f * sh::inset);
-    const float h = std::min(sh::height, all.getHeight() - 2.0f * sh::inset);
-    return juce::Rectangle<float>(w, h).withCentre(all.getCentre());
-}
+void IoPage::paint(juce::Graphics& g) {
+    g.fillAll(colour::ground);
+    clearRegions();
 
-void AudioSheet::paint(juce::Graphics& g) {
-    const auto b = box();
-    paintSheet(g, b);
-    auto inner = b.reduced(sh::pad);
-
-    //  the head: the title, the tabs with what each holds, the cross
-    auto head = inner.removeFromTop(sh::head);
-    const auto titleFont = ui::font(ui::theme::type::body, ui::theme::type::trackingHeading);
-    ui::text(g, "audio", titleFont, colour::text, head, juce::Justification::centredLeft);
+    //  the band: the tabs, with what each holds, as the other pages carry their own controls there
+    const auto band = ui::drawPageBand(g, static_cast<float>(getWidth()));
     const float tabHeight = ctl::tabBarHeight - ctl::matrixTabsTop;
     const auto row = outputRow();
     const std::vector<juce::String> names{
         "interface " + juce::String(static_cast<int>(live::aggregateOf(s_.settings.devices, s_.system).size())),
         "outputs " + juce::String(row.width()), "inputs " + juce::String(static_cast<int>(s_.inputs.size())),
         "midi " + juce::String(static_cast<int>(s_.midiInputs.size()))};
-    paintTabRowAt(g, head.getX() + ui::textWidth(titleFont, "audio") + sh::gap + ctl::tabPadX,
-                  head.getCentreY() - tabHeight / 2.0f, tabHeight, names, static_cast<int>(tab_), [this](int t) {
+    paintTabRowAt(g, band.getX(), band.getCentreY() - tabHeight / 2.0f, tabHeight, names, static_cast<int>(tab_),
+                  [this](int t) {
                       tab_ = static_cast<Tab>(t);
                       arming_.reset();
                       menu_ = false;
                       repaint();
                   });
-    const juce::Rectangle<float> cross{head.getRight() - ctl::closeGlyph, head.getCentreY() - ctl::closeGlyph / 2.0f,
-                                       ctl::closeGlyph, ctl::closeGlyph};
-    addClickArea(ui::drawCloseCross(g, cross), [this] { close(); });
-    ui::ruleH(g, b.getX(), b.getRight(), head.getBottom(), colour::ruleStrong);
 
-    auto page = inner.withTrimmedTop(sh::gap);
-    //  nothing past the frame: what does not fit is cut, not drawn over the window
+    //  under the band, its edges where the band's are, as the other pages' are
+    auto page = getLocalBounds()
+                    .toFloat()
+                    .withTrimmedTop(static_cast<float>(ui::theme::metrics::headerHeight))
+                    .reduced(ui::theme::metrics::bandInset, sh::pad);
+    //  nothing past them: what does not fit is cut
     juce::Graphics::ScopedSaveState clip(g);
     g.reduceClipRegion(page.toNearestInt());
     if (s_.problem.isNotEmpty()) {
@@ -142,7 +130,7 @@ void AudioSheet::paint(juce::Graphics& g) {
 
 // ---- interface ----------------------------------------------------------------------------------
 
-float AudioSheet::interfacePage(juce::Graphics& g, juce::Rectangle<float> page) {
+float IoPage::interfacePage(juce::Graphics& g, juce::Rectangle<float> page) {
     float y = ui::drawGroupHeading(g, page.getX(), page.getY(), page.getWidth(), "devices");
     const auto& chosen = s_.settings.devices;
     const auto joined = live::aggregateOf(chosen, s_.system);
@@ -282,19 +270,19 @@ float AudioSheet::interfacePage(juce::Graphics& g, juce::Rectangle<float> page) 
 
 // ---- outputs ------------------------------------------------------------------------------------
 
-juce::String AudioSheet::nameOf(const live::Out& out) const {
+juce::String IoPage::nameOf(const live::Out& out) const {
     if (out.main()) return "Live's Main";
     const juce::String which = out.which == Output::Headphones ? "headphones" : "speakers";
     return s_.decoders.size() > 1 ? decoderName(out.decoder) + " " + which : which;
 }
 
-juce::String AudioSheet::decoderName(std::uint64_t id) const {
+juce::String IoPage::decoderName(std::uint64_t id) const {
     for (std::size_t k = 0; k < s_.decoders.size(); ++k)
         if (s_.decoders[k].id == id) return "decoder " + juce::String(static_cast<int>(k) + 1);
     return "a decoder";
 }
 
-void AudioSheet::outputRow(juce::Graphics& g, juce::Rectangle<float> line, const live::Out& out) {
+void IoPage::outputRow(juce::Graphics& g, juce::Rectangle<float> line, const live::Out& out) {
     const auto row = outputRow();
     if (out == chosen_) {
         g.setColour(colour::highlight);
@@ -369,7 +357,7 @@ void AudioSheet::outputRow(juce::Graphics& g, juce::Rectangle<float> line, const
     }
 }
 
-float AudioSheet::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
+float IoPage::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
     const auto row = outputRow();
     float y = page.getY();
     outputRow(g, {page.getX(), y, page.getWidth(), sh::line}, live::kLiveMain);
@@ -467,7 +455,7 @@ float AudioSheet::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
 
 // ---- the map ------------------------------------------------------------------------------------
 
-float AudioSheet::map(juce::Graphics& g, float x, float top, float width, const live::Row& row,
+float IoPage::map(juce::Graphics& g, float x, float top, float width, const live::Row& row,
                       const std::vector<Block>& blocks, float& scroll, std::function<void(int)> place) {
     std::vector<int> groups;
     for (const live::AudioDevice& d : row.devices)
@@ -530,7 +518,7 @@ float AudioSheet::map(juce::Graphics& g, float x, float top, float width, const 
 
 // ---- inputs -------------------------------------------------------------------------------------
 
-float AudioSheet::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
+float IoPage::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
     const auto row = inputRow();
     float y = page.getY();
     ui::text(g,
@@ -658,7 +646,7 @@ float AudioSheet::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
 
 // ---- midi ---------------------------------------------------------------------------------------
 
-float AudioSheet::midiPage(juce::Graphics& g, juce::Rectangle<float> page) {
+float IoPage::midiPage(juce::Graphics& g, juce::Rectangle<float> page) {
     float y = ui::drawGroupHeading(g, page.getX(), page.getY(), page.getWidth(), "inputs");
     for (std::size_t k = 0; k < s_.midiInputs.size(); ++k) {
         auto line = juce::Rectangle<float>{page.getX(), y, page.getWidth(), sh::line};

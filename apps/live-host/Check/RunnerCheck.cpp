@@ -31,7 +31,8 @@
 #include <random>
 #include <vector>
 
-#include "../Source/AudioSheet.h"
+#include "../Source/IoPage.h"
+#include "../Source/Rail.h"
 #include "../Source/Engine.h"
 #include "../Source/Plugins.h"
 #include "../Source/Routing.h"
@@ -1511,12 +1512,41 @@ int routingHolds() {
     return failed;
 }
 
-//  The audio sheet with two devices, both outputs playing, a copy and an input: each tab painted, then pressed
+//  Live's transport from the column: space plays a stopped Live and stops a playing one from wherever the keyboard is,
+//  and a click on play or stop asks for that.
+int railTransportHolds() {
+    livehost::Rail rail;
+    rail.setSize(livehost::Rail::width(), 600);
+    juce::Image image(juce::Image::RGB, rail.getWidth(), rail.getHeight(), true);
+    {
+        juce::Graphics g(image);
+        rail.paint(g);  // lays out where the glyphs are
+    }
+    std::vector<bool> asked;
+    rail.transport = [&](bool play) { asked.push_back(play); };
+    rail.setPlaying(false);
+    const bool space = rail.takeKey(juce::KeyPress(juce::KeyPress::spaceKey));
+    rail.setPlaying(true);
+    (void)rail.takeKey(juce::KeyPress(juce::KeyPress::spaceKey));
+    const bool other = rail.takeKey(juce::KeyPress('a'));
+    const float mid = static_cast<float>(ui::theme::metrics::headerHeight) / 2.0f;
+    const float glyph = ui::theme::rail::transport;
+    rail.pressAt({ui::theme::rail::padX + glyph / 2.0f, mid});                                        // play
+    rail.pressAt({ui::theme::rail::padX + glyph + ui::theme::rail::transportGap + glyph / 2.0f, mid});  // stop
+    //  Catches: space always asking the same thing, another key taken from the plugins, and the two glyphs'
+    //  presses swapped or lost.
+    const bool ok = space && !other && asked == std::vector<bool>{true, false, true, false};
+    std::printf("  space plays a stopped Live and stops a playing one, other keys pass, play and stop clicked %s\n",
+                ok ? "" : "  FAIL");
+    return ok ? 0 : 1;
+}
+
+//  The I/O page with two devices, both outputs playing, a copy and an input: each tab painted, then pressed
 //  everywhere on a grid, painted again after each press. What it asks for is counted; nothing may fall over.
-int sheetHolds() {
-    livehost::AudioSheet sheet;
-    sheet.setSize(1100, 760);
-    livehost::AudioSheet::Shown s;
+int ioPageHolds() {
+    livehost::IoPage page;
+    page.setSize(1100, 760);
+    livehost::IoPage::Shown s;
     s.system = {{"a", "Interface", 16, 8, 120, 100, false},
                 {"b", "Box", 4, 2, 80, 70, false},
                 {"c", "AirPods", 2, 1, 7000, 7000, true}};
@@ -1544,18 +1574,18 @@ int sheetHolds() {
     s.leadMs = 21.5;
     s.settings.liveMidiMs = 20.0;
     int asked = 0;
-    sheet.change = [&](live::AudioSettings) { ++asked; };
-    sheet.changeInputs = [&](std::vector<live::HostInput>, live::AudioSettings) { ++asked; };
-    juce::Image image(juce::Image::RGB, sheet.getWidth(), sheet.getHeight(), true);
-    for (const auto tab : {livehost::AudioSheet::Tab::Interface, livehost::AudioSheet::Tab::Outputs,
-                           livehost::AudioSheet::Tab::Inputs, livehost::AudioSheet::Tab::Midi}) {
-        for (int y = 0; y < sheet.getHeight(); y += 9)
-            for (int x = 0; x < sheet.getWidth(); x += 11) {
-                sheet.show(s);
-                sheet.showTab(tab);
+    page.change = [&](live::AudioSettings) { ++asked; };
+    page.changeInputs = [&](std::vector<live::HostInput>, live::AudioSettings) { ++asked; };
+    juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
+    for (const auto tab : {livehost::IoPage::Tab::Interface, livehost::IoPage::Tab::Outputs,
+                           livehost::IoPage::Tab::Inputs, livehost::IoPage::Tab::Midi}) {
+        for (int y = 0; y < page.getHeight(); y += 9)
+            for (int x = 0; x < page.getWidth(); x += 11) {
+                page.show(s);
+                page.showTab(tab);
                 juce::Graphics g(image);
-                sheet.paint(g);
-                sheet.clickAt({static_cast<float>(x), static_cast<float>(y)});
+                page.paint(g);
+                page.clickAt({static_cast<float>(x), static_cast<float>(y)});
             }
     }
     const bool ok = asked > 0;
@@ -1699,7 +1729,7 @@ int wideDecoder() {
     return failed;
 }
 
-//  The Decoder set through its remote interface, as the audio sheet sets it: what it reports, a request it grants,
+//  The Decoder set through its remote interface, as the I/O page sets it: what it reports, a request it grants,
 //  one it refuses, and the outputs heard where the report says.
 int remoteDecoder() {
     int failed = 0;
@@ -2188,8 +2218,10 @@ int main() {
     std::printf("the routing page\n");
     failed += routingHolds();
 
-    std::printf("the audio sheet\n");
-    failed += sheetHolds();
+    std::printf("the column's transport\n");
+    failed += railTransportHolds();
+    std::printf("the I/O page\n");
+    failed += ioPageHolds();
 
     std::printf("one session for every plugin the host loads\n");
     failed += oneSession();
