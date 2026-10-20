@@ -48,15 +48,7 @@ constexpr DestKind kDestTable[] = {
 #undef BAMBI_X
 };
 
-constexpr double smoothingOfKey(std::string_view k) {
-    switch (destOf(k)) {
-        case DestKind::Rate: return 0.020;
-        case DestKind::DirectScalar: return 0.040;
-        case DestKind::DirectAngle: return 720.0;  // degrees a second
-        case DestKind::NotModulatable: break;
-    }
-    return 0.0;
-}
+constexpr double smoothingOfKey(std::string_view k) { return defaultSmoothing(destOf(k)); }
 constexpr double kSmoothingTable[] = {
 #define BAMBI_X(grp, id_, key_, name_, unit_, type_, mn, mx, df, ch) smoothingOfKey(key_),
     BAMBI_DECODER_PARAM_LIST(BAMBI_X)

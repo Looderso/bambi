@@ -70,17 +70,10 @@ constexpr DestKind kDestTable[] = {
 };
 
 constexpr double smoothingOfKey(std::string_view k, ParamId id) {
-    switch (destOf(k, id)) {
-        case DestKind::Rate: return 0.020;          // seconds; 90% of target in ~46 ms
-        case DestKind::DirectScalar: return 0.040;  // seconds
-        case DestKind::DirectAngle:
-            //  Degrees per second. Displace is a fraction of a lap rather than an angle, so its limit
-            //  is in laps/second and deliberately generous -- it is a position offset, and the
-            //  trajectory's own arc length already sets what that costs.
-            return k == "motion.displace" ? 4.0 : 720.0;
-        case DestKind::NotModulatable: break;
-    }
-    return 0.0;
+    //  Displace is a fraction of a lap rather than an angle, so its limit is in laps a second and deliberately
+    //  generous -- it is a position offset, and the trajectory's own arc length already sets what that costs.
+    if (k == "motion.displace") return 4.0;
+    return defaultSmoothing(destOf(k, id));
 }
 
 constexpr double kSmoothingTable[] = {

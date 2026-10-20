@@ -67,8 +67,6 @@ struct PathSample {
 };
 
 std::vector<PathSample> samplePath(const TrajectoryState& s);
-/// The same into `out`, which it clears: no allocation while `out` has the room.
-void samplePathInto(const TrajectoryState& s, std::vector<PathSample>& out);
 
 /*  Placement of a path on the sphere, applied after eval(s). `extent` scales every point's angle
  *  from the path's centre: 1 is as authored, 0 a point, above 1 it opens out toward the antipode.

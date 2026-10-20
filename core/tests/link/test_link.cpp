@@ -653,9 +653,9 @@ TEST_CASE("a command naming a parameter this build lacks resolves to Count, not 
     CHECK(c.paramId() == kNoParamId);
 }
 
-/*  The bug this pins made a live source vanish from the scene for one frame, about once
- *  every eighty, at random. It looks exactly like a race in the seqlock and is not one --
- *  it is an unsigned subtraction. Cheap to assert, invisible otherwise. */
+/*  A heartbeat a moment ahead of the reader's clock, as another process's can be. An unsigned subtraction reads it as
+ *  ages old, and a live source vanishes from the scene for a frame, at random -- which looks like a race in the
+ *  seqlock and is not one. */
 TEST_CASE("a heartbeat from the future is fresh, not 584000 years stale") {
     const std::uint64_t now = 1'000'000'000;
 
