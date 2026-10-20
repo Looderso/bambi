@@ -1,24 +1,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# bambi Encoder. The suite's shared plugin setup -- JUCE, clap-juce-extensions, the manufacturer
+# bambi Path Encoder. The suite's shared plugin setup -- JUCE, clap-juce-extensions, the manufacturer
 # identity and the format code rules -- is in ../CMakeLists.txt.
 
 # ---- identity: configurable while developing, frozen at release -------------
-set(BAMBI_PLUGIN_NAME "bambi Encoder"     CACHE STRING "Plugin name shown by hosts")
-set(BAMBI_PLUGIN_CODE "Benc"               CACHE STRING "Four characters, exactly one upper-case (AU)")
-set(BAMBI_BUNDLE_ID   "org.bambi.encoder" CACHE STRING "Reverse-DNS bundle id, also the CLAP id")
+set(BAMBI_PATH_ENCODER_NAME      "bambi Path Encoder"     CACHE STRING "Plugin name shown by hosts")
+set(BAMBI_PATH_ENCODER_CODE      "Bpat"                   CACHE STRING "Four characters, exactly one upper-case (AU)")
+set(BAMBI_PATH_ENCODER_BUNDLE_ID "org.bambi.path-encoder" CACHE STRING "Reverse-DNS bundle id, also the CLAP id")
 
-bambi_check_codes("${BAMBI_MANUFACTURER_CODE}" "${BAMBI_PLUGIN_CODE}")
+bambi_check_codes("${BAMBI_MANUFACTURER_CODE}" "${BAMBI_PATH_ENCODER_CODE}")
 message(STATUS "plugin identity: ${BAMBI_COMPANY_NAME} (${BAMBI_MANUFACTURER_CODE}) / "
-               "${BAMBI_PLUGIN_NAME} (${BAMBI_PLUGIN_CODE}) / ${BAMBI_BUNDLE_ID}")
+               "${BAMBI_PATH_ENCODER_NAME} (${BAMBI_PATH_ENCODER_CODE}) / ${BAMBI_PATH_ENCODER_BUNDLE_ID}")
 
 juce_add_plugin(BambiEncoder
     COMPANY_NAME "${BAMBI_COMPANY_NAME}"
-    PLUGIN_NAME "${BAMBI_PLUGIN_NAME}"
-    PRODUCT_NAME "${BAMBI_PLUGIN_NAME}"
+    PLUGIN_NAME "${BAMBI_PATH_ENCODER_NAME}"
+    PRODUCT_NAME "${BAMBI_PATH_ENCODER_NAME}"
     PLUGIN_MANUFACTURER_CODE ${BAMBI_MANUFACTURER_CODE}
-    PLUGIN_CODE ${BAMBI_PLUGIN_CODE}
-    BUNDLE_ID "${BAMBI_BUNDLE_ID}"
+    PLUGIN_CODE ${BAMBI_PATH_ENCODER_CODE}
+    BUNDLE_ID "${BAMBI_PATH_ENCODER_BUNDLE_ID}"
     FORMATS VST3                     # and CLAP, below.
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
@@ -30,7 +30,7 @@ juce_add_plugin(BambiEncoder
     NEEDS_WEB_BROWSER FALSE
     NEEDS_CURL FALSE)
 
-bambi_plugin_code(bambi-encoder-code NAME "${BAMBI_PLUGIN_NAME}" LIBRARIES bambi-encode
+bambi_plugin_code(bambi-encoder-code NAME "${BAMBI_PATH_ENCODER_NAME}" LIBRARIES bambi-encode
     SOURCES
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
@@ -55,12 +55,12 @@ target_link_libraries(BambiEncoder
         juce::juce_recommended_warning_flags)
 
 clap_juce_extensions_plugin(TARGET BambiEncoder
-    CLAP_ID "${BAMBI_BUNDLE_ID}"
+    CLAP_ID "${BAMBI_PATH_ENCODER_BUNDLE_ID}"
     CLAP_FEATURES audio-effect ambisonic surround)
 
 # ---- a console app over this plugin's own code, with no host ---------------------------------
 function(bambi_encoder_tool target source)
-  bambi_plugin_tool(${target} NAME "${BAMBI_PLUGIN_NAME}" SOURCES ${source} LIBRARIES bambi-encoder-code)
+  bambi_plugin_tool(${target} NAME "${BAMBI_PATH_ENCODER_NAME}" SOURCES ${source} LIBRARIES bambi-encoder-code)
 endfunction()
 
 # bambi-plugin-bench: REAPER's CPU meter cannot separate the audio thread from a window redrawing

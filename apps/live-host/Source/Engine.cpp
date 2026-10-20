@@ -343,7 +343,7 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
             next.push_back({track, pair, had->encoder});
             continue;
         }
-        auto loaded = loadInstalled("bambi Encoder", Role::Encoder, s_.order, s_.rate, block_);
+        auto loaded = loadInstalled("bambi Path Encoder", Role::Encoder, s_.order, s_.rate, block_);
         if (loaded.plugin == nullptr) {
             status = loaded.status;
             return false;

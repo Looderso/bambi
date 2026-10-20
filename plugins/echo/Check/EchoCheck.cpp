@@ -28,6 +28,7 @@
 #include "bambi/editor/AllocationCheck.h"
 #include "bambi/editor/CheckKit.h"
 #include "bambi/editor/EffectChecks.h"
+#include "bambi/editor/HeaderChecks.h"
 #include "bambi/editor/PresetChecks.h"
 #include "bambi/editor/RegionChecks.h"
 #include "bambi/host/BlockBench.h"
@@ -145,6 +146,8 @@ int main(int argc, char** argv) {
         bambi::editor::checkBlocksAllocateNothing<Processor>(
             bambi::editor::layout(amb(order), juce::AudioChannelSet::stereo(), amb(order)),
             "order " + juce::String(order) + " with a sidechain");
+
+    bambi::editor::checkHeaderHoldsStill<Processor>(bambi::Product::Echo);
 
     bambi::editor::checkBypass<Processor>(bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)),
                                           "the field as it arrived",

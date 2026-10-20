@@ -29,6 +29,18 @@ inline float textWidth(const juce::Font& f, const juce::String& s) {
     return juce::GlyphArrangement::getStringWidth(f, s);
 }
 
+/// `s` cut from the end to fit `width` with an ellipsis, `keep` always after it whole: a name that does not fit
+/// keeps its modified mark.
+inline juce::String elided(const juce::Font& f, const juce::String& s, float width, const juce::String& keep = {}) {
+    if (textWidth(f, s + keep) <= width) return s + keep;
+    const juce::String dots = juce::String::fromUTF8("\xe2\x80\xa6");
+    for (int n = s.length() - 1; n > 0; --n) {
+        const auto cut = s.substring(0, n).trimEnd() + dots + keep;
+        if (textWidth(f, cut) <= width) return cut;
+    }
+    return dots + keep;
+}
+
 inline void text(juce::Graphics& g, const juce::String& s, const juce::Font& f, juce::Colour c,
                  juce::Rectangle<float> box, juce::Justification j = juce::Justification::centredLeft) {
     g.setColour(c);

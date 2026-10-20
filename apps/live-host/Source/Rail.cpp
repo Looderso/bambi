@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "Rail.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/ProductName.h"
 
 namespace bambi::livehost {
 
@@ -20,6 +24,14 @@ void Rail::setStatus(Status status) {
     const bool same = status.on == status_.on && status.lines == status_.lines && status.problem == status_.problem;
     status_ = std::move(status);
     if (!same) repaint();
+}
+
+int Rail::width() {
+    float widest = 0.0f;
+    for (const Product p : ui::kProducts) widest = std::max(widest, ui::textWidth(ui::labelFont(), ui::productName(p)));
+    for (const char* page : {"routing", "timeline", "audio"})
+        widest = std::max(widest, ui::textWidth(ui::labelFont(), page));
+    return static_cast<int>(std::ceil(widest + 2.0f * rail::padX + ui::theme::stroke::rule));
 }
 
 void Rail::paint(juce::Graphics& g) {

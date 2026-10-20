@@ -77,8 +77,8 @@ Set load() {
         }
         s.plugins.push_back(std::move(loaded.plugin));
     };
-    add("bambi Encoder", Role::Encoder);
-    add("bambi Encoder", Role::Encoder);
+    add("bambi Path Encoder", Role::Encoder);
+    add("bambi Path Encoder", Role::Encoder);
     add("bambi Echo", Role::Effect);
     add("bambi Reverb", Role::Effect);
     add("bambi Decoder", Role::Decoder);
@@ -1837,7 +1837,7 @@ int positionsOnTheBus() {
 //  and Encoders restored from the last run never see each other.
 int oneSession() {
     const char* named = std::getenv(kHostSessionVariable);
-    auto first = livehost::loadInstalled("bambi Encoder", Role::Encoder, kOrder, kRate, kMaxBlock);
+    auto first = livehost::loadInstalled("bambi Path Encoder", Role::Encoder, kOrder, kRate, kMaxBlock);
     if (first.plugin == nullptr || named == nullptr) {
         std::printf("  no Encoder, or no session named for the process  FAIL\n");
         return 1;
@@ -1857,7 +1857,7 @@ int oneSession() {
     replace(session->toString(), foreign.toString());
     LinkDirectory directory;
     if (directory.open()) directory.touch(foreign, linkNowMicros());  // and that session the most recently active
-    auto restored = livehost::loadInstalled("bambi Encoder", Role::Encoder, kOrder, kRate, kMaxBlock);
+    auto restored = livehost::loadInstalled("bambi Path Encoder", Role::Encoder, kOrder, kRate, kMaxBlock);
     if (restored.plugin == nullptr) return 1;
     //  its instance id is the first's, which is live: it joins with a fresh one, as a duplicated track does
     restored.plugin->setStateInformation(text.data(), static_cast<int>(text.size()));

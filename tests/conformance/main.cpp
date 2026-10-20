@@ -26,7 +26,7 @@ int main() {
     using bambi::conformance::Kind;
     using bambi::conformance::Subject;
     const Subject subjects[] = {
-        {"bambi Encoder",
+        {"bambi Path Encoder",
          [] { return std::unique_ptr<juce::AudioProcessor>(new BambiEncoderProcessor()); },
          Kind::Source,
          {0, 1, 2, 3, 5, 7, 10}},

@@ -29,6 +29,7 @@
 #include "UI/FrameTrace.h"
 #include "bambi/editor/AllocationCheck.h"
 #include "bambi/editor/CheckKit.h"
+#include "bambi/editor/HeaderChecks.h"
 #include "bambi/editor/PresetChecks.h"
 #include "bambi/editor/RegionChecks.h"
 #include "bambi/encode/params.hpp"
@@ -2811,6 +2812,8 @@ int main() {
         bambi::editor::checkBlocksAllocateNothing<BambiEncoderProcessor>(
             layout(stereo, stereo, Set::ambisonic(order)),
             "order " + juce::String(order) + ", stereo in with a sidechain");
+
+    bambi::editor::checkHeaderHoldsStill<BambiEncoderProcessor>(bambi::Product::Encoder);
 
     bambi::editor::checkBypass<BambiEncoderProcessor>(
         layout(Set::mono(), Set::disabled(), Set::ambisonic(3)), "its input unplaced, in W alone",
