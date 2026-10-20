@@ -36,7 +36,6 @@ void HeadStrip::paint(juce::Graphics& g) {
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
     const auto& diag = state_.processor.diagnostics();
-    const juce::String dot = juce::String::fromUTF8("\xc2\xb7");
 
     //  The tabs: what tracks the head. The tracker's word stands in the bar beside them -- whether it speaks and
     //  how often. A field with no direction in it is the one thing to say before anything else: a track too narrow
@@ -50,22 +49,22 @@ void HeadStrip::paint(juce::Graphics& g) {
     const int order = state_.processor.engineOrder(), in = diag.mainInputChannels.load(std::memory_order_relaxed);
     juce::String live;
     if (order == 0 && in > 0)
-        live = "the input is " + juce::String(in) + (in == 1 ? " channel" : " channels") + ": order 0, no direction " +
-               dot + " the track needs 4, 9, 16 or more (reaper's master has 2)";
+        live = "the input is " + juce::String(in) + (in == 1 ? " channel" : " channels") + ": order 0, no direction" +
+               kSeparator + "the track needs 4, 9, 16 or more (reaper's master has 2)";
     else if (source == 0)
         live = "the sliders and their rates turn the scene";
     else if (alive)
-        live = name + " " + dot + " " + juce::String(rateHz_, 0) + " hz";
+        live = name + kSeparator + juce::String(rateHz_, 0) + " hz";
     else if (lastMs > 0)
-        live = name + " " + dot + " silent " + juce::String(age, 1) + " s";
+        live = name + kSeparator + "silent " + juce::String(age, 1) + " s";
     else if (source == 2) {
         const juce::String word = state_.processor.helperStatus();  // the helper's own, while it starts and asks
-        live = word.isEmpty() ? "airpods " + dot + " starting the helper" : word;
+        live = word.isEmpty() ? "airpods" + kSeparator + "starting the helper" : word;
     } else if (source == 3) {
         const juce::String word = state_.processor.phoneStatus();
-        live = word.isEmpty() ? "phone " + dot + " starting the helper" : "phone " + dot + " " + word;
+        live = word.isEmpty() ? "phone" + kSeparator + "starting the helper" : "phone" + kSeparator + word;
     } else
-        live = "osc " + dot + " port " + juce::String(d.oscPort) + ", nothing yet";
+        live = "osc" + kSeparator + "port " + juce::String(d.oscPort) + ", nothing yet";
     g.fillAll(colour::ground);
     const float width = static_cast<float>(getWidth()), inset = static_cast<float>(space::inset);
     const std::vector<juce::String> names{"none", "osc", "airpods", "phone"};

@@ -293,7 +293,7 @@ void Header::paint(juce::Graphics& g) {
     const auto nameWidth = hdr::presetName;
     const auto presetName = elided(labelFont(), preset_.name.isEmpty() ? juce::String("-") : preset_.name,
                                    nameWidth - 2.0f, preset_.modified ? " *" : "");
-    const auto presetLabel = "preset " + juce::String::fromUTF8("\xc2\xb7") + " ";
+    const auto presetLabel = "preset" + kSeparator;
     const auto presetWidth = textWidth(labelFont(), presetLabel);
     presetName_ = {right - nameWidth - presetWidth, 0.0f, presetWidth + nameWidth, h};
     if (preset_.open) openBlock(presetName_.getX(), presetName_.getRight());

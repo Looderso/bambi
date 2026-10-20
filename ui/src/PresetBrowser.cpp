@@ -348,8 +348,7 @@ void PresetBrowser::paint(juce::Graphics& g) {
             juce::String tag;
             if (isCurrent && modified) tag = "modified";
             if (!row.tag.empty())
-                tag = tag.isEmpty() ? juce::String(row.tag)
-                                    : tag + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(row.tag);
+                tag = tag.isEmpty() ? juce::String(row.tag) : tag + kSeparator + juce::String(row.tag);
             const auto tagWidth = tag.isEmpty() ? 0.0f : textWidth(labelFont(), tag) + st::buttonGap;
             text(g, juce::String(row.ref.name), font(theme::type::body), isCurrent ? colour::textInverse : colour::text,
                  area.withTrimmedLeft(left).withTrimmedRight(inset + tagWidth));

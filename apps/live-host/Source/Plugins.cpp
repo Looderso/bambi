@@ -5,6 +5,7 @@
 
 #include "bambi/decode/params.hpp"
 #include "bambi/link/link.hpp"
+#include "bambi/ui/Draw.h"
 #include "bambi/echo/params.hpp"
 #include "bambi/encode/params.hpp"
 #include "bambi/reverb/params.hpp"
@@ -80,7 +81,7 @@ juce::String describe(const juce::AudioProcessor::BusesLayout& l) {
     for (int i = 0; i < l.inputBuses.size(); ++i)
         parts.add((i == 0 ? "in " : "sidechain ") + juce::String(l.inputBuses[i].size()));
     for (int i = 0; i < l.outputBuses.size(); ++i) parts.add("out " + juce::String(l.outputBuses[i].size()));
-    return parts.joinIntoString(" · ");
+    return parts.joinIntoString(ui::kSeparator);
 }
 
 Loaded loadInstalled(const juce::String& name, Role role, int order, double rate, int maxBlock, int outputs) {
@@ -117,7 +118,7 @@ Loaded loadInstalled(const juce::String& name, Role role, int order, double rate
 
     const bool took = out.plugin->setBusesLayout(layout);
     out.plugin->prepareToPlay(rate, maxBlock);
-    out.status = out.plugin->getName() + " · VST3 · " + describe(out.plugin->getBusesLayout());
+    out.status = out.plugin->getName() + ui::kSeparator + "VST3" + ui::kSeparator + describe(out.plugin->getBusesLayout());
     if (!took) {
         out.status += " -- refused " + describe(layout);
         out.plugin.reset();

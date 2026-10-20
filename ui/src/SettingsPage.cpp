@@ -110,10 +110,9 @@ void SettingsPage::paint(juce::Graphics& g) {
     const auto inset = static_cast<float>(theme::space::inset);
     const auto width = static_cast<float>(getWidth());
     const auto half = (width - 2.0f * inset - st::columnGap) / 2.0f;
-    const auto dot = juce::String::fromUTF8(" \xc2\xb7 ");
 
     //  ---- the title, and the way back ---------------------------------------------------------
-    text(g, plugin_ + dot + "settings", font(theme::type::body, theme::type::trackingTab), colour::text,
+    text(g, plugin_ + kSeparator + "settings", font(theme::type::body, theme::type::trackingTab), colour::text,
          {inset, 0.0f, width - 2.0f * inset, st::titleHeight});
     close_ = drawCloseCross(g, {width - inset - ctl::closeGlyph, (st::titleHeight - ctl::closeGlyph) / 2.0f,
                                 ctl::closeGlyph, ctl::closeGlyph});
@@ -138,14 +137,15 @@ void SettingsPage::paint(juce::Graphics& g) {
     y = title(inset, y, "session");
     //  the session as the header names it: its first four characters, which is what a person compares
     y = row(inset, y, "link",
-            c.linked ? "session " + c.session.substring(0, 4) + dot + juce::String(c.peers) +
+            c.linked ? "session " + c.session.substring(0, 4) + kSeparator + juce::String(c.peers) +
                            (c.peers == 1 ? " instance" : " instances")
                      : juce::String("not joined"),
             c.linked);
     y += static_cast<float>(theme::space::groupGap);
 
     y = title(inset, y, "output");
-    row(inset, y, "order", c.order >= 0 ? juce::String(c.order) + dot + "from the track's channels" : juce::String("-"),
+    row(inset, y, "order",
+        c.order >= 0 ? juce::String(c.order) + kSeparator + "from the track's channels" : juce::String("-"),
         c.order >= 0);
 
     //  ---- the plugin's own ---------------------------------------------------------------------
