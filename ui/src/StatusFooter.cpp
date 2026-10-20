@@ -15,11 +15,10 @@ StatusFooter::StatusFooter(PatchModel& model, std::vector<Switch> switches)
     : model_(model), switches_(std::move(switches)), areas_(switches_.size()), drawn_(switches_.size(), false) {}
 
 void StatusFooter::setStatus(const juce::String& instance, int order, float dspPercent) {
-    const auto dot = juce::String::fromUTF8(" \xc2\xb7 ");
-    auto next = "order " + (order >= 0 ? juce::String(order) : juce::String("-")) + dot + juce::String(dspPercent, 2) +
-                " % dsp";
+    auto next = "order " + (order >= 0 ? juce::String(order) : juce::String("-")) + kSeparator +
+                juce::String(dspPercent, 2) + " % dsp";
     shortReadout_ = next;
-    if (instance.isNotEmpty()) next = instance + dot + next;
+    if (instance.isNotEmpty()) next = instance + kSeparator + next;
 
     bool moved = next != readout_;
     for (std::size_t i = 0; i < switches_.size(); ++i)

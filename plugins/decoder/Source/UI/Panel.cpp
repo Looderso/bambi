@@ -27,7 +27,6 @@ namespace {
 
 constexpr int kStripGroup = 8;  ///< channels to a group on the bus's map
 constexpr const char* kPageNames[2] = {"headphones", "speakers"};
-const juce::String kDot = juce::String::fromUTF8("\xc2\xb7");
 
 juce::String rangesOf(const std::vector<int>& channels) {
     juce::String out;
@@ -265,7 +264,7 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
         juce::String line;
         for (const auto& [name, on, at] :
              {std::tuple{"headphones", d.headphonesPlay, &hpAt}, std::tuple{"speakers", d.speakersPlay, &spAt}})
-            if (on && !at->empty()) line += (line.isEmpty() ? "" : " " + kDot + " ") + name + " " + where(*at);
+            if (on && !at->empty()) line += (line.isEmpty() ? "" : kSeparator) + name + " " + where(*at);
         if (onHost) line += (line.isEmpty() ? "" : "  ") + juce::String("(placed on the host's audio sheet)");
         if (line.isNotEmpty()) {
             y += ctl::segmentGap;
@@ -359,7 +358,7 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
         const juce::String name = juce::File(d.hrtfFile).getFileName();
         const juce::String note = state_.processor.sofaNote();
         about = (name.isEmpty() ? juce::String("a sofa file") : name) + " as measured; head scales its timing" +
-                (note.isEmpty() ? juce::String() : " " + kDot + " " + note);
+                (note.isEmpty() ? juce::String() : kSeparator + note);
     }
     if (head == 2) {
         y = paintButtonNote(
@@ -505,7 +504,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         //  the file: what is loaded, and what can be
         if (matrix) {
             const juce::String note = state_.processor.matrixNote();
-            line(juce::String(d.layoutName) + " " + kDot + " filter matrix" +
+            line(juce::String(d.layoutName) + kSeparator + "filter matrix" +
                      (note.isEmpty() ? juce::String() : ", " + note),
                  colour::text);
             const juce::Rectangle<float> norm{content.getX(), y, content.getWidth(), ctl::segmentHeight};
@@ -517,20 +516,19 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
             y = norm.getBottom() + ctl::segmentGap;
             line("what the filters expect on their input; converted as n3d, unconfirmed by the maker", colour::label);
         } else if (fileLayout) {
-            line(juce::String(d.layoutName) + " " + kDot + " " + juce::String(real) + " loudspeakers", colour::text);
+            line(juce::String(d.layoutName) + kSeparator + juce::String(real) + " loudspeakers", colour::text);
         } else {
             line("no file loaded", colour::label);
         }
         y = paintButtonNote(
                 g, content, y, juce::String::fromUTF8("load\xe2\x80\xa6"), mine, [this] { chooseLayoutFile(); },
-                "iem allradecoder json " + kDot + " ambdec " + kDot + " sofa fir-e filter matrix") +
+                "iem allradecoder json" + kSeparator + "ambdec" + kSeparator + "sofa fir-e filter matrix") +
             ctl::segmentGap;
     } else {
         //  typed: the table is the source. Any loaded layout becomes typed the moment it is edited there; a new one
         //  starts empty.
         if (typedLayout)
-            line(juce::String(d.layoutName) + " " + kDot + " " + juce::String(real) + " loudspeakers, typed",
-                 colour::text);
+            line(juce::String(d.layoutName) + kSeparator + juce::String(real) + " loudspeakers, typed", colour::text);
         else
             line("nothing typed yet: edit the loaded layout in the table, or start empty", colour::label);
         const juce::Rectangle<float> fresh{content.getX(), y, framedButtonWidth("start empty"), buttonH};
@@ -605,7 +603,7 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         g, content, y, juce::String::fromUTF8("loudspeakers\xe2\x80\xa6"), !d.layout.empty() || matrix,
         [this] { state_.openTemp(TempTab::Loudspeakers); },
         matrix ? juce::String("the outputs, one row each")
-               : "order " + juce::String(std::max(order, 0)) + " " + kDot + " the hull is on the scene");
+               : "order " + juce::String(std::max(order, 0)) + kSeparator + "the hull is on the scene");
     noteContentBottom(y + static_cast<float>(space::grid));
 }
 
@@ -634,7 +632,7 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
              juce::Justification::centredLeft);
         y += rowH;
         for (int o = 0; o < d.matrixOutputs; ++o) {
-            text(g, "output " + juce::String(o + 1) + " " + kDot + " channel " + juce::String(first + o),
+            text(g, "output " + juce::String(o + 1) + kSeparator + "channel " + juce::String(first + o),
                  font(type::matrix), colour::text, {content.getX(), y, content.getWidth() - testW, rowH},
                  juce::Justification::centredLeft);
             testButton(first + o, y, content.getRight());
@@ -892,14 +890,15 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
     const bool learned = d.oscForm != 0 && !d.oscAddresses[0].empty();
     const bool split = learned && !d.oscAddresses[1].empty() && !d.oscAddresses[2].empty();
     if (!learned)
-        line("format: by address " + kDot + " adm-osc, sparta and iem; anything else is learned from the list below",
-             colour::label);
+        line(
+            "format: by address" + kSeparator + "adm-osc, sparta and iem; anything else is learned from the list below",
+            colour::label);
     else if (split)
-        line("format: learned " + kDot + " yaw " + d.oscAddresses[0] + ", pitch " + d.oscAddresses[1] + ", roll " +
+        line("format: learned" + kSeparator + "yaw " + d.oscAddresses[0] + ", pitch " + d.oscAddresses[1] + ", roll " +
                  d.oscAddresses[2],
              colour::text);
     else
-        line("format: learned " + kDot + " " + d.oscAddresses[0], colour::text);
+        line("format: learned" + kSeparator + d.oscAddresses[0], colour::text);
     if (learned) {
         //  what the learned message carries; for split addresses a quaternion makes no sense and reads as degrees
         const juce::Rectangle<float> forms{content.getX(), y, content.getWidth(), ctl::segmentHeight};
@@ -926,7 +925,7 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
         line("nothing on port " + juce::String(d.oscPort) + " yet", colour::label);
         return y;
     }
-    line("on the port now " + kDot + " take a message whole, or one number as yaw, pitch or roll:", colour::label);
+    line("on the port now" + kSeparator + "take a message whole, or one number as yaw, pitch or roll:", colour::label);
     const char* slots[4] = {"message", "yaw", "pitch", "roll"};
     const float slotW = ctl::learnSlotWidth;
     int shown = 0;
@@ -1006,8 +1005,8 @@ float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content
     const float top = y;
     line(url, colour::text, textX, textW);
     line("1  point the phone's camera at the code and open the page", colour::label, textX, textW);
-    line("2  it warns the connection is not private " + kDot + " iPhone: show details, visit this website " + kDot +
-             " android: advanced, proceed",
+    line("2  it warns the connection is not private" + kSeparator + "iPhone: show details, visit this website" +
+             kSeparator + "android: advanced, proceed",
          colour::label, textX, textW);
     line("3  say how the phone is worn, tap start, face the front and press recentre", colour::label, textX, textW);
     line(status, colour::label, textX, textW);
