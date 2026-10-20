@@ -83,7 +83,7 @@ outline page for each new part, is on the local branch `site-sections`, not comm
 - [ ] **The decoder's page.** Its plugin page from DECODER.md (no measurements, no history); the
   tutorial where the header's output tabs and the orientation strip differ from the effects; pictures from
   `bambi-decoder-shot out.png [--speakers | --loudspeakers]`; the download page at four plugins, saying which
-  trackers are macOS only; the decoder's references on the foundations pages from `REFERENCES.md`. The release
+  trackers are macOS only; the decoder's references on the foundations pages from `docs/REFERENCES.md`. The release
   pipeline's download names and the site's download page agree.
 - [ ] **The host's page**: what it does, its parts, the DAWs it works with (Live today, its routing device needing
   Suite), linking status.

@@ -77,7 +77,7 @@ own 8802 directions: order 20 holds the summed level to 0.41 dB and the differen
 the time difference to 3.3 µs; a 0.2-ERB axis costs 0.02 dB against 0.1 for half the file (1.1 MB).
 
 **Loading a SOFA file** runs the same route at run time. The file is read through libmysofa (vendored, reader only,
-with the inflate half of zlib; see [THIRD-PARTY.md](../../THIRD-PARTY.md)), fitted with the KU100's settings, and the
+with the inflate half of zlib; see [THIRD-PARTY.md](../THIRD-PARTY.md)), fitted with the KU100's settings, and the
 result goes into the state as a head file's text (about 1 MB, held by reference so undo steps do not copy it): a
 session opens and bounces without the file, and a bounce elsewhere hears the same head. The path is kept for the
 page only; the caption says the set and how close the fit came. A measured head of 793 directions at 512 taps loads

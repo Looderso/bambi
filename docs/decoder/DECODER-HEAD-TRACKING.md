@@ -62,7 +62,7 @@ the headphones' motion with CoreMotion and sends the quaternion to the receiver 
 ## Any phone, with no app: a page
 
 *phone* in the strip launches the helper with `--phone`; it serves a page on port 8443 to the local Wi-Fi, reached
-by a QR code the tracking tab draws (qrcodegen, [THIRD-PARTY.md](../../THIRD-PARTY.md)) beside the address and
+by a QR code the tracking tab draws (qrcodegen, [THIRD-PARTY.md](../THIRD-PARTY.md)) beside the address and
 three steps. The helper says its address and state twice a second on `/bambi/helper/phone`. The page sends the
 head's yaw, pitch and roll, mapped on the phone for how it is worn; the helper sends them on as `/bambi/phone/ypr`,
 the suite's own form.

@@ -28,11 +28,11 @@ tools/        render, bench and inspection tools, and the repository's checks
 tests/        golden scenarios and the host-contract conformance suite
 docs/         what is true now, and why: concept pages and the decision log
 .claude/      skills (recurring procedures) and reviewer agents, usable with any coding agent
-third_party/  vendored dependencies, and JUCE as a submodule (THIRD-PARTY.md)
+third_party/  vendored dependencies, and JUCE as a submodule (docs/THIRD-PARTY.md)
 ```
 
 `core/` carries no JUCE dependency on purpose: everything musical here is pure computation over buffers
-and stays testable without building a plugin. How to build and test is in [BUILDING.md](BUILDING.md), how
+and stays testable without building a plugin. How to build and test is in [docs/BUILDING.md](docs/BUILDING.md), how
 to contribute in [CONTRIBUTING.md](CONTRIBUTING.md), and what a coding agent needs in [AGENTS.md](AGENTS.md).
 
 ## Licence
@@ -41,7 +41,7 @@ Copyright © 2026 Lorenz Häusler and the bambi contributors.
 
 bambi's own code is GPL-3.0-or-later ([LICENSE](LICENSE)). Plugin builds include JUCE, which bambi uses under
 the AGPLv3, so they are distributed under the AGPLv3 ([LICENSE-AGPL-3.0.md](LICENSE-AGPL-3.0.md)). Every
-third-party component and its licence is in [THIRD-PARTY.md](THIRD-PARTY.md) and
+third-party component and its licence is in [docs/THIRD-PARTY.md](docs/THIRD-PARTY.md) and
 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
 
 VST is a registered trademark of Steinberg Media Technologies GmbH.

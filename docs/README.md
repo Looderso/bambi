@@ -7,6 +7,9 @@ later. Documents are filed by what they apply to.
 | where | what |
 |---|---|
 | [VISION.md](VISION.md) | what bambi is after: the goal, who it is for, where it is going |
+| [BUILDING.md](BUILDING.md) | what each system needs, the two build trees, every check `verify.sh` runs |
+| [REFERENCES.md](REFERENCES.md) | the papers and data the methods rest on |
+| [THIRD-PARTY.md](THIRD-PARTY.md) | every vendored dependency and its licence |
 | [HOST-CHECKS.md](HOST-CHECKS.md) | the checklist a person runs in REAPER before a release |
 | [STATUS.md](STATUS.md) | the entry point: what exists, what is measured, what is next |
 | [DECISIONS.md](DECISIONS.md) | the index of the one numbered log for the whole suite; each entry is its own file in [decisions/](decisions/) |

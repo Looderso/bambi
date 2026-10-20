@@ -28,7 +28,7 @@ cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON && cmake --build build-pl
 tools/verify.sh
 ```
 
-What you need on each system is in [BUILDING.md](BUILDING.md). A change is ready when `tools/verify.sh`
+What you need on each system is in [docs/BUILDING.md](docs/BUILDING.md). A change is ready when `tools/verify.sh`
 passes.
 
 ## The rules, in brief
