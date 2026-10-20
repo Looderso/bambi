@@ -15,6 +15,16 @@
  */
 namespace bambi::live {
 
+/// The most a device's stamp is believed to lie before the message's arrival, in milliseconds. Older is a clock that
+/// stepped or a stamp of another time, and the arrival stands.
+inline constexpr double kStampTrustMs = 5000.0;
+
+/*  When the device read Live's position, on the socket's steady clock. `readMs` is the device's stamp on the system's
+ *  wall clock; `steadyNowNs` and `systemNowMs` are the two clocks read together, now. What happened to the message
+ *  after the read -- the device's queue, the relay, the socket -- then no longer moves where Live was. Without a
+ *  stamp, or with one after the arrival or older than kStampTrustMs, the arrival `arrivedNs` stands. */
+std::int64_t readAtNs(std::int64_t arrivedNs, std::int64_t steadyNowNs, double systemNowMs, double readMs) noexcept;
+
 class Arrivals {
 public:
     explicit Arrivals(double rate, std::int64_t offsetSamples = 0) noexcept : rate_(rate), offset_(offsetSamples) {}

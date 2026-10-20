@@ -9,12 +9,16 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstdint>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <string>
 
 #include "AudioSheet.h"
 #include "Device.h"
 #include "Engine.h"
+#include "HostLog.h"
 #include "Rail.h"
 #include "Routing.h"
 #include "Settings.h"
@@ -186,6 +190,18 @@ private:
     //  kept before it switches on, and the defaults must not be kept over it.
     void timerCallback() override {
         sheet_.setLoad(engine_.load());
+        //  every locate the transport decided while Live played, so a jump heard can be told from a real locate
+        if (const auto locates = engine_.locates(); locates != locatesLogged_) {
+            if (locates > locatesLogged_) {
+                const double moved = engine_.lastLocateSeconds();
+                bambi::livehost::hostLog("a locate: Live " + std::to_string(std::abs(moved)).substr(0, 5) + " s " +
+                                         (moved < 0.0 ? "behind" : "ahead of") + " where the host had it" +
+                                         (locates - locatesLogged_ > 1
+                                              ? " (" + std::to_string(locates - locatesLogged_) + " this second)"
+                                              : ""));
+            }
+            locatesLogged_ = locates;
+        }
         //  Live's lead, as it is measured; stopped with the sheet
         if (measuring_ && !sheet_.isOpen()) {
             measuring_ = false;
@@ -410,6 +426,7 @@ private:
     bambi::livehost::AudioSheet sheet_;
     juce::String audioProblem_;             ///< why the sheet's last change could not be played or kept
     bool measuring_{false};                 ///< Live's lead is measured, while the sheet is open
+    std::uint32_t locatesLogged_{0};        ///< the engine's locate count, as last logged
     int keptOrder_{0};                      ///< the order last kept with the set
     bambi::live::MidiLead lead_;            ///< what has been measured since measuring began
     std::vector<bambi::live::Lane> lanes_;  ///< the host's automation, kept with the set

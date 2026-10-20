@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "bambi/live/arrival.hpp"
 #include "bambi/live/transport.hpp"
 #include "doctest.h"
 
@@ -172,4 +173,62 @@ TEST_CASE("before any message the playhead is stopped at zero") {
     CHECK_FALSE(h.playing);
     CHECK(h.ppq == 0.0);
     CHECK(h.timeline == 0);
+}
+
+namespace {
+
+/*  Live playing at 120 bpm for ten seconds, its position read by the device every 20 ms and each message held back
+ *  60 to 200 ms on its way, in order, as a busy queue holds it -- fed through the host's own path: the stamp turned into the
+ *  steady clock, the arrival into a sample, the projector. Returns how many locates the projector decided. */
+std::uint32_t locatesWithLateMessages(bool stamped) {
+    constexpr double rate = 48000.0, bpm = 120.0, epochMs = 1.7e12;  // the system clock, this far ahead of the steady
+    TransportProjector projector({rate});
+    Arrivals arrivals(rate);
+    struct Sent {
+        std::int64_t readNs, arrivesNs;
+        TransportMessage message;
+    };
+    std::vector<Sent> sent;
+    std::uint32_t seed = 7;
+    std::int64_t lastArrival = 0;
+    for (std::int64_t readNs = 0; readNs < 10'000'000'000; readNs += 20'000'000) {
+        seed = seed * 1664525u + 1013904223u;
+        const std::int64_t held = 60'000'000 + static_cast<std::int64_t>(seed % 140'000'000u);
+        //  one connection, in order: a message held up holds up the ones behind it
+        lastArrival = std::max(lastArrival, readNs + held);
+        const double ppq = bpm / 60.0 * 1e-9 * static_cast<double>(readNs);
+        sent.push_back(
+            {readNs, lastArrival, {true, ppq, bpm, stamped ? epochMs + 1e-6 * static_cast<double>(readNs) : 0.0}});
+    }
+    std::size_t next = 0;
+    for (std::int64_t block = 0; block < static_cast<std::int64_t>(11 * rate); block += 128) {
+        const auto nowNs = static_cast<std::int64_t>(std::llround(1e9 * static_cast<double>(block) / rate));
+        for (; next < sent.size() && sent[next].arrivesNs <= nowNs; ++next) {
+            const Sent& m = sent[next];
+            const auto at = readAtNs(m.arrivesNs, nowNs, epochMs + 1e-6 * static_cast<double>(nowNs), m.message.readMs);
+            projector.receive(m.message, arrivals.at(block, 1e-9 * static_cast<double>(nowNs - at)));
+        }
+        (void)projector.reading(block);
+    }
+    return projector.locates();
+}
+
+}  // namespace
+
+TEST_CASE("a message held back on its way is not a locate, when it says when Live's position was read") {
+    //  Catches: the host placing a message at its arrival rather than at the device's read, so that a busy queue
+    //  between them reads as Live jumping back and every rate resets. Without stamps the same messages must make
+    //  locates, or the scene does not hold them back far enough to test anything.
+    CHECK(locatesWithLateMessages(true) == 0);
+    CHECK(locatesWithLateMessages(false) > 0);
+}
+
+TEST_CASE("a device's stamp is believed only between the arrival and a few seconds before it") {
+    //  Catches: a stamp from after the arrival, or from a clock that stepped, moving a message anywhere at all.
+    const std::int64_t arrived = 5'000'000'000, now = 5'010'000'000;
+    const double nowMs = 1000.0 + 1e-6 * static_cast<double>(now);
+    CHECK(readAtNs(arrived, now, nowMs, 0.0) == arrived);                              // no stamp
+    CHECK(readAtNs(arrived, now, nowMs, nowMs - 100.0) == now - 100'000'000);          // read 100 ms ago
+    CHECK(readAtNs(arrived, now, nowMs, nowMs - 1.0) == arrived);                      // after it arrived
+    CHECK(readAtNs(arrived, now, nowMs, nowMs - (kStampTrustMs + 100.0)) == arrived);  // too old to believe
 }

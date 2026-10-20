@@ -11,18 +11,18 @@
 #include <vector>
 
 #include "Runner.h"
+#include "bambi/decode/remote.hpp"
 #include "bambi/link/spsc.hpp"
 #include "bambi/live/arrival.hpp"
 #include "bambi/live/field.hpp"
-#include "bambi/decode/remote.hpp"
 #include "bambi/live/io.hpp"
 #include "bambi/live/lanes.hpp"
 #include "bambi/live/midi.hpp"
-#include "bambi/patch/parameters.hpp"
 #include "bambi/live/pairs.hpp"
-#include "devices.hpp"
 #include "bambi/live/transport.hpp"
 #include "bambi/patch/json.hpp"
+#include "bambi/patch/parameters.hpp"
+#include "devices.hpp"
 
 /*  The host's audio: a private aggregate of the loop device and the devices this computer's settings choose, opened
  *  as the host's own -- the loop device alone while none is chosen -- an Encoder for every track on one of its
@@ -104,6 +104,10 @@ public:
 
     /// The share of each block the host's processing takes, measured as it plays and smoothed; 0 before audio.
     float load() const noexcept { return load_.load(std::memory_order_relaxed); }
+    /// How many locates the transport has decided while playing since the engine was prepared, and how far the
+    /// last one moved: seconds Live was ahead of where the host had it (behind, negative). Any thread.
+    std::uint32_t locates() const noexcept { return locates_.load(std::memory_order_acquire); }
+    double lastLocateSeconds() const noexcept { return lastLocateSeconds_.load(std::memory_order_relaxed); }
 
     /// A track's session clip, as the device sent it, stamped as the transport is.
     void slot(const live::SlotPlay& report, std::int64_t stampNs) noexcept;
@@ -218,16 +222,17 @@ private:
     live::Plan plan_;                    ///< the plan the runner was last given, its latencies aside
     std::vector<live::Insert> playing_;  ///< the inserts it plays, in the order of their slots
     live::FieldPlan fieldPlan_;          ///< the plan with its Encoders and inserts, for the send levels
-    struct Dec {  // a Decoder, by the shape's id
+    struct Dec {                         // a Decoder, by the shape's id
         std::uint64_t id{0};
         std::shared_ptr<juce::AudioPluginInstance> plugin;
     };
-    std::map<std::uint64_t, std::pair<const void*, std::string>> told_;  ///< the plugin and what it was last told, by id
-    std::map<std::uint64_t, int> served_;  ///< the last click of each Decoder carried out
-    std::vector<Dec> decoders_;  ///< in the order of their slots, after the inserts
+    std::map<std::uint64_t, std::pair<const void*, std::string>>
+        told_;                               ///< the plugin and what it was last told, by id
+    std::map<std::uint64_t, int> served_;    ///< the last click of each Decoder carried out
+    std::vector<Dec> decoders_;              ///< in the order of their slots, after the inserts
     Json waitingDecoders_ = Json::object();  ///< restored Decoder states, by id, for Decoders not playing
-    Json waiting_ = Json::object();         ///< restored Encoder states, by track, for tracks not yet on a pair
-    Json waitingEffects_ = Json::object();  ///< restored insert states, by insert, for inserts not yet playing
+    Json waiting_ = Json::object();          ///< restored Encoder states, by track, for tracks not yet on a pair
+    Json waitingEffects_ = Json::object();   ///< restored insert states, by insert, for inserts not yet playing
     int block_{64};
     Runner runner_;
     live::TransportProjector projector_;
@@ -244,14 +249,14 @@ private:
     const juce::MidiInput* livePort_{nullptr};  ///< the same, set before it starts and never again: the inputs' to read
     juce::MidiDeviceListConnection midiWatch_;
     juce::SpinLock midiPush_;  ///< between the inputs' threads, which may be several; the audio thread never takes it
-    SpscQueue<TimedMidi, 1024> midi_;  ///< full only while no block runs; a message then is dropped
-    live::MidiPending pending_;        ///< the audio thread's: MIDI on the host's samples, until its piece
+    SpscQueue<TimedMidi, 1024> midi_;        ///< full only while no block runs; a message then is dropped
+    live::MidiPending pending_;              ///< the audio thread's: MIDI on the host's samples, until its piece
     std::atomic<std::int64_t> liveMidi_{0};  ///< samples Live's MIDI is held back by
     std::atomic<bool> measuring_{false};
-    bool wasMeasuring_{false};                ///< the audio thread's
-    bool silence_{false};  ///< the audio thread's: MIDI was dropped, so every note is let go at the next block
-    std::optional<live::LeadMeter> meter_;    ///< the audio thread's, made afresh as measuring starts
-    SpscQueue<std::int64_t, 64> leads_;       ///< measured leads, in samples, to the message thread
+    bool wasMeasuring_{false};  ///< the audio thread's
+    bool silence_{false};       ///< the audio thread's: MIDI was dropped, so every note is let go at the next block
+    std::optional<live::LeadMeter> meter_;  ///< the audio thread's, made afresh as measuring starts
+    SpscQueue<std::int64_t, 64> leads_;     ///< measured leads, in samples, to the message thread
     struct Program {  // what the runner was last given, to give it again with other routes or another device
         live::Compiled compiled;
         std::vector<juce::AudioProcessor*> slots;
@@ -259,24 +264,27 @@ private:
         Runner::Keep keep;
     };
     Program program_;
-    juce::String opened_;  ///< the device's name
+    juce::String opened_;             ///< the device's name
     std::vector<const float*> inAt_;  ///< the callback's pointers into the device's inputs, one per channel
     juce::AudioBuffer<float> out_;    ///< the callback's output, copied to the device's
-    int prepared_{0};      ///< the block the plugins are prepared for
+    int prepared_{0};                 ///< the block the plugins are prepared for
     devices::Aggregate aggregate_;
-    live::Row row_;           ///< the chosen devices' outputs: the Decoder's bus
-    live::Row inputRow_;      ///< their inputs, after the loop device's on the input row
+    live::Row row_;                      ///< the chosen devices' outputs: the Decoder's bus
+    live::Row inputRow_;                 ///< their inputs, after the loop device's on the input row
     std::vector<Runner::Route> routes_;  ///< the routes the runner was last given
     std::vector<live::Lane> lanes_;      ///< the lanes last given, driven where their instances play
     void drive();
     std::atomic<float> load_{0.0f};
+    std::atomic<std::uint32_t> locates_{0};  ///< the projector's count, published by the audio thread
+    std::atomic<double> lastLocateSeconds_{0.0};
     int loopChannels_{16};    ///< the loop device's channels the host opens, each way
     int inputChannels_{16};   ///< the input row: the loop device's, then the devices' inputs
     int outputChannels_{16};  ///< the loop device's, then the row
     int mainChannel_{0};      ///< the loop device's first pair: Live's Main in, the copy back to Live out
     double latencyMs_{0.0};
     int deviceLatency_{0};
-    int outputLatency_{0};  ///< samples from the host's output to the speakers: the device's, and its buffer               ///< the loop device both ways, and its buffer
+    int outputLatency_{
+        0};  ///< samples from the host's output to the speakers: the device's, and its buffer               ///< the loop device both ways, and its buffer
     std::atomic<bool> playable_{false};  ///< the device runs at the rate the plugins were prepared for
     std::int64_t faded_{0};              ///< samples of the fade-in played
 };

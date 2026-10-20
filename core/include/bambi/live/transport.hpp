@@ -33,6 +33,8 @@ struct TransportMessage {
     bool playing{false};
     double ppq{0.0};    ///< Live's song position, quarter notes
     double bpm{120.0};  ///< > 0
+    /// When the device read Live's position, in milliseconds on the system's wall clock; 0 when it did not say.
+    double readMs{0.0};
 };
 
 struct Playhead {
@@ -59,6 +61,11 @@ public:
     /// Where Live is at host sample `sample`, asked with `sample` increasing. Before any message: stopped at 0.
     Playhead reading(std::int64_t sample) noexcept;
 
+    /// How many locates it has decided while playing, and by how far the last one moved: seconds Live was ahead of
+    /// the projection (behind, negative). For a log; read by the owner.
+    std::uint32_t locates() const noexcept { return locates_; }
+    double lastLocateSeconds() const noexcept { return lastLocateSeconds_; }
+
 private:
     double nominal(double bpm) const noexcept { return bpm / (60.0 * s_.sampleRate); }  // quarter notes per sample
     double ppqAt(std::int64_t sample) const noexcept;
@@ -75,6 +82,8 @@ private:
     std::int64_t timeline_{0};                                     // the timeline there,
     double perSample_{0.0};                                        // and how fast the projection runs from it
     std::int64_t read_{std::numeric_limits<std::int64_t>::min()};  // the latest sample read
+    std::uint32_t locates_{0};
+    double lastLocateSeconds_{0.0};
 };
 
 }  // namespace bambi::live

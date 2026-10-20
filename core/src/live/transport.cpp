@@ -42,6 +42,8 @@ void TransportProjector::receive(const TransportMessage& m, std::int64_t at) noe
         const double error = live - ppqAt(here);  // quarter notes Live is ahead of the projection
         if (std::abs(error) > static_cast<double>(s_.slackSamples) * rate) {  // a locate
             anchor(here, live, samplesOf(live, bpm), rate);
+            ++locates_;
+            lastLocateSeconds_ = error * 60.0 / bpm;
         } else {  // closed gradually from where the projection is, so nothing jumps; a new tempo applies from here
             const double skew =
                 std::clamp(error / (static_cast<double>(s_.catchUpSamples) * rate), -s_.maxSkew, s_.maxSkew);

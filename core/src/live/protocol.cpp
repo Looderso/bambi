@@ -141,6 +141,7 @@ struct Writer {
         o.set("playing", Json(m.playing ? 1 : 0));
         o.set("ppq", Json(m.ppq));
         o.set("bpm", Json(m.bpm));
+        if (m.readMs > 0.0) o.set("t", Json(m.readMs));
         return o;
     }
     Json operator()(const Restore& m) const {
@@ -311,7 +312,8 @@ std::optional<Message> parse(std::string_view line, std::string* error) {
         const Json* v = member(o, "value");
         return Value{id(o), text(o, "name"), text(o, "what"), v != nullptr ? *v : Json()};
     }
-    if (type == "transport") return TransportMessage{flag(o, "playing"), number(o, "ppq"), number(o, "bpm", 120.0)};
+    if (type == "transport")
+        return TransportMessage{flag(o, "playing"), number(o, "ppq"), number(o, "bpm", 120.0), number(o, "t")};
     if (type == "restore") {
         const Json* s = member(o, "state");
         return Restore{s != nullptr ? *s : Json()};
