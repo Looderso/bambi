@@ -46,6 +46,11 @@ bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bamb
         Source/UI/SceneView.cpp
         Source/UI/HeadStrip.cpp
         Source/UI/Panel.cpp)
+#  OSC, for the head tracker: its one source compiled here, beside the code that calls it, and not the module, which
+#  would compile its dependencies (JUCE's core and events) into this library and every binary that links it. Those
+#  come from the binary's own JUCE. In the same archive as its callers, a linker that reads archives once in order
+#  still finds it.
+target_sources(bambi-decoder-code PRIVATE ${PROJECT_SOURCE_DIR}/third_party/JUCE/modules/juce_osc/juce_osc.cpp)
 #  Automatic reference counting for the launcher: it keeps the helper's NSRunningApplication across calls. On the
 #  other platforms the file is its C++ stub, compiled as C++.
 if(APPLE)
@@ -58,11 +63,9 @@ endif()
 #  plugins' sources at once, and two createPluginFilter definitions do not link.
 target_sources(BambiDecoder PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEntry.cpp)
 
-#  OSC, for the head tracker, compiled into the plugin's own JUCE; the shared code takes its headers only.
 target_link_libraries(BambiDecoder
     PRIVATE
         bambi-decoder-code
-        juce::juce_osc
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

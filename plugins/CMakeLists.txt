@@ -66,8 +66,7 @@ add_compile_definitions(JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE
 # copy of JUCE: a plugin the one JUCE's plugin wrapper compiles into it, a tool this one. No library links a
 # module itself: one that did would compile a copy into every binary that links it, beside that binary's own.
 add_library(bambi-juce STATIC)
-target_link_libraries(bambi-juce PRIVATE juce::juce_audio_processors juce::juce_osc
-                                 PUBLIC juce::juce_recommended_config_flags)
+target_link_libraries(bambi-juce PRIVATE juce::juce_audio_processors PUBLIC juce::juce_recommended_config_flags)
 add_library(bambi-juce-headers INTERFACE)
 target_include_directories(bambi-juce-headers INTERFACE $<TARGET_PROPERTY:bambi-juce,INCLUDE_DIRECTORIES>)
 target_compile_definitions(bambi-juce-headers INTERFACE $<TARGET_PROPERTY:bambi-juce,COMPILE_DEFINITIONS>)
@@ -78,7 +77,7 @@ target_link_libraries(bambi-juce INTERFACE bambi-juce-headers)
 add_library(bambi-juce-hosting STATIC)
 target_compile_definitions(bambi-juce-hosting PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(bambi-juce-hosting
-    PRIVATE juce::juce_audio_processors juce::juce_audio_devices juce::juce_gui_basics juce::juce_osc
+    PRIVATE juce::juce_audio_processors juce::juce_audio_devices juce::juce_gui_basics
     PUBLIC juce::juce_recommended_config_flags)
 add_library(bambi-juce-hosting-headers INTERFACE)
 target_include_directories(bambi-juce-hosting-headers INTERFACE $<TARGET_PROPERTY:bambi-juce-hosting,INCLUDE_DIRECTORIES>)
