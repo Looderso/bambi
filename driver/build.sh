@@ -44,6 +44,19 @@ xcodebuild -quiet \
       kCanBeDefaultDevice=false
       kCanBeDefaultSystemDevice=false'
 
+#  the suite's mark as the bundle's icon, in place of BlackHole's: rendered from the one SVG, at every size an
+#  .icns holds
+ICONSET=build/bambi.iconset
+rm -rf "$ICONSET" && mkdir -p "$ICONSET"
+sips -s format png ../ui/assets/marks/bambi.svg --out "$ICONSET/icon_512x512@2x.png" >/dev/null
+for size in 16 32 128 256 512; do
+    sips -z $size $size "$ICONSET/icon_512x512@2x.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+    [ $size = 512 ] || sips -z $((size * 2)) $((size * 2)) "$ICONSET/icon_512x512@2x.png" \
+        --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o build/bambi.driver/Contents/Resources/BlackHole.icns
+rm -rf "$ICONSET"
+
 #  the plug-in factory's id is the bundle's to declare; the source's default is every self-built BlackHole's
 PLIST=build/bambi.driver/Contents/Info.plist
 OLD=$(/usr/libexec/PlistBuddy -c "Print :CFPlugInTypes:443ABAB8-E7B3-491A-B985-BEB9187030DB:0" "$PLIST")
@@ -51,8 +64,8 @@ if [ "$OLD" != "$FACTORY" ]; then
     /usr/libexec/PlistBuddy -c "Delete :CFPlugInFactories:$OLD" \
         -c "Add :CFPlugInFactories:$FACTORY string BlackHole_Create" \
         -c "Set :CFPlugInTypes:443ABAB8-E7B3-491A-B985-BEB9187030DB:0 $FACTORY" "$PLIST"
-    codesign --force --sign - build/bambi.driver
 fi
+codesign --force --sign - build/bambi.driver  # once more: the icon and the plist changed after Xcode signed
 
 echo "built $PWD/build/bambi.driver ($CHANNELS channels)"
 if [ "${1:-}" = install ]; then

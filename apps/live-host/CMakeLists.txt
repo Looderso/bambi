@@ -4,9 +4,13 @@
 # check and picture tool link the JUCE built to host VST3 (bambi-juce-hosting); it sits above every library of the
 # suite: nothing includes it.
 
+set(BAMBI_MARK "${PROJECT_SOURCE_DIR}/ui/assets/marks/bambi.svg")
 juce_add_gui_app(bambi-live-host PRODUCT_NAME "bambi live host" COMPANY_NAME "${BAMBI_COMPANY_NAME}"
-                 BUNDLE_ID org.bambi.livehost MICROPHONE_PERMISSION_ENABLED TRUE
+                 BUNDLE_ID org.bambi.livehost ICON_BIG "${BAMBI_MARK}"
+                 MICROPHONE_PERMISSION_ENABLED TRUE
                  MICROPHONE_PERMISSION_TEXT "bambi live host plays the tracks Live sends it through the loop device.")
+# JUCE renders the icon while configuring; an edit to the mark configures again.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${BAMBI_MARK}")
 target_sources(bambi-live-host PRIVATE Source/Main.cpp Source/Device.cpp Source/Engine.cpp Source/Rail.cpp Source/Routing.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/AudioSheet.cpp Source/Timeline.cpp Source/Routing.cpp)
 target_compile_definitions(bambi-live-host PRIVATE JUCE_APPLICATION_NAME_STRING="bambi live host"
                                                    JUCE_APPLICATION_VERSION_STRING="0.1.0")
