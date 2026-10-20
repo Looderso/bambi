@@ -19,4 +19,4 @@
 - [ ] What this changes is still true in the docs and in the `AGENTS.md` of every directory it touches
 - [ ] Made with an AI agent? The commits carry its `Co-Authored-By` trailer and this description says so
 
-<!-- The rules behind this list: https://bambi.wiki/contribute -->
+<!-- The rules behind this list: AGENTS.md, and each module's own AGENTS.md -->

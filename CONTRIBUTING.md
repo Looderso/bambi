@@ -1,8 +1,9 @@
 # Contributing to bambi
 
 Thank you for helping. bambi is a suite of plugins built as one program, so a change is held to rules that keep
-the suite uniform. The rules, and how bambi is designed, are on the website:
-**[bambi.wiki/contribute](https://bambi.wiki/contribute)**. This file is the short version.
+the suite uniform. The rules are in [AGENTS.md](AGENTS.md), with each module's own beside its code, and how
+bambi is designed is in [docs/](docs/); the overview is on **[bambi.wiki/contribute](https://bambi.wiki/contribute)**.
+This file is the short version.
 
 ## Reporting a problem
 
@@ -34,15 +35,15 @@ passes.
 ## The rules, in brief
 
 - **The musical logic lives in `core/`**, which has no JUCE and is tested without a host. A plugin owns its engine
-  and its parameter list; everything else is shared. [Where code lives](https://bambi.wiki/contribute/where-code-lives)
+  and its parameter list; everything else is shared. [Where things live](AGENTS.md#where-things-live)
 - **Design each thing once.** A copy of a shared component is a defect: the component grows an option instead.
 - **Nothing on the audio thread allocates, frees or locks, and a bounce matches what was heard.**
-  [The audio thread](https://bambi.wiki/contribute/the-audio-thread)
+  [core/AGENTS.md](core/AGENTS.md), [host/AGENTS.md](host/AGENTS.md)
 - **Tests are mutation-checked.** Break the code the way a real mistake would, see the test fail, and name the
-  mistake in a `Catches:` comment. [Tests and checks](https://bambi.wiki/contribute/tests)
+  mistake in a `Catches:` comment. [The rules](AGENTS.md#the-rules)
 - **Comments say what the code does**: units, invariants, threads, a reason true now. Never history, names or
-  references. [Code style](https://bambi.wiki/contribute/code-style)
-- **Colours, sizes and strokes live in the theme file** and nowhere else. [The look](https://bambi.wiki/contribute/the-look)
+  references. [The rules](AGENTS.md#the-rules)
+- **Colours, sizes and strokes live in the theme file** and nowhere else. [ui/AGENTS.md](ui/AGENTS.md)
 
 ## Working with an AI agent
 
@@ -72,7 +73,7 @@ rules are the same as for anyone — `tools/verify.sh` decides when a change is 
 - A change you can hear was **tried in a host**, after rebuilding the plugins and restarting the host.
 
 The pull request template asks for each of these. More in
-[making a change](https://bambi.wiki/contribute/making-a-change).
+[working on bambi](AGENTS.md#working-on-bambi).
 
 ## Licence
 
