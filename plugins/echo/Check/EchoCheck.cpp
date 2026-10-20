@@ -28,6 +28,7 @@
 #include "bambi/editor/AllocationCheck.h"
 #include "bambi/editor/CheckKit.h"
 #include "bambi/editor/EffectChecks.h"
+#include "bambi/editor/HeaderChecks.h"
 #include "bambi/editor/PresetChecks.h"
 #include "bambi/editor/RegionChecks.h"
 #include "bambi/host/BlockBench.h"
@@ -146,6 +147,8 @@ int main(int argc, char** argv) {
             bambi::editor::layout(amb(order), juce::AudioChannelSet::stereo(), amb(order)),
             "order " + juce::String(order) + " with a sidechain");
 
+    bambi::editor::checkHeaderHoldsStill<Processor>(bambi::Product::Echo);
+
     bambi::editor::checkBypass<Processor>(bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)),
                                           "the field as it arrived",
                                           [](int c, juce::int64 at) { return bambi::editor::fieldSample(c, at); });
@@ -221,7 +224,11 @@ int main(int argc, char** argv) {
             juce::Graphics g(image);
             page.paint(g);
         }
-        check(true, "a page of Echo's parameters paints without a scene, an editor or the encoder");
+        int inked = 0;
+        for (int y = 0; y < image.getHeight(); ++y)
+            for (int x = 0; x < image.getWidth(); ++x) inked += image.getPixelAt(x, y).getAlpha() > 0 ? 1 : 0;
+        //  Catches: a page that needs a scene, an editor or the encoder to draw anything at all.
+        check(inked > 0, "a page of Echo's parameters paints without a scene, an editor or the encoder");
 
         const auto level = static_cast<bambi::ParamId>(bambi::echoParams().byKey("tap1.level"));
         const auto box = page.nameArea(level);

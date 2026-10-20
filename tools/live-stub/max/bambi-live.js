@@ -118,7 +118,7 @@ function idle() {
     if (busy) status("busy", "another bambi device in this set has the host");
     else if (!linked) status("no host", "starting it… if it does not come, is bambi installed?");
     else if (on) status("on · " + routedCount() + " tracks",
-                        routedCount() === 0 ? "add an Encoder to a track in the host to play it in the field"
+                        routedCount() === 0 ? "add a Path Encoder to a track in the host to play it in the field"
                                             : "in the field; binaural back on the bambi track");
     else status("connected", "everything plays in Live");
     const found = strays(identify());

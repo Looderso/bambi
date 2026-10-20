@@ -6,6 +6,7 @@
 #include <set>
 
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/ProductName.h"
 #include "bambi/ui/Widgets.h"
 
 namespace bambi::livehost {
@@ -626,8 +627,8 @@ float RoutingPage::tag(juce::Graphics& g, float x, float cy, const juce::String&
 
 float RoutingPage::encoderChip(juce::Graphics& g, live::TrackId id, float x, float y, bool removable) {
     (void)removable;
-    const auto chip = ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, "encoder", colour::text,
-                                   colour::identity(Product::Encoder), false);
+    const auto chip = ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, ui::productName(Product::Encoder),
+                                   colour::text, colour::identity(Product::Encoder), false);
     if (idle() && pairOf(id) >= 0)
         addClickArea(chip.box, [this, id] {
             if (showSource) showSource(id);
@@ -653,8 +654,8 @@ float RoutingPage::liveNeed(const Node& n, int depth) const {
     if (role == live::Role::Bus)
         w += ui::framedButtonWidth("encode whole") + rt::gap * 2.0f;
     else if (const live::Part* part = partOf(n.id))
-        w += ui::chipWidth("encoder", rt::control, true, false) + ui::dropdownWidth() + rt::gap +
-             sidechainWidth(part->sidechain, {Waiting::Kind::Sidechain, n.id, 0});
+        w += ui::chipWidth(ui::productName(Product::Encoder), rt::control, true, false) + ui::dropdownWidth() +
+             rt::gap + sidechainWidth(part->sidechain, {Waiting::Kind::Sidechain, n.id, 0});
     return w + chainWidth(n.id) + rt::sendRoom;
 }
 
@@ -720,7 +721,8 @@ float RoutingPage::liveLine(juce::Graphics& g, const Node& n, int depth, float x
 float RoutingPage::inputLine(juce::Graphics& g, const live::HostInput& in, float x, float y, float width) {
     const live::Part* part = partOf(in.id);
     const float need = rt::padX + rt::nameWidth + rt::gap + tagWidth() + rt::gap * 2.0f +
-                       ui::chipWidth("encoder", rt::control, true, false) + ui::dropdownWidth() + rt::gap +
+                       ui::chipWidth(ui::productName(Product::Encoder), rt::control, true, false) +
+                       ui::dropdownWidth() + rt::gap +
                        sidechainWidth(part != nullptr ? part->sidechain : 0, {Waiting::Kind::Sidechain, in.id, 0}) +
                        chainWidth(in.id) + rt::sendRoom;
     const bool twoLines = need > width;

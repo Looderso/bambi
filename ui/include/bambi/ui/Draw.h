@@ -29,6 +29,18 @@ inline float textWidth(const juce::Font& f, const juce::String& s) {
     return juce::GlyphArrangement::getStringWidth(f, s);
 }
 
+/// `s` cut from the end to fit `width` with an ellipsis, `keep` always after it whole: a name that does not fit
+/// keeps its modified mark.
+inline juce::String elided(const juce::Font& f, const juce::String& s, float width, const juce::String& keep = {}) {
+    if (textWidth(f, s + keep) <= width) return s + keep;
+    const juce::String dots = juce::String::fromUTF8("\xe2\x80\xa6");
+    for (int n = s.length() - 1; n > 0; --n) {
+        const auto cut = s.substring(0, n).trimEnd() + dots + keep;
+        if (textWidth(f, cut) <= width) return cut;
+    }
+    return dots + keep;
+}
+
 inline void text(juce::Graphics& g, const juce::String& s, const juce::Font& f, juce::Colour c,
                  juce::Rectangle<float> box, juce::Justification j = juce::Justification::centredLeft) {
     g.setColour(c);
@@ -82,6 +94,23 @@ inline void ruleV(juce::Graphics& g, float x, float y0, float y1, juce::Colour c
 }
 
 /// A mark of what is happening now, ringed in the ground so its grey reads over any fill beneath it.
+/// A status as a square left of its words, `left` its left edge and `centreY` its middle: on (`ok`), off
+/// (`inactive`), or set up and waiting (`waiting`).
+inline void statusSquare(juce::Graphics& g, float left, float centreY, juce::Colour c) {
+    const auto size = theme::header::statusSquare;
+    g.setColour(c);
+    g.fillRect(left, centreY - size / 2.0f, size, size);
+}
+
+/// A point a drag takes, as every grabbed point is drawn: a dot in `ink`, larger while it is held. Returns its radius,
+/// for what is placed beside it.
+inline float grabPoint(juce::Graphics& g, juce::Point<float> c, bool held, juce::Colour ink = theme::colour::handle) {
+    const float r = theme::controls::envelopePoint + (held ? theme::scene::handleHotGrow : 0.0f);
+    g.setColour(ink);
+    g.fillEllipse(juce::Rectangle<float>(2.0f * r, 2.0f * r).withCentre(c));
+    return r;
+}
+
 inline void nowMark(juce::Graphics& g, juce::Rectangle<float> mark, juce::Colour c) {
     g.setColour(theme::colour::ground);
     g.fillRect(mark.expanded(theme::stroke::liveHalo));

@@ -20,6 +20,7 @@
 #include "Settings.h"
 #include "Timeline.h"
 #include "bambi/live/midi.hpp"
+#include "bambi/ui/ProductName.h"
 #include "bambi/ui/Theme.h"
 #include "devices.hpp"
 #include "loop.hpp"
@@ -162,7 +163,7 @@ public:
 
     void resized() override {
         auto area = getLocalBounds();
-        rail_.setBounds(area.removeFromLeft(bambi::ui::theme::rail::width));
+        rail_.setBounds(area.removeFromLeft(bambi::livehost::Rail::width()));
         if (editor_ != nullptr) editor_->setBounds(area.withSize(editor_->getWidth(), editor_->getHeight()));
         routing_.setBounds(area);
         timeline_.setBounds(area);
@@ -362,12 +363,12 @@ private:
         return nullptr;
     }
 
-    static const char* nameOf(View v) {
+    static juce::String nameOf(View v) {
         switch (v) {
-            case View::Encoder: return "encoder";
-            case View::Echo: return "echo";
-            case View::Reverb: return "reverb";
-            case View::Decoder: return "decoder";
+            case View::Encoder: return bambi::ui::productName(bambi::Product::Encoder);
+            case View::Echo: return bambi::ui::productName(bambi::Product::Echo);
+            case View::Reverb: return bambi::ui::productName(bambi::Product::Reverb);
+            case View::Decoder: return bambi::ui::productName(bambi::Product::Decoder);
             case View::Routing: return "routing";
             case View::Timeline: return "timeline";
             case View::Audio: return "audio";
@@ -393,7 +394,7 @@ private:
         }
         const int w = editor_ != nullptr ? editor_->getWidth() : bambi::ui::theme::metrics::windowWidth;
         const int h = editor_ != nullptr ? editor_->getHeight() : bambi::ui::theme::metrics::windowHeight;
-        setSize(bambi::ui::theme::rail::width + w, h);
+        setSize(bambi::livehost::Rail::width() + w, h);
         resized();
         update();
     }

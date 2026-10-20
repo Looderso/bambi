@@ -27,9 +27,6 @@ struct RegionHandle {
     Vec3 shownIn(Projection projection) const { return projection == Projection::Equirect ? onMap : direction; }
 };
 
-/// Where a region's aim is drawn in `projection`: on the equirect, by `aimOnMap`, so a pole holds still.
-Vec3 aimShownIn(const Region& r, Projection projection);
-
 /// The handles of a region, as applied. "Everywhere" has none: there is nothing to aim and nothing to size.
 void regionHandles(const Region& r, std::vector<RegionHandle>& into);
 

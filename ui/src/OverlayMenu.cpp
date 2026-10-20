@@ -111,11 +111,16 @@ bool overlayHover(const OverlayMenuAreas& areas, std::span<const OverlayRow> row
     return true;
 }
 
+namespace {
+
+/// The pointer left the view. True when something had been hovered.
 bool overlayClearHover(OverlayMenuState& state) {
     if (!state.hovered.has_value()) return false;
     state.hovered.reset();
     return true;
 }
+
+}  // namespace
 
 std::optional<OverlayKey> overlayRowAt(const OverlayMenuAreas& areas, std::span<const OverlayRow> rows,
                                        juce::Point<float> at) {

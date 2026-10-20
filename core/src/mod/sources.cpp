@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "bambi/math/vec3.hpp"
 #include "bambi/mod/modulation.hpp"
 #include "bambi/patch/parameters.hpp"
 
@@ -14,11 +15,6 @@ constexpr std::array<const char*, 12> kNoteNames{"C", "C#", "D", "D#", "E", "F",
 
 /// One level per cycle, for drawing sample-and-hold. Illustrative only: what plays is a seeded draw.
 constexpr std::array<double, 6> kIllustrativeSteps{-0.55, 0.64, -0.82, 0.27, 0.91, -0.36};
-
-double wrap01(double x) {
-    x -= std::floor(x);
-    return (x < 0.0 || x >= 1.0) ? 0.0 : x;
-}
 
 std::string ms(double seconds) { return formatNumber(seconds * 1000.0, 0) + " ms"; }
 

@@ -28,7 +28,7 @@
 #include "bambi/patch/undo.hpp"
 #include "bambi/path/trajectory.hpp"
 
-/*  bambi Encoder plugin shell.
+/*  bambi Path Encoder plugin shell.
 
     Everything musical is the headless core. This class is the host contract around it:
     buses, parameters, state, MIDI, and determinism against the host's timeline. Its editor

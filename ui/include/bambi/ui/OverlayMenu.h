@@ -67,8 +67,6 @@ std::optional<OverlayKey> overlayRowAt(const OverlayMenuAreas& areas, std::span<
 /// changed and the scene wants a repaint. The pointer's move is the view's to receive; what to do with it is here.
 bool overlayHover(const OverlayMenuAreas& areas, std::span<const OverlayRow> rows, OverlayMenuState& state,
                   juce::Point<float> at);
-/// The pointer left the view. True when something had been hovered.
-bool overlayClearHover(OverlayMenuState& state);
 
 /*  The presses: the master, the triangle and, while open, the list -- a row's box, all and none, the wheel -- and one
  *  over `whole` that closes the list on a press and swallows it, so the press that closes it never starts an orbit.

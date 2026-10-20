@@ -8,6 +8,7 @@
 #include "Plugins.h"
 #include "bambi/live/timeline.hpp"
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/ProductName.h"
 #include "bambi/ui/Widgets.h"
 
 namespace bambi::livehost {
@@ -24,8 +25,8 @@ int depthOf(const live::Tree& tree, const Node& n) {
     int depth = 0;
     const Node* at = &n;
     while (at->parent && depth < 64) {
-        const auto up = std::find_if(tree.nodes.begin(), tree.nodes.end(),
-                                     [&](const Node& x) { return x.id == *at->parent; });
+        const auto up =
+            std::find_if(tree.nodes.begin(), tree.nodes.end(), [&](const Node& x) { return x.id == *at->parent; });
         if (up == tree.nodes.end()) break;
         at = &*up;
         ++depth;
@@ -145,7 +146,9 @@ void TimelinePage::timerCallback() {
 float TimelinePage::xOf(double ppq) const {
     return left_ + static_cast<float>((ppq - time_.start) / time_.span) * width_;
 }
-double TimelinePage::ppqOf(float x) const { return time_.start + static_cast<double>((x - left_) / width_) * time_.span; }
+double TimelinePage::ppqOf(float x) const {
+    return time_.start + static_cast<double>((x - left_) / width_) * time_.span;
+}
 
 //  The bars the view shows, the first to the last, partly shown included.
 static std::pair<int, int> barsIn(const live::TimeView& t) {
@@ -158,7 +161,7 @@ std::vector<TimelinePage::Owned> TimelinePage::ownedBy(live::TrackId row) const 
     if (row != kMainRow) {
         const auto sources = s_.field.sources();
         if (std::find(sources.begin(), sources.end(), row) != sources.end())
-            out.push_back({live::Instance::Encoder, row, live::Effect::Echo, "encoder"});
+            out.push_back({live::Instance::Encoder, row, live::Effect::Echo, ui::productName(Product::Encoder)});
     }
     for (const live::Insert& i : s_.shape.insertsOn(row))
         out.push_back({live::Instance::Insert, i.id, i.effect, effectName(i.effect)});
@@ -179,7 +182,8 @@ bool TimelinePage::belongs(const live::Lane& l, live::TrackId row) const {
 }
 
 std::optional<TimelinePage::Owned> TimelinePage::ownerOf(const live::Lane& l) const {
-    if (l.instance == live::Instance::Encoder) return Owned{l.instance, l.owner, live::Effect::Echo, "encoder"};
+    if (l.instance == live::Instance::Encoder)
+        return Owned{l.instance, l.owner, live::Effect::Echo, ui::productName(Product::Encoder)};
     if (l.instance == live::Instance::Decoder) return Owned{l.instance, l.owner, live::Effect::Echo, "decoder"};
     for (const live::Chain& c : s_.shape.chains)
         for (const live::Insert& i : c.inserts)
@@ -264,13 +268,16 @@ void TimelinePage::paint(juce::Graphics& g) {
                 y = ui::drawGroupHeading(g, tl::pad, y + tl::pad, right - tl::pad, "returns");
             }
             header(n.id, juce::String(n.name), depthOf(s_.tree, n),
-                   n.kind == Node::Kind::Group ? "group" : n.kind == Node::Kind::Return ? "return" : "");
+                   n.kind == Node::Kind::Group    ? "group"
+                   : n.kind == Node::Kind::Return ? "return"
+                                                  : "");
             //  its clips, as Live has them: read-only
             const auto clips = std::find_if(s_.arrangement.tracks.begin(), s_.arrangement.tracks.end(),
                                             [&](const live::TrackClips& t) { return t.id == n.id; });
             //  a track the session has: its arrangement waits for Back to Arrangement, as in Live
             const auto seen = playing_.find(n.id);
-            const bool taken = seen != playing_.end() && (seen->second.report.overrides || seen->second.report.slot >= 0);
+            const bool taken =
+                seen != playing_.end() && (seen->second.report.overrides || seen->second.report.slot >= 0);
             juce::Graphics::ScopedSaveState keepClips(g);
             g.reduceClipRegion(times.toNearestInt());
             if (clips != s_.arrangement.tracks.end())
@@ -369,8 +376,8 @@ void TimelinePage::paintSession(juce::Graphics& g, float top, const live::Playhe
         const juce::Rectangle<float> grid{gridLeft, rows, gridWidth, paneTop_ - rows};
         float y = rows - scroll();
         for (int sc = 0; sc < scenes; ++sc) {
-            ui::text(g, juce::String(sc + 1), ui::smallFont(), colour::label, {0.0f, y, gridLeft - tl::gap, tl::sceneRow},
-                     juce::Justification::centredRight);
+            ui::text(g, juce::String(sc + 1), ui::smallFont(), colour::label,
+                     {0.0f, y, gridLeft - tl::gap, tl::sceneRow}, juce::Justification::centredRight);
             g.setColour(colour::rowDivider);
             g.fillRect(0.0f, y + tl::sceneRow - 1.0f, right, 1.0f);
             juce::Graphics::ScopedSaveState keep(g);
@@ -401,10 +408,7 @@ void TimelinePage::paintSession(juce::Graphics& g, float top, const live::Playhe
                 if (seen != playing_.end() && seen->second.report.slot == sc) {
                     const auto mark = juce::Rectangle<float>(tl::slotMark, tl::slotMark)
                                           .withCentre({box.getRight() - tl::slotMark, box.getCentreY()});
-                    g.setColour(colour::ground);
-                    g.fillRect(mark.expanded(ui::theme::stroke::rule));
-                    g.setColour(colour::playhead);
-                    g.fillRect(mark);
+                    ui::nowMark(g, mark, colour::playhead);
                 }
                 addClickArea(clickable, [this, id = tracks[i]->id, sc] {
                     chosenSlot_[id] = sc;
@@ -450,7 +454,8 @@ void TimelinePage::clipPane(juce::Graphics& g, juce::Rectangle<float> area, cons
                    bar ? tl::ruler / 2.0f : tl::ruler / 4.0f);
         if (bar)
             ui::text(g, juce::String(beat / live::kBeatsPerBar + 1), ui::smallFont(), colour::label,
-                     {x + tl::gap, top + tl::loopBrace, tl::barLabel, tl::ruler / 2.0f}, juce::Justification::centredLeft);
+                     {x + tl::gap, top + tl::loopBrace, tl::barLabel, tl::ruler / 2.0f},
+                     juce::Justification::centredLeft);
     }
     if (clip->looping) {
         g.setColour(colour::text);
@@ -472,7 +477,8 @@ void TimelinePage::clipPane(juce::Graphics& g, juce::Rectangle<float> area, cons
         ui::text(g,
                  juce::String(paneScroll_ + 1) + kDash + juce::String(paneScroll_ + tl::paneLanes) + " of " +
                      juce::String(paneLanes_),
-                 ui::smallFont(), colour::label, {tl::pad, top + tl::ruler / 2.0f, tl::tree - tl::pad, tl::ruler / 2.0f},
+                 ui::smallFont(), colour::label,
+                 {tl::pad, top + tl::ruler / 2.0f, tl::tree - tl::pad, tl::ruler / 2.0f},
                  juce::Justification::centredLeft);
     //  where Live is in it
     const auto seen = playing_.find(*chosen_);
@@ -489,8 +495,8 @@ void TimelinePage::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWh
     if (view_ == View::Session) {
         //  over the pane: its lanes, a lane at a time
         if (e.position.y >= paneTop_) {
-            paneScroll_ = std::clamp(paneScroll_ + (wheel.deltaY < 0.0f ? 1 : -1), 0,
-                                     std::max(0, paneLanes_ - tl::paneLanes));
+            paneScroll_ =
+                std::clamp(paneScroll_ + (wheel.deltaY < 0.0f ? 1 : -1), 0, std::max(0, paneLanes_ - tl::paneLanes));
             repaint();
             return;
         }
@@ -506,8 +512,8 @@ void TimelinePage::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWh
     if (view_ == View::Arrangement && e.position.x >= left_) {
         //  command: zoom about the pointer; sideways, or with shift: along the song
         if (e.mods.isCommandDown()) {
-            time_ = live::zoomed(time_, std::exp(-static_cast<double>(wheel.deltaY) * tl::zoomRate), ppqOf(e.position.x),
-                                 length_);
+            time_ = live::zoomed(time_, std::exp(-static_cast<double>(wheel.deltaY) * tl::zoomRate),
+                                 ppqOf(e.position.x), length_);
             repaint();
             return;
         }
@@ -571,9 +577,7 @@ float TimelinePage::lane(juce::Graphics& g, live::Lane& l, float y, const Axis& 
         for (std::size_t i = 0; i < l.points.size(); ++i) {
             const juce::Point<float> c{axis.x(l.points[i].ppq), yOf(l.points[i].value)};
             const bool held = dragLane_ == l.id && dragPoint_ == i;
-            const float r = ui::theme::controls::envelopePoint + (held ? ui::theme::scene::handleHotGrow : 0.0f);
-            g.setColour(live ? colour::handle : colour::inactive);
-            g.fillEllipse(juce::Rectangle<float>(2.0f * r, 2.0f * r).withCentre(c));
+            const float r = ui::grabPoint(g, c, held, live ? colour::handle : colour::inactive);
             if (!held) continue;
             //  where it is and what it sets, beside it -- on its left near the panel
             const juce::String readout = juce::String(live::barsBeats(l.points[i].ppq)) + ui::kSeparator +
@@ -694,7 +698,8 @@ void TimelinePage::panel(juce::Graphics& g, juce::Rectangle<float> area) {
         });
     }
     if (ownedBy(row).empty() || (view_ == View::Session && clip == nullptr)) {
-        ui::text(g, view_ == View::Session && clip == nullptr ? "no session clip here" : "nothing of bambi's plays here",
+        ui::text(g,
+                 view_ == View::Session && clip == nullptr ? "no session clip here" : "nothing of bambi's plays here",
                  ui::smallFont(), colour::label, {inner.getX(), y, inner.getWidth(), ctl::listRowHeight},
                  juce::Justification::centredLeft);
         return;
@@ -748,7 +753,8 @@ void TimelinePage::menu(juce::Graphics& g) {
                 acts.push_back([this, o, key = std::string(m[i].key)] {
                     std::uint64_t next = 1;
                     for (const live::Lane& l : s_.lanes) next = std::max(next, l.id + 1);
-                    live::Lane lane{next, o.instance, o.owner, key, {}, 0, -1, {}};  // a song lane until a clip is chosen
+                    live::Lane lane{next, o.instance, o.owner, key,
+                                    {},   0,          -1,      {}};  // a song lane until a clip is chosen
                     if (view_ == View::Session)
                         if (const live::SessionClip* clip = chosenClip(*chosen_)) {
                             lane.clipTrack = *chosen_;
@@ -783,8 +789,7 @@ void TimelinePage::ruler(juce::Graphics& g, float top) {
     //  the loop, a band along the top: ink while it is on
     if (s_.arrangement.loopLength > 0.0) {
         g.setColour(s_.arrangement.loopOn ? colour::text : colour::inactive);
-        const float x0 = xOf(s_.arrangement.loopStart),
-                    x1 = xOf(s_.arrangement.loopStart + s_.arrangement.loopLength);
+        const float x0 = xOf(s_.arrangement.loopStart), x1 = xOf(s_.arrangement.loopStart + s_.arrangement.loopLength);
         g.fillRect(x0, top, x1 - x0, tl::loopBrace);
     }
     //  the bars, numbered as room allows
@@ -800,7 +805,8 @@ void TimelinePage::ruler(juce::Graphics& g, float top) {
                    numbered ? tl::ruler / 2.0f : tl::ruler / 4.0f);
         if (numbered)
             ui::text(g, juce::String(bar + 1), ui::smallFont(), colour::label,
-                     {x + tl::gap, top + tl::loopBrace, tl::barLabel, tl::ruler / 2.0f}, juce::Justification::centredLeft);
+                     {x + tl::gap, top + tl::loopBrace, tl::barLabel, tl::ruler / 2.0f},
+                     juce::Justification::centredLeft);
     }
     //  the locators: a mark and a name
     for (const live::Locator& l : s_.arrangement.locators) {

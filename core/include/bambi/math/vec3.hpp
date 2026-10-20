@@ -43,6 +43,12 @@ inline Vec3 unit(Vec3 a) {
 
 constexpr double clampd(double v, double lo, double hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
+/// `x` wrapped into [0, 1): a phase in turns. Where rounding lands it on 1 exactly, 0.
+inline double wrap01(double x) {
+    x -= std::floor(x);
+    return (x < 0.0 || x >= 1.0) ? 0.0 : x;
+}
+
 /// Unit vector from azimuth and elevation, both in radians.
 inline Vec3 fromAzEl(double azRad, double elRad) {
     const double ce = std::cos(elRad);

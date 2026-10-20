@@ -33,12 +33,6 @@ struct Room {
     double diffusion{0};
 };
 
-/// width : depth : height of a shape -- room 1 : 1.25 : 0.65, hall 1 : 1.8 : 0.6, tall 1 : 1.1 : 1.2.
-struct Proportions {
-    double width, depth, height;
-};
-Proportions proportionsOf(RoomShape shape);
-
 /// Eyring, both ways: the absorption that gives a decay in a room, and the decay an absorption gives.
 double eyringAbsorption(double volume, double surface, double rt60);
 double eyringDecay(double volume, double surface, double absorption);

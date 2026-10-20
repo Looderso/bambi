@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include <algorithm>
+#include <cmath>
 
 namespace bambi {
+
+/// A one-pole smoother's step: the share of the way to its target it covers in `dt` seconds, with time constant
+/// `tauSeconds` (floored at 10 us, so a zero never divides). Both in seconds, and named for it: a time constant in
+/// milliseconds here would slew a thousand times too slowly.
+inline double smoothCoef(double dt, double tauSeconds) { return 1.0 - std::exp(-dt / std::max(tauSeconds, 1e-5)); }
 
 /// How far along a ramp of `length` samples is after `elapsed` of them, clamped to 0..1.
 constexpr double rampWeight(int elapsed, int length) { return std::min(1.0, elapsed / static_cast<double>(length)); }

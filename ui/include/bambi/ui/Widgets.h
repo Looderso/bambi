@@ -49,6 +49,10 @@ float sceneToggleWidth(const juce::String& label);
 /// Where a scene view draws, in its own pixels: label strip at the top, picture below. The equirect
 /// is 2:1 and nothing else; `equirectWidth`/`equirectHeight` cap the largest 2:1 box drawn inside both.
 Viewport sceneViewport(Projection projection, int width, int height);
+/// The box the picture fills in a scene view: the globe's circle is inscribed in it, the equirect is it.
+juce::Rectangle<float> sceneFrame(const Viewport& vp);
+/// The globe's outline, or the equirect's frame, in the sphere's colour.
+void paintSceneFrame(juce::Graphics& g, const Viewport& vp, Projection projection);
 
 /// Where the two scene panels go in the row they share. `full` gives the whole row to the equirect and hides the globe.
 struct SceneRow {

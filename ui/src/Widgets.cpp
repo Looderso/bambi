@@ -349,6 +349,19 @@ SceneToggle paintSceneToggle(juce::Graphics& g, juce::Rectangle<float> strip, fl
     return {{left, strip.getY(), rightEdge - left + sc::toggleHitPad, strip.getHeight()}, left};
 }
 
+juce::Rectangle<float> sceneFrame(const Viewport& vp) {
+    return {static_cast<float>(vp.cx - vp.rx), static_cast<float>(vp.cy - vp.ry), static_cast<float>(2.0 * vp.rx),
+            static_cast<float>(2.0 * vp.ry)};
+}
+
+void paintSceneFrame(juce::Graphics& g, const Viewport& vp, Projection projection) {
+    g.setColour(theme::colour::sphere);
+    if (projection == Projection::Globe)
+        g.drawEllipse(sceneFrame(vp), theme::stroke::rule);
+    else
+        g.drawRect(sceneFrame(vp), theme::stroke::rule);
+}
+
 Viewport sceneViewport(Projection projection, int width, int height) {
     const auto strip = static_cast<double>(theme::scene::labelStrip);
     const auto w = static_cast<double>(width);

@@ -46,8 +46,7 @@ juce::String columnSub(const MatrixModel& model, bambi::MatrixTab tab, int colum
                     : std::clamp(static_cast<int>(shape.kind), 0, static_cast<int>(kRegionKindNames.size()) - 1))];
             const int sideAt = model.manifest().byKey(slot.prefix + ".side");
             const bool outside = sideAt != bambi::kNoParam && model.valueOf(static_cast<bambi::ParamId>(sideAt)) > 0.5f;
-            return juce::String(kind) + " " + juce::String(juce::CharPointer_UTF8("\xc2\xb7")) + " " +
-                   (outside ? "outside" : "inside");
+            return juce::String(kind) + kSeparator + (outside ? "outside" : "inside");
         }
     }
     return {};
