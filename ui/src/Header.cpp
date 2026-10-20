@@ -262,8 +262,7 @@ void Header::paint(juce::Graphics& g) {
     right -= linkWidth;
     text(g, linkText, labelFont(), colour::label, {right, 0.0f, linkWidth, h});
     right -= hdr::gap / 2.0f + hdr::statusSquare;
-    g.setColour(status_.open ? colour::ok : colour::inactive);
-    g.fillRect(right, cy - hdr::statusSquare / 2.0f, hdr::statusSquare, hdr::statusSquare);
+    statusSquare(g, right, cy, status_.open ? colour::ok : colour::inactive);
     right -= hdr::gap;
 
     //  the instance switch, when a plugin has one: the labels from the right, the shown one as a block

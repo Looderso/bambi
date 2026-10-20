@@ -69,8 +69,7 @@ void DecoderSceneView::paint(juce::Graphics& g) {
     refreshDesign();
 
     const auto vp = viewport();
-    const juce::Rectangle<float> frame{static_cast<float>(vp.cx - vp.rx), static_cast<float>(vp.cy - vp.ry),
-                                       static_cast<float>(2.0 * vp.rx), static_cast<float>(2.0 * vp.ry)};
+    const auto frame = sceneFrame(vp);
     {
         juce::Graphics::ScopedSaveState clip(g);
         if (!globe) g.reduceClipRegion(frame.getSmallestIntegerContainer());
@@ -89,11 +88,7 @@ void DecoderSceneView::paint(juce::Graphics& g) {
         paintSpeakers(g, vp, speakerAlpha);
         paintHead(g, vp, headAlpha);
     }
-    g.setColour(colour::sphere);
-    if (globe)
-        g.drawEllipse(frame, stroke::rule);
-    else
-        g.drawRect(frame, stroke::rule);
+    paintSceneFrame(g, vp, projection_);
 
     //  the equirect's letters: back, left, front (or the gaze), right, back
     if (!globe) {
@@ -207,7 +202,7 @@ void DecoderSceneView::paintSources(juce::Graphics& g, const Viewport& vp) {
         //  the row under the pointer in the list, pointed at
         if (state_.sources.hovered(key)) {
             const float ring = r + sc::hoverRing;
-            g.setColour(colour::text.withAlpha(a));
+            g.setColour(colour::touched.withAlpha(a));
             g.drawEllipse(static_cast<float>(p.x) - ring, static_cast<float>(p.y) - ring, 2.0f * ring, 2.0f * ring,
                           stroke::rule);
         }

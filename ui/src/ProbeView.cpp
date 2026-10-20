@@ -41,8 +41,6 @@ Viewport ProbeView::viewport() const { return sceneViewport(projection_, getWidt
 
 /// The caption, the outline or the frame, and the axis letters: the encoder's panel, shared.
 void ProbeView::paintFrame(juce::Graphics& g, const Viewport& vp) {
-    const bool globe = projection_ == Projection::Globe;
-
     g.fillAll(colour::panel);
     //  the caption, the globe's view presets and the equirect's corner: every scene view's
     strip_ = paintSceneStrip(g, getWidth(), projection_, state_, true, true);
@@ -50,13 +48,7 @@ void ProbeView::paintFrame(juce::Graphics& g, const Viewport& vp) {
     energyToggle_ = strip_.energy;
     fullToggle_ = strip_.full;
 
-    const juce::Rectangle<float> frame{static_cast<float>(vp.cx - vp.rx), static_cast<float>(vp.cy - vp.ry),
-                                       static_cast<float>(2.0 * vp.rx), static_cast<float>(2.0 * vp.ry)};
-    g.setColour(colour::sphere);
-    if (globe)
-        g.drawEllipse(frame, theme::stroke::rule);
-    else
-        g.drawRect(frame, theme::stroke::rule);
+    paintSceneFrame(g, vp, projection_);
 }
 
 void ProbeView::paintAxisLabels(juce::Graphics& g, const Viewport& vp) {

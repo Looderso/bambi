@@ -134,13 +134,13 @@ protected:
     static constexpr float kScrollPad = 14.0f;  ///< slack, so a last line is never what gets cut
 
     struct Region {
-        juce::Rectangle<float> area;
-        std::function<void(juce::Point<float>)> press;
-        std::function<void(juce::Point<float>, bool)> drag;  ///< position, fine (shift held)
-        std::function<void()> release;
-        std::function<void()> click;
-        std::function<void()> doubleClick;
-        std::function<void(float)> wheel;  ///< a wheel over the area: pixels to move by, sideways or down
+        juce::Rectangle<float> area{};
+        std::function<void(juce::Point<float>)> press{};
+        std::function<void(juce::Point<float>, bool)> drag{};  ///< position, fine (shift held)
+        std::function<void()> release{};
+        std::function<void()> click{};
+        std::function<void()> doubleClick{};
+        std::function<void(float)> wheel{};  ///< a wheel over the area: pixels to move by, sideways or down
     };
 
     void clearRegions() { regions_.clear(); }

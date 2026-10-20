@@ -94,6 +94,23 @@ inline void ruleV(juce::Graphics& g, float x, float y0, float y1, juce::Colour c
 }
 
 /// A mark of what is happening now, ringed in the ground so its grey reads over any fill beneath it.
+/// A status as a square left of its words, `left` its left edge and `centreY` its middle: on (`ok`), off
+/// (`inactive`), or set up and waiting (`waiting`).
+inline void statusSquare(juce::Graphics& g, float left, float centreY, juce::Colour c) {
+    const auto size = theme::header::statusSquare;
+    g.setColour(c);
+    g.fillRect(left, centreY - size / 2.0f, size, size);
+}
+
+/// A point a drag takes, as every grabbed point is drawn: a dot in `ink`, larger while it is held. Returns its radius,
+/// for what is placed beside it.
+inline float grabPoint(juce::Graphics& g, juce::Point<float> c, bool held, juce::Colour ink = theme::colour::handle) {
+    const float r = theme::controls::envelopePoint + (held ? theme::scene::handleHotGrow : 0.0f);
+    g.setColour(ink);
+    g.fillEllipse(juce::Rectangle<float>(2.0f * r, 2.0f * r).withCentre(c));
+    return r;
+}
+
 inline void nowMark(juce::Graphics& g, juce::Rectangle<float> mark, juce::Colour c) {
     g.setColour(theme::colour::ground);
     g.fillRect(mark.expanded(theme::stroke::liveHalo));

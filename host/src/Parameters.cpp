@@ -4,6 +4,12 @@
 #include <cmath>
 
 namespace bambi::host {
+namespace {
+
+/// A core string as JUCE wants it.
+juce::String toJuce(std::string_view s) { return juce::String::fromUTF8(s.data(), static_cast<int>(s.size())); }
+
+}  // namespace
 
 juce::AudioProcessorValueTreeState::ParameterLayout parameterLayout(const ParamManifest& m) {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
