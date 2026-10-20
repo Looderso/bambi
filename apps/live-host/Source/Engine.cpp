@@ -175,12 +175,14 @@ bool Engine::start(const Settings& settings, juce::String& status) {
     const auto compiled = live::compile(plan, &error);
     juce::String why;
     if (compiled) routes_ = routesFor(compiled->latency);
-    if (!compiled || !runner_.prepare(*compiled, {first.get()}, compiled->levels, runnerSetup(), why, {first}, routes_)) {
+    if (!compiled ||
+        !runner_.prepare(*compiled, {first.get()}, compiled->levels, runnerSetup(), why, {first}, routes_)) {
         status = "the first program: " + (compiled ? why : juce::String(error));
         return false;
     }
     program_ = {*compiled, {first.get()}, compiled->levels, {first}};
     projector_ = live::TransportProjector({s_.rate});
+    locates_.store(0, std::memory_order_release);
     arrivals_.emplace(s_.rate, s_.transportOffsetSamples);
     runner_.setClock(&projector_);
     runner_.setClips(&clips_);
@@ -252,7 +254,8 @@ void Engine::tellDecoders() {
             return nullptr;
         }();
         if (remote == nullptr) continue;
-        host.headphones = live::takenBy({d.id, Output::Headphones}, s_.audio.at({d.id, Output::Headphones}), row_, decoders);
+        host.headphones =
+            live::takenBy({d.id, Output::Headphones}, s_.audio.at({d.id, Output::Headphones}), row_, decoders);
         host.speakers = live::takenBy({d.id, Output::Speakers}, s_.audio.at({d.id, Output::Speakers}), row_, decoders);
         request.host = host;
         std::string text = toJson(request).dump(0);
@@ -299,7 +302,8 @@ bool Engine::setOrder(int order, juce::String& status) {
     const auto compiled = live::compile(plan, &error);
     juce::String why;
     if (compiled) routes_ = routesFor(compiled->latency);
-    if (!compiled || !runner_.prepare(*compiled, {first.get()}, compiled->levels, runnerSetup(), why, {first}, routes_)) {
+    if (!compiled ||
+        !runner_.prepare(*compiled, {first.get()}, compiled->levels, runnerSetup(), why, {first}, routes_)) {
         status = "the first program: " + (compiled ? why : juce::String(error));
         return false;
     }
@@ -326,7 +330,8 @@ bool Engine::reroute() {
 bool Engine::setField(const live::Field& field, const std::vector<live::TrackPair>& pairs,
                       const std::vector<live::HostInput>& inputs, juce::String& status) {
     auto arrivals = live::arrivalsOf(pairs);
-    for (const live::Arrival& a : live::inputArrivals(s_.audio, inputs, inputRow_, loopChannels_)) arrivals.push_back(a);
+    for (const live::Arrival& a : live::inputArrivals(s_.audio, inputs, inputRow_, loopChannels_))
+        arrivals.push_back(a);
     live::FieldPlan fp = live::planOf(field, arrivals);
     //  the restored states the new plugins took: given up only once the swap is made, so a change that fails part
     //  of the way leaves them for the next
@@ -336,7 +341,8 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     std::vector<int> drop;  // nodes whose Encoder could not be loaded
     for (std::size_t slot = 0; slot < fp.encoders.size(); ++slot) {
         const live::TrackId track = fp.encoders[slot];
-        const auto on = std::find_if(pairs.begin(), pairs.end(), [&](const live::TrackPair& p) { return p.track == track; });
+        const auto on =
+            std::find_if(pairs.begin(), pairs.end(), [&](const live::TrackPair& p) { return p.track == track; });
         const int pair = on == pairs.end() ? -1 : on->pair;  // an input of the host has none
         const auto had = std::find_if(voices_.begin(), voices_.end(), [&](const Voice& v) { return v.track == track; });
         if (had != voices_.end()) {
@@ -401,9 +407,8 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
         return out;
     };
     if (fp.plan.nodes == plan_.nodes && fp.plan.main == plan_.main && fp.effects == playing_ &&
-        ids(nextDecoders) == ids(decoders_) &&
-        sidechains(fp.plan) == sidechains(plan_) && fp.plan.returns == plan_.returns &&
-        fp.plan.mainWires == plan_.mainWires)
+        ids(nextDecoders) == ids(decoders_) && sidechains(fp.plan) == sidechains(plan_) &&
+        fp.plan.returns == plan_.returns && fp.plan.mainWires == plan_.mainWires)
         return false;  // the same shape, wires and plugins: a level alone is setSends()'s
 
     std::vector<juce::AudioProcessor*> slots;
@@ -545,8 +550,7 @@ Engine::Target Engine::targetOf(live::Instance instance, std::uint64_t owner, st
             if (v.track == owner) t = {&manifestOf(instance), -1, v.encoder.get()};
     } else if (instance == live::Instance::Insert) {
         for (const Fx& f : effects_)
-            if (f.insert.id == owner)
-                t = {&manifestOf(instance, f.insert.effect), -1, f.plugin.get()};
+            if (f.insert.id == owner) t = {&manifestOf(instance, f.insert.effect), -1, f.plugin.get()};
     } else {
         for (const Dec& d : decoders_)
             if (d.id == owner) t = {&manifestOf(instance), -1, d.plugin.get()};
@@ -597,8 +601,8 @@ void Engine::drive() {
                         effects_[e].insert.id == lane.owner)
                         heldBy = n.track;
                 }
-        driven.push_back({t.plugin->getParameters()[t.at], std::move(points), lane.clipTrack, lane.slot,
-                          lane.clip() ? 0 : heldBy});
+        driven.push_back(
+            {t.plugin->getParameters()[t.at], std::move(points), lane.clipTrack, lane.slot, lane.clip() ? 0 : heldBy});
         keep.push_back(alive(t.plugin));
     }
     runner_.setAutomation(std::move(driven), std::move(keep));
@@ -672,7 +676,8 @@ void Engine::openMidi() {
     });
     for (const juce::MidiDeviceInfo& d : available) {
         if (port_ != nullptr && d.identifier == port_->getIdentifier()) continue;
-        if (std::any_of(midiInputs_.begin(), midiInputs_.end(), [&](const auto& in) { return in->getIdentifier() == d.identifier; }))
+        if (std::any_of(midiInputs_.begin(), midiInputs_.end(),
+                        [&](const auto& in) { return in->getIdentifier() == d.identifier; }))
             continue;
         if (auto in = juce::MidiInput::openDevice(d.identifier, this)) {
             in->start();
@@ -745,6 +750,10 @@ void Engine::audioDeviceIOCallbackWithContext(const float* const* inputs, int in
     const std::int64_t now = nowNs();
     for (Timed t; queue_.pop(t);)
         projector_.receive(t.message, arrivals_->at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
+    if (projector_.locates() != locates_.load(std::memory_order_relaxed)) {
+        lastLocateSeconds_.store(projector_.lastLocateSeconds(), std::memory_order_relaxed);
+        locates_.store(projector_.locates(), std::memory_order_release);
+    }
     for (TimedSlot t; slots_.pop(t);)
         clips_.receive(t.report, arrivals_->at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
 

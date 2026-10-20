@@ -41,7 +41,7 @@ function light(state) {
     outlet(3, "bgfillcolor", LIGHT[state]);
 }
 
-const PROTOCOL = 3;  // with the host's (core/live/protocol.hpp): bumped when a message or its meaning changes
+const PROTOCOL = 4;  // with the host's (core/live/protocol.hpp): bumped when a message or its meaning changes
 const MAIN = ["Main", "Master"];  // Live 12 says Main, earlier versions Master
 const GRACE_MS = 5000;
 const RETURN_IN = "1/2";     // the host's copy back to Live: the loop device's first pair, as Main's goes out
@@ -820,10 +820,13 @@ function watch(path, prop, report) {
 function observe() {
     stopObserving();
     const song = "live_set";
+    //  Stamped when the position is read, on the system's clock: whatever holds the message up after this -- Max's
+    //  queue, the relay, the socket -- no longer reads as Live having moved.
     const transport = () => {
         const s = new LiveAPI(song);
-        send({type: "transport", playing: Number(s.get("is_playing")), ppq: Number(s.get("current_song_time")),
-              bpm: Number(s.get("tempo"))});
+        const ppq = Number(s.get("current_song_time"));
+        const t = Date.now();
+        send({type: "transport", playing: Number(s.get("is_playing")), ppq: ppq, bpm: Number(s.get("tempo")), t: t});
     };
     const all = identify();
     for (const n of all) set_[n.key] = routingOf(n.api);  // what the routing is now is the device's own

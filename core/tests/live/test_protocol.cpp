@@ -73,6 +73,13 @@ TEST_CASE("the device's own lines are read as it means them") {
     CHECK(tr.playing);
     CHECK(tr.ppq == 127.355);
     CHECK(tr.bpm == 120.0);
+    CHECK(tr.readMs == 0.0);  // an unstamped message says so
+
+    //  Catches: the device's read stamp lost on the way in or out, which puts every message back at its arrival.
+    const TransportMessage stamped =
+        read<TransportMessage>(R"({"type":"transport","playing":1,"ppq":2,"bpm":120,"t":1760000000123.5})");
+    CHECK(stamped.readMs == 1760000000123.5);
+    CHECK(serialise(Message{stamped}).find("\"t\":1760000000123.5") != std::string::npos);
 
     const Routed r =
         read<Routed>(R"({"type":"routed","tracks":[{"id":1,"name":"1-Group","ok":true,"to":"Ext. Out 3/4"},)"

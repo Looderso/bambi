@@ -30,7 +30,7 @@ namespace bambi::live {
  *  A saved Live set keeps the device's own copy of its scripts, so an old device meets a new host: it is told by the welcome and
  *  heard no more, rather than left to misbehave. 2: the transport and clips asked of Live, the host deciding which tracks play
  *  in bambi, the routing in groups and returns. 3: a node's group, as Live files it, beside the group it plays into. */
-inline constexpr int kProtocol = 3;
+inline constexpr int kProtocol = 4;
 
 //  ---- the device to the host ------------------------------------------------------------------------------------
 

@@ -5,6 +5,7 @@
 #include <variant>
 
 #include "HostLog.h"
+#include "bambi/live/arrival.hpp"
 #include "loop.hpp"
 
 namespace bambi::livehost {
@@ -89,7 +90,16 @@ void DeviceServer::handle(net::LineServer::Connection from, const std::string& l
     const auto* value = std::get_if<live::Value>(&*message);
     if (std::holds_alternative<live::Tree>(*message) || (value != nullptr && value->what == "name"))
         (void)loop::nameChannels(session_.channelNames());
-    if (const auto* t = std::get_if<live::TransportMessage>(&*message); t != nullptr && transport) transport(*t, stamp);
+    if (const auto* t = std::get_if<live::TransportMessage>(&*message); t != nullptr && transport) {
+        //  where Live was when the device read it, not when the line came in: what held it up since is not Live moving
+        const auto steadyNow =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+                .count();
+        const auto systemNowMs = static_cast<double>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+                .count());
+        transport(*t, live::readAtNs(stamp, steadyNow, systemNowMs, t->readMs));
+    }
     if (const auto* p = std::get_if<live::SlotPlay>(&*message); p != nullptr && slot) slot(*p, stamp);
     if (std::holds_alternative<live::Restore>(*message) && restored) restored();
     if (session_.shows() != shows && show) show();
