@@ -37,7 +37,7 @@ juce_add_binary_data(bambi-decoder-data SOURCES
     ${PROJECT_SOURCE_DIR}/core/data/decode/ku100.json)
 set_target_properties(bambi-decoder-data PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bambi-decode bambi-decoder-data bambi-remote qrcodegen juce::juce_osc
+bambi_plugin_code(bambi-decoder-code NAME "${BAMBI_DECODER_NAME}" LIBRARIES bambi-decode bambi-decoder-data bambi-remote qrcodegen
     SOURCES
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
@@ -58,9 +58,11 @@ endif()
 #  plugins' sources at once, and two createPluginFilter definitions do not link.
 target_sources(BambiDecoder PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEntry.cpp)
 
+#  OSC, for the head tracker, compiled into the plugin's own JUCE; the shared code takes its headers only.
 target_link_libraries(BambiDecoder
     PRIVATE
         bambi-decoder-code
+        juce::juce_osc
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
