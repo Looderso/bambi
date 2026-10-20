@@ -11,7 +11,6 @@
  */
 namespace bambi::livehost {
 
-juce::File audioSettingsFile();
 live::AudioSettings loadAudioSettings();
 /// False when the file could not be written.
 bool saveAudioSettings(const live::AudioSettings& settings);

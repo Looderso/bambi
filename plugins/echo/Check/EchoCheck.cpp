@@ -224,7 +224,11 @@ int main(int argc, char** argv) {
             juce::Graphics g(image);
             page.paint(g);
         }
-        check(true, "a page of Echo's parameters paints without a scene, an editor or the encoder");
+        int inked = 0;
+        for (int y = 0; y < image.getHeight(); ++y)
+            for (int x = 0; x < image.getWidth(); ++x) inked += image.getPixelAt(x, y).getAlpha() > 0 ? 1 : 0;
+        //  Catches: a page that needs a scene, an editor or the encoder to draw anything at all.
+        check(inked > 0, "a page of Echo's parameters paints without a scene, an editor or the encoder");
 
         const auto level = static_cast<bambi::ParamId>(bambi::echoParams().byKey("tap1.level"));
         const auto box = page.nameArea(level);
