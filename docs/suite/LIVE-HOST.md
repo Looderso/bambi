@@ -127,7 +127,8 @@ the shape and the lanes in the device's dict, so in the Live set; audio settings
 
 A rail and a page. The rail lists the plugins' windows at the top and the host's own pages at its foot — I/O,
 routing, timeline — over the status (Live's link, the sources, the cost). Above them, beside every page, is Live's
-transport: play, filled while Live plays, and stop. The space bar plays or stops on every page.
+transport: play, filled while Live plays, and stop, which pressed again while stopped goes back to the song's start, as
+Live's own does. The space bar plays or stops on every page.
 
 ## Routing page
 

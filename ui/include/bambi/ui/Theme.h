@@ -513,7 +513,6 @@ namespace rail
     inline constexpr int   problemLines = 8;  ///< what went wrong, wrapped this far at most
     inline constexpr float transport    = 10.0f;  ///< the play and stop glyphs, square: a solid shape, smaller
                                                   ///< than the header's outlined glyphs' box to read as large
-    inline constexpr float transportGap = 10.0f;  ///< between them
 } // namespace rail
 
 // ---- a run of channels in one row: the live host's channel map, the decoder's bus ------------------

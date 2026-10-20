@@ -27,12 +27,17 @@ public:
     void setViews(std::vector<juce::String> labels, int open, std::function<void(int)> select);
     /// Whether Live plays, as the top of the column shows it.
     void setPlaying(bool playing);
-    /// A click on play (true) or stop (false).
+    /// A click on play (true), or on stop while Live plays (false).
     std::function<void(bool)> transport;
+    /// A click on stop while Live is stopped: back to the song's start, as Live's own stop does.
+    std::function<void()> toStart;
     /// Space: play when Live is stopped, stop when it plays. False for any other key, which passes on.
     bool takeKey(const juce::KeyPress& key);
     /// A press at `at`, as a click there does: on play, stop or a view. For checks too.
     void pressAt(juce::Point<float> at);
+    /// Where play and stop were last drawn. For checks.
+    juce::Rectangle<float> drawnPlay() const { return play_; }
+    juce::Rectangle<float> drawnStop() const { return stop_; }
     /// The column's width: its widest possible view name, every plugin's and the host's own pages, with its padding.
     static int width();
     void setStatus(Status status);

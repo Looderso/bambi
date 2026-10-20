@@ -110,6 +110,7 @@ public:
 
         addAndMakeVisible(rail_);
         rail_.transport = [this](bool play) { playOrStop(play); };
+        rail_.toStart = [this] { device_.command({bambi::live::Command::Action::Locate, 0.0}); };
         addChildComponent(routing_);
         addChildComponent(timeline_);
         timeline_.command = [this](const bambi::live::Command& c) { device_.command(c); };

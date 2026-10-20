@@ -1575,20 +1575,27 @@ int railTransportHolds() {
         rail.paint(g);  // lays out where the glyphs are
     }
     std::vector<bool> asked;
+    int starts = 0;
     rail.transport = [&](bool play) { asked.push_back(play); };
+    rail.toStart = [&] { ++starts; };
     rail.setPlaying(false);
     const bool space = rail.takeKey(juce::KeyPress(juce::KeyPress::spaceKey));
     rail.setPlaying(true);
     (void)rail.takeKey(juce::KeyPress(juce::KeyPress::spaceKey));
     const bool other = rail.takeKey(juce::KeyPress('a'));
-    const float mid = static_cast<float>(ui::theme::metrics::headerHeight) / 2.0f;
-    const float glyph = ui::theme::rail::transport;
-    rail.pressAt({ui::theme::rail::padX + glyph / 2.0f, mid});                                        // play
-    rail.pressAt({ui::theme::rail::padX + glyph + ui::theme::rail::transportGap + glyph / 2.0f, mid});  // stop
-    //  Catches: space always asking the same thing, another key taken from the plugins, and the two glyphs'
-    //  presses swapped or lost.
-    const bool ok = space && !other && asked == std::vector<bool>{true, false, true, false};
-    std::printf("  space plays a stopped Live and stops a playing one, other keys pass, play and stop clicked %s\n",
+    rail.pressAt(rail.drawnPlay().getCentre());
+    rail.pressAt(rail.drawnStop().getCentre());  // while playing: stop
+    rail.setPlaying(false);
+    rail.pressAt(rail.drawnStop().getCentre());  // while stopped: back to the start
+    //  even space before, between and after the two glyphs
+    const float before = rail.drawnPlay().getX(), between = rail.drawnStop().getX() - rail.drawnPlay().getRight(),
+                after = static_cast<float>(rail.getWidth()) - ui::theme::stroke::rule - rail.drawnStop().getRight();
+    const bool even = std::abs(before - between) < 0.5f && std::abs(between - after) < 0.5f;
+    //  Catches: space always asking the same thing, another key taken from the plugins, the two glyphs' presses
+    //  swapped or lost, stop while stopped not going back to the start, and the glyphs bunched to one side.
+    const bool ok = space && !other && asked == std::vector<bool>{true, false, true, false} && starts == 1 && even;
+    std::printf("  space plays a stopped Live and stops a playing one, other keys pass, play and stop clicked, stop "
+                "again back to the start, evenly spaced %s\n",
                 ok ? "" : "  FAIL");
     return ok ? 0 : 1;
 }
