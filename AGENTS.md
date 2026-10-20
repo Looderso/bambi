@@ -79,6 +79,11 @@ a new number; the old one is never rewritten.
 
 - Every change starts from a GitHub issue and lands as one pull request into `main`, from a branch named for the
   issue. Pull requests merge with a merge commit.
+- **Work in a worktree of your own** (`git worktree add ../bambi-<issue> -b <branch> origin/main`) when another
+  agent or person may be working in the same checkout, or when `git status` shows changes you did not make. Never
+  build, stash, commit or switch branches over someone else's work. A new worktree needs its submodules
+  (`third_party/JUCE`); configure its plugin build with `-DBAMBI_COPY_PLUGIN=OFF`, so it does not replace the
+  installed plugins someone may be testing. Remove the worktree once its pull request is merged.
 - Commit messages say what is now true, in a sentence; the body says why.
 - Work made with an AI agent says so (a `Co-Authored-By` trailer on commits; a line in the pull request).
 - Published text — issues, pull requests, commit messages, code — names no one; code and commit messages carry no
