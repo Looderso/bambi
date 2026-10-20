@@ -5,8 +5,7 @@ description: Review or rewrite the comments and docstrings in bambi's C++ — af
 
 # A comment pass
 
-The published rulebook is the contributor guideline at bambi.wiki/contribute/code-style (its "comments" section).
-This is how to apply it.
+The rule is [AGENTS.md](../../../AGENTS.md)'s seventh: comments say what the code does. This is how to apply it.
 
 ## What a comment is for
 
