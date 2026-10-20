@@ -2,9 +2,12 @@
 build/
 build-*/
 .cache/
-# The private half, tracked in its own repository (bambi-private.git beside this folder)
-/CLAUDE.md
-/docs/
-/.claude/
+# A maintainer's own notes and machine-local settings -- not part of the repository
+/CLAUDE.local.md
+/docs/BACKLOG.md
+/docs/INVENTORY*.md
+/.claude/launch.json
+/.claude/settings.local.json
+/.claude/worktrees/
+# The browser prototypes, not yet published
 /prototypes/
-/tools/check-docs.sh
