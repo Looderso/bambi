@@ -32,7 +32,7 @@ step "build"                cmake --build build
 step "tests"                ./build/bambi-tests
 step "goldens"              tools/golden.sh
 if command -v node >/dev/null 2>&1; then
-    step "device scripts"   bash -c 'node tools/live-stub/max/test-match.js && node tools/live-stub/max/test-launch.js && node tools/live-stub/max/test-routing.js'
+    step "device scripts"   bash -c 'node apps/live-host/device/test-match.js && node apps/live-host/device/test-launch.js && node apps/live-host/device/test-routing.js'
 fi
 step "style"                tools/check-style.sh
 step "layers"               tools/check-layers.sh

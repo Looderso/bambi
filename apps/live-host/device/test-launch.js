@@ -3,7 +3,7 @@
 //  When the bambi Live device starts the host, tested outside Max: the Node script is loaded with stand-ins for max-api, the
 //  network, the file system and the clock, and its connection refused again and again.
 //
-//    node tools/live-stub/max/test-launch.js
+//    node apps/live-host/device/test-launch.js
 
 const fs = require("fs");
 const path = require("path");
@@ -29,8 +29,7 @@ function load(appExists) {
             }
         },
         path: require("path"),
-        os: require("os"),
-        fs: {existsSync(p) { return appExists && String(p).endsWith(".app"); }, openSync() { return 1; }},
+        fs: {existsSync(p) { return appExists && String(p).endsWith(".app"); }},
         child_process: {spawn() { ++launches; return {unref() {}}; }},
     };
     const context = {
@@ -104,7 +103,7 @@ function check(name, got, want) {
     check("a host that answered and was lost is started again at the next refusal", launches, 2);
 }
 {
-    //  Catches: a launch with no host built and no stand-in, which would count as started and then never be tried again.
+    //  Catches: a launch with no host built, which would count as started and then never be tried again.
     const c = load(false);
     const first = sockets[0];
     first.settled = true;

@@ -3,7 +3,7 @@
 //  Where the bambi Live device gives a track back to when bambi lets it go, tested outside Max: the device's script is
 //  loaded with stand-ins for Max's globals and its pure givenBackTo() asked about the cases that matter.
 //
-//    node tools/live-stub/max/test-routing.js
+//    node apps/live-host/device/test-routing.js
 
 const fs = require("fs");
 const path = require("path");

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-//  These are the properties the feature bank's calibration rests on -- separability against a
-//  real library is measured by bambi-features, but a library run does not say which property
-//  broke.
+//  These are the properties the feature bank's calibration rests on, each checked on its own so
+//  that a failure says which property broke.
 
 #include <cmath>
 #include <limits>
@@ -36,7 +35,7 @@ std::vector<float> noise(double seconds, float amp = 0.5f, double sr = kSr) {
     return x;
 }
 
-/// Mean of one feature over gated frames -- the same summary bambi-features reports.
+/// Mean of one feature over gated frames.
 double meanGated(const std::vector<float>& x, Feature f, double sr = kSr) {
     const auto rows = FeatureBank::analyseOffline(x, sr);
     double acc = 0.0;

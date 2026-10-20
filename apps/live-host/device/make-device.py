@@ -8,7 +8,7 @@
 # holding the patcher as JSON ending in a newline and a NUL. Needs Live 12 Suite installed, whose empty
 # audio effect it starts from: a patcher missing a key Max expects crashes Live while the device loads.
 #
-#   tools/live-stub/max/make-device.py
+#   apps/live-host/device/make-device.py
 import json, os, struct
 
 here = os.path.dirname(os.path.abspath(__file__))

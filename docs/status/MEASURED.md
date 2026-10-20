@@ -90,6 +90,6 @@ core. The machine was busy for some runs; read the ratios, not the last digit.
 draws do. And nothing in a plugin's own window reports any of this: the footer's figure is `dsp`, the audio
 thread's alone.
 
-**Live, as the device reads it** — `tools/live-stub`, a 2026-10 set on this machine: the song position and a
+**Live, as the device reads it** — measured once with a stand-in host since removed, a 2026-10 set on this machine: the song position and a
 playing clip's `playing_position` each arrive about every 11.5–12 ms, 95% of them within 21 ms. Enough to project
 both between reports.

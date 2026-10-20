@@ -19,7 +19,7 @@ using namespace bambi;
 using namespace bambi::test;
 
 /*  The array on hand (array16.json, an IEM AllRADecoder file: 17 loudspeakers on channels 1-3 and 5-18, the file's
- *  own order-5 N3D matrix) and what the prototype prototypes/decoder/listen/build-array.py designed for it
+ *  own order-5 N3D matrix) and what an independent design in numpy made of it
  *  (array16-reference.json: orders 1-3, max-rE, SN3D, energy 1, channel 18 imaginary). The file marks channel 18,
  *  straight below, as a real loudspeaker; the room has none there, so the design treats it as imaginary. */
 namespace {
@@ -144,10 +144,10 @@ TEST_CASE("the design matches the IEM plug-in's own matrix for the array") {
                                 ref[i].items()[static_cast<std::size_t>(c)].numberOr(0);
             err2 += diff * diff;
         }
-    CHECK(std::sqrt(err2 / ref2) < 3e-4);  // the prototype: 0.02 %
+    CHECK(std::sqrt(err2 / ref2) < 3e-4);  // the independent design: 0.02 %
 }
 
-TEST_CASE("the design equals the prototype's, max-rE at orders 1 to 3") {
+TEST_CASE("the design equals an independent one, max-rE at orders 1 to 3") {
     //  Catches: a missing SN3D scaling, wrong max-rE weights, a wrong or missing energy normalisation.
     const Json ref = Json::parse(readAll(std::string(BAMBI_CORE_DIR) + "/tests/decode/array16-reference.json"));
     const Layout l = array16();

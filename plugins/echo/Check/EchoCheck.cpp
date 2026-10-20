@@ -754,7 +754,7 @@ int main(int argc, char** argv) {
         ed->clickCornerToggle(true);  // back ON, which is where it started
         settle();
 
-        //  ---- how it behaves, which is the part the prototype asserts -------------------------
+        //  ---- how it behaves -------------------------------------------------------------------
         //  Catches a hit area that is only the square: a label you cannot click looks broken.
         ed->showTab(0);
         settle();

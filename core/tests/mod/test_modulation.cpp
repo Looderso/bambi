@@ -379,9 +379,8 @@ TEST_CASE("speed is real angular velocity, whatever the path length") {
     }
 }
 
-/*  Regression for a bug that shipped in the prototype and read as "offset does too much":
- *  adding the offset to the resulting arc length and clamping parks the source against an
- *  extreme for most of every lap. It belongs on the phase, before the mode mapping. */
+/*  Catches the offset added to the resulting arc length and clamped, which parks the source
+ *  against an extreme for most of every lap and reads as "offset does too much". It belongs on the phase, before the mode mapping. */
 TEST_CASE("displace shifts the phase rather than clamping the arc length") {
     MotionClock c;
     c.reset(0.0);

@@ -10,14 +10,14 @@ plugins and plays the result out of the computer. Live only routes; it never car
 ```
 
 Code: `apps/live-host/` (the host), `platform/` (devices, loop device, local server), `driver/` (the
-loop device), `core/include/bambi/live/` (protocol, plan, field, pairs, io, timeline, midi), `tools/live-stub/`
-(the device's scripts, a stand-in host). Rules: [apps/live-host/AGENTS.md](../../apps/live-host/AGENTS.md).
+loop device), `core/include/bambi/live/` (protocol, plan, field, pairs, io, timeline, midi), `apps/live-host/device/`
+(the Max device and its scripts). Rules: [apps/live-host/AGENTS.md](../../apps/live-host/AGENTS.md).
 
 ## The parts
 
 | part | is | knows | is told |
 |---|---|---|---|
-| **Max device** | a Max for Live audio effect on Live's Main (`tools/live-stub/max/bambi-live.amxd`) | tracks, groups, returns, names, colours, sends, faders, mute, solo, routing, tempo, transport, arrangement and session clips | each track's channel pair; which returns are silent; the host's state to save |
+| **Max device** | a Max for Live audio effect on Live's Main (`apps/live-host/device/bambi-live.amxd`) | tracks, groups, returns, names, colours, sends, faders, mute, solo, routing, tempo, transport, arrangement and session clips | each track's channel pair; which returns are silent; the host's state to save |
 | **Host** | a JUCE app (`apps/live-host/`), loading the installed VST3 plugins | the sources, the field, inserts, Decoders, the audio setup, lanes | the tree, values, transport and arrangement |
 | **Loop device** | a BlackHole fork named *bambi* (`driver/`), 64 channels, ids of its own | its channels and their names | names, set by the host through the custom property `bnam` |
 | **Plugins** | Encoders, Echo, Reverb, Decoders, as in any DAW | their state | track name and colour (`updateTrackProperties`), the playhead, state, MIDI |
