@@ -128,7 +128,7 @@ TEST_CASE("reflections and tail are one room: what is heard is what the balance 
 }
 
 TEST_CASE("the tail takes over from the reflections without a step") {
-    /*  In a small room -- where the prototype's first tail came in as a hump at 100 ms -- the energy in
+    /*  In a small room -- where a tail brought in late shows as a hump at 100 ms -- the energy in
         30 ms windows, a step every 10, over four directions, falls from its peak and never climbs back by
         more than a few decibels. (A hall's first reflections are sparse, single arrivals tens of
         milliseconds apart, and its envelope is not smooth that early by nature.) Catches the tail

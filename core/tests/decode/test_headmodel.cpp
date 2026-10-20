@@ -14,9 +14,8 @@
 using namespace bambi;
 using namespace bambi::test;
 
-/*  The head model is learned in the browser (prototypes/decoder/sheets) and shipped as core/data/decode/head.json.
- *  The fixtures beside this test were written by the same page's math (export-fixtures.js) for a few directions and
- *  slider settings: both ears in dB at every axis point and the time difference. The synthesiser must reproduce them.
+/*  The head model is learned outside the core and shipped as core/data/decode/head.json. The fixtures beside this
+ *  test were written by the same math that learned it, for a few directions and slider settings: both ears in dB at every axis point and the time difference. The synthesiser must reproduce them.
  */
 namespace {
 std::vector<double> numbers(const Json& a) {

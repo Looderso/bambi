@@ -47,7 +47,7 @@ bambi::livehost::Rail::Status describe(const bambi::live::DeviceSession& s, bool
         return {false,
                 {"live", "port taken"},
                 "port " + juce::String(bambi::livehost::DeviceServer::kPort) + ": " + juce::String(error) +
-                    ". Is the stand-in host running?"};
+                    ". Is another host running?"};
     if (!s.connected()) return {false, {"live", "waiting"}, problem};
     const int sources = static_cast<int>(s.pairs().size());
     return {true,
@@ -69,7 +69,7 @@ juce::AudioProcessor::TrackProperties propertiesOf(const bambi::live::Node* trac
 class Content final : public juce::Component, private juce::Timer {
 public:
     Content() : pairs_(pairsHere()), device_({pairs_, bambi::loop::installed(), 0.0, 48000.0}) {
-        //  The port first: the device starts the stand-in host when nothing answers there, and loading the
+        //  The port first: a device that finds nothing answering there starts another host, and loading the
         //  plugins takes seconds.
         device_.transport = [this](const bambi::live::TransportMessage& m, std::int64_t stamp) {
             engine_.transport(m, stamp);

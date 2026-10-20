@@ -15,7 +15,7 @@
 using namespace bambi;
 using namespace bambi::test;
 
-/*  The reference is prototypes/decoder/sheets/check-filters.py: the same design in numpy, with numpy's own
+/*  The reference is the same design in numpy, with numpy's own
  *  eigenvalues, SVD and pseudo-inverse where the core has closed forms. Its filters are in filters-fixture.json. */
 namespace {
 const Json& fixture() {

@@ -16,9 +16,9 @@ double apart(const Mat3& a, const Mat3& b) {
     return std::acos(std::clamp((r[0] + r[4] + r[8] - 1.0) / 2.0, -1.0, 1.0)) * kRad2Deg;
 }
 
-/// The bridge's quaternion for the suite's angles: Rz(yaw) Ry(-pitch) Rx(roll) as w, x, y, z, from half-angles --
-/// written here as the prototype's osc-bridge.py writes it, not through the matrices under test.
-std::array<float, 4> bridgeQuaternion(double yaw, double pitch, double roll) {
+/// A head tracker's quaternion for the suite's angles: Rz(yaw) Ry(-pitch) Rx(roll) as w, x, y, z, from half-angles --
+/// written out here as a tracker sends it, not through the matrices under test.
+std::array<float, 4> trackerQuaternion(double yaw, double pitch, double roll) {
     const double cy = std::cos(yaw * kDeg2Rad / 2), sy = std::sin(yaw * kDeg2Rad / 2);
     const double cp = std::cos(-pitch * kDeg2Rad / 2), sp = std::sin(-pitch * kDeg2Rad / 2);
     const double cr = std::cos(roll * kDeg2Rad / 2), sr = std::sin(roll * kDeg2Rad / 2);
@@ -63,7 +63,7 @@ TEST_CASE("every format reads back the orientation it was sent, to 0.01 degrees"
     //  Catches: the pitch sign of IEM and SPARTA, the w position of a quaternion, radians read as degrees.
     const double yaw = 37.0, pitch = -22.0, roll = 11.0;
     const Mat3 want = headFromYpr(yaw, pitch, roll);
-    const std::array<float, 4> q = bridgeQuaternion(yaw, pitch, roll);
+    const std::array<float, 4> q = trackerQuaternion(yaw, pitch, roll);
     const float yf = static_cast<float>(yaw), pf = static_cast<float>(pitch), rf = static_cast<float>(roll);
     CHECK(apart(read(OrientationForm::YprDegrees, {yf, pf, rf}), want) < 0.01);                  // ADM-OSC
     CHECK(apart(read(OrientationForm::YprDegreesPitchDown, {yf, -pf, rf}), want) < 0.01);        // SPARTA, IEM
@@ -88,7 +88,7 @@ TEST_CASE("learn mode's flips undo a sender's inverted axis") {
     CHECK(apart(read(OrientationForm::YprDegrees, {30, -20, -10}, Mounting::AsSent, {false, true, false}), want) <
           1e-9);
     CHECK(apart(read(OrientationForm::YprDegrees, {-30, 20, 10}, Mounting::AsSent, {true, false, true}), want) < 1e-9);
-    const std::array<float, 4> q = bridgeQuaternion(30, 20, -10);
+    const std::array<float, 4> q = trackerQuaternion(30, 20, -10);
     CHECK(
         apart(read(OrientationForm::QuaternionWxyz, {q[0], q[1], -q[2], q[3]}, Mounting::AsSent, {false, true, false}),
               want) < 1e-5);  // a float quaternion carries about seven digits; the matrix it makes, six

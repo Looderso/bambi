@@ -8,22 +8,18 @@
 //    - the host answering `busy` (another device has it): the v8 script is told once, and this one waits
 //      five seconds between tries rather than flickering connected and gone.
 //
-//  The host started here is the one built in this folder, build-plugin's bambi live host app; without it, the
-//  stand-in, build/bambi-live-stub, logging to ~/Library/Logs/bambi-live-stub.log and quitting ten seconds after
-//  its last device has gone.
+//  The host started here is the one built in this checkout, build-plugin's bambi live host app; without it, nothing
+//  is started.
 
 const maxApi = require("max-api");
 const net = require("net");
 const path = require("path");
 const fs = require("fs");
-const os = require("os");
 const {spawn} = require("child_process");
 
 const PORT = 9461;
 const APP = path.resolve(__dirname,
                          "../../../build-plugin/apps/live-host/bambi-live-host_artefacts/Release/bambi live host.app");
-const STUB = path.resolve(__dirname, "../../../build/bambi-live-stub");
-const LOG = path.join(os.homedir(), "Library/Logs/bambi-live-stub.log");
 
 //  A line too long for one Max message -- a symbol holds at most 32767 bytes -- goes as pieces: each "+" and at most
 //  PIECE characters, never splitting a character in two, then "." to join them. A JSON line never starts with either.
@@ -56,16 +52,10 @@ function launchDue(now, lastStart) {
 function startHost() {
     const now = Date.now();
     if (!launchDue(now, startedAt)) return;
-    if (fs.existsSync(APP)) {
-        startedAt = now;
-        spawn("open", [APP], {detached: true, stdio: "ignore"}).unref();
-        maxApi.post("bambi: started " + APP);
-    } else if (fs.existsSync(STUB)) {
-        startedAt = now;
-        const log = fs.openSync(LOG, "a");
-        spawn(STUB, ["--quit-when-alone", "10"], {detached: true, stdio: ["ignore", log, log]}).unref();
-        maxApi.post("bambi: no host built; started the stand-in " + STUB + ", log in " + LOG);
-    }
+    if (!fs.existsSync(APP)) return;
+    startedAt = now;
+    spawn("open", [APP], {detached: true, stdio: "ignore"}).unref();
+    maxApi.post("bambi: started " + APP);
 }
 
 function connect() {

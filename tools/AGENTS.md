@@ -9,7 +9,7 @@
 | `conformance.sh` | every installed plugin asked the same layout and sidechain questions — slow, before a release |
 | `watch.sh` | reruns the tests on save |
 
-Headless tools (`bambi-render` and the engines' renderers, `bambi-bench`, `bambi-features`, …) share their scaffolding
+Headless tools (`bambi-render` and the engines' renderers, `bambi-bench`, `bambi-head`, …) share their scaffolding
 in `common/`; a new tool uses it rather than copying it.
 
 ## Working here

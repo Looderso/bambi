@@ -3,7 +3,7 @@
 //  How the bambi Live device finds a track again after a reopening, tested outside Max: the device's script is
 //  loaded with stand-ins for Max's globals and its pure match() is asked about the cases that matter.
 //
-//    node tools/live-stub/max/test-match.js
+//    node apps/live-host/device/test-match.js
 
 const fs = require("fs");
 const path = require("path");

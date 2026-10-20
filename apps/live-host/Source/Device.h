@@ -26,7 +26,7 @@ public:
     explicit DeviceServer(live::SessionSettings settings);
     ~DeviceServer() override;
 
-    /// False when the port is taken -- the stand-in host, or a second host -- with the reason in error.
+    /// False when the port is taken -- a second host, or another program -- with the reason in error.
     bool start(std::string* error);
 
     const live::DeviceSession& session() const { return session_; }
