@@ -6,11 +6,15 @@
 
 name: build
 
+#  A change to documentation or agent context alone builds nothing: docs.yml checks it.
+
 on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths-ignore: ["**/*.md", "docs/**", ".claude/**"]
   pull_request:
+    paths-ignore: ["**/*.md", "docs/**", ".claude/**"]
   workflow_dispatch:
 
 permissions:
