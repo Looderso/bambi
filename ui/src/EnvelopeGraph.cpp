@@ -109,11 +109,8 @@ float EnvelopeGraph::paint(ParameterPage& page, juce::Graphics& g, juce::Rectang
     for (const auto grab : {EnvelopeGrab::AttackCurve, EnvelopeGrab::DecayCurve, EnvelopeGrab::ReleaseCurve})
         diamond(g, handle(grab), ctl::envelopeHandle + grow(grab));
     for (const auto grab :
-         {EnvelopeGrab::Attack, EnvelopeGrab::DecaySustain, EnvelopeGrab::SustainEdge, EnvelopeGrab::Release}) {
-        const auto at = handle(grab);
-        const auto r = ctl::envelopePoint + grow(grab);
-        g.fillEllipse(at.x - r, at.y - r, 2.0f * r, 2.0f * r);
-    }
+         {EnvelopeGrab::Attack, EnvelopeGrab::DecaySustain, EnvelopeGrab::SustainEdge, EnvelopeGrab::Release})
+        grabPoint(g, handle(grab), grab == held_);
     //  every handle takes a drag, captured by value: a gesture outlives the paint that registered
     //  it, and a lambda holding this paint's rectangle by reference reads a dead local on the first drag
     const auto units = [plot, scale](float px) { return static_cast<double>((px - plot.getX()) / scale); };

@@ -16,11 +16,8 @@
  */
 namespace bambi::host {
 
-/// A core string as JUCE wants it.
 /// The one host parameter outside a manifest: the host's bypass. Not modulated, not on the bus, not in a preset.
 inline constexpr const char* kBypassKey = "bypass";
-
-inline juce::String toJuce(std::string_view s) { return juce::String::fromUTF8(s.data(), static_cast<int>(s.size())); }
 
 /*  Every parameter in a manifest, as host parameters. A float takes the same skew the editor and a
  *  remote edit use (`ParamManifest::skewCentreOf`), or a normalised position would mean one rate to

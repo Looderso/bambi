@@ -408,10 +408,7 @@ void TimelinePage::paintSession(juce::Graphics& g, float top, const live::Playhe
                 if (seen != playing_.end() && seen->second.report.slot == sc) {
                     const auto mark = juce::Rectangle<float>(tl::slotMark, tl::slotMark)
                                           .withCentre({box.getRight() - tl::slotMark, box.getCentreY()});
-                    g.setColour(colour::ground);
-                    g.fillRect(mark.expanded(ui::theme::stroke::rule));
-                    g.setColour(colour::playhead);
-                    g.fillRect(mark);
+                    ui::nowMark(g, mark, colour::playhead);
                 }
                 addClickArea(clickable, [this, id = tracks[i]->id, sc] {
                     chosenSlot_[id] = sc;
@@ -580,9 +577,7 @@ float TimelinePage::lane(juce::Graphics& g, live::Lane& l, float y, const Axis& 
         for (std::size_t i = 0; i < l.points.size(); ++i) {
             const juce::Point<float> c{axis.x(l.points[i].ppq), yOf(l.points[i].value)};
             const bool held = dragLane_ == l.id && dragPoint_ == i;
-            const float r = ui::theme::controls::envelopePoint + (held ? ui::theme::scene::handleHotGrow : 0.0f);
-            g.setColour(live ? colour::handle : colour::inactive);
-            g.fillEllipse(juce::Rectangle<float>(2.0f * r, 2.0f * r).withCentre(c));
+            const float r = ui::grabPoint(g, c, held, live ? colour::handle : colour::inactive);
             if (!held) continue;
             //  where it is and what it sets, beside it -- on its left near the panel
             const juce::String readout = juce::String(live::barsBeats(l.points[i].ppq)) + ui::kSeparator +

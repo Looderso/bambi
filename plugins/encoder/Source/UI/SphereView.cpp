@@ -49,14 +49,7 @@ void SphereView::paint(juce::Graphics& g) {
     regionsToggle_ = strip_.regions;
     fullToggle_ = strip_.full;
 
-    //  the sphere's outline, or the equirect's frame
-    const auto frame = juce::Rectangle<float>(static_cast<float>(vp.cx - vp.rx), static_cast<float>(vp.cy - vp.ry),
-                                              static_cast<float>(2.0 * vp.rx), static_cast<float>(2.0 * vp.ry));
-    g.setColour(colour::sphere);
-    if (globe)
-        g.drawEllipse(frame, theme::stroke::rule);
-    else
-        g.drawRect(frame, theme::stroke::rule);
+    paintSceneFrame(g, vp, projection_);
 
     /*  The energy picture, under everything that is drawn in ink: what leaves this encoder, which is
         all an encoder has -- so it is all blue, and the orange source sits on it. It shows what

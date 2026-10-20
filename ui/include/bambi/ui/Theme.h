@@ -113,6 +113,7 @@ namespace colour
     // state
     inline const juce::Colour inactive    = palette::grey6;      ///< unselected selection bar, disabled glyph
     inline const juce::Colour ok          = palette::ink;        ///< the link bus healthy
+    inline const juce::Colour waiting     = palette::grey4;      ///< a status set up but with nothing arriving yet
     inline const juce::Colour action      = palette::blue;       ///< text that does something when clicked
 
     // meter
