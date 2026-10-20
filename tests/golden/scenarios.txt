@@ -27,7 +27,17 @@ gain-duck-slow|--noise 3 --order 1 --speed 0 --generator orbit --mod level:outpu
 trim-level-speed|--noise 3 --order 3 --speed 0 --generator orbit --param input.trim=-18 --mod level:motion.speed=0.5|speed
 open-pingpong|--noise 3 --order 3 --speed 120 --generator spiral --mode pingpong|s
 order7-wide|--noise 2 --order 7 --speed 75 --width 60 --generator spiral|s
+# The paths and regions the scenarios above don't reach. A pentagon is five great-circle edges taken at one speed
+# through its corners; a triangle whose radius an LFO sweeps, standing on its first corner, moves only by the
+# radius; the wave climbs and falls as it goes round. Catches, for each: a change to how that path or region is
+# built or played.
+polygon-pentagon|--noise 3 --order 3 --speed 90 --generator polygon --set sides=5 --set radius=50|az
+polygon-radius|--noise 3 --order 3 --speed 0 --generator polygon --set sides=3 --mod lfo1:polygon.radius=0.5|el
+wave-path|--noise 3 --order 3 --speed 60 --generator wave|el
 region-speed|--noise 3 --order 3 --speed 40 --generator orbit --region spot --param region1.size=70 --param region1.softness=40 --param region1.yaw_rate=30 --mod region1:motion.speed=0.8|region
+region-band|--noise 3 --order 3 --speed 40 --generator orbit --region band --param region1.thickness=40 --param region1.pitch_rate=30 --mod region1:motion.speed=0.8|region
+region-sectors|--noise 3 --order 3 --speed 40 --generator orbit --region sectors --param region1.yaw_rate=45 --mod region1:render.width=0.6|region
+region-dots|--noise 3 --order 3 --speed 40 --generator orbit --region dots --param region1.dot_size=25 --param region1.yaw_rate=30 --mod region1:motion.speed=0.8|region
 # A stereo input: `--stereo` gives the built-in noise a side, a second noise unrelated to the
 # mid. What these reach that no unit test does is two encoders ramping on one control grid -- the
 # block-size independence the harness renders five ways -- and the side being fed at all.
@@ -47,6 +57,7 @@ echo-blur-band|--order 3 --seconds 4 --set dry=-60 --set tap1.blur=30 --set tap1
 echo-sleep-wake|--order 3 --seconds 4 --set dry=-60 --at 1.0 tap1.on=0 --at 2.5 tap1.on=1|energy
 echo-tempo-change|--order 3 --seconds 4 --set dry=-60 --set tap1.feedback=-1 --at 1.5 bpm=97|p1
 echo-send-front|--order 3 --seconds 4 --set dry=-60 --set send.kind=spot --set send.size=90 --set send.softness=40 --set tap1.feedback=-2|energy
+echo-send-band|--order 3 --seconds 4 --set dry=-60 --set send.kind=band --set send.thickness=30 --set tap1.feedback=-2|energy
 echo-locate|--order 3 --seconds 4 --set dry=-60 --set tap1.feedback=-0.5 --at 2.0 reset|energy
 echo-order7|--order 7 --seconds 2 --set dry=-60 --set tap3.on=1 --set tap3.skew=-0.4|energy
 #
