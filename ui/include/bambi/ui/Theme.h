@@ -465,15 +465,11 @@ namespace tooltip
     inline constexpr float below   = 18.0f;  ///< from the pointer to the tooltip's top edge
 } // namespace tooltip
 
-// ---- a sheet over the window: the live host's audio sheet, and the menus on it ------------------
+// ---- the live host's pages and their menus, and the dimming under a question ---------------------
 namespace sheet
 {
     inline constexpr float scrim     = 0.35f;    ///< how far the window dims under a sheet, a question's among them
-    inline constexpr float width     = 880.0f;   ///< at most; never past the window less an inset either side
-    inline constexpr float height    = 600.0f;
-    inline constexpr float inset     = 24.0f;    ///< from the window's edge, at the least
-    inline constexpr float pad       = 20.0f;    ///< inside its frame
-    inline constexpr float head      = 36.0f;    ///< the title and the tabs
+    inline constexpr float pad       = 20.0f;    ///< above and below the I/O page's content
     inline constexpr float line      = 24.0f;    ///< a row of a list
     inline constexpr float gap       = 16.0f;    ///< between blocks
     inline constexpr float cell      = 22.0f;    ///< a channel of the map
@@ -513,8 +509,11 @@ namespace rail
     inline constexpr float padX   = 10.0f;  ///< a label's inset from the column's edges
     inline constexpr float row    = 24.0f;  ///< one view's label, and one line of the status
     inline constexpr float top    = 12.0f;  ///< from the plugin's header line to the first view
-    inline constexpr float gap    = 12.0f;  ///< between the plugin views and the routing page
+    inline constexpr float gap    = 12.0f;  ///< between the host's pages and the status under them
     inline constexpr int   problemLines = 8;  ///< what went wrong, wrapped this far at most
+    inline constexpr float transport    = 10.0f;  ///< the play and stop glyphs, square: a solid shape, smaller
+                                                  ///< than the header's outlined glyphs' box to read as large
+    inline constexpr float transportGap = 10.0f;  ///< between them
 } // namespace rail
 
 // ---- a run of channels in one row: the live host's channel map, the decoder's bus ------------------

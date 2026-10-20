@@ -15,7 +15,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <string>
 
-#include "AudioSheet.h"
+#include "IoPage.h"
 #include "Device.h"
 #include "Engine.h"
 #include "HostLog.h"
@@ -66,13 +66,14 @@ juce::AudioProcessor::TrackProperties propertiesOf(const bambi::live::Node* trac
     return p;
 }
 
-class Content final : public juce::Component, private juce::Timer {
+class Content final : public juce::Component, public juce::KeyListener, private juce::Timer {
 public:
     Content() : pairs_(pairsHere()), device_({pairs_, bambi::loop::installed(), 0.0, 48000.0}) {
         //  The port first: the device starts the stand-in host when nothing answers there, and loading the
         //  plugins takes seconds.
         device_.transport = [this](const bambi::live::TransportMessage& m, std::int64_t stamp) {
             engine_.transport(m, stamp);
+            rail_.setPlaying(m.playing);
         };
         device_.slot = [this](const bambi::live::SlotPlay& p, std::int64_t stamp) {
             engine_.slot(p, stamp);
@@ -108,6 +109,7 @@ public:
         device_.setLatency(engine_.latencyMs(), 48000.0);
 
         addAndMakeVisible(rail_);
+        rail_.transport = [this](bool play) { playOrStop(play); };
         addChildComponent(routing_);
         addChildComponent(timeline_);
         timeline_.command = [this](const bambi::live::Command& c) { device_.command(c); };
@@ -131,10 +133,10 @@ public:
         routing_.showInsert = [this](std::uint64_t insert, bambi::live::Effect effect) {
             showView(effect == bambi::live::Effect::Reverb ? View::Reverb : View::Echo, engine_.effectOf(insert));
         };
-        addChildComponent(sheet_);
-        sheet_.change = [this](bambi::live::AudioSettings settings) { applyAudio(std::move(settings)); };
-        sheet_.changeOrder = [this](int order) { applyOrder(order); };
-        sheet_.changeInputs = [this](std::vector<bambi::live::HostInput> inputs, bambi::live::AudioSettings settings) {
+        addChildComponent(io_);
+        io_.change = [this](bambi::live::AudioSettings settings) { applyAudio(std::move(settings)); };
+        io_.changeOrder = [this](int order) { applyOrder(order); };
+        io_.changeInputs = [this](std::vector<bambi::live::HostInput> inputs, bambi::live::AudioSettings settings) {
             applyAudio(std::move(settings));
             auto shape = device_.session().shape();
             shape.inputs = std::move(inputs);
@@ -142,20 +144,13 @@ public:
             device_.reshape(std::move(shape));
             update();
         };
-        sheet_.measure = [this](bool on) {
+        io_.measure = [this](bool on) {
             measuring_ = on;
             lead_ = {};
             engine_.setMeasuring(on);
-            sheet_.setLead(0.0, 0.0, 0);
+            io_.setLead(0.0, 0.0, 0);
         };
-        sheet_.openDecoder = [this](std::uint64_t id) {
-            sheet_.close();
-            showView(View::Decoder, engine_.decoderOf(id));
-        };
-        sheet_.closed = [this] {
-            if (editor_ != nullptr) editor_->setVisible(true);
-            update();
-        };
+        io_.openDecoder = [this](std::uint64_t id) { showView(View::Decoder, engine_.decoderOf(id)); };
         update();
         showView(View::Decoder);
         startTimer(1000);
@@ -171,10 +166,19 @@ public:
         if (editor_ != nullptr) editor_->setBounds(area.withSize(editor_->getWidth(), editor_->getHeight()));
         routing_.setBounds(area);
         timeline_.setBounds(area);
-        sheet_.setBounds(getLocalBounds());
+        io_.setBounds(area);
     }
 
+    /*  Space plays or stops Live from anywhere in the window: the window hears every key no component under it took,
+        so a text field keeps its spaces. */
+    bool keyPressed(const juce::KeyPress& key, juce::Component*) override { return rail_.takeKey(key); }
+
 private:
+    //  Live asked to play on from where it is, or to stop.
+    void playOrStop(bool play) {
+        device_.command({play ? bambi::live::Command::Action::Continue : bambi::live::Command::Action::Stop, 0.0});
+    }
+
     enum class View {
         Encoder,
         Echo,
@@ -182,14 +186,14 @@ private:
         Decoder,
         Routing,
         Timeline,
-        Audio,
+        Io,
         Gap
     };  ///< Gap: between the rail's groups
 
     //  The plugins' states, kept with the set when they changed. Only while bambi is on: a device sends what the set
     //  kept before it switches on, and the defaults must not be kept over it.
     void timerCallback() override {
-        sheet_.setLoad(engine_.load());
+        io_.setLoad(engine_.load());
         //  every locate the transport decided while Live played, so a jump heard can be told from a real locate
         if (const auto locates = engine_.locates(); locates != locatesLogged_) {
             if (locates > locatesLogged_) {
@@ -202,8 +206,8 @@ private:
             }
             locatesLogged_ = locates;
         }
-        //  Live's lead, as it is measured; stopped with the sheet
-        if (measuring_ && !sheet_.isOpen()) {
+        //  Live's lead, as it is measured; stopped when the page is left
+        if (measuring_ && view_ != View::Io) {
             measuring_ = false;
             engine_.setMeasuring(false);
         }
@@ -212,8 +216,8 @@ private:
             lead_.add(*ms);
             measured = true;
         }
-        if (measured) sheet_.setLead(lead_.median(), lead_.spread(), lead_.count());
-        //  a click on a Decoder's map: the output placed where it asked, as the sheet's map would
+        if (measured) io_.setLead(lead_.median(), lead_.spread(), lead_.count());
+        //  a click on a Decoder's map: the output placed where it asked, as the I/O page's map would
         for (const bambi::live::Placed& asked : engine_.placementsAsked()) {
             auto settings = engine_.audio();
             const auto had = std::find_if(settings.placed.begin(), settings.placed.end(),
@@ -225,10 +229,10 @@ private:
             applyAudio(std::move(settings), false);
         }
         //  what a Decoder's own page changed -- an output lit, moved, a layout -- reaches the routes
-        if (engine_.reroute() && sheet_.isOpen()) showSheet();
-        //  a device plugged in or out while the sheet is up: shown as it comes
-        if (sheet_.isOpen())
-            if (auto system = bambi::devices::system(); system != shownSystem_) showSheet();
+        if (engine_.reroute() && view_ == View::Io) showIo();
+        //  a device plugged in or out while the page is open: shown as it comes
+        if (view_ == View::Io)
+            if (auto system = bambi::devices::system(); system != shownSystem_) showIo();
         engine_.tidy();
         //  Live gone: the host quits after a while; the device starts it again when the set is opened
         if (device_.session().connected()) {
@@ -268,7 +272,8 @@ private:
                 named_.fill({});
                 device_.setLatency(engine_.latencyMs(), 48000.0);
                 //  a window on an Encoder let go of closes before that Encoder can be freed
-                if (view_ != View::Routing && view_ != View::Timeline && !engine_.holds(shownPlugin_)) showView(view_);
+                if (view_ != View::Routing && view_ != View::Timeline && view_ != View::Io && !engine_.holds(shownPlugin_))
+                    showView(view_);
             }
         }
         engine_.setSends(session.field(), session.tree());
@@ -289,50 +294,35 @@ private:
             labels.push_back(nameOf(views_[i]));
             if (views_[i] == view_) selected = static_cast<int>(i);
         }
-        //  the routing page after a gap: the column's labels and its views stay one to one
+        //  the host's own pages after a gap, at the column's foot: I/O, routing, the timeline. The column's labels and
+        //  its views stay one to one.
         labels.push_back({});
         views_.push_back(View::Gap);
-        labels.push_back("routing");
-        views_.push_back(View::Routing);
-        if (view_ == View::Routing) selected = static_cast<int>(views_.size()) - 1;
-        labels.push_back("timeline");
-        views_.push_back(View::Timeline);
-        if (view_ == View::Timeline) selected = static_cast<int>(views_.size()) - 1;
+        for (const View page : {View::Io, View::Routing, View::Timeline}) {
+            labels.push_back(nameOf(page));
+            views_.push_back(page);
+            if (view_ == page) selected = static_cast<int>(views_.size()) - 1;
+        }
         //  a clip lane after its clip, wherever the scenes have moved it
         if (bambi::live::followClips(lanes_, session.arrangement())) engine_.setLanes(lanes_);
         timeline_.show({session.tree(), session.arrangement(), session.shape(), session.field(), lanes_});
-        //  the audio sheet after another gap: over the window, never a view of its own
-        labels.push_back({});
-        views_.push_back(View::Gap);
-        labels.push_back("audio");
-        views_.push_back(View::Audio);
-        if (sheet_.isOpen()) selected = static_cast<int>(views_.size()) - 1;
         routing_.show(session.tree(), session.shape(), session.field(), session.pairs());
         routing_.showDecoders(engine_.playing());
         rail_.setViews(labels, selected, [this](int i) {
             const View v = views_[static_cast<std::size_t>(i)];
-            if (v == View::Gap) return;
-            if (v != View::Audio) {
-                showView(v);
-                return;
-            }
-            showSheet();
-            //  a plugin's own window is the system's, drawn over anything of the host's: hidden while the sheet is up
-            if (editor_ != nullptr) editor_->setVisible(false);
-            sheet_.open();
-            update();
+            if (v != View::Gap) showView(v);
         });
         rail_.setStatus(running_ ? describe(device_.session(), listening_, error_, problem_, engine_.latencyMs())
                                  : bambi::livehost::Rail::Status{false, {"audio", "off"}, started_});
     }
 
-    //  The sheet's change: kept on this computer, then played; the sheet shown again as the engine has it.
+    //  The I/O page's change: kept on this computer, then played; the page shown again as the engine has it.
     void applyAudio(bambi::live::AudioSettings settings, bool show = true) {
         if (!bambi::livehost::saveAudioSettings(settings)) audioProblem_ = "the settings could not be saved";
         juce::String status;
         audioProblem_ = engine_.setAudio(settings, status) ? juce::String() : status;
         device_.setLatency(engine_.latencyMs(), engine_.rate());
-        if (show || sheet_.isOpen()) showSheet();
+        if (show || view_ == View::Io) showIo();
         update();
     }
 
@@ -343,11 +333,11 @@ private:
         rebuild_ = true;
         device_.setLatency(engine_.latencyMs(), engine_.rate());
         update();
-        if (sheet_.isOpen()) showSheet();
+        if (view_ == View::Io) showIo();
     }
 
-    void showSheet() {
-        bambi::livehost::AudioSheet::Shown shown;
+    void showIo() {
+        bambi::livehost::IoPage::Shown shown;
         shown.settings = engine_.audio();
         shown.system = bambi::devices::system();
         shownSystem_ = shown.system;
@@ -362,7 +352,7 @@ private:
         shown.leadSpreadMs = lead_.spread();
         shown.leadCount = lead_.count();
         shown.problem = audioProblem_;
-        sheet_.show(std::move(shown));
+        io_.show(std::move(shown));
     }
 
     juce::AudioProcessor* pluginOf(View v) const {
@@ -373,7 +363,7 @@ private:
             case View::Decoder: return engine_.decoder();
             case View::Routing:
             case View::Timeline:
-            case View::Audio:
+            case View::Io:
             case View::Gap: return nullptr;
         }
         return nullptr;
@@ -387,7 +377,7 @@ private:
             case View::Decoder: return bambi::ui::productName(bambi::Product::Decoder);
             case View::Routing: return "routing";
             case View::Timeline: return "timeline";
-            case View::Audio: return "audio";
+            case View::Io: return "I/O";
             case View::Gap: return "";
         }
         return "";
@@ -397,16 +387,18 @@ private:
     void showView(View v, juce::AudioProcessor* which = nullptr) {
         if (editor_ != nullptr) removeChildComponent(editor_.get());
         editor_.reset();
-        if (v != View::Routing && v != View::Timeline && which == nullptr && pluginOf(v) == nullptr) v = View::Decoder;
+        const bool page = v == View::Routing || v == View::Timeline || v == View::Io;
+        if (!page && which == nullptr && pluginOf(v) == nullptr) v = View::Decoder;
         auto* plugin = which != nullptr ? which : pluginOf(v);
         routing_.setVisible(v == View::Routing);
         timeline_.setVisible(v == View::Timeline);
+        io_.setVisible(v == View::Io);
+        if (v == View::Io) showIo();
         view_ = v;
         shownPlugin_ = plugin;
         if (plugin != nullptr) editor_.reset(plugin->createEditorAndMakeActive());
         if (editor_ != nullptr) {
-            addChildComponent(*editor_);
-            editor_->setVisible(!sheet_.isOpen());
+            addAndMakeVisible(*editor_);
         }
         const int w = editor_ != nullptr ? editor_->getWidth() : bambi::ui::theme::metrics::windowWidth;
         const int h = editor_ != nullptr ? editor_->getHeight() : bambi::ui::theme::metrics::windowHeight;
@@ -423,16 +415,16 @@ private:
     bambi::livehost::Rail rail_;
     bambi::livehost::RoutingPage routing_;
     bambi::livehost::TimelinePage timeline_;
-    bambi::livehost::AudioSheet sheet_;
-    juce::String audioProblem_;             ///< why the sheet's last change could not be played or kept
-    bool measuring_{false};                 ///< Live's lead is measured, while the sheet is open
+    bambi::livehost::IoPage io_;
+    juce::String audioProblem_;             ///< why the I/O page's last change could not be played or kept
+    bool measuring_{false};                 ///< Live's lead is measured, while the I/O page is open
     std::uint32_t locatesLogged_{0};        ///< the engine's locate count, as last logged
     int keptOrder_{0};                      ///< the order last kept with the set
     bambi::live::MidiLead lead_;            ///< what has been measured since measuring began
     std::vector<bambi::live::Lane> lanes_;  ///< the host's automation, kept with the set
     std::string keptLanes_;                 ///< the lanes as last kept
     bool rebuild_{false};                   ///< the program to be built again at the next update, whatever changed
-    std::vector<bambi::live::AudioDevice> shownSystem_;  ///< the system's devices, as the sheet last showed them
+    std::vector<bambi::live::AudioDevice> shownSystem_;  ///< the system's devices, as the I/O page last showed them
     std::vector<View> views_;
     View view_{View::Decoder};
     std::unique_ptr<juce::AudioProcessorEditor> editor_;
@@ -455,7 +447,10 @@ public:
         : DocumentWindow("bambi live host", bambi::ui::theme::colour::ground,
                          DocumentWindow::closeButton | DocumentWindow::minimiseButton) {
         setUsingNativeTitleBar(true);
-        setContentOwned(new Content(), true);
+        auto* content = new Content();
+        setContentOwned(content, true);
+        keys_ = content;
+        addKeyListener(keys_);  // space, from wherever the keyboard is
         setResizable(false, false);
         centreWithSize(getWidth(), getHeight());
         setVisible(true);
@@ -463,6 +458,8 @@ public:
     /*  Closing the window hides it, as a Mac app's window does: the host keeps playing, its plugins and their link stay as they
         are, and "open host" on the device or a second launch brings it back. Quitting is the menu's (Cmd-Q); the host also quits
         by itself a minute after Live's device has gone. */
+    ~Window() override { removeKeyListener(keys_); }  // before the content it points at goes
+
     void closeButtonPressed() override {
         setVisible(false);
         juce::Process::
@@ -486,6 +483,8 @@ private:
         Window& window;
         bool wasFront{true};
     } reopen_{*this};
+
+    juce::KeyListener* keys_{nullptr};  ///< the content, which owns what space reaches
 };
 
 class App final : public juce::JUCEApplication {

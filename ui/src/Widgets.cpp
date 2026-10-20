@@ -262,6 +262,19 @@ juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> 
     return box.expanded(theme::controls::closeGap / 2.0f);
 }
 
+void drawPlayGlyph(juce::Graphics& g, juce::Rectangle<float> box, bool playing) {
+    juce::Path triangle;
+    triangle.addTriangle(box.getX(), box.getY(), box.getRight(), box.getCentreY(), box.getX(), box.getBottom());
+    g.setColour(playing ? theme::colour::playhead : theme::colour::text);
+    if (playing) g.fillPath(triangle);
+    g.strokePath(triangle, juce::PathStrokeType(theme::stroke::glyph));
+}
+
+void drawStopGlyph(juce::Graphics& g, juce::Rectangle<float> box) {
+    g.setColour(theme::colour::text);
+    g.drawRect(box, theme::stroke::glyph);
+}
+
 void drawPlayMark(juce::Graphics& g, juce::Rectangle<float> box, bool plays, bool onBlock) {
     namespace colour = theme::colour;
     g.setColour(colour::textInverse);

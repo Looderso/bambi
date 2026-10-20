@@ -143,6 +143,11 @@ void paintMenuFrame(juce::Graphics& g, juce::Rectangle<float> box);
 /// A live host page's band, along its top: the ground, a rule under it. Returns the room inside its insets.
 juce::Rectangle<float> drawPageBand(juce::Graphics& g, float width);
 
+/// Play, as a triangle pointing right in `box`, filled in the playhead's colour while it plays.
+void drawPlayGlyph(juce::Graphics& g, juce::Rectangle<float> box, bool playing);
+/// Stop, as a square outlined in `box`. The play glyph alone says whether it plays.
+void drawStopGlyph(juce::Graphics& g, juce::Rectangle<float> box);
+
 /// The cross that closes something temporary, in `box`. Returns the area a press on it should take.
 juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> box);
 

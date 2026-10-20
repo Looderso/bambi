@@ -11,7 +11,7 @@
 //    --timeline          the timeline, Live's arrangement and the host's lanes over it
 //    --session           the timeline's session view
 //    --interface, --outputs, --inputs, --midi
-//                        the audio sheet over the routing page, on that tab
+//                        the I/O page, on that tab
 //
 //  The plugins' views are not drawn: the window shows each installed plugin's own native view there, which nothing
 //  headless can draw. Their own picture tools draw them.
@@ -24,7 +24,8 @@
 #include <optional>
 #include <vector>
 
-#include "../Source/AudioSheet.h"
+#include "../Source/IoPage.h"
+#include "bambi/ui/ProductName.h"
 #include "../Source/Rail.h"
 #include "../Source/Routing.h"
 #include "../Source/Timeline.h"
@@ -126,8 +127,8 @@ Fixture fixture() {
 }
 
 //  Where the host plays and hears on a computer with one interface beside the loop device.
-livehost::AudioSheet::Shown audio(const Fixture& f) {
-    livehost::AudioSheet::Shown s;
+livehost::IoPage::Shown audio(const Fixture& f) {
+    livehost::IoPage::Shown s;
     s.system = {{"interface", "Interface", 16, 8, 120, 100, false}, {"airpods", "AirPods", 2, 1, 7000, 7000, true}};
     s.settings.devices = {"interface"};
     s.settings.main = {"interface", 1};
@@ -144,7 +145,7 @@ livehost::AudioSheet::Shown audio(const Fixture& f) {
     return s;
 }
 
-//  The window as the host lays it out: its column on the left, the page beside it, the sheet over both.
+//  The window as the host lays it out: its column on the left, the page beside it.
 class Window final : public juce::Component {
 public:
     void paint(juce::Graphics& g) override { g.fillAll(ui::theme::colour::ground); }
@@ -153,13 +154,13 @@ public:
         rail.setBounds(area.removeFromLeft(livehost::Rail::width()));
         routing.setBounds(area);
         timeline.setBounds(area);
-        sheet.setBounds(getLocalBounds());
+        io.setBounds(area);
     }
 
     livehost::Rail rail;
     livehost::RoutingPage routing;
     livehost::TimelinePage timeline;
-    livehost::AudioSheet sheet;
+    livehost::IoPage io;
 };
 
 }  // namespace
@@ -170,11 +171,11 @@ int main(int argc, char** argv) {
     const float scale = host::takeShotScale(argc, argv);
     const juce::String mode = argc > 2 ? juce::String(argv[2]) : juce::String("--routing");
 
-    std::optional<livehost::AudioSheet::Tab> tab;
-    if (mode == "--interface") tab = livehost::AudioSheet::Tab::Interface;
-    if (mode == "--outputs") tab = livehost::AudioSheet::Tab::Outputs;
-    if (mode == "--inputs") tab = livehost::AudioSheet::Tab::Inputs;
-    if (mode == "--midi") tab = livehost::AudioSheet::Tab::Midi;
+    std::optional<livehost::IoPage::Tab> tab;
+    if (mode == "--interface") tab = livehost::IoPage::Tab::Interface;
+    if (mode == "--outputs") tab = livehost::IoPage::Tab::Outputs;
+    if (mode == "--inputs") tab = livehost::IoPage::Tab::Inputs;
+    if (mode == "--midi") tab = livehost::IoPage::Tab::Midi;
     const bool timeline = mode == "--timeline" || mode == "--session";
     if (!timeline && !tab && mode != "--routing" && mode != "--wires") {
         std::fprintf(stderr, "unknown mode %s\n", mode.toRawUTF8());
@@ -186,14 +187,14 @@ int main(int argc, char** argv) {
     window.addAndMakeVisible(window.rail);
     window.addChildComponent(window.routing);
     window.addChildComponent(window.timeline);
-    window.addChildComponent(window.sheet);
+    window.addChildComponent(window.io);
     window.setSize(livehost::Rail::width() + ui::theme::metrics::windowWidth, ui::theme::metrics::windowHeight);
 
-    //  the column as the host fills it with every kind of plugin playing: the plugins, a gap, the pages, a gap,
-    //  the sheet
-    const std::vector<juce::String> labels{"encoder", "echo",     "reverb", "decoder", {},
-                                           "routing", "timeline", {},       "audio"};
-    const juce::String open = tab ? "audio" : timeline ? "timeline" : "routing";
+    //  the column as the host fills it with every kind of plugin playing: the plugins, then the host's own pages at
+    //  its foot
+    const std::vector<juce::String> labels{ui::productName(Product::Encoder), "echo", "reverb", "decoder", {}, "I/O",
+                                           "routing", "timeline"};
+    const juce::String open = tab ? "I/O" : timeline ? "timeline" : "routing";
     const auto at = std::find(labels.begin(), labels.end(), open) - labels.begin();
     jassert(at < static_cast<std::ptrdiff_t>(labels.size()));
     window.rail.setViews(labels, static_cast<int>(at), [](int) {});
@@ -215,12 +216,12 @@ int main(int argc, char** argv) {
     }
     window.timeline.showSession(mode == "--session");
 
-    window.routing.setVisible(!timeline);
+    window.routing.setVisible(!timeline && !tab);
     window.timeline.setVisible(timeline);
+    window.io.setVisible(tab.has_value());
     if (tab) {
-        window.sheet.show(audio(f));
-        window.sheet.showTab(*tab);
-        window.sheet.open();
+        window.io.show(audio(f));
+        window.io.showTab(*tab);
     }
 
     const juce::Image shot = window.createComponentSnapshot(window.getLocalBounds(), true, scale);

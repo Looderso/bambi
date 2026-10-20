@@ -834,19 +834,8 @@ void TimelinePage::ruler(juce::Graphics& g, float top) {
 void TimelinePage::band(juce::Graphics& g, const live::Playhead& at) {
     const auto inner = ui::drawPageBand(g, static_cast<float>(getWidth()));
     const float h = inner.getHeight();
+    //  Live's transport is the column's, beside every page; the band says where Live is, and at what tempo
     float x = inner.getX();
-    //  Live's transport as one choice: play the chosen block while Live plays
-    const std::vector<juce::String> transport{"play", "stop"};
-    const juce::Rectangle<float> box{x, (h - ui::theme::sheet::control) / 2.0f, ui::segmentsWidth(transport),
-                                     ui::theme::sheet::control};
-    const auto cells = ui::drawSegments(g, box, transport, at.playing ? 0 : 1, true);
-    addClickArea(cells[0], [this] {
-        if (command) command({live::Command::Action::Continue, 0.0});
-    });
-    addClickArea(cells[1], [this] {
-        if (command) command({live::Command::Action::Stop, 0.0});
-    });
-    x = box.getRight() + tl::pad;
     const auto valueFont = ui::font(ui::theme::type::meterValue);
     const float positionWidth = ui::textWidth(valueFont, "000.0.0") + tl::gap;
     ui::text(g, juce::String(live::barsBeats(at.ppq)), valueFont, colour::text, {x, 0.0f, positionWidth, h},
