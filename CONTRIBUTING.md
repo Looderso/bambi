@@ -1,6 +1,6 @@
 # Contributing to bambi
 
-Thank you for helping. bambi is three plugins built as one program, so a change is held to rules that keep
+Thank you for helping. bambi is a suite of plugins built as one program, so a change is held to rules that keep
 the suite uniform. The rules, and how bambi is designed, are on the website:
 **[bambi.wiki/contribute](https://bambi.wiki/contribute)**. This file is the short version.
 
@@ -28,7 +28,7 @@ cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON && cmake --build build-pl
 tools/verify.sh
 ```
 
-What you need on each system is in [BUILDING.md](BUILDING.md). A change is ready when `tools/verify.sh`
+What you need on each system is in [docs/BUILDING.md](docs/BUILDING.md). A change is ready when `tools/verify.sh`
 passes.
 
 ## The rules, in brief
@@ -43,6 +43,24 @@ passes.
 - **Comments say what the code does**: units, invariants, threads, a reason true now. Never history, names or
   references. [Code style](https://bambi.wiki/contribute/code-style)
 - **Colours, sizes and strokes live in the theme file** and nowhere else. [The look](https://bambi.wiki/contribute/the-look)
+
+## Working with an AI agent
+
+bambi is built to be worked on with coding agents, and everything they need is in the repository:
+
+- **`AGENTS.md`** at the root holds the rules, the build and where things live; each directory with its own
+  `AGENTS.md` adds how to work there. Most agents read these on their own; Claude Code reads them through
+  `CLAUDE.md`.
+- **`docs/`** holds what is true now (concept pages) and why (`docs/decisions/`, each with a status; a *rejected*
+  one is a dead end, so don't walk it again).
+- **`.claude/skills/`** holds the recurring procedures — adding a parameter or a plugin, writing a doc, a comment
+  pass, a prototype, issues and pull requests. They are plain Markdown, usable with any tool. Testing in a real host
+  is a person's checklist, `docs/HOST-CHECKS.md`.
+- **`.claude/agents/`** holds four reviewers to run over finished work: architecture, real-time safety, DSP cost
+  and UI uniformity.
+
+Work made with an agent says so: its `Co-Authored-By` trailer on the commits and a line in the pull request. The
+rules are the same as for anyone — `tools/verify.sh` decides when a change is ready.
 
 ## Commits and pull requests
 

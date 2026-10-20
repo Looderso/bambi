@@ -16,5 +16,7 @@
 - [ ] Comments say what the code does, with no history, names or references
 - [ ] A design change or a changed parameter key was agreed in an issue first
 - [ ] If the link bus's shared-memory layout changed, `kLinkVersion` is bumped
+- [ ] What this changes is still true in the docs and in the `AGENTS.md` of every directory it touches
+- [ ] Made with an AI agent? The commits carry its `Co-Authored-By` trailer and this description says so
 
 <!-- The rules behind this list: https://bambi.wiki/contribute -->

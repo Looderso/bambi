@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Everything that says a change is sound, in one run: core's tests and goldens, the three plugins'
-# check suites, every picture tool, and the style, layer and format checks (and the docs', where they exist).
+# Everything that says a change is sound, in one run: core's tests and goldens, every plugin's check
+# suite, every picture tool, and the style, layer, format and docs checks.
 #
 #   tools/verify.sh            everything
 #   tools/verify.sh --core     what needs no plugin build: seconds
@@ -36,7 +36,7 @@ if command -v node >/dev/null 2>&1; then
 fi
 step "style"                tools/check-style.sh
 step "layers"               tools/check-layers.sh
-[ -x tools/check-docs.sh ] && step "docs" tools/check-docs.sh  # the private docs, where they are checked out
+step "docs" tools/check-docs.sh
 step "format"               tools/format.sh --check
 step "notices"              tools/release/notices.py --check
 

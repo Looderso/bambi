@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# macOS is the only build and Windows is postponed, so core/'s portability is held by convention --
-# and a convention is only real if something checks it. This runs two guards:
+# CI builds macOS, Windows and Linux, but only after a push; these guards catch what would break another system
+# locally, in seconds, before it gets there. This runs three guards:
 #
 #   1. Every public header compiles standalone. libc++ pulls in headers transitively that MSVC's
 #      STL does not, so a missing <algorithm> beside a std::max is invisible here.
@@ -112,6 +112,6 @@ if [ "$fail" -eq 0 ]; then
 fi
 
 if [ "$fail" -ne 0 ]; then
-    echo "portable: the Windows build is postponed, not cancelled. Fix it here, where it costs seconds."
+    echo "portable: this would break another system's build. Fix it here, where it costs seconds."
     exit 1
 fi
