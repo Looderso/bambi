@@ -35,6 +35,7 @@ bool lists(const std::vector<LinkSessionInfo>& live, const Uuid& s) {
 }  // namespace
 
 TEST_CASE("a new instance joins the session the user was most recently active in") {
+    //  Catches: the list sorted oldest first, so a new instance joins the session used longest ago.
     TestDirectory t;
     LinkDirectory project(t.name), inserted(t.name);  // two mappings: two processes, in effect
     REQUIRE(project.open());
@@ -50,6 +51,7 @@ TEST_CASE("a new instance joins the session the user was most recently active in
 }
 
 TEST_CASE("a heartbeat keeps a session listed but never makes it the most recent") {
+    //  Catches: a heartbeat counted as activity, so a new instance joins whichever project refreshed last.
     //  A background project that is merely playing refreshes all the time. If that counted as
     //  activity, a new instance would join whichever project refreshed last.
     TestDirectory t;
@@ -69,6 +71,8 @@ TEST_CASE("a heartbeat keeps a session listed but never makes it the most recent
 }
 
 TEST_CASE("with no live session, a new instance starts its own -- also without shared memory") {
+    //  Catches: a stamp that writes through a directory that never opened, and an empty directory answered with
+    //  anything but the instance's own fresh session.
     TestDirectory t;
     const Uuid fresh = Uuid::generate(), other = Uuid::generate();
 
@@ -86,6 +90,7 @@ TEST_CASE("with no live session, a new instance starts its own -- also without s
 }
 
 TEST_CASE("a session whose instances all went quiet lapses, and is never joined") {
+    //  Catches: a lapsed heartbeat still listed, so a new instance joins a project that has gone.
     TestDirectory t;
     LinkDirectory dir(t.name);
     REQUIRE(dir.open());
@@ -103,6 +108,7 @@ TEST_CASE("a session whose instances all went quiet lapses, and is never joined"
 }
 
 TEST_CASE("a project that closes is unlisted at once, so the next new project does not join it") {
+    //  Catches: remove() that leaves the entry listed until its heartbeat lapses.
     TestDirectory t;
     LinkDirectory dir(t.name);
     REQUIRE(dir.open());
@@ -115,6 +121,8 @@ TEST_CASE("a project that closes is unlisted at once, so the next new project do
 }
 
 TEST_CASE("one session listed from many processes at once is one entry, with its latest activity") {
+    //  Catches: the entries of one session not merged, and the merge keeping the activity of whichever entry came last
+    //  rather than the latest.
     //  Eight instances of one session list it at the same instant, many times over. Nothing stops
     //  two of them claiming an entry each -- a lock across processes would be worse -- so list()
     //  must show one session however many entries it has. The start signal is what makes the
@@ -155,6 +163,8 @@ TEST_CASE("one session listed from many processes at once is one entry, with its
 }
 
 TEST_CASE("a full directory refuses a new session rather than evicting a live one") {
+    //  Catches: a claim that releases live entries to make room, and one that never releases lapsed ones, so a full
+    //  directory stays full.
     TestDirectory t;
     LinkDirectory dir(t.name);
     REQUIRE(dir.open());
@@ -182,6 +192,8 @@ TEST_CASE("a full directory refuses a new session rather than evicting a live on
 }
 
 TEST_CASE("a listed session id is never torn, however entries churn") {
+    //  Catches: an entry published before its session id is written, so a reader lists it under an empty or a previous
+    //  id.
     TestDirectory t;
     //  Every byte of each id is the same, so any mix of two ids is detectably not one of them.
     //  A smoke test for the claim protocol under churn, not proof of the re-check in read(): a

@@ -26,6 +26,7 @@ Sample sampleAt(std::int64_t n) { return {n, 2 * n, 3 * n}; }
 }  // namespace
 
 TEST_CASE("nothing to read until something is written") {
+    //  Catches: latest() handing out a slot before anything was published, which reads as a write of zeros.
     LatestValue<Sample> v;
     Sample out = sampleAt(-1);
     CHECK_FALSE(v.read(out));
@@ -33,6 +34,7 @@ TEST_CASE("nothing to read until something is written") {
 }
 
 TEST_CASE("a read takes the newest write and skips the ones in between") {
+    //  Catches: a read that leaves the fresh flag set, so the same value is handed over again as new.
     LatestValue<Sample> v;
     v.write(sampleAt(1));
     v.write(sampleAt(2));
@@ -53,6 +55,7 @@ TEST_CASE("a read takes the newest write and skips the ones in between") {
 }
 
 TEST_CASE("interleaved writes and reads always deliver the latest value") {
+    //  Catches: a publish that does not mark the value fresh, so the reader never sees it.
     LatestValue<Sample> v;
     Sample out;
     for (int n = 1; n < 1000; ++n) {
@@ -65,6 +68,8 @@ TEST_CASE("interleaved writes and reads always deliver the latest value") {
 }
 
 TEST_CASE("under contention a reader never sees a torn value, and never goes backwards") {
+    //  Catches: a publish that hands its slot over without taking another, so the writer goes on writing the slot the
+    //  reader copies.
     LatestValue<Sample> v;
     std::atomic<bool> stop{false};
     std::atomic<std::int64_t> lastWritten{0};
