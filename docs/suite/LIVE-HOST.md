@@ -127,7 +127,8 @@ the shape and the lanes in the device's dict, so in the Live set; audio settings
 
 A rail and a page. The rail lists the plugins' windows at the top and the host's own pages at its foot — I/O,
 routing, timeline — over the status (Live's link, the sources, the cost). Above them, beside every page, is Live's
-transport: play, filled while Live plays, and stop. The space bar plays or stops on every page.
+transport: play, filled while Live plays, and stop, which pressed again while stopped goes back to the song's start, as
+Live's own does. The space bar plays or stops on every page.
 
 ## Routing page
 
@@ -135,7 +136,8 @@ Three columns with wires: Live's tracks and groups plus the host's inputs; retur
 Encoder's chip, its inserts (click opens, drag reorders), "+" for inserts, and "send": pressed, it rings what it may
 reach and a click wires it at 0 dB; wires open under the chosen node as chips, dragged for level. The set opens with
 everything in Live; *route all* and *all to Live* sit in the band. A sidechain is picked by arming a slot
-(`ui::Armed`) and clicking a source.
+(`ui::Armed`) and clicking a source. The three columns always fit the page: the gutters where the wires run narrow
+until they do, so every Decoder and its cross stay in view; more Decoders than the page's height holds scroll down.
 
 ## Outputs and the I/O page
 
