@@ -128,13 +128,13 @@ TEST_CASE("reflections and tail are one room: what is heard is what the balance 
     }
 }
 
-TEST_CASE("the tail takes over from the reflections without a step") {
+TEST_CASE("the tail takes over from the reflections without a step, at the level the balance gives it") {
     /*  In a small room -- where a tail brought in late shows as a hump at 100 ms -- the energy in
         30 ms windows, a step every 10, over four directions, falls from its peak and never climbs back by
         more than a few decibels. (A hall's first reflections are sparse, single arrivals tens of
         milliseconds apart, and its envelope is not smooth that early by nature.) Catches: the tail
-        brought in well after the reflections it takes over from -- 100 ms late is a hole and then a hump. A
-        tail too loud is the balance's to catch, not this: four times too loud still falls from its peak. */
+        brought in well after the reflections it takes over from -- 100 ms late is a hole and then a hump --
+        and a tail brought in louder or quieter than the balance gives it. */
     ReverbEngine engine;
     engine.prepare(3, kFs);
     for (const ReverbFrame& s :
@@ -152,6 +152,16 @@ TEST_CASE("the tail takes over from the reflections without a step") {
             worstRise = std::max(worstRise, 10.0 * std::log10(env[static_cast<std::size_t>(i)] / lowest));
             lowest = std::min(lowest, env[static_cast<std::size_t>(i)]);
         }
+        //  and past twice the mixing time, where only the tail is left, it is as loud as the balance gives it: its
+        //  share of the room, decaying from where it enters
+        const double tm = engine.room().mixingTime, rt = engine.room().rtMid, a = engine.room().diffusion;
+        const ReverbBalance b = engine.balance();
+        double late = 0.0;
+        for (const Vec3& u : kAround) late += energy(omniResponse(engine, u, 1.5), 2.0 * tm, 10.0) / kAround.size();
+        const double given = ((1.0 - a) * (1.0 - a) + a * a) * b.tailEnergy / b.roomEnergy *
+                             std::exp(-13.8 * (2.0 * tm - b.preDelaySeconds) / rt);
+        INFO("the tail past twice the mixing time: ", 10.0 * std::log10(late / given), " dB against the balance");
+        CHECK(std::abs(10.0 * std::log10(late / given)) < 2.0);  // measured -0.7 dB in both rooms; twice too loud, +5.3
         MESSAGE("size ", s.room.size, " peak at ", peak * 10, " ms, worst rise ", worstRise, " dB");
         CHECK(peak * 0.01 < 0.08);
         CHECK(worstRise < 3.0);
