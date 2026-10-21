@@ -16,6 +16,7 @@
 using namespace bambi;
 
 TEST_CASE("the listener's left is screen left, in the globe and in the equirect") {
+    //  Catches: the listener's left drawn on screen right, in the globe or in the equirect.
     const Camera front = cameraFor(ViewPreset::Front);
     const ViewPoint f = project(Projection::Globe, front, {1.0, 0.0, 0.0});
     CHECK(f.x == doctest::Approx(0.0));
@@ -33,6 +34,7 @@ TEST_CASE("the listener's left is screen left, in the globe and in the equirect"
 }
 
 TEST_CASE("the presets look from the front, from the left side, and from above") {
+    //  Catches: the side preset looking from the right, and the top one from below.
     const Camera side = cameraFor(ViewPreset::Side);
     const ViewPoint left = project(Projection::Globe, side, {0.0, 1.0, 0.0});
     CHECK(left.x == doctest::Approx(0.0));
@@ -52,6 +54,7 @@ TEST_CASE("the presets look from the front, from the left side, and from above")
 }
 
 TEST_CASE("picking a point back off the view is the inverse of projecting it, on the visible side") {
+    //  Catches: an inverse rotation with a sign wrong, and a point outside the disc picked as if it were on the sphere.
     std::mt19937 rng(11);
     std::uniform_real_distribution<double> u(-1.0, 1.0);
     int checked = 0;
@@ -79,6 +82,7 @@ TEST_CASE("picking a point back off the view is the inverse of projecting it, on
 }
 
 TEST_CASE("orbiting turns at a fixed rate per pixel and stops at the poles") {
+    //  Catches: a rate per pixel other than the one stated, and pitch not stopped at the poles.
     Camera c = cameraFor(ViewPreset::Front);
     orbit(c, 100.0, 0.0);
     CHECK(c.yaw == doctest::Approx(0.8));
@@ -89,6 +93,7 @@ TEST_CASE("orbiting turns at a fixed rate per pixel and stops at the poles") {
 }
 
 TEST_CASE("a path across the equirect's back seam is split at the edges, never drawn across the frame") {
+    //  Catches: the step across the seam drawn as one line across the whole frame.
     std::vector<Vec3> equator;
     for (int i = 0; i < 128; ++i) equator.push_back(fromAzEl(2.0 * kPi * i / 128.0, 0.0));
     const Viewport vp{150.0, 100.0, 125.0, 100.0};
@@ -109,6 +114,7 @@ TEST_CASE("a path across the equirect's back seam is split at the edges, never d
 }
 
 TEST_CASE("the globe marks the back hemisphere, so it can be drawn fainter") {
+    //  Catches: every segment marked as facing the viewer.
     std::vector<Vec3> equator;
     for (int i = 0; i < 360; ++i) equator.push_back(fromAzEl(2.0 * kPi * i / 360.0, 0.0));
     std::vector<ScreenSegment> segments;
@@ -121,6 +127,7 @@ TEST_CASE("the globe marks the back hemisphere, so it can be drawn fainter") {
 }
 
 TEST_CASE("the graticule: five latitudes and twelve meridians, one major line of each") {
+    //  Catches: more than one major latitude, and meridians every 45 degrees instead of every 30.
     const auto& lines = graticule();
     CHECK(lines.size() == 17);
     int major = 0;
@@ -130,6 +137,8 @@ TEST_CASE("the graticule: five latitudes and twelve meridians, one major line of
 }
 
 TEST_CASE("picking: a dot wins over a path, a path selects its instance, and only what faces you is hit") {
+    //  Catches: a dot behind the globe hittable, a path behind it hittable, and a path that is nearer beating a dot
+    //  within reach.
     const Camera front = cameraFor(ViewPreset::Front);
     const Viewport vp{100.0, 100.0, 100.0, 100.0};
 
@@ -177,6 +186,7 @@ TEST_CASE("picking: a dot wins over a path, a path selects its instance, and onl
 }
 
 TEST_CASE("a published path is drawn with its transform applied about its centre") {
+    //  Catches: a published path drawn as authored, without its transform.
     LinkStatic st;
     st.pointCount = 3;
     st.path[0] = {1.0f, 0.0f, 0.0f};
@@ -225,6 +235,7 @@ Viewport testViewport() {
 }  // namespace
 
 TEST_CASE("a node is picked where it is drawn, and only on the side you can see") {
+    //  Catches: a node behind the globe picked, and a reach wider than the node's hit radius.
     const TrajectoryState s = customChain();
     const Camera camera = cameraFor(ViewPreset::Front);
     const Viewport vp = testViewport();
@@ -253,6 +264,7 @@ TEST_CASE("a node is picked where it is drawn, and only on the side you can see"
 }
 
 TEST_CASE("a handle is picked only while it takes part in the curve") {
+    //  Catches: an inert handle picked.
     const TrajectoryState open = customChain(false);
     const Camera camera = cameraFor(ViewPreset::Front);
     const Viewport vp = testViewport();
@@ -276,6 +288,7 @@ TEST_CASE("a handle is picked only while it takes part in the curve") {
 }
 
 TEST_CASE("a click near the curve reports the segment and t an insert would land on") {
+    //  Catches: the wrong segment reported, and a click anywhere offered as near the curve.
     TrajectoryState s = customChain();
     const Camera camera = cameraFor(ViewPreset::Front);
     const Viewport vp = testViewport();
@@ -299,7 +312,7 @@ TEST_CASE("a click near the curve reports the segment and t an insert would land
     REQUIRE(hit.found);
     CHECK(hit.distancePixels < 1.0);
     CHECK(hit.segment == target->segment);
-    CHECK(hit.t == doctest::Approx(target->t).epsilon(0.05));
+    CHECK(std::abs(hit.t - target->t) < 0.05);
     CHECK(arc(hit.position, target->p) < 0.02);
 
     //  What the editor then does: the node lands where the click was, and nothing else moves.
@@ -313,6 +326,7 @@ TEST_CASE("a click near the curve reports the segment and t an insert would land
 }
 
 TEST_CASE("nodes are picked where the transform draws them, not where they are authored") {
+    //  Catches: nodes picked at their authored places rather than where the transform draws them.
     const TrajectoryState s = customChain();
     const Camera camera = cameraFor(ViewPreset::Front);
     const Viewport vp = testViewport();
@@ -344,6 +358,7 @@ TEST_CASE("nodes are picked where the transform draws them, not where they are a
 }
 
 TEST_CASE("the curve is offered only where it faces you") {
+    //  Catches: the curve behind the globe offered for insertion.
     const TrajectoryState s = customChain();
     const Camera camera = cameraFor(ViewPreset::Front);
     const Viewport vp = testViewport();
@@ -379,6 +394,7 @@ TEST_CASE("the curve is offered only where it faces you") {
 }
 
 TEST_CASE("an insertion lands where the click was, not on the nearest sample") {
+    //  Catches: t snapped to the nearer sample instead of interpolated between the two.
     const TrajectoryState s = customChain();
     const Camera camera = cameraFor(ViewPreset::Front);
     //  Magnified: the dense samples are half a pixel apart on a 120-pixel radius, and interpolating across
@@ -432,6 +448,7 @@ float coverageAt(const CapCoverage& c, const std::vector<float>& cells, double x
 }  // namespace
 
 TEST_CASE("a source's width covers what lies within its angle of the source, and nothing past it") {
+    //  Catches: the whole frame sampled for a small cap, and a width of zero drawn.
     const Viewport vp{100.0, 100.0, 90.0, 90.0};
     const Camera front = cameraFor(ViewPreset::Front);
     CapCoverage c;
@@ -454,6 +471,7 @@ TEST_CASE("a source's width covers what lies within its angle of the source, and
 }
 
 TEST_CASE("a width on the globe's edge reaches the edge, on both sides, instead of flattening to a line") {
+    //  Catches: a cap round the globe's edge bounded by its projected outline, which seen edge-on is a line.
     //  The case an ellipse gets wrong: seen edge-on, the cap's own plane projects to a line, while the cap
     //  itself bulges round the edge to the front and to the back.
     const Viewport vp{100.0, 100.0, 90.0, 90.0};
@@ -466,6 +484,7 @@ TEST_CASE("a width on the globe's edge reaches the edge, on both sides, instead 
 }
 
 TEST_CASE("in the equirect a width wraps across the back seam and over a pole") {
+    //  Catches: a cap over a pole bounded by its outline, which cuts off the far side of the pole.
     const Viewport vp{200.0, 100.0, 180.0, 90.0};
     const Camera camera{};
     CapCoverage c;
@@ -483,6 +502,7 @@ TEST_CASE("in the equirect a width wraps across the back seam and over a pole") 
 }
 
 TEST_CASE("a width of 180 degrees is the whole sphere, and 90 a hemisphere") {
+    //  Catches: the far side sampled at the near side's point, so a hemisphere covers the back too.
     const Viewport vp{100.0, 100.0, 90.0, 90.0};
     const Camera front = cameraFor(ViewPreset::Front);
     CapCoverage c;
@@ -508,11 +528,11 @@ TEST_CASE("a drag off the sphere carries on along its rim") {
     CHECK(seen.depth > 0.001);
     CHECK(seen.depth < 0.05);
     CHECK(seen.x == doctest::Approx(1.0).epsilon(1e-3));
-    CHECK(seen.y == doctest::Approx(0.0).epsilon(1e-9));
+    CHECK(std::abs(seen.y) < 1e-9);
     const Vec3 diag = unprojectToRim(Projection::Globe, camera, -3.0, 3.0);
     const auto d = project(Projection::Globe, camera, diag);
-    CHECK(d.x == doctest::Approx(-std::sqrt(0.5)).epsilon(1e-3));
-    CHECK(d.y == doctest::Approx(std::sqrt(0.5)).epsilon(1e-3));
+    CHECK(std::abs(d.x + std::sqrt(0.5)) < 1e-3);
+    CHECK(std::abs(d.y - std::sqrt(0.5)) < 1e-3);
 
     const Vec3 inside = unprojectToRim(Projection::Globe, camera, 0.3, -0.2);
     const auto exact = unproject(Projection::Globe, camera, 0.3, -0.2);

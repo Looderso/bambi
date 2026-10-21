@@ -132,7 +132,7 @@ TEST_CASE("the energy field points at the energy") {
             /*  1e-5, not 1e-9: the beam table and the sum are float, because at order 7 the table
                 is the difference between a picture that costs a quarter of a core and one that
                 costs half. The oracle is double, so they agree to float's precision. */
-            CHECK(field.energyAt(texel, true) == doctest::Approx(wanted).epsilon(1e-5));
+            CHECK(std::abs(field.energyAt(texel, true) - wanted) <= 1e-5 * std::max(1.0, wanted));
         }
     }
 
@@ -146,7 +146,7 @@ TEST_CASE("the energy field points at the energy") {
         field.sample(diffuse, {});
         field.step(0.0);
         const auto alpha = field.alpha();
-        for (const float a : alpha) CHECK(a == doctest::Approx(alpha[0]).epsilon(1e-3));
+        for (const float a : alpha) CHECK(std::abs(a - alpha[0]) < 1e-3);
         CHECK(alpha[0] > 0.2f);  // unit energy in every channel is a loud field, and the same everywhere
 
         for (float& v : diffuse) v *= 1e-7f;  // 70 dB down
@@ -224,9 +224,9 @@ TEST_CASE("the energy field points at the energy") {
         };
         CHECK(alphaAtLevel(0.0) == 1.0f);
         CHECK(alphaAtLevel(kEnergyFullDb) == doctest::Approx(1.0).epsilon(1e-3));
-        CHECK(alphaAtLevel(kEnergyDarkDb) == doctest::Approx(0.0).epsilon(1e-3));
+        CHECK(alphaAtLevel(kEnergyDarkDb) < 1e-3);
         CHECK(alphaAtLevel(-60.0) == 0.0f);
-        CHECK(alphaAtLevel(0.5 * (kEnergyDarkDb + kEnergyFullDb)) == doctest::Approx(0.5).epsilon(0.01));
+        CHECK(std::abs(alphaAtLevel(0.5 * (kEnergyDarkDb + kEnergyFullDb)) - 0.5) < 0.01);
         float last = -1.0f;
         for (double db = -50.0; db <= 0.0; db += 2.5) {
             const float a = alphaAtLevel(db);
@@ -276,9 +276,9 @@ TEST_CASE("the energy texture runs the way the equirect view draws it: left is l
             const Vec3 d = EnergyField::directionOf(iy * kEnergyWidth + ix);
             const auto at = project(Projection::Equirect, Camera{}, d);
             //  where the view puts that direction, as a fraction across and down, is where the texel is
-            CHECK((at.x + 1.0) / 2.0 * kEnergyWidth == doctest::Approx(ix + 0.5).epsilon(1e-9));
-            CHECK((1.0 - at.y) / 2.0 * kEnergyHeight == doctest::Approx(iy + 0.5).epsilon(1e-9));
-            CHECK(EnergyField::columnOf(azimuth(d)) == doctest::Approx(static_cast<double>(ix)).epsilon(1e-9));
+            CHECK(std::abs((at.x + 1.0) / 2.0 * kEnergyWidth - (ix + 0.5)) < 1e-9);
+            CHECK(std::abs((1.0 - at.y) / 2.0 * kEnergyHeight - (iy + 0.5)) < 1e-9);
+            CHECK(std::abs(EnergyField::columnOf(azimuth(d)) - ix) < 1e-9);
         }
     //  and said plainly: a quarter of the way across from the left is the left, which is +y
     CHECK(EnergyField::directionOf((kEnergyHeight / 2) * kEnergyWidth + kEnergyWidth / 4).y > 0.9);
