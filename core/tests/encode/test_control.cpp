@@ -65,6 +65,7 @@ struct Rig {
 }  // namespace
 
 TEST_CASE("speed moves the source along its path, and direction turns it round") {
+    //  Catches: the direction read and then ignored, so reverse runs forward.
     Rig fwd, rev;
     fwd.set(EncoderParam::MotionSpeed, 90.0f);
     rev.set(EncoderParam::MotionSpeed, 90.0f);
@@ -81,6 +82,7 @@ TEST_CASE("speed moves the source along its path, and direction turns it round")
 }
 
 TEST_CASE("stopped, a motion set to restart holds; set to continue, it runs") {
+    //  Catches: the motion running while stopped whatever it is set to, and continue holding it.
     Rig held, free;
     for (Rig* r : {&held, &free}) {
         r->set(EncoderParam::MotionSpeed, 90.0f);
@@ -98,6 +100,7 @@ TEST_CASE("stopped, a motion set to restart holds; set to continue, it runs") {
 }
 
 TEST_CASE("what a rate has turned is in the placement, on its own axis, and a hand can zero it") {
+    //  Catches: the turn landing on its neighbour's axis, and an angle set back to zero keeping its turn.
     Rig r;
     r.set(EncoderParam::TransformYaw, 10.0f);
     r.set(EncoderParam::TransformPitchRate, 30.0f);
@@ -117,6 +120,7 @@ TEST_CASE("what a rate has turned is in the placement, on its own axis, and a ha
 }
 
 TEST_CASE("the first step snaps, the next does not, and a restart snaps again") {
+    //  Catches: a snap flag never cleared, and a restart that does not snap.
     Rig r;
     r.start();
     CHECK(r.step().snap);
@@ -129,6 +133,7 @@ TEST_CASE("the first step snaps, the next does not, and a restart snaps again") 
 }
 
 TEST_CASE("a restart takes the motion back to zero, unless the motion continues") {
+    //  Catches: a restart that resets a motion set to continue.
     Rig r;
     r.set(EncoderParam::MotionSpeed, 90.0f);
     r.set(EncoderParam::TransformRollRate, 45.0f);
@@ -154,6 +159,7 @@ TEST_CASE("a restart takes the motion back to zero, unless the motion continues"
 }
 
 TEST_CASE("a frame carries width, gain and trim, and the encoder is told to jump or to ramp") {
+    //  Catches: the trim taken from the gain, and a snapped frame ramped rather than jumped.
     Rig r;
     r.set(EncoderParam::RenderWidth, 60.0f);
     r.set(EncoderParam::OutputGain, -6.0f);
@@ -207,6 +213,7 @@ Region asSet(const Rig& r) {
 }  // namespace
 
 TEST_CASE("the region source reads where the source was one step ago -- not now, not two ago") {
+    //  Catches: the remembered position never updated, so the region reads where the source first was.
     Rig r;
     frontHalf(r);
     r.start();
@@ -225,6 +232,7 @@ TEST_CASE("the region source reads where the source was one step ago -- not now,
 }
 
 TEST_CASE("after a restart the region source reads where the source starts, not where it last was") {
+    //  Catches: the restart's step reading the remembered position instead of where the source starts.
     /*  A source parked inside a region, driving gain: read as 0 on the first step it would snap to
         the outside value and fade back in, at every play, locate and loop. */
     Rig r;
@@ -245,6 +253,8 @@ TEST_CASE("after a restart the region source reads where the source starts, not 
 }
 
 TEST_CASE("the reseed reads the parameters as set, which is all there is before the first step") {
+    //  Catches: the reseed placed, or the region built, from the engine's destinations, which are zero before the first
+    //  step.
     //  The engine's destinations are zero until it has run once: a region resolved from them has
     //  no size, and a source inside it would read 0.
     Rig r;
@@ -291,6 +301,7 @@ TEST_CASE("a region angle set back to zero takes its own turn with it, and only 
 }
 
 TEST_CASE("a region's rates turn it, hold while stopped, and go back to zero with the take") {
+    //  Catches: the region's turn running while stopped, and a restart that keeps it.
     Rig r;
     frontHalf(r);
     r.set(EncoderParam::Region1YawRate, 90.0f);
@@ -313,6 +324,7 @@ TEST_CASE("a region's rates turn it, hold while stopped, and go back to zero wit
 }
 
 TEST_CASE("without a region there is no region source, and the side belongs to the use") {
+    //  Catches: the side parameter ignored, so outside reads as inside.
     Rig none;
     frontHalf(none);
     none.useRegion = false;
@@ -327,22 +339,23 @@ TEST_CASE("without a region there is no region source, and the side belongs to t
     CHECK(out.step().regionValue == 0.0);  // parked in front, which is now outside
 }
 
-/*  Every test above uses a Spot, whose size and softness are modulatable -- which is why a
- *  destination no cell can reach could read zero unnoticed. A band's thickness is the same read. */
-TEST_CASE("a destination no cell can reach still carries its parameter, so a band keeps its shape") {
+/*  A region's side takes no modulation, and the control step still reads it through the engine's
+ *  destinations, as it reads every setting of the region. */
+TEST_CASE("a parameter no cell can reach still carries its value, so a region keeps its side") {
+    //  Catches: the engine skipping the ids no cell can reach, which leaves their destinations at the zero
+    //  the restart left -- here, inside -- from the step after the snap on.
     Rig r;
     r.useRegion = true;
     r.state.regions[0].shape.kind = RegionKind::Band;
     r.set(EncoderParam::Region1Thickness, 40.0f);
+    r.set(EncoderParam::Region1Side, 1.0f);  // outside
     r.set(EncoderParam::MotionSpeed, 0.0f);
     r.start();
 
-    const double snapped = r.step().region.thickness;
-    CHECK(snapped == doctest::Approx(40.0 * kDeg2Rad));
-    //  the step after the snap is the one that collapsed: the destination was never written, so it
-    //  held the zero the restart left. Catches: skip NotModulatable ids and this reads 0.
-    CHECK(r.step().region.thickness == doctest::Approx(snapped));
-    CHECK(r.run(20).region.thickness == doctest::Approx(snapped));
+    CHECK(r.step().region.side == RegionSide::Outside);  // the snap reads the parameters as set
+    CHECK(r.step().region.side == RegionSide::Outside);
+    CHECK(r.run(20).region.side == RegionSide::Outside);
+    CHECK(r.run(20).region.thickness == doctest::Approx(40.0 * kDeg2Rad));
 }
 
 // ---- a stereo input -------------------------------------------------------------------------------
@@ -373,8 +386,8 @@ struct Aimed {
 
 /*  The default matches the single-encoder form to the bit: in `sum` the mid is aimed by the
  *  one-encoder form the goldens hash, and the side is aimed at nothing, so `process` skips it and
- *  adds no zeros. Catches `sum` being routed through the pair target, and the side being left aimed
- *  at something. */
+ *  adds no zeros. Catches the side being left aimed at something. (Two halves of one point are that
+ *  point to the bit, so `sum` routed through the pair target cannot be told from it.) */
 TEST_CASE("sum is one point, exactly as one encoder aims it, and the side is silent") {
     Rig rig;
     rig.set(EncoderParam::MotionSpeed, 90.0f);
@@ -559,10 +572,9 @@ TEST_CASE(
         r.start();
         return r.run(60).s;
     };
-    CHECK(landed(GeneratorType::Orbit, MovementMode::PingPong) ==
-          doctest::Approx(0.2).epsilon(0.01));  // a loop comes round
-    CHECK(landed(GeneratorType::Spiral, MovementMode::Wrap) == doctest::Approx(0.2).epsilon(0.01));
-    CHECK(landed(GeneratorType::Spiral, MovementMode::PingPong) == doctest::Approx(0.8).epsilon(0.01));
+    CHECK(std::abs(landed(GeneratorType::Orbit, MovementMode::PingPong) - 0.2) < 0.01);  // a loop comes round
+    CHECK(std::abs(landed(GeneratorType::Spiral, MovementMode::Wrap) - 0.2) < 0.01);
+    CHECK(std::abs(landed(GeneratorType::Spiral, MovementMode::PingPong) - 0.8) < 0.01);
     CHECK(landed(GeneratorType::Spiral, MovementMode::Once) == doctest::Approx(1.0).epsilon(0.01));
 }
 
