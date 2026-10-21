@@ -77,7 +77,7 @@ TEST_CASE("a region on the bus is the integral of what it is worth in every dire
     for (const Region& r : {softSpot(), band}) {
         RegionOperator op;
         op.prepare(order, 8);
-        REQUIRE(op.set(r));
+        op.set(r);
         const auto got = matrixOf(op, order), want = reference(r, order);
         double worst = 0.0;
         for (int k = 0; k < C * C; ++k)
@@ -98,7 +98,7 @@ TEST_CASE("a hard cap's omni entry is the share of the sphere it covers, and the
     op.prepare(order, 8);
     for (const double deg : {30.0, 90.0, 140.0}) {
         cap.size = deg * kDeg2Rad;
-        REQUIRE(op.set(cap));
+        op.set(cap);
         CHECK(std::abs(op.blocks()[0] - (1.0 - std::cos(cap.size)) / 2.0) < 1e-12);
     }
 
@@ -109,13 +109,13 @@ TEST_CASE("a hard cap's omni entry is the share of the sphere it covers, and the
     band.softness = 0.0;
     band.bandElevation = 25.0 * kDeg2Rad;
     band.thickness = 50.0 * kDeg2Rad;
-    REQUIRE(op.set(band));
+    op.set(band);
     CHECK(std::abs(op.blocks()[0] - (std::sin(50.0 * kDeg2Rad) - std::sin(0.0)) / 2.0) < 1e-12);
 
     //  "front" at order 3 -- a half -- reads about -0.2 to 1.2 on the bus: the first row of M is the
     //  region itself, band-limited. Its truncation, not a defect.
     cap.size = kPi / 2;
-    REQUIRE(op.set(cap));
+    op.set(cap);
     const auto m = matrixOf(op, order);
     std::vector<double> y(16);
     double lo = 1e9, hi = -1e9;
@@ -146,9 +146,9 @@ TEST_CASE("inside and outside add up to the field, exactly as far as floats go, 
     RegionOperator inside, outside;
     inside.prepare(order, frames);
     outside.prepare(order, frames);
-    REQUIRE(inside.set(r));
+    inside.set(r);
     r.side = RegionSide::Outside;
-    REQUIRE(outside.set(r));
+    outside.set(r);
     inside.apply(in.data(), a.data(), frames);
     outside.apply(in.data(), b.data(), frames);
     double moved = 0.0;
@@ -159,11 +159,11 @@ TEST_CASE("inside and outside add up to the field, exactly as far as floats go, 
     CHECK(moved > 0.1);
 
     Region all;  // Everywhere
-    REQUIRE(inside.set(all));
+    inside.set(all);
     inside.apply(in.data(), a.data(), frames);
     CHECK(std::memcmp(a.data(), in.data(), in.size() * sizeof(float)) == 0);
     all.side = RegionSide::Outside;
-    REQUIRE(inside.set(all));
+    inside.set(all);
     inside.apply(in.data(), a.data(), frames);
     for (const float v : a) CHECK(v == 0.0f);
 }
@@ -206,7 +206,7 @@ TEST_CASE("sectors and dots are projected too, and agree with the definition") {
         for (const Region& r : {sectors, dots, tetra, twenty, wide, one}) {
             RegionOperator op;
             op.prepare(order, 4);
-            REQUIRE(op.set(r));  // built in the step itself
+            op.set(r);  // built in the step itself
             CHECK_FALSE(op.isAxial());
             const std::vector<double> got = matrixOf(op, order), want = reference(r, order);
             double worst = 0.0;
@@ -230,26 +230,26 @@ TEST_CASE("turning a sector rebuilds nothing; resizing it rebuilds the matrix") 
 
     RegionOperator op;
     op.prepare(3, 4);
-    REQUIRE(op.set(r));
+    op.set(r);
     const std::vector<double> first(op.dense().begin(), op.dense().end());
 
     //  turned: the own-frame matrix is the same to the bit, and the rotation carries the change
     r.yaw = 40.0 * kDeg2Rad;
     r.pitch = 15.0 * kDeg2Rad;
-    REQUIRE(op.set(r));
+    op.set(r);
     const std::vector<double> turned(op.dense().begin(), op.dense().end());
     REQUIRE(turned.size() == first.size());
     for (std::size_t i = 0; i < first.size(); ++i) REQUIRE(turned[i] == first[i]);
 
     //  and the side is not a shape either: outside is I - M, never a second matrix
     r.side = RegionSide::Outside;
-    REQUIRE(op.set(r));
+    op.set(r);
     for (std::size_t i = 0; i < first.size(); ++i) REQUIRE(op.dense()[i] == first[i]);
 
     //  resized: it is a different matrix
     r.side = RegionSide::Inside;
     r.fill = 0.25;
-    REQUIRE(op.set(r));
+    op.set(r);
     bool moved = false;
     for (std::size_t i = 0; i < first.size(); ++i) moved = moved || op.dense()[i] != first[i];
     CHECK(moved);
@@ -263,11 +263,11 @@ TEST_CASE("the outside of everywhere passes nothing, and says so") {
     all.kind = RegionKind::Everywhere;
     RegionOperator op;
     op.prepare(order, 4);
-    REQUIRE(op.set(all));
+    op.set(all);
     CHECK(op.passesEverything());
 
     all.side = RegionSide::Outside;
-    REQUIRE(op.set(all));
+    op.set(all);
     CHECK_FALSE(op.passesEverything());
     std::vector<float> in(static_cast<std::size_t>(C), 0.5f), out(in.size(), 1.0f);
     op.apply(in.data(), out.data(), 1);
@@ -285,7 +285,7 @@ TEST_CASE("a region gives the same bits for one call of many frames as for many 
     }
     RegionOperator op;
     op.prepare(order, frames);
-    REQUIRE(op.set(softSpot()));
+    op.set(softSpot());
     std::vector<float> whole(in.size()), ones(in.size());
     op.apply(in.data(), whole.data(), frames);
     for (int f = 0; f < frames; ++f) op.apply(in.data() + f * C, ones.data() + f * C, 1);
@@ -309,7 +309,7 @@ TEST_CASE(
         all.yaw = 0.4, all.pitch = -0.3;
         RegionOperator op;
         op.prepare(order, 4);
-        REQUIRE(op.set(all));
+        op.set(all);
         const auto m = matrixOf(op, order);
         double worst = 0.0;
         for (int i = 0; i < C; ++i)
@@ -324,7 +324,7 @@ TEST_CASE(
             dots.dots = count;
             dots.dotSize = maxDotSize(count);  // as large as they go: the caps just touch
             dots.softness = 0.0;
-            REQUIRE(op.set(dots));
+            op.set(dots);
             //  W in, W out: the share of the sphere the caps cover
             const double share = count * (1.0 - std::cos(dots.dotSize)) * 0.5;
             INFO(count, " dots");
@@ -358,8 +358,8 @@ TEST_CASE("half the sphere as one sector and the half opposite add up to everyth
         RegionOperator a, b;
         a.prepare(order, 4);
         b.prepare(order, 4);
-        REQUIRE(a.set(half));
-        REQUIRE(b.set(opposite));
+        a.set(half);
+        b.set(opposite);
         const auto ma = matrixOf(a, order), mb = matrixOf(b, order);
         double worst = 0.0;
         for (int i = 0; i < C; ++i)

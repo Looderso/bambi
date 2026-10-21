@@ -134,7 +134,7 @@ TEST_CASE("custom on the bus: the matrix of its weights, and a weights kind is w
     r.yaw = 0.4;
     RegionOperator op;
     op.prepare(3, 8);
-    REQUIRE(op.set(r));
+    op.set(r);
     CHECK_FALSE(op.passesEverything());  // built in the step itself
     //  W in, W out is the omni row of M: the field's mean plus what the up-weight folds into W
     std::vector<float> in(16, 0.0f), out(16, 0.0f);
@@ -163,7 +163,7 @@ TEST_CASE("clouds on the bus are the matrix of their weights, and every setting 
     Region c = clouds(11, 0.4, 0.9, 0.3, 25.0);
     RegionOperator op;
     op.prepare(order, 8);
-    REQUIRE(op.set(c));
+    op.set(c);
     const auto got = matrixOf(op, order);
 
     Region asCustom = c;
@@ -171,7 +171,7 @@ TEST_CASE("clouds on the bus are the matrix of their weights, and every setting 
     regionWeights(c, order, asCustom.weights);
     RegionOperator direct;
     direct.prepare(order, 8);
-    REQUIRE(direct.set(asCustom));
+    direct.set(asCustom);
     const auto want = matrixOf(direct, order);
     double worst = 0.0;
     for (int k = 0; k < C * C; ++k)
@@ -183,7 +183,7 @@ TEST_CASE("clouds on the bus are the matrix of their weights, and every setting 
     for (Region moved :
          {clouds(11, 0.7, 0.9, 0.3, 25.0), clouds(11, 0.4, 0.2, 0.3, 25.0), clouds(11, 0.4, 0.9, 0.9, 25.0),
           clouds(11, 0.4, 0.9, 0.3, 140.0), clouds(12, 0.4, 0.9, 0.3, 25.0)}) {
-        REQUIRE(op.set(moved));
+        op.set(moved);
         const auto now = matrixOf(op, order);
         double diff = 0.0;
         for (int k = 0; k < C * C; ++k)

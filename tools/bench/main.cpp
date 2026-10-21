@@ -426,7 +426,8 @@ int main() {
         const double setUs = medianMicros(9, 300, [&] {
             r.yaw += 1e-3;
             r.size += 1e-5;
-            sink += op.set(r) ? op.blocks()[1] : 0.0;
+            op.set(r);
+            sink += op.blocks()[1];
         });
         std::vector<float> in(static_cast<std::size_t>(numChannels(order) * kBlock), 0.25f), out(in.size());
         const double applyUs = medianMicros(9, 300, [&] {

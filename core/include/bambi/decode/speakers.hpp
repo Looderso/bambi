@@ -59,7 +59,6 @@ private:
     void mix(const Set& set, const float* x, int inChannels, float* y) const noexcept;
 
     int maxOutputs_{0}, maxChannels_{0}, ringLength_{0}, fade_{1}, maxDelay_{0}, latency_{0};
-    int activeOutputs_{0};  ///< the most ring lines written since prepare or reset; the lines past it are zero
     double sampleRate_{48000.0};
     LatestValue<Set> sets_;
     const Set* live_{nullptr};

@@ -19,12 +19,6 @@ void quadratureGrid(int rings, int azimuths, std::vector<Vec3>& directions, std:
 /// Legendre polynomial P_n(x), by the standard three-term recurrence.
 double legendreP(int n, double x);
 
-/*  Associated Legendre P_n^m(x), m >= 0, without the Condon-Shortley phase, as AmbiX requires.
- *  Including the (-1)^m factor mirrors the field left-to-right while every magnitude, and so every
- *  normalisation test, stays intact; test_sh.cpp checks against an independent implementation.
- */
-double legendreAssoc(int n, int m, double x);
-
 /*  Per-order weights of a spherical cap of half-angle alpha (radians), order+1 values:
  *
  *      w_n = [P_{n-1}(cos a) - P_{n+1}(cos a)] / [(2n+1)(1 - cos a)],   w_0 = 1

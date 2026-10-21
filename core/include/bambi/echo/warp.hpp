@@ -39,7 +39,7 @@ public:
     /// Allocates and tabulates everything independent of the skew. `nodes` is for tests.
     void prepare(int order, int nodes = kWarpNodes);
 
-    /// The blocks for a skew, clamped to +-kMaxSkew, into warpSize(order) numbers. Real-time safe.
+    /// The blocks for a skew, held to +-kMaxSkew by slideZ, into warpSize(order) numbers. Real-time safe.
     void build(double skew, std::span<double> blocks) noexcept;
 
     int order() const { return order_; }

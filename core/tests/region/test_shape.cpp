@@ -31,12 +31,16 @@ Region spot(double sizeDeg, double softDeg, Vec3 aim = {0, 0, 1}) {
 }  // namespace
 
 TEST_CASE("everywhere is everywhere, and its outside is nowhere") {
-    //  Catches: Everywhere evaluated as a shape with an edge at no distance, which a soft region reads as a half.
+    //  Catches: Everywhere evaluated as a shape with an edge at no distance, which a soft region reads as a half, or as
+    //  a shape at all, which a softness wider than the sphere or not a number reads as less than everywhere.
     Region r;
-    r.softness = 20.0 * kDeg2Rad;  // soft, so an edge distance of zero would read as a half
-    for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 1.0);
-    r.side = RegionSide::Outside;
-    for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 0.0);
+    for (const double softness : {20.0 * kDeg2Rad, 20.0, std::numeric_limits<double>::quiet_NaN()}) {
+        r.softness = softness;
+        r.side = RegionSide::Inside;
+        for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 1.0);
+        r.side = RegionSide::Outside;
+        for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 0.0);
+    }
 }
 
 TEST_CASE("a spot is 1 at its aim, exactly 0.5 at its edge, and 0 beyond the fade") {

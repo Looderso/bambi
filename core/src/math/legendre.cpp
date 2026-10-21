@@ -20,34 +20,6 @@ double legendreP(int n, double x) {
     return p1;
 }
 
-double legendreAssoc(int n, int m, double x) {
-    if (m < 0 || m > n) return 0.0;
-    if (m == 0) return legendreP(n, x);
-
-    // P_m^m = (2m-1)!! * (1-x^2)^(m/2).  No (-1)^m: AmbiX omits Condon-Shortley.
-    const double s = std::sqrt(std::max(0.0, 1.0 - x * x));
-    double pmm = 1.0;
-    double fact = 1.0;
-    for (int i = 1; i <= m; ++i) {
-        pmm *= fact * s;
-        fact += 2.0;
-    }
-    if (n == m) return pmm;
-
-    // P_{m+1}^m = x (2m+1) P_m^m
-    double pmmp1 = x * (2.0 * m + 1.0) * pmm;
-    if (n == m + 1) return pmmp1;
-
-    // P_k^m = [ x(2k-1) P_{k-1}^m - (k+m-1) P_{k-2}^m ] / (k-m)
-    double prev = pmm, cur = pmmp1, out = 0.0;
-    for (int k = m + 2; k <= n; ++k) {
-        out = (x * (2.0 * k - 1.0) * cur - (k + m - 1.0) * prev) / (k - m);
-        prev = cur;
-        cur = out;
-    }
-    return out;
-}
-
 void capWeights(double alphaRad, int order, std::span<double> w) {
     const double a = std::cos(clampd(alphaRad, 0.0, kPi));
     const double den = 1.0 - a;

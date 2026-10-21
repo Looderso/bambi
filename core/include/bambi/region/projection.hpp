@@ -32,7 +32,7 @@ public:
     void prepare(int order, int maxFrames);
 
     /// Real-time safe. A turn or a side change rebuilds no shape.
-    bool set(const Region& region) noexcept;
+    void set(const Region& region) noexcept;
 
     /// The field inside (or outside) the region. `in` and `out` must not overlap.
     void apply(const float* in, float* out, int frames) noexcept;
@@ -46,12 +46,12 @@ public:
     /// energy-free number from 0 to 1. Smooth in every setting, unlike the region's value at the point, which
     /// steps where its edge crosses the direction. Real-time safe; not const, since it runs apply().
     double gainAt(Vec3 direction) noexcept;
-    /// apply() copies the field unchanged: a refused kind, or "everywhere" from the inside.
-    bool passesEverything() const { return refused_ || (identity_ && !outside_); }
+    /// apply() copies the field unchanged: "everywhere" from the inside.
+    bool passesEverything() const { return identity_ && !outside_; }
 
 private:
     int order_{0}, maxFrames_{0};
-    bool identity_{true}, refused_{false}, plain_{true}, outside_{false}, axialKind_{true};
+    bool identity_{true}, plain_{true}, outside_{false}, axialKind_{true};
     Region denseFor_{};  ///< the shape `dense_` was built for, orientation aside
     bool denseValid_{false};
     std::vector<double> nodeZ_, nodeW_;  ///< Gauss-Legendre on [-1, 1], mapped onto each stretch
