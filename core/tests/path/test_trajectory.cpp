@@ -40,6 +40,7 @@ const GeneratorType kAll[] = {GeneratorType::Orbit, GeneratorType::Lissajous, Ge
 /*  THE load-bearing test. Everything about the plugin's premise — loudness driving speed —
  *  rests on equal steps of s being equal steps of arc length. */
 TEST_CASE("arc-length parameterisation holds for every generator") {
+    //  Catches: the table resampled by sample index rather than by arc length.
     for (auto g : kAll) {
         Trajectory t;
         t.build(parametric(g));
@@ -50,6 +51,7 @@ TEST_CASE("arc-length parameterisation holds for every generator") {
 }
 
 TEST_CASE("arc-length parameterisation holds for a custom bezier chain") {
+    //  Catches: the table resampled by sample index rather than by arc length, which a long handle shows at once.
     TrajectoryState s;
     s.kind = TrajectoryKind::Custom;
     s.closed = true;
@@ -67,8 +69,7 @@ TEST_CASE("arc-length parameterisation holds for a custom bezier chain") {
     CHECK(speedRatio(t) < 1.02);
 
     SUBCASE("and still holds when one handle is stretched far out") {
-        // A fixed sample count per segment would fail here: uniform Bezier parameter is not
-        // uniform arc length, and a long handle is where that bites hardest.
+        // Uniform Bezier parameter is not uniform arc length, and a long handle is where that bites hardest.
         s.nodes[2].cout = expMap(s.nodes[2].p, logMap(s.nodes[2].p, s.nodes[2].cout) * 4.0);
         Trajectory t2;
         t2.build(s);
@@ -77,6 +78,7 @@ TEST_CASE("arc-length parameterisation holds for a custom bezier chain") {
 }
 
 TEST_CASE("a great circle measures exactly 360 degrees") {
+    //  Catches: a closed path's length without its closing step.
     TrajectoryState s = parametric(GeneratorType::Orbit);
     s.genParams[0] = 0;   // no tilt
     s.genParams[2] = 90;  // full aperture
@@ -87,6 +89,8 @@ TEST_CASE("a great circle measures exactly 360 degrees") {
 }
 
 TEST_CASE("generators declare closedness, and the trajectory honours it") {
+    //  Catches: a closed shape declared open, and a trajectory that takes its closedness from the state rather than the
+    //  generator.
     CHECK(generatorIsClosed(GeneratorType::Orbit));
     CHECK(generatorIsClosed(GeneratorType::Lissajous));
     CHECK(generatorIsClosed(GeneratorType::Wave));
@@ -102,6 +106,8 @@ TEST_CASE("generators declare closedness, and the trajectory honours it") {
 }
 
 TEST_CASE("a closed path joins up; an open one does not") {
+    //  Catches: every shape taken as closed, which joins a spiral's ends, and every one as open, which stops a loop
+    //  short of its start.
     Trajectory closed;
     closed.build(parametric(GeneratorType::Lissajous));
     CHECK(arc(closed.eval(0.0), closed.eval(1.0)) < 1e-6);
@@ -135,12 +141,12 @@ TEST_CASE("a polygon's corners sit at its radius, and its edges are great-circle
             std::copy(gp.begin(), gp.end(), s.genParams.begin());
             Trajectory t;
             t.build(s);
-            CHECK(t.lengthRad() == doctest::Approx(sides * side).epsilon(2e-3));
+            CHECK(std::abs(t.lengthRad() / (sides * side) - 1.0) < 2e-3);
         }
 }
 
 TEST_CASE("one side is a point that stands still, and still a path") {
-    //  Catches: a zero-length path divided by its length, and one side read as no path at all.
+    //  Catches: one side read as no path at all, an empty table that leaves the source nowhere to be.
     TrajectoryState s = parametric(GeneratorType::Polygon);
     s.genParams[0] = 1;
     Trajectory t;
@@ -174,6 +180,8 @@ TEST_CASE("a polygon is played at one speed, through its corners too") {
 }
 
 TEST_CASE("movement modes are a phase mapping and nothing else") {
+    //  Catches: ping-pong wrapping instead of folding, once wrapping instead of holding, a closed path following the
+    //  mode, and a negative phase wrapped by fmod.
     SUBCASE("wrap is a sawtooth — it teleports, by design") {
         double worst = 0.0;
         for (int i = 0; i < 400; ++i) {
@@ -191,7 +199,7 @@ TEST_CASE("movement modes are a phase mapping and nothing else") {
             const double b = Trajectory::phaseToS((i + 1) * 0.01, MovementMode::PingPong, false);
             worst = std::max(worst, std::abs(b - a));
         }
-        CHECK(worst == doctest::Approx(0.01).epsilon(1e-6));  // exactly the step size
+        CHECK(std::abs(worst - 0.01) < 1e-9);  // exactly the step size
     }
 
     SUBCASE("ping-pong folds into range and reverses") {
@@ -223,15 +231,18 @@ TEST_CASE("movement modes are a phase mapping and nothing else") {
 }
 
 TEST_CASE("eval is bounded and unit for any input, including nonsense") {
+    //  Catches: eval returning the chord between table points rather than the point on the sphere.
     Trajectory t;
     t.build(parametric(GeneratorType::Wave));
-    for (double s : {-1000.0, -0.5, 0.0, 0.5, 1.0, 1.5, 1000.0}) {
+    //  Between the table's points as well as on them: 0.5 of a table whose size is even is one of its points.
+    for (double s : {-1000.0, -0.5, 0.0, 0.5, 1.0, 1.5, 1000.0, -3.3, 0.1234567, 2.71}) {
         INFO("s = ", s);
         CHECK(length(t.eval(s)) == doctest::Approx(1.0).epsilon(1e-9));
     }
 }
 
 TEST_CASE("degenerate states do not crash and report empty") {
+    //  Catches: an empty table read as if it had a point.
     TrajectoryState s;
     s.kind = TrajectoryKind::Custom;
 
@@ -251,6 +262,8 @@ TEST_CASE("degenerate states do not crash and report empty") {
 }
 
 TEST_CASE("sphere maths: exp and log are inverses") {
+    //  Catches: expMap moving by sin(d) rather than d along the sphere, and logMap returning a unit vector rather than
+    //  one of length d.
     const Vec3 p = fromAzEl(0.7, 0.3);
     for (double d = 0.05; d < 2.5; d += 0.3) {
         const Vec3 tan = unit(tangentAt(p, {0, 0, 1})) * d;
@@ -264,6 +277,7 @@ TEST_CASE("sphere maths: exp and log are inverses") {
 }
 
 TEST_CASE("sphere maths: rotations") {
+    //  Catches: rotateAToB turning half way, and slerp not uniform in angle.
     const Vec3 a = fromAzEl(0.0, 0.0), b = fromAzEl(1.2, 0.4);
     // 1e-7, not 1e-12: arc() is acos-based and cannot resolve below ~1.5e-8 rad. See vec3.hpp.
     CHECK(arc(rotateAToB(a, a, b), b) < 1e-7);
@@ -284,23 +298,28 @@ TEST_CASE("sphere maths: rotations") {
 }
 
 TEST_CASE("a great circle has a centre, even though its points average to the origin") {
-    //  The case that rules out the obvious implementation. An equatorial orbit is the most
-    //  ordinary trajectory in this plugin, and the mean of its points is exactly nothing.
-    std::vector<Vec3> equator;
+    //  Catches: the mean of the points used, which is the origin for a great circle and falls back to straight up.
+    //  The case that rules out the obvious implementation. An orbit is the most ordinary trajectory in this
+    //  plugin, and the mean of its points is exactly nothing. Tilted, so that the fallback of straight up is
+    //  not also its pole.
+    const Vec3 pole = rotateAxis(Vec3{0, 0, 1}, Vec3{1, 0, 0}, 30.0 * kDeg2Rad);
+    std::vector<Vec3> circle;
     for (int i = 0; i < 256; ++i) {
         const double a = 2.0 * kPi * i / 256.0;
-        equator.push_back(fromAzEl(a, 0.0));
+        circle.push_back(rotateAxis(fromAzEl(a, 0.0), Vec3{1, 0, 0}, 30.0 * kDeg2Rad));
     }
     Vec3 mean{0, 0, 0};
-    for (auto p : equator) mean = mean + p;
+    for (auto p : circle) mean = mean + p;
     REQUIRE(length(mean) < 1e-9);  // the mean really is degenerate
 
-    const Vec3 c = pathCentre(equator);
+    const Vec3 c = pathCentre(circle);
     CHECK(length(c) == doctest::Approx(1.0));
-    CHECK(std::abs(std::abs(c.z) - 1.0) < 1e-6);  // a pole, either one
+    CHECK(std::abs(std::abs(dot(c, pole)) - 1.0) < 1e-6);  // its pole, either one
 }
 
 TEST_CASE("a small circle's centre is its own middle, on the side the path is on") {
+    //  Catches: the area's sign not corrected by the mean, so a path travelled the other way shrinks toward the
+    //  antipode.
     std::vector<Vec3> ring;
     const Vec3 axis = fromAzEl(0.6, 0.4);
     for (int i = 0; i < 128; ++i) {
@@ -313,9 +332,13 @@ TEST_CASE("a small circle's centre is its own middle, on the side the path is on
     const Vec3 c = pathCentre(ring);
     INFO("centre off by ", arc(c, axis) * kRad2Deg, " deg");
     CHECK(sameDir(c, axis, 1e-9));  // and NOT the antipode
+    //  and the same travelled the other way round, whose area points the other way
+    std::reverse(ring.begin(), ring.end());
+    CHECK(sameDir(pathCentre(ring), axis, 1e-9));
 }
 
 TEST_CASE("extent shrinks a path toward its centre without moving it") {
+    //  Catches: extent applied to the angle other than in proportion.
     std::vector<Vec3> equator;
     for (int i = 0; i < 128; ++i) equator.push_back(fromAzEl(2.0 * kPi * i / 128.0, 0.0));
     const Vec3 c = pathCentre(equator);
@@ -340,6 +363,7 @@ TEST_CASE("extent shrinks a path toward its centre without moving it") {
  *  az/el as an absolute bearing would relocate every authored path the moment the
  *  parameters existed, at their default values, without the user touching anything. */
 TEST_CASE("the default transform leaves every generator exactly where it was") {
+    //  Catches: a default other than the identity, which moves every path before anyone touches it.
     for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                    GeneratorType::Spiral}) {
         TrajectoryState ts;
@@ -358,6 +382,7 @@ TEST_CASE("the default transform leaves every generator exactly where it was") {
 }
 
 TEST_CASE("yaw rotates the path around the listener") {
+    //  Catches: yaw turning clockwise.
     std::vector<Vec3> ring;
     for (int i = 0; i < 64; ++i) ring.push_back(fromAzEl(2.0 * kPi * i / 64.0, 0.4));
     const Vec3 c = pathCentre(ring);
@@ -368,15 +393,16 @@ TEST_CASE("yaw rotates the path around the listener") {
         const Vec3 q = applyTransform(p, c, t);
         //  A yaw adds exactly its own angle to every point's azimuth and touches no
         //  elevation. That is what "rotates around the listener" has to mean.
-        CHECK(elevation(q) == doctest::Approx(elevation(p)).epsilon(1e-9));
+        CHECK(std::abs(elevation(q) - elevation(p)) < 1e-9);
         double d = azimuth(q) - azimuth(p);
         while (d > kPi) d -= 2.0 * kPi;
         while (d < -kPi) d += 2.0 * kPi;
-        CHECK(d == doctest::Approx(t.yawRad).epsilon(1e-9));
+        CHECK(std::abs(d - t.yawRad) < 1e-9);
     }
 }
 
 TEST_CASE("pitch tilts the path upward") {
+    //  Catches: pitch tilting downward.
     const Vec3 front = fromAzEl(0.0, 0.0);
     std::vector<Vec3> one{front};
     PathTransform t;
@@ -387,6 +413,7 @@ TEST_CASE("pitch tilts the path upward") {
 }
 
 TEST_CASE("transform preserves arc length ratios — it places, it does not distort") {
+    //  Catches: a rotation about an axis that is not a unit vector, which is no longer rigid.
     std::vector<Vec3> ring;
     for (int i = 0; i < 128; ++i) ring.push_back(fromAzEl(2.0 * kPi * i / 128.0, 0.3));
     const Vec3 c = pathCentre(ring);
@@ -398,7 +425,7 @@ TEST_CASE("transform preserves arc length ratios — it places, it does not dist
     for (std::size_t i = 1; i < ring.size(); ++i) {
         const double before = arc(ring[i - 1], ring[i]);
         const double after = arc(applyTransform(ring[i - 1], c, t), applyTransform(ring[i], c, t));
-        CHECK(after == doctest::Approx(before).epsilon(1e-9));
+        CHECK(std::abs(after / before - 1.0) < 1e-9);
     }
 }
 
@@ -406,6 +433,7 @@ TEST_CASE("transform preserves arc length ratios — it places, it does not dist
     Extent is the one part that cannot always be undone -- it slerps toward the centre -- which is why
     kEditableExtent exists rather than a guess. */
 TEST_CASE("the placement transform can be undone, except where extent has thrown information away") {
+    //  Catches: pitch undone with the wrong sign, and yaw and pitch undone in the order they were applied.
     TrajectoryState s;
     s.generator = GeneratorType::Lissajous;
     generatorDefaults(s.generator, s.genParams);
@@ -510,6 +538,8 @@ TEST_CASE("the playback table follows the path's length: every default shape as 
 }
 
 TEST_CASE("a long shape is sampled as finely as its table, not only as finely as a short one") {
+    //  Catches: the second, finer pass dropped, so a long shape's table interpolates between samples four degrees
+    //  apart.
     //  Without the second pass a long table would still have short steps -- interpolated between samples
     //  four degrees apart -- so this is asserted on the samples themselves.
     TrajectoryState s;
