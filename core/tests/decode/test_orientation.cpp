@@ -53,9 +53,9 @@ TEST_CASE("the head's angles follow the suite's convention and come back from th
          {std::array{40.0, 25.0, -15.0}, std::array{-170.0, -60.0, 100.0}, std::array{0.0, 0.0, 0.0}}) {
         double yy, pp, rr;
         yprOf(headFromYpr(y, p, r), yy, pp, rr);
-        CHECK(yy == doctest::Approx(y).epsilon(1e-9));
-        CHECK(pp == doctest::Approx(p).epsilon(1e-9));
-        CHECK(rr == doctest::Approx(r).epsilon(1e-9));
+        CHECK(std::abs(yy - y) < 1e-9);
+        CHECK(std::abs(pp - p) < 1e-9);
+        CHECK(std::abs(rr - r) < 1e-9);
     }
 }
 

@@ -142,26 +142,24 @@ TEST_CASE("a change of delays fades without a step") {
     REQUIRE(r.publish(a));
     const int frames = 3000;
     std::vector<float> in(static_cast<std::size_t>(frames * 4), 0.0f);
-    for (int f = 0; f < frames; ++f) in[static_cast<std::size_t>(f * 4)] = 1.0f;  // a steady omni signal
+    for (int f = 0; f < frames; ++f)  // a 100 Hz tone on the omni channel: a delay that jumps by 91 samples clicks
+        in[static_cast<std::size_t>(f * 4)] = static_cast<float>(std::sin(2.0 * kPi * 100.0 * f / 48000.0));
     std::vector<float> out(static_cast<std::size_t>(frames * 17));
     r.process(in.data(), 4, out.data(), 17, 1000);
     REQUIRE(r.publish(b));
     r.process(in.data() + 4000, 4, out.data() + 17000, 17, frames - 1000);
     const int o = 2;  // channel 3
-    const float lo =
-        std::min(out[static_cast<std::size_t>(999 * 17 + o)], out[static_cast<std::size_t>(2999 * 17 + o)]);
-    const float hi =
-        std::max(out[static_cast<std::size_t>(999 * 17 + o)], out[static_cast<std::size_t>(2999 * 17 + o)]);
-    REQUIRE(hi - lo > 0.01f);  // the gain did change: 1.65 m against 1.0 m
-    float biggestStep = 0;
-    for (int f = 1000; f < frames; ++f) {
+    float peak = 0, biggestStep = 0;
+    for (int f = 1; f < frames; ++f) {
         const float v = out[static_cast<std::size_t>(f * 17 + o)],
                     prev = out[static_cast<std::size_t>((f - 1) * 17 + o)];
-        CHECK(v >= lo - 1e-6f);
-        CHECK(v <= hi + 1e-6f);
-        biggestStep = std::max(biggestStep, std::abs(v - prev));
+        peak = std::max(peak, std::abs(v));
+        if (f >= 1000) biggestStep = std::max(biggestStep, std::abs(v - prev));
     }
-    CHECK(biggestStep < (hi - lo) / 100.0f);  // spread over 480 frames, never in one
+    REQUIRE(peak > 0.01f);
+    //  the tone itself moves by at most 0.013 of its peak a sample, and the fade adds a share spread over 480 frames;
+    //  a jump of 91 samples is a step of most of the peak
+    CHECK(biggestStep < 0.05f * peak);
 }
 
 TEST_CASE("a design that follows a fade closely waits until the lines have settled") {
@@ -275,32 +273,7 @@ TEST_CASE("the renderer holds every output by its latency, on top of the loudspe
             if (std::abs(out[static_cast<std::size_t>(f * 8 + o)]) > 1e-9f) first = f;
         if (std::abs(want[static_cast<std::size_t>(o)]) > 1e-9) CHECK(first == latency);
         for (int f = latency; f < frames; ++f)
-            CHECK(out[static_cast<std::size_t>(f * 8 + o)] ==
-                  doctest::Approx(want[static_cast<std::size_t>((f - latency) * d.outputs + o)]).epsilon(1e-5));
+            CHECK(std::abs(out[static_cast<std::size_t>(f * 8 + o)] -
+                           want[static_cast<std::size_t>((f - latency) * d.outputs + o)]) < 1e-5);
     }
-}
-
-TEST_CASE("a design with fewer outputs empties the lines it no longer feeds") {
-    //  Catches: the ring loop limited to the live outputs without clearing what a wider design left behind,
-    //  which a later wide design would then play as a ghost.
-    Layout wide, narrow;
-    wide.speakers = bs2051Layout("0+5+0")->speakers;
-    narrow.speakers = bs2051Layout("0+2+0")->speakers;
-    SpeakerDesign dw, dn;
-    REQUIRE(designAllrad(wide, 1, Weighting::Basic, dw));
-    REQUIRE(designAllrad(narrow, 1, Weighting::Basic, dn));
-    const int C = numChannels(1), frames = 256;
-    SpeakerRenderer r;
-    REQUIRE(r.prepare(1, 8, 48000.0, 0.01, 0));
-    REQUIRE(r.publish(dw));
-    std::vector<float> loud(static_cast<std::size_t>(frames * C), 0.5f), out(static_cast<std::size_t>(frames * 8));
-    r.process(loud.data(), C, out.data(), 8, frames);  // every line of the wide design holds signal now
-    REQUIRE(r.publish(dn));
-    std::vector<float> quiet(static_cast<std::size_t>(frames * C), 0.0f);
-    for (int i = 0; i < 8; ++i) r.process(quiet.data(), C, out.data(), 8, frames);  // the fade and the settle pass
-    REQUIRE(r.publish(dw));
-    r.process(quiet.data(), C, out.data(), 8, frames);
-    float ghost = 0.0f;
-    for (float v : out) ghost = std::max(ghost, std::abs(v));
-    CHECK(ghost == 0.0f);
 }

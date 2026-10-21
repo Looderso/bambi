@@ -74,7 +74,8 @@ TEST_CASE("both ears and the time difference equal the page's math in every fixt
 }
 
 TEST_CASE("another axis holds the model's values at shared points and the end values beyond the ends") {
-    //  Catches: a resampler that reads the wrong channel's row, or is off by one point.
+    //  Catches: a resampler that reads another channel's row once the axis has another length, or that runs on past
+    //  the model's last point instead of holding it.
     HeadModel m = shipped();
     m.notches.list.clear();  // a peak-shaped notch's tails reach everywhere; the tables alone hold beyond the ends
     const std::vector<Vec3> dirs{direction(40, 15), direction(-110, -30)};
@@ -91,11 +92,11 @@ TEST_CASE("another axis holds the model's values at shared points and the end va
     for (int d = 0; d < 2; ++d) {
         for (std::size_t i = 1; i + 1 < erbs.size(); ++i) {
             const std::size_t k = (i - 1) * 7;
-            CHECK(sparse.left(d)[i] == doctest::Approx(full.left(d)[k]).epsilon(1e-9));
-            CHECK(sparse.right(d)[i] == doctest::Approx(full.right(d)[k]).epsilon(1e-9));
+            CHECK(std::abs(sparse.left(d)[i] - full.left(d)[k]) < 1e-9);
+            CHECK(std::abs(sparse.right(d)[i] - full.right(d)[k]) < 1e-9);
         }
-        CHECK(sparse.left(d).front() == doctest::Approx(full.left(d).front()).epsilon(1e-9));
-        CHECK(sparse.right(d).back() == doctest::Approx(full.right(d).back()).epsilon(1e-9));
+        CHECK(std::abs(sparse.left(d).front() - full.left(d).front()) < 1e-9);
+        CHECK(std::abs(sparse.right(d).back() - full.right(d).back()) < 1e-9);
     }
 }
 
@@ -106,12 +107,12 @@ TEST_CASE("a mirrored direction swaps the ears and negates the time difference")
     head.prepare(shipped(), dirs);
     head.synthesise(-0.3, 0.9);
     for (int d : {0, 2}) {
-        CHECK(head.itd(d) == doctest::Approx(-head.itd(d + 1)).epsilon(1e-9));
+        CHECK(std::abs(head.itd(d) + head.itd(d + 1)) < 1e-9);
         for (int k = 0; k < head.points(); k += 5) {
-            CHECK(head.left(d)[static_cast<std::size_t>(k)] ==
-                  doctest::Approx(head.right(d + 1)[static_cast<std::size_t>(k)]).epsilon(1e-9));
-            CHECK(head.right(d)[static_cast<std::size_t>(k)] ==
-                  doctest::Approx(head.left(d + 1)[static_cast<std::size_t>(k)]).epsilon(1e-9));
+            CHECK(std::abs(head.left(d)[static_cast<std::size_t>(k)] - head.right(d + 1)[static_cast<std::size_t>(k)]) <
+                  1e-9);
+            CHECK(std::abs(head.right(d)[static_cast<std::size_t>(k)] - head.left(d + 1)[static_cast<std::size_t>(k)]) <
+                  1e-9);
         }
     }
     CHECK(head.itd(0) < -100.0);  // the source on the left: the left ear hears it first
