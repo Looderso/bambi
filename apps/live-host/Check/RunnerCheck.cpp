@@ -1325,6 +1325,58 @@ int timelineHolds() {
     return ok ? 0 : 1;
 }
 
+//  Six Decoders on a page as wide as the host's window, beside a track whose chain is longer than Live's column: each
+//  Decoder's box inside the page, and a press on its cross asks to remove it; the last one answered, and removed.
+//  Catches: the columns laid out with their widest gutters on a page too narrow for them, so the Decoders' column
+//  and its crosses fall past the page's right edge.
+int decodersFitHolds() {
+    livehost::RoutingPage page;
+    page.setSize(ui::theme::metrics::windowWidth, ui::theme::metrics::windowHeight);
+    live::Tree tree;
+    live::Node track;
+    track.id = 1;
+    track.kind = live::Node::Kind::Track;
+    track.name = "a track with a long name";
+    track.colour = "#e0b552";
+    tree.nodes = {track};
+    live::Shape shape;
+    shape.taken = {1};
+    shape.decoders = {1, 2, 3, 4, 5, 6};
+    shape.chains = {{1,
+                     {{7, live::Effect::Echo, 0},
+                      {8, live::Effect::Reverb, 0},
+                      {9, live::Effect::Echo, 0},
+                      {10, live::Effect::Reverb, 0}}}};
+    std::size_t left = shape.decoders.size();
+    page.reshape = [&](live::Shape s) { left = s.decoders.size(); };
+    page.preview = [](const live::Shape&) {};
+    page.show(tree, shape, live::layOut(tree, shape), {{1, 0}});
+    juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
+    const auto paint = [&] {
+        juce::Graphics g(image);
+        page.paint(g);
+    };
+    paint();
+    namespace rt = ui::theme::routing;
+    int inside = 0, asks = 0;
+    for (const std::uint64_t id : shape.decoders) {
+        const auto box = page.drawnDecoderAt(id);
+        if (!box) continue;
+        if (box->getX() >= 0.0f && box->getRight() <= static_cast<float>(page.getWidth())) ++inside;
+        const float glyph = ui::theme::controls::closeGlyph;
+        page.clickAt({box->getRight() - rt::padX - glyph / 2.0f, box->getY() + rt::boxHeight / 2.0f});
+        paint();
+        if (page.confirming()) ++asks;
+        page.confirm(id == shape.decoders.back());
+        paint();
+    }
+    const int n = static_cast<int>(shape.decoders.size());
+    const int failed = (inside == n && asks == n && left == shape.decoders.size() - 1) ? 0 : 1;
+    std::printf("  %d of %d Decoders inside a %d px page, %d crosses ask, the last removed: %s %s\n", inside, n,
+                page.getWidth(), asks, left == shape.decoders.size() - 1 ? "yes" : "no", failed ? "  FAIL" : "");
+    return failed;
+}
+
 //  The routing page over a set of a group with two tracks, a track, a return and two Decoders: painted in every state
 //  -- nothing chosen, a node chosen with its wires open, "send" waiting, the menu open -- and pressed everywhere on a
 //  grid, painted again after each press; then one track taken, sent to the second Decoder, its level dragged, the
@@ -1543,20 +1595,27 @@ int railTransportHolds() {
         rail.paint(g);  // lays out where the glyphs are
     }
     std::vector<bool> asked;
+    int starts = 0;
     rail.transport = [&](bool play) { asked.push_back(play); };
+    rail.toStart = [&] { ++starts; };
     rail.setPlaying(false);
     const bool space = rail.takeKey(juce::KeyPress(juce::KeyPress::spaceKey));
     rail.setPlaying(true);
     (void)rail.takeKey(juce::KeyPress(juce::KeyPress::spaceKey));
     const bool other = rail.takeKey(juce::KeyPress('a'));
-    const float mid = static_cast<float>(ui::theme::metrics::headerHeight) / 2.0f;
-    const float glyph = ui::theme::rail::transport;
-    rail.pressAt({ui::theme::rail::padX + glyph / 2.0f, mid});                                          // play
-    rail.pressAt({ui::theme::rail::padX + glyph + ui::theme::rail::transportGap + glyph / 2.0f, mid});  // stop
-    //  Catches: space always asking the same thing, another key taken from the plugins, and the two glyphs'
-    //  presses swapped or lost.
-    const bool ok = space && !other && asked == std::vector<bool>{true, false, true, false};
-    std::printf("  space plays a stopped Live and stops a playing one, other keys pass, play and stop clicked %s\n",
+    rail.pressAt(rail.drawnPlay().getCentre());
+    rail.pressAt(rail.drawnStop().getCentre());  // while playing: stop
+    rail.setPlaying(false);
+    rail.pressAt(rail.drawnStop().getCentre());  // while stopped: back to the start
+    //  even space before, between and after the two glyphs
+    const float before = rail.drawnPlay().getX(), between = rail.drawnStop().getX() - rail.drawnPlay().getRight(),
+                after = static_cast<float>(rail.getWidth()) - ui::theme::stroke::rule - rail.drawnStop().getRight();
+    const bool even = std::abs(before - between) < 0.5f && std::abs(between - after) < 0.5f;
+    //  Catches: space always asking the same thing, another key taken from the plugins, the two glyphs' presses
+    //  swapped or lost, stop while stopped not going back to the start, and the glyphs bunched to one side.
+    const bool ok = space && !other && asked == std::vector<bool>{true, false, true, false} && starts == 1 && even;
+    std::printf("  space plays a stopped Live and stops a playing one, other keys pass, play and stop clicked, stop "
+                "again back to the start, evenly spaced %s\n",
                 ok ? "" : "  FAIL");
     return ok ? 0 : 1;
 }
@@ -2277,6 +2336,8 @@ static int run() {
 
     std::printf("the routing page\n");
     failed += routingHolds();
+    std::printf("every Decoder within reach\n");
+    failed += decodersFitHolds();
 
     std::printf("the column's transport\n");
     failed += railTransportHolds();

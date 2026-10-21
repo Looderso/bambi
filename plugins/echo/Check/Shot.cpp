@@ -104,6 +104,12 @@ static int run(int argc, char** argv) {
     //  turn on a second tap, so the strip has more than one row to show
     if (auto* p = proc.hostParameter(static_cast<bambi::ParamId>(bambi::echoParams().byKey("tap2.on"))))
         p->setValueNotifyingHost(1.0f);
+    /*  --skew: both taps slide along their axes as they repeat, so the scene's spiral of echoes climbs instead of
+        lying flat. */
+    if (want == "--skew")
+        for (const char* key : {"tap1.skew", "tap2.skew"})
+            if (auto* p = proc.hostParameter(static_cast<bambi::ParamId>(bambi::echoParams().byKey(key))))
+                p->setValueNotifyingHost(p->convertTo0to1(0.25f));
     if (want == "--lfo") echo->openSource(12);
     if (want == "--env") echo->openSource(15);
     /*  --env-held: a held gate and full polarity, which is the only way to see the plateau, the

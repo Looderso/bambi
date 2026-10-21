@@ -9,6 +9,7 @@
 //
 //    (none), --routing   the routing page
 //    --wires             the routing page, the vocal chosen: its wires open under its line
+//    --decoders          the routing page with eight Decoders, every one with its cross in view
 //    --timeline          the timeline, Live's arrangement and the host's lanes over it
 //    --session           the timeline's session view
 //    --interface, --outputs, --inputs, --midi
@@ -177,12 +178,16 @@ int main(int argc, char** argv) {
     if (mode == "--inputs") tab = livehost::IoPage::Tab::Inputs;
     if (mode == "--midi") tab = livehost::IoPage::Tab::Midi;
     const bool timeline = mode == "--timeline" || mode == "--session";
-    if (!timeline && !tab && mode != "--routing" && mode != "--wires") {
+    if (!timeline && !tab && mode != "--routing" && mode != "--wires" && mode != "--decoders") {
         std::fprintf(stderr, "unknown mode %s\n", mode.toRawUTF8());
         return 1;
     }
 
-    const Fixture f = fixture();
+    Fixture f = fixture();
+    if (mode == "--decoders") {
+        for (std::uint64_t id = kSpeakers + 1; id <= kSpeakers + 6; ++id) f.shape.decoders.push_back(id);
+        f.field = live::layOut(f.tree, f.shape);
+    }
     Window window;
     window.addAndMakeVisible(window.rail);
     window.addChildComponent(window.routing);

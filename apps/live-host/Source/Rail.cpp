@@ -50,10 +50,11 @@ void Rail::paint(juce::Graphics& g) {
     ui::ruleH(g, 0.0f, w, headerBottom - ui::theme::stroke::rule, colour::rule);
     ui::ruleV(g, w - ui::theme::stroke::rule, 0.0f, h, colour::ruleStrong);
 
-    //  Live's transport in the header's height: play, then stop
+    //  Live's transport in the header's height: play, then stop, with even space before, between and after them
     const float glyph = rail::transport, mid = headerBottom / 2.0f;
-    play_ = {rail::padX, mid - glyph / 2.0f, glyph, glyph};
-    stop_ = play_.translated(glyph + rail::transportGap, 0.0f);
+    const float gap = (w - ui::theme::stroke::rule - 2.0f * glyph) / 3.0f;
+    play_ = {gap, mid - glyph / 2.0f, glyph, glyph};
+    stop_ = play_.translated(glyph + gap, 0.0f);
     ui::drawPlayGlyph(g, play_, playing_);
     ui::drawStopGlyph(g, stop_);
 
@@ -110,8 +111,15 @@ bool Rail::takeKey(const juce::KeyPress& key) {
 }
 
 void Rail::pressAt(juce::Point<float> at) {
-    if (transport && play_.expanded(rail::transportGap / 2.0f).contains(at)) return transport(true);
-    if (transport && stop_.expanded(rail::transportGap / 2.0f).contains(at)) return transport(false);
+    //  each glyph takes its half of the header's height
+    const auto header = static_cast<float>(ui::theme::metrics::headerHeight);
+    if (at.y < header) {
+        const bool onPlay = at.x < (play_.getRight() + stop_.getX()) / 2.0f;
+        if (onPlay && transport) return transport(true);
+        if (!onPlay && playing_ && transport) return transport(false);
+        if (!onPlay && !playing_ && toStart) return toStart();
+        return;
+    }
     for (std::size_t i = 0; i < areas_.size(); ++i)
         if (areas_[i].contains(at) && select_) return select_(static_cast<int>(i));
 }
