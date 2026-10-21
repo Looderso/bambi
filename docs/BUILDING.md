@@ -72,8 +72,21 @@ needs no plugin build.
 **Sanitizers** run in a build tree of their own: `cmake -B build-asan -G Ninja -DBAMBI_SANITIZE=address,undefined`
 (memory errors, undefined behaviour), `thread` (data races) or `realtime` (an allocation, lock or system call inside
 `processBlock`; needs Clang 20 or later, e.g. `brew install llvm` and `-DCMAKE_CXX_COMPILER=$(brew --prefix llvm)/bin/clang++`).
-`tools/validate-plugins.sh` runs pluginval over every built VST3 and clap-validator over every CLAP. clang-tidy
-reads `.clang-tidy` (`run-clang-tidy -p <build> 'core/src/.*'`).
+`tools/validate-plugins.sh` runs pluginval over every built VST3 and clap-validator over every CLAP.
+
+**clang-tidy** reads `.clang-tidy`. Checking all of the code, as the nightly run does, needs macOS (the live host's
+device layer is CoreAudio) and the Decoder's generated resources, which its sources include:
+
+```bash
+llvm=$(brew --prefix llvm)/bin
+cmake -B build-tidy -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DBAMBI_BUILD_PLUGIN=ON -DBAMBI_BUILD_HOST=ON \
+  -DBAMBI_COPY_PLUGIN=OFF -DCMAKE_C_COMPILER=$llvm/clang -DCMAKE_CXX_COMPILER=$llvm/clang++
+cmake --build build-tidy --target bambi-decoder-data
+$llvm/run-clang-tidy -p build-tidy -clang-tidy-binary $llvm/clang-tidy \
+  '^(?!.*/third_party/)(?!.*/build).*/(core|host|ui|editor|plugins|apps|platform|tools|tests)/.*\.(cpp|mm)$'
+```
+
+On another system, a core-only build with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` checks core, its tests and the tools.
 
 **Commit hooks** run the fast C++ checks — formatting, theme roles, layers — on what is staged, and the
 headers guard before a push: `pre-commit install --hook-type pre-commit --hook-type pre-push`, once per checkout.
