@@ -11,6 +11,7 @@
 using namespace bambi;
 
 TEST_CASE("a fresh instance opens with tap 1 on and three waiting") {
+    //  Catches: a default changed in the parameter list: a second tap that opens on, or a send that opens as a spot.
     const EchoSettings s = EchoSettings::defaults();
     CHECK(s.taps[0].on);
     CHECK_FALSE(s.taps[1].on);
@@ -25,6 +26,8 @@ TEST_CASE("a fresh instance opens with tap 1 on and three waiting") {
 }
 
 TEST_CASE("settings become samples, linear gains and radians, held to their ranges") {
+    //  Catches: a level not held to its range, a spin passed on in degrees, and a setting that is not a number taking
+    //  anything but its default.
     EchoSettings s = EchoSettings::defaults();
     EchoResolver r;
     EchoFrame f = r.resolve(s, 120.0, 48000.0, 3);
@@ -53,6 +56,8 @@ TEST_CASE("settings become samples, linear gains and radians, held to their rang
 }
 
 TEST_CASE("an axis is the pole when it was SET straight up, and only then") {
+    //  Catches: the pole found with a tolerance, so 89.999 degrees skips its turns, and straight down taken for the
+    //  pole.
     EchoSettings s = EchoSettings::defaults();
     EchoResolver r;
     CHECK(r.resolve(s, 120.0, 48000.0, 3).taps[0].pass.axisIsPole);
@@ -65,7 +70,7 @@ TEST_CASE("an axis is the pole when it was SET straight up, and only then") {
 TEST_CASE("a period is held against a tempo that wobbles in its last bit, and let go when the tempo moves") {
     //  A sixteenth at 120 bpm and 44.1 kHz is 5512.5 samples: exactly between two. Rounded afresh each
     //  step, a tempo one bit either side of 120 would move the period every step, and every move is a
-    //  crossfade. Catches: the hold removed.
+    //  crossfade. Catches: the hold removed, and a reset or play start that keeps a held period.
     EchoSettings s = EchoSettings::defaults();
     s.taps[0].timing.steps = 1;
     EchoResolver r;
@@ -79,16 +84,26 @@ TEST_CASE("a period is held against a tempo that wobbles in its last bit, and le
         EchoResolver fresh;
         CHECK(fresh.resolve(s, tempo, 44100.0, 3).taps[0].periodSamples == 5512);
     }
+    //  and a tempo that wobbles by less than rounding explains, either side of a half, is held where it was
+    EchoResolver wobbled;
+    const double above = 120.0 * 5512.5 / 5512.6, across = 120.0 * 5512.5 / 5512.4995;
+    const int start = wobbled.resolve(s, above, 44100.0, 3).taps[0].periodSamples;
+    CHECK(start == 5513);
+    for (int i = 0; i < 10; ++i)
+        CHECK(wobbled.resolve(s, (i % 2) != 0 ? above : across, 44100.0, 3).taps[0].periodSamples == start);
     //  a real change of tempo is followed at once
     CHECK(r.resolve(s, 121.0, 44100.0, 3).taps[0].periodSamples ==
           static_cast<int>(std::lround(15.0 / 121.0 * 44100.0)));
-    //  and after a reset the period is simply what it rounds to
-    r.reset();
-    CHECK(r.resolve(s, 121.0, 44100.0, 3).taps[0].periodSamples ==
-          static_cast<int>(std::lround(15.0 / 121.0 * 44100.0)));
+    //  and a reset or a play start forgets what was held: the period is simply what it rounds to
+    wobbled.reset();
+    CHECK(wobbled.resolve(s, across, 44100.0, 3).taps[0].periodSamples == 5512);
+    CHECK(wobbled.resolve(s, above, 44100.0, 3).taps[0].periodSamples == 5513);
+    wobbled.restartTransport(false);
+    CHECK(wobbled.resolve(s, across, 44100.0, 3).taps[0].periodSamples == 5512);
 }
 
 TEST_CASE("the order's cap reaches the frame, and the send is the region its settings say") {
+    //  Catches: the order not passed on to the timing, and the send's side or amount not reaching the frame.
     EchoSettings s = EchoSettings::defaults();
     s.taps[0].timing.steps = 16;  // a bar: 2 s at 120
     EchoResolver r;

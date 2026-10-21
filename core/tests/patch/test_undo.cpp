@@ -13,6 +13,7 @@ void setWidth(PluginState& s, float v) { s.params[static_cast<std::size_t>(Encod
 }  // namespace
 
 TEST_CASE("a fresh stack has nothing to undo") {
+    //  Catches: undo on an empty stack not refused.
     PluginState s{encodeParams()};
     UndoStack u(s);
     CHECK_FALSE(u.canUndo());
@@ -23,6 +24,7 @@ TEST_CASE("a fresh stack has nothing to undo") {
 }
 
 TEST_CASE("undo and redo restore exactly") {
+    //  Catches: redo that does not restore the state it stored.
     PluginState s{encodeParams()};
     UndoStack u(s);
 
@@ -42,6 +44,7 @@ TEST_CASE("undo and redo restore exactly") {
 }
 
 TEST_CASE("the destructive operations are what this exists for") {
+    //  Catches: the snapshot taken after the edit, so undo restores the edited state.
     // "I spent ten minutes shaping that and hit generate."
     PluginState s{encodeParams()};
     s.trajectory.kind = TrajectoryKind::Custom;
@@ -60,6 +63,7 @@ TEST_CASE("the destructive operations are what this exists for") {
 }
 
 TEST_CASE("a new edit drops the redo branch") {
+    //  Catches: a new edit leaving the redo branch in place.
     PluginState s{encodeParams()};
     UndoStack u(s);
     u.perform("a", [](PluginState& st) { setWidth(st, 10.0f); });
@@ -76,6 +80,7 @@ TEST_CASE("a new edit drops the redo branch") {
 }
 
 TEST_CASE("coalescing turns a drag into one undo step") {
+    //  Catches: no coalescing at all, so a drag is two hundred steps.
     PluginState s{encodeParams()};
     UndoStack u(s);
 
@@ -92,6 +97,7 @@ TEST_CASE("coalescing turns a drag into one undo step") {
 }
 
 TEST_CASE("separate gestures stay separate") {
+    //  Catches: endGesture not ending the run, so two gestures merge.
     PluginState s{encodeParams()};
     UndoStack u(s);
 
@@ -109,6 +115,7 @@ TEST_CASE("separate gestures stay separate") {
 }
 
 TEST_CASE("a different key starts a new step even without endGesture") {
+    //  Catches: the key not compared, so a drag of another node merges into this one.
     PluginState s{encodeParams()};
     UndoStack u(s);
     u.performCoalescing("move node 3", "node.3", [](PluginState& st) { setWidth(st, 10.0f); });
@@ -117,6 +124,7 @@ TEST_CASE("a different key starts a new step even without endGesture") {
 }
 
 TEST_CASE("an empty key never coalesces") {
+    //  Catches: an empty key matching the empty open key.
     PluginState s{encodeParams()};
     UndoStack u(s);
     for (int i = 0; i < 5; ++i)
@@ -125,6 +133,7 @@ TEST_CASE("an empty key never coalesces") {
 }
 
 TEST_CASE("perform interrupts a coalescing run") {
+    //  Catches: perform not ending the open run, so the next drag merges into the plain edit.
     PluginState s{encodeParams()};
     UndoStack u(s);
     u.performCoalescing("drag", "k", [](PluginState& st) { setWidth(st, 1.0f); });
@@ -134,6 +143,7 @@ TEST_CASE("perform interrupts a coalescing run") {
 }
 
 TEST_CASE("the stack is bounded and drops the oldest") {
+    //  Catches: the bound dropping an entry other than the oldest.
     PluginState s{encodeParams()};
     UndoStack u(s, 8);
     for (int i = 1; i <= 50; ++i) u.perform("edit", [i](PluginState& st) { setWidth(st, static_cast<float>(i)); });
@@ -146,6 +156,7 @@ TEST_CASE("the stack is bounded and drops the oldest") {
 }
 
 TEST_CASE("clear forgets everything — for a preset load") {
+    //  Catches: clear leaving the redo branch.
     PluginState s{encodeParams()};
     UndoStack u(s);
     u.perform("edit", [](PluginState& st) { setWidth(st, 5.0f); });
@@ -157,6 +168,7 @@ TEST_CASE("clear forgets everything — for a preset load") {
 }
 
 TEST_CASE("history survives a save/load round trip of the state it points at") {
+    //  Catches: the stack editing a copy of the state rather than the state itself.
     PluginState s{encodeParams()};
     UndoStack u(s);
     u.perform("set width", [](PluginState& st) { setWidth(st, 77.0f); });
@@ -171,6 +183,7 @@ TEST_CASE("history survives a save/load round trip of the state it points at") {
 }
 
 TEST_CASE("a whole step says so, undone and redone, and no other step does") {
+    //  Catches: the mark never set, and the mark lost when the step moves to redo.
     PluginState s{encodeParams()};
     UndoStack u(s);
     u.perform("edit", [](PluginState& st) { setWidth(st, 10.0f); });
@@ -189,6 +202,7 @@ TEST_CASE("a whole step says so, undone and redone, and no other step does") {
 }
 
 TEST_CASE("amending everywhere changes the patch and its history, and is no step") {
+    //  Catches: the redo branch, or the undo history, left unamended.
     PluginState s{encodeParams()};
     UndoStack u(s);
     s.preset = {false, "", "old"};

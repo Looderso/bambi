@@ -77,8 +77,8 @@ TEST_CASE("a generator's parameters are not contiguous, which is why nothing is 
         spread over the list in separate runs. A stride that happens to work today is a fact about
         where the last append landed.
 
-        Catches: nothing directly -- this fails the day someone "tidies" the list by moving a key,
-        which is the one edit the frozen-key rules forbid. */
+        Catches: a setting reached by stride from its neighbour (retrigger bound as the key after phase), and
+        the day someone "tidies" the list by moving a key, which is the one edit the frozen-key rules forbid. */
     const ModManifest& m = encodeMod();
     const LfoParams& l = m.lfos[0];
     CHECK(l.retrigger > l.phase + 1);     // a run of its own, appended later

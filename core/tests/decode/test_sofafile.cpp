@@ -31,8 +31,8 @@ void checkMade(const MeasuredHead& m) {
         CHECK(std::abs(m.directions[d].z - want.z) < 1e-5);
         for (std::size_t n : {std::size_t{0}, std::size_t{17}, std::size_t{63}}) {
             const double md = static_cast<double>(d), nd = static_cast<double>(n);
-            CHECK(m.left[d * 64 + n] == doctest::Approx((md + 1) * 1 / 1000.0 + nd / 100000.0).epsilon(1e-6));
-            CHECK(m.right[d * 64 + n] == doctest::Approx((md + 1) * 2 / 1000.0 + nd / 100000.0).epsilon(1e-6));
+            CHECK(std::abs(m.left[d * 64 + n] - ((md + 1) * 1 / 1000.0 + nd / 100000.0)) < 1e-8);
+            CHECK(std::abs(m.right[d * 64 + n] - ((md + 1) * 2 / 1000.0 + nd / 100000.0)) < 1e-8);
         }
     }
 }
@@ -82,8 +82,8 @@ TEST_CASE("a FIR-E file is read as a decoder matrix: inputs as emitters, outputs
     for (int i = 0; i < 4; ++i)
         for (int o = 0; o < 3; ++o)
             for (int n : {0, 7, 31})
-                CHECK(m.filter(i, o)[static_cast<std::size_t>(n)] ==
-                      doctest::Approx((i + 1) / 10.0 + (o + 1) / 100.0 + n / 10000.0).epsilon(1e-6));
+                CHECK(std::abs(m.filter(i, o)[static_cast<std::size_t>(n)] -
+                               ((i + 1) / 10.0 + (o + 1) / 100.0 + n / 10000.0)) < 1e-7);
     FirMatrix notOne;
     CHECK_FALSE(readSofaMatrix(std::string(BAMBI_CORE_DIR) + "/tests/decode/made.sofa", notOne, &error));
     CHECK(error.find("FIR-E") != std::string::npos);

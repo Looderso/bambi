@@ -61,6 +61,7 @@ TEST_CASE("the float kernel turns a field as the double reference does, at fixed
 }
 
 TEST_CASE("the inverse blocks turn a field back") {
+    //  Catches: the inverse blocks laid out as the forward ones, so the field turns twice instead of back.
     const Turn turn(rotationAbout({-0.8, 0.1, -0.5}, 2.2), 7);
     const auto in = noiseField(7, 3);
     std::vector<float> there(in.size()), back(in.size());
@@ -76,6 +77,7 @@ TEST_CASE("the inverse blocks turn a field back") {
 }
 
 TEST_CASE("a spin about the pole is the general turn about z, for a fraction of the work") {
+    //  Catches: the spin turning the other way.
     const int order = 7, frames = 4;
     const double angle = 0.83;
     const Turn turn(rotationAbout({0, 0, 1}, angle), order);
@@ -95,6 +97,7 @@ TEST_CASE("a spin about the pole is the general turn about z, for a fraction of 
 }
 
 TEST_CASE("one gain per order reaches every channel of that order and no other") {
+    //  Catches: a gain that misses the last channel of its order.
     const int order = 5, frames = 3, ch = numChannels(order);
     const std::vector<float> gains{1.0f, 0.5f, 0.25f, 2.0f, 0.0f, -1.0f};
     const auto in = noiseField(order, frames);
@@ -108,6 +111,7 @@ TEST_CASE("one gain per order reaches every channel of that order and no other")
 }
 
 TEST_CASE("every kernel gives the same bits for one call of many frames as for many calls of one") {
+    //  Catches: a kernel that leaves the last frame of a call untouched.
     //  What block-size independence rests on: nothing here may depend on how many frames it was given.
     const int order = 7, frames = 97, ch = numChannels(order);
     const Turn turn(rotationAbout({0.2, 0.9, -0.4}, 0.7), order);

@@ -9,6 +9,7 @@ using namespace bambi;
  *  three modules downstream.
  */
 TEST_CASE("convention: x front, y left, z up; azimuth CCW from front") {
+    //  Catches: azimuth turned clockwise, so left is -y.
     const double d = kDeg2Rad;
 
     SUBCASE("cardinal directions") {

@@ -36,7 +36,9 @@ void setParam(PluginState& st, ParamId id, double v) {
 
 // ------------------------------------------------------------------------------- sources
 
-TEST_CASE("LFO shapes stay inside the bipolar range and have the right zero crossings") {
+TEST_CASE("LFO shapes span the bipolar range and stay inside it") {
+    //  Catches: a shape scaled wrong: a triangle at half height, which never reaches the top, or a saw shifted up,
+    //  which leaves the range.
     Lfo lfo;
     lfo.prepare(48000.0);
     Transport tp;
@@ -62,6 +64,7 @@ TEST_CASE("LFO shapes stay inside the bipolar range and have the right zero cros
  *  running -- or an offline bounce that starts mid-timeline lands on a different phase than
  *  the realtime pass did. */
 TEST_CASE("a synced LFO depends only on transport position, not on history") {
+    //  Catches: a synced LFO that accumulates its phase step by step instead of reading it from the song position.
     Lfo a, b;
     a.prepare(48000.0);
     b.prepare(48000.0);
@@ -78,10 +81,12 @@ TEST_CASE("a synced LFO depends only on transport position, not on history") {
     }
     const double vb = b.process(kDt, tp, true, false, 1.0, 1.0, LfoShape::Sine, 0.0);
     INFO("continuous ", va, "  dropped in ", vb);
-    CHECK(va == doctest::Approx(vb).epsilon(1e-12));
+    CHECK(std::abs(va - vb) < 1e-12);
 }
 
 TEST_CASE("sample and hold is seeded, so a bounce repeats the take") {
+    //  Catches: a seed that is not used, so every seed gives one take, and a latch on every step instead of once a
+    //  cycle.
     auto run = [](std::uint32_t seed) {
         Lfo lfo;
         lfo.prepare(48000.0);
@@ -198,6 +203,8 @@ TEST_CASE("a curved stage still reaches its target at exactly the labelled time"
 /*  The times printed on an envelope have to be the times it takes, which is why the stages
  *  ramp linearly instead of approaching exponentially. */
 TEST_CASE("envelope stage times are the times on the label") {
+    //  Catches: an attack that takes longer than its label, and a release that takes its whole time from sustain rather
+    //  than its share of it.
     Envelope e;
     Envelope::Params p;
     p.attackS = 0.050;
@@ -236,6 +243,7 @@ TEST_CASE("envelope stage times are the times on the label") {
 }
 
 TEST_CASE("an untriggered envelope rests at zero, not at minus one") {
+    //  Catches: an idle envelope made bipolar like an LFO, resting at -1.
     //  The documented departure from "generators are bipolar". A bipolar envelope would
     //  shove every destination it is patched to against a rail while nothing is happening.
     Envelope e;
@@ -246,6 +254,7 @@ TEST_CASE("an untriggered envelope rests at zero, not at minus one") {
 // -------------------------------------------------------------------------- the equation
 
 TEST_CASE("contribution is source x amount x depth") {
+    //  Catches: the source's amount or the cell's depth left out of the sum.
     PluginState st = stateWithCell(MatrixTab::Features, 0, EncoderParam::RenderWidth, 0.5);
     setParam(st, EncoderParam::RenderWidth, 0.0);
     setParam(st, EncoderParam::ModAmountLevel, 0.5);
@@ -266,6 +275,7 @@ TEST_CASE("contribution is source x amount x depth") {
 }
 
 TEST_CASE("the global amount scales every cell at once") {
+    //  Catches: the global amount left out.
     PluginState st = stateWithCell(MatrixTab::Features, 0, EncoderParam::RenderWidth, 1.0);
     setParam(st, EncoderParam::RenderWidth, 0.0);
     setParam(st, EncoderParam::ModGlobalAmount, 0.25);
@@ -281,6 +291,7 @@ TEST_CASE("the global amount scales every cell at once") {
 }
 
 TEST_CASE("a destination clamps to its range and says when it is railing") {
+    //  Catches: a destination not clamped to its range, and one clamped without saying so.
     PluginState st = stateWithCell(MatrixTab::Features, 0, EncoderParam::RenderWidth, 1.0);
     setParam(st, EncoderParam::RenderWidth, 150.0);  // base already near the top of 0..180
 
@@ -297,6 +308,7 @@ TEST_CASE("a destination clamps to its range and says when it is railing") {
 }
 
 TEST_CASE("an absent sidechain reads zero rather than holding its last value") {
+    //  Catches: a sidechain that goes away holding its last value.
     PluginState st = stateWithCell(MatrixTab::Sidechain, 0, EncoderParam::RenderWidth, 1.0);
     setParam(st, EncoderParam::RenderWidth, 0.0);
 
@@ -318,6 +330,7 @@ TEST_CASE("an absent sidechain reads zero rather than holding its last value") {
 // --------------------------------------------------------------------------- destinations
 
 TEST_CASE("an angle destination is bounded in degrees per second, not merely smoothed") {
+    //  Catches: the rate limit loosened, and an angle smoothed by a one-pole, which moves as fast as it likes at first.
     //  A quarter of the span: a whole one is a whole turn, which is where it started.
     PluginState st = stateWithCell(MatrixTab::Features, 0, EncoderParam::TransformYaw, 0.25);
     setParam(st, EncoderParam::TransformYaw, 0.0);
@@ -335,7 +348,7 @@ TEST_CASE("an angle destination is bounded in degrees per second, not merely smo
      *  happily with the limit loosened 1000x. */
     const std::vector<double> off{0.0, 0, 0, 0, 0, 0};
     for (int i = 0; i < 200; ++i) m.process(off, {}, tp, kDt);
-    REQUIRE(m.destination(EncoderParam::TransformYaw) == doctest::Approx(0.0).epsilon(1e-6));
+    REQUIRE(std::abs(m.destination(EncoderParam::TransformYaw)) < 1e-6);
 
     const std::vector<double> on{1.0, 0, 0, 0, 0, 0};
     double prev = m.destination(EncoderParam::TransformYaw);
@@ -352,6 +365,7 @@ TEST_CASE("an angle destination is bounded in degrees per second, not merely smo
 }
 
 TEST_CASE("a parameter with no modulation route is not a destination") {
+    //  Catches: a parameter no rule names taken as a destination by default.
     CHECK(destinationKind(EncoderParam::MotionMode) == DestKind::NotModulatable);
     CHECK(destinationKind(EncoderParam::Lfo1Shape) == DestKind::NotModulatable);
     CHECK(destinationKind(EncoderParam::ModAmountLevel) == DestKind::NotModulatable);
@@ -365,6 +379,7 @@ TEST_CASE("a parameter with no modulation route is not a destination") {
  *  same knob means a different velocity on every trajectory and the premise of the plugin
  *  (loudness driving speed) is not expressible. */
 TEST_CASE("speed is real angular velocity, whatever the path length") {
+    //  Catches: speed taken as turns rather than as degrees along the path, so it depends on the path's length.
     for (double lengthRad : {0.5, kPi, 2.0 * kPi, 12.0}) {
         MotionClock c;
         const double speedDegPerSec = 90.0;
@@ -385,7 +400,7 @@ TEST_CASE("displace shifts the phase rather than clamping the arc length") {
     MotionClock c;
     c.reset(0.0);
     const double displaced = c.sAt(0.25, MovementMode::Wrap, true);
-    CHECK(displaced == doctest::Approx(0.25).epsilon(1e-9));
+    CHECK(std::abs(displaced - 0.25) < 1e-9);
 
     //  And it must keep travelling rather than parking: sample a whole lap and check the
     //  source visits the full range instead of sitting at a rail.
@@ -406,6 +421,8 @@ TEST_CASE("displace shifts the phase rather than clamping the arc length") {
 /*  The premise: silence parks the source; sound moves it. If this test ever fails the
  *  plugin does not do the one thing it exists to do. */
 TEST_CASE("silence parks the source and level moves it") {
+    //  Catches: the encoder's own features not reaching the matrix, and a floor on speed that moves the source in
+    //  silence.
     PluginState st = stateWithCell(MatrixTab::Features, 0, EncoderParam::MotionSpeed, 1.0);
     setParam(st, EncoderParam::MotionSpeed, 0.0);  // no constant motion: all of it is the signal
 
@@ -443,6 +460,7 @@ TEST_CASE("silence parks the source and level moves it") {
 }
 
 TEST_CASE("the whole chain is deterministic — the offline bounce requirement") {
+    //  Catches: a source seeded from anything but the state -- here a counter that differs per engine.
     auto render = [] {
         PluginState st = stateWithCell(MatrixTab::Features, 1, EncoderParam::MotionSpeed, 0.8);
         st.matrix.push_back(MatrixCell{MatrixTab::Generators, 0, EncoderParam::RenderWidth, 0.6});
@@ -457,6 +475,7 @@ TEST_CASE("the whole chain is deterministic — the offline bounce requirement")
         m.reset();
         MotionClock clock;
         Transport tp;
+        tp.playing = true;  // a free LFO set to restart runs only while playing, and S&H draws once a cycle
 
         std::vector<double> out;
         for (int i = 0; i < 1500; ++i) {
@@ -476,6 +495,7 @@ TEST_CASE("the whole chain is deterministic — the offline bounce requirement")
 }
 
 TEST_CASE("an envelope fires from the source it is routed to, with hysteresis") {
+    //  Catches: the trigger's source ignored, and the hysteresis dropped, so it lets go at once below the threshold.
     PluginState st = stateWithCell(MatrixTab::Generators, 3, EncoderParam::RenderWidth, 1.0);
     setParam(st, EncoderParam::RenderWidth, 0.0);
     setParam(st, EncoderParam::Env1Attack, 5.0);  // ms
@@ -514,6 +534,7 @@ TEST_CASE("an envelope fires from the source it is routed to, with hysteresis") 
 }
 
 TEST_CASE("parameters change without replacing the state, and the routing survives") {
+    //  Catches: setParameters taking nothing, and setParameters clearing the routing.
     PluginState st = stateWithCell(MatrixTab::Features, 0, EncoderParam::RenderWidth, 0.5);
     ModulationEngine m;
     m.useManifest(encodeMod());
@@ -540,6 +561,7 @@ TEST_CASE("parameters change without replacing the state, and the routing surviv
 // ------------------------------------------------------------------- patches adopted by pointer
 
 TEST_CASE("a patch compiled elsewhere and adopted by pointer is the same engine as setState, bit for bit") {
+    //  Catches: setState seeding an LFO differently from an engine that only adopts patches.
     //  The plugin compiles on the message thread and adopts on the audio thread; bambi-render
     //  and the tests above use setState. They must not be two engines -- including the LFO seeds,
     //  which setState alone sets: two S&H LFOs routed to two destinations diverge at once if
@@ -589,6 +611,7 @@ TEST_CASE("a patch compiled elsewhere and adopted by pointer is the same engine 
 }
 
 TEST_CASE("adopting a new patch changes the routing without restarting the generators") {
+    //  Catches: adopting a patch that restarts the LFOs.
     PluginState a = stateWithCell(MatrixTab::Generators, 0, EncoderParam::RenderWidth, 1.0);
     setParam(a, EncoderParam::RenderWidth, 0.0);
     setParam(a, EncoderParam::Lfo1Sync, 0.0);
@@ -605,6 +628,7 @@ TEST_CASE("adopting a new patch changes the routing without restarting the gener
         e->setParameters(a.params);
     }
     Transport tp;
+    tp.playing = true;  // a free LFO set to restart runs only while playing
     const std::vector<double> none(6, 0.0);
     for (int i = 0; i < 300; ++i) continued.process(none, {}, tp, kDt);
     continued.usePatch(pb);
@@ -644,6 +668,7 @@ void steps(ModulationEngine& m, int n) {
 }  // namespace
 
 TEST_CASE("by default each envelope fires from its own drum-map note, and only from that") {
+    //  Catches: every envelope given the same default note, and the note range not checked.
     ModulationEngine m;
     m.useManifest(encodeMod());
     m.prepare(48000.0);
@@ -663,6 +688,7 @@ TEST_CASE("by default each envelope fires from its own drum-map note, and only f
 }
 
 TEST_CASE("a note outside the range, or on another channel, does nothing; the range is inclusive") {
+    //  Catches: the channel not checked, and either end of the range left out of it or one past it let in.
     PluginState st = midiEnvelopes();
     st.envTriggers[0].noteLow = 48;
     st.envTriggers[0].noteHigh = 52;
@@ -683,6 +709,8 @@ TEST_CASE("a note outside the range, or on another channel, does nothing; the ra
 }
 
 TEST_CASE("held: open while any matching note is down, and released only after the last") {
+    //  Catches: one note-off releasing every held note, and a note on and off inside one control step parked at
+    //  sustain.
     PluginState st = midiEnvelopes();
     st.envTriggers[0].gate = TriggerGate::Held;
     st.envTriggers[0].noteLow = 36;
@@ -714,6 +742,7 @@ TEST_CASE("held: open while any matching note is down, and released only after t
 }
 
 TEST_CASE("one-shot: attack, decay and release run through, whatever note-off does") {
+    //  Catches: a one-shot waiting at sustain for a note-off.
     ModulationEngine m;
     m.useManifest(encodeMod());
     m.prepare(48000.0);
@@ -732,6 +761,7 @@ TEST_CASE("one-shot: attack, decay and release run through, whatever note-off do
 }
 
 TEST_CASE("a hit while the envelope still sounds rises from where it is, not from zero") {
+    //  Catches: a strike that restarts the attack from zero.
     ModulationEngine m;
     m.useManifest(encodeMod());
     m.prepare(48000.0);
@@ -752,6 +782,7 @@ TEST_CASE("a hit while the envelope still sounds rises from where it is, not fro
 }
 
 TEST_CASE("velocity scales the envelope by the trigger's velocity amount") {
+    //  Catches: velocity applied whatever the amount, and applied the wrong way round.
     const auto peakAt = [](double amount, float velocity) {
         PluginState st = midiEnvelopes();
         st.envTriggers[0].velocity = amount;
@@ -773,6 +804,7 @@ TEST_CASE("velocity scales the envelope by the trigger's velocity amount") {
 }
 
 TEST_CASE("all notes off closes every held gate") {
+    //  Catches: all notes off doing nothing.
     PluginState st = midiEnvelopes();
     st.envTriggers[0].gate = TriggerGate::Held;
     ModulationEngine m;
@@ -788,6 +820,7 @@ TEST_CASE("all notes off closes every held gate") {
 }
 
 TEST_CASE("an audio-triggered envelope ignores notes, and a MIDI one ignores audio") {
+    //  Catches: the trigger's input ignored either way.
     PluginState st = midiEnvelopes();
     st.envTriggers[0].input = TriggerInput::Audio;  // self Attack over 0.35
     ModulationEngine m;
@@ -809,6 +842,8 @@ TEST_CASE("an audio-triggered envelope ignores notes, and a MIDI one ignores aud
 /*  Spin and roll rate are rates on quantities that wrap, which is what makes an integrator safe
     on them at all. */
 TEST_CASE("the rotation clock integrates, wraps, and starts again from nothing") {
+    //  Catches: a rate added without its time step, an axis that does not wrap, and a reset that leaves one axis
+    //  turned.
     RotationClock r;
     CHECK(r.yawRad() == 0.0);
     CHECK(r.rollRad() == 0.0);
@@ -859,6 +894,7 @@ TEST_CASE("the rotation clock integrates, wraps, and starts again from nothing")
 }
 
 TEST_CASE("the three rotation rates are rates; nothing bounded is") {
+    //  Catches: a rate filed as a scalar, so it is smoothed instead of integrated.
     CHECK(destinationKind(EncoderParam::TransformYawRate) == DestKind::Rate);
     CHECK(destinationKind(EncoderParam::TransformPitchRate) == DestKind::Rate);
     CHECK(destinationKind(EncoderParam::TransformRollRate) == DestKind::Rate);
@@ -872,6 +908,7 @@ TEST_CASE("the three rotation rates are rates; nothing bounded is") {
 // ------------------------------------------------------------------- restart or continue
 
 TEST_CASE("continuing, a synced LFO keeps the tempo's rate and runs through a jump in position") {
+    //  Catches: a continuing LFO that follows the song position, and so jumps back with a loop.
     const auto apart = [](double a, double b) {
         const double d = std::abs(a - b);
         return std::min(d, 1.0 - d);
@@ -899,6 +936,7 @@ TEST_CASE("continuing, a synced LFO keeps the tempo's rate and runs through a ju
 }
 
 TEST_CASE("a transport restart starts an LFO set to restart again, and leaves one set to continue running") {
+    //  Catches: a restart that restarts every LFO, and a reset that leaves one set to continue running.
     PluginState st{encodeParams()};
     for (int i = 0; i < 2; ++i) {
         const int base = static_cast<int>(EncoderParam::Lfo1Rate) + i * 5;
@@ -938,6 +976,7 @@ TEST_CASE("a transport restart starts an LFO set to restart again, and leaves on
 }
 
 TEST_CASE("stopped, a free LFO set to restart holds, and one set to continue runs") {
+    //  Catches: a free LFO that runs while stopped whatever it is set to, and one set to continue that holds.
     Lfo restarting, continuing;
     restarting.prepare(48000.0);
     continuing.prepare(48000.0);
@@ -958,6 +997,7 @@ TEST_CASE("stopped, a free LFO set to restart holds, and one set to continue run
 }
 
 TEST_CASE("clearing one axis's integrated turn leaves the other two where they have turned to") {
+    //  Catches: clearing one axis clearing another with it.
     RotationClock r;
     for (int i = 0; i < 100; ++i) r.advance(90.0, 45.0, 30.0, 0.01);
     const double pitch = r.pitchRad(), roll = r.rollRad();
@@ -974,6 +1014,7 @@ TEST_CASE("clearing one axis's integrated turn leaves the other two where they h
 }
 
 TEST_CASE("the region is a source like any other: its own value, its own amount, its own tab") {
+    //  Catches: a region value taken unclamped (NaN or outside 0..1), and amounts found by counting on from the first.
     PluginState st = stateWithCell(MatrixTab::Region, 0, EncoderParam::RenderWidth, 1.0);
     setParam(st, EncoderParam::RenderWidth, 0.0);
     setParam(st, EncoderParam::ModAmountRegion1, 0.5);
@@ -1010,6 +1051,7 @@ TEST_CASE("the region is a source like any other: its own value, its own amount,
 }
 
 TEST_CASE("a column its tab does not have is no source at all") {
+    //  Catches: a column past its tab's end mapped into the next tab's slots.
     /*  Tabs are six slots apart, so column 6 of the generators would be slot 18 -- the region. A
         hand-edited document could then drive a target from the region while saying "generators". */
     CHECK(sourceSlot(MatrixTab::Generators, 6) == -1);
@@ -1045,7 +1087,7 @@ TEST_CASE("a parameter that is one turn wraps: past an end it comes back in at t
         m.prepare(48000.0);
         m.setState(st);
         for (int i = 0; i < 400; ++i) m.process(on, {}, tp, kDt);
-        CHECK(m.destination(EncoderParam::MotionDisplace) == doctest::Approx(0.2).epsilon(1e-6));
+        CHECK(std::abs(m.destination(EncoderParam::MotionDisplace) - 0.2) < 1e-6);
         CHECK_FALSE(m.railing(EncoderParam::MotionDisplace));
     }
     //  yaw 170, pushed 20 degrees on: it crosses 180 to -170 and never passes through front
