@@ -12,7 +12,7 @@
  *      in, a signal a line --> cuts, tonal correction, pre-delay --+
  *      scattered reflections, already late enough -----------------+--> diffuser: 4 x (delay, shuffle, Hadamard)
  *                                                                          |
- *          +-- Householder <-- shelves, decay, sub-bass blocker <-- allpass <-- line, read where it drifts
+ *          +-- Householder <-- shelves, decay, sub-sonic blocker <-- allpass <-- line, read where it drifts
  *          +--> line  ...........  heard where it starts, and a third and two thirds along
  *                                                                          |
  *      out, a signal a line  <-- every output an orthogonal, sign-flipped mix of all of them <--+
@@ -55,7 +55,8 @@ public:
 
     /// Energy summed over every line, for an impulse of unit energy into the lines at the mid decay:
     /// (1 + g^(2/3) + g^(4/3)) / 3 / (1 - g^2) a line, g its gain a pass, times (1-a)^2 + a^2 for a
-    /// diffusion of a, since the input as it came and the input diffused are separate signals.
+    /// diffusion of a, since the input as it came and the input diffused are separate signals. Into the lines:
+    /// past the input's cuts, which are the tone the user set and take their share before the room is reached.
     double energyForUnitImpulse() const noexcept;
 
     /// A line's read distance as it stands, in samples: its length plus its drift. For tests.
@@ -81,9 +82,10 @@ private:
         stateCutHigh_;
     BiquadCoeffs correctLow_, correctHigh_, cutLow_, cutHigh_;
     std::array<double, kMaxTailLines> gainMid_{}, gainThird_{}, gainTwoThirds_{}, dcIn_{}, dcOut_{};
+    std::array<std::array<double, 3>, kMaxTailLines> readOut_{};  ///< each line's read: its last three outputs
     std::array<double, kMaxTailLines> driftFrom_{}, driftTo_{}, driftAt_{}, driftStep_{};
     std::array<std::uint32_t, kMaxTailLines> rng_{};
-    double dcCoeff_{0.0}, driftDepth_{0.0}, driftDepthNow_{0.0}, driftSlope_{0.0};
+    double dcCoeff_{0.0}, dcGain_{1.0}, driftDepth_{0.0}, driftDepthNow_{0.0}, driftSlope_{0.0};
     int preDelaySamples_{0};
 };
 

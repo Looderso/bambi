@@ -13,6 +13,13 @@ constexpr double kDriftCents = 4.0, kDriftSwingSeconds = 0.002, kDriftSegment[2]
 constexpr double kMaxPreDelay = 0.25;
 constexpr double kMostGain = 0.99995;
 
+/// What one line puts out for a unit of energy in, a band at a gain of `g` a pass: every pass keeps g^2, and the
+/// three taps each carry a third, at the mid decay where they sit (`mid`, the mid's gain a pass): they read the line
+/// before its shelves.
+double lineEnergy(double g, double mid) {
+    return (1.0 + std::pow(mid, 2.0 / 3.0) + std::pow(mid, 4.0 / 3.0)) / 3.0 / (1.0 - g * g);
+}
+
 void hadamard(float* f, int K) {
     for (int h = 1; h < K; h *= 2)
         for (int i = 0; i < K; i += 2 * h)
@@ -73,6 +80,7 @@ void FdnTail::reset() noexcept {
              {&stateLow_[i], &stateHigh_[i], &stateInLow_[i], &stateInHigh_[i], &stateCutLow_[i], &stateCutHigh_[i]})
             s->clear();
         dcIn_[i] = dcOut_[i] = 0.0;
+        readOut_[i] = {};
         //  The drift starts again from the same place, so a render repeats.
         rng_[i] = static_cast<std::uint32_t>(static_cast<std::uint32_t>(k + 1) * 2654435761u);
         if (rng_[i] == 0) rng_[i] = 1;
@@ -86,6 +94,7 @@ void FdnTail::reset() noexcept {
 void FdnTail::set(const TailSettings& s) noexcept {
     settings_ = s;
     const double rt[3] = {std::max(0.05, s.rtLow), std::max(0.05, s.rtMid), std::max(0.05, s.rtHigh)};
+    double energyLow = 0.0, energyMid = 0.0, energyHigh = 0.0;
     for (int k = 0; k < plan_.lines; ++k) {
         const auto i = static_cast<std::size_t>(k);
         const double trip = plan_.length[i] + plan_.allpass[i];  // a trip round the line includes its allpass
@@ -98,18 +107,25 @@ void FdnTail::set(const TailSettings& s) noexcept {
         //  Around the mid gain, so every band loses exactly what its decay asks a pass.
         shelfLow_[i] = lowShelf(s.lowHz, 20.0 * std::log10(gLow / gMid), fs_);
         shelfHigh_[i] = highShelf(s.highHz, 20.0 * std::log10(gHigh / gMid), fs_);
+        energyLow += lineEnergy(gLow, gMid);
+        energyMid += lineEnergy(gMid, gMid);
+        energyHigh += lineEnergy(gHigh, gMid);
     }
-    //  Jot's correction: a band's energy grows with its decay, so its level goes with the root of mid
-    //  over band -- decay then changes how long a band rings, not the tail's tone.
-    correctLow_ = lowShelf(s.lowHz, 10.0 * std::log10(rt[1] / rt[0]), fs_);
-    correctHigh_ = highShelf(s.highHz, 10.0 * std::log10(rt[1] / rt[2]), fs_);
+    //  Jot's correction: a band's energy grows with its decay, so the input is set to give each band the energy
+    //  the mids have -- decay then changes how long a band rings, not the tail's tone. The energy is the lines'
+    //  sum over passes, not the decay time: the two part ways once a pass loses several decibels, as a short
+    //  high band's does.
+    correctLow_ = lowShelf(s.lowHz, 10.0 * std::log10(energyMid / energyLow), fs_);
+    correctHigh_ = highShelf(s.highHz, 10.0 * std::log10(energyMid / energyHigh), fs_);
     cutLow_ = highPass(s.lowCutHz, std::sqrt(0.5), fs_);
     cutHigh_ = lowPass(s.highCutHz, std::sqrt(0.5), fs_);
     preDelaySamples_ = std::clamp(static_cast<int>(std::lround(s.preDelaySeconds * fs_)), 0,
                                   static_cast<int>(preDelay_[0].data.size()) - 2);
     driftDepth_ = s.drift ? std::min(kDriftSwingSeconds * fs_, static_cast<double>(maxDrift_)) : 0.0;
     driftSlope_ = std::pow(2.0, kDriftCents / 1200.0) - 1.0;  // the most a delay may change a sample
-    dcCoeff_ = std::exp(-2.0 * kPiD * 25.0 / fs_);
+    //  Sub-sonic: a corner higher up would shorten what it is meant to leave alone, the lows' decay, each pass.
+    dcCoeff_ = std::exp(-2.0 * kPiD * 5.0 / fs_);
+    dcGain_ = (1.0 + dcCoeff_) / 2.0;  // unity at Nyquist, so no band gains on a pass
 }
 
 double FdnTail::random(int line) noexcept {
@@ -147,7 +163,7 @@ double FdnTail::energyForUnitImpulse() const noexcept {
     double sum = 0.0;
     for (int k = 0; k < plan_.lines; ++k) {
         const double g = gainMid_[static_cast<std::size_t>(k)];
-        sum += (1.0 + std::pow(g, 2.0 / 3.0) + std::pow(g, 4.0 / 3.0)) / 3.0 / (1.0 - g * g);
+        sum += lineEnergy(g, g);
     }
     //  What reaches the lines is part of the input as it came and part of it diffused -- two different
     //  signals, so their energies add, and at a diffusion of a half only half of what went in goes round.
@@ -188,7 +204,7 @@ void FdnTail::process(const float* in, const float* scattered, float* out, int f
             hadamard(u.data(), K);
         }
 
-        // ---- the loop: a drifting cubic read, the allpass, absorption a band, the sub-bass blocker --
+        // ---- the loop: a drifting read, the allpass, absorption a band, the sub-sonic blocker ------
         double sum = 0.0;
         driftDepthNow_ +=
             (driftDepth_ - driftDepthNow_) * 2e-5;  // on or off glides over seconds, with no jump of pitch
@@ -203,17 +219,20 @@ void FdnTail::process(const float* in, const float* scattered, float* out, int f
             driftAt_[i] = t;
             const double at = driftFrom_[i] + (driftTo_[i] - driftFrom_[i]) * t * t * (3.0 - 2.0 * t);
             const double delay = plan_.length[i] + driftDepthNow_ * at;
-            double r = L.write - delay;
-            while (r < 2.0) r += L.size;
-            const int r0 = static_cast<int>(std::floor(r));
-            const double frac = r - r0;
-            const auto sample = [&](int n) {
-                return static_cast<double>(L.data[static_cast<std::size_t>(n % L.size)]);
+            //  Read between samples by a third-order Thiran allpass: flat in level at every frequency, so a pass loses
+            //  what its gains say and nothing more, where a polynomial read takes a share of the highs each time round
+            //  and shortens their decay. Its fraction is held in [2.5, 3.5), where it is stable and its delay flattest.
+            const int whole = static_cast<int>(std::floor(delay - 2.5));
+            const double d = delay - whole, p1 = d + 1.0, p12 = p1 * (d + 2.0);
+            const double a1 = -3.0 * (d - 3.0) / p1, a2 = 3.0 * (d - 2.0) * (d - 3.0) / p12,
+                         a3 = -(d - 1.0) * (d - 2.0) * (d - 3.0) / (p12 * (d + 3.0));
+            const auto sample = [&](int back) {
+                return static_cast<double>(L.data[static_cast<std::size_t>((L.write - back + L.size) % L.size)]);
             };
-            const double xm1 = sample(r0 - 1), x0 = sample(r0), x1 = sample(r0 + 1), x2 = sample(r0 + 2);
-            const double c1 = 0.5 * (x1 - xm1), c2 = xm1 - 2.5 * x0 + 2.0 * x1 - 0.5 * x2,
-                         c3 = 0.5 * (x2 - xm1) + 1.5 * (x0 - x1);
-            const double y0 = ((c3 * frac + c2) * frac + c1) * frac + x0;
+            std::array<double, 3>& past = readOut_[i];
+            const double y0 = a3 * sample(whole) + a2 * sample(whole + 1) + a1 * sample(whole + 2) + sample(whole + 3) -
+                              a1 * past[0] - a2 * past[1] - a3 * past[2];
+            past = {y0, past[0], past[1]};
 
             //  Lossless, so the decay is untouched, but it smears each round trip: without it the energy
             //  came back in pulses, one a trip.
@@ -224,7 +243,7 @@ void FdnTail::process(const float* in, const float* scattered, float* out, int f
             const double y = delayed + kAllpassGain * fed;
 
             double v = gainMid_[i] * run(shelfHigh_[i], stateHigh_[i], run(shelfLow_[i], stateLow_[i], y));
-            const double blocked = v - dcIn_[i] + dcCoeff_ * dcOut_[i];
+            const double blocked = dcGain_ * (v - dcIn_[i]) + dcCoeff_ * dcOut_[i];
             dcIn_[i] = v;
             dcOut_[i] = std::abs(blocked) < 1e-20 ? 0.0 : blocked;  // silence, exactly, by a compare
             v = dcOut_[i];

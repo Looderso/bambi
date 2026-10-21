@@ -12,7 +12,7 @@ skew, not a delay.
 
 | behaviour | what it does | artefact | where it is built |
 |---|---|---|---|
-| **Read-head motion** | the read position moves smoothly through the line | **pitch moves** by `1200 · log2(1 + d)` cents for a delay changing `d` samples per sample; a 4-point cubic Hermite read keeps the interpolation clean | Reverb's tail lines: each line's length drifts, bounded to 4 cents of pitch and a 2 ms swing, in segments of 0.3 to 0.9 s |
+| **Read-head motion** | the read position moves smoothly through the line | **pitch moves** by `1200 · log2(1 + d)` cents for a delay changing `d` samples per sample; a third-order Thiran allpass read keeps every frequency's level, so the motion costs no band its decay | Reverb's tail lines: each line's length drifts, bounded to 4 cents of pitch and a 2 ms swing, in segments of 0.3 to 0.9 s |
 | **Crossfaded relocation** | two reads of one buffer, faded from the old position to the new | comb filtering where the two reads correlate, a level dip where they do not; follows steps, not a continuously moving target | **Echo's period**: old and new period are both read from the tap's ring and crossfaded linearly over one control hop (256 samples, 5.3 ms at 48 kHz). **Reverb's room size**: two tail networks fade past each other in equal power over 0.25 s |
 | **Clear** | the buffer is forgotten | **destroys the tail in flight** | Echo on play, locate and loop, and a tap that is off and faded out; Reverb when the tail's line count changes |
 
