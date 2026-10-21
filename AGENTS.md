@@ -93,8 +93,9 @@ a new number; the old one is never rewritten.
 
 ## Working on bambi
 
-- Every change starts from a GitHub issue and lands as one pull request into `main`, from a branch named for the
-  issue. Pull requests merge with a merge commit.
+- Every change starts from a GitHub issue — a typo or a one-line obvious fix may go straight to a pull request —
+  and lands as one pull request into `main`, from a branch named for the issue. Pull requests merge with a merge
+  commit.
 - **Work in a worktree of your own** (`git worktree add ../bambi-<issue> -b <branch> origin/main`) when another
   agent or person may be working in the same checkout, or when `git status` shows changes you did not make. Never
   build, stash, commit or switch branches over someone else's work. A new worktree needs its submodules

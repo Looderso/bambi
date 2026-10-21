@@ -16,9 +16,9 @@ Open an [issue](https://github.com/Looderso/bambi/issues) with:
 
 ## Before you write code
 
-**Open an issue first** for anything that changes the design, how something behaves for a musician, or a
-plugin's parameter keys. Hosts save sessions by those keys, so they are the one thing that cannot be taken
-back lightly. A bug fix, a test or a cleanup can go straight to a pull request.
+**Open an issue first** for anything beyond a typo or a one-line fix, above all for anything that changes the
+design, how something behaves for a musician, or a plugin's parameter keys. Hosts save sessions by those keys,
+so they are the one thing that cannot be taken back lightly.
 
 ## Building and checking
 
