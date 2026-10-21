@@ -25,6 +25,7 @@
 #include "PluginProcessor.h"
 #include "bambi/encode/params.hpp"
 #include "bambi/host/TestPlayHead.h"
+#include "bambi/io/guarded.hpp"
 #include "bambi/link/directory.hpp"
 #include "bambi/link/link.hpp"
 #include "bambi/patch/state.hpp"
@@ -48,7 +49,7 @@ struct Track {
 };
 }  // namespace
 
-int main(int argc, char** argv) {
+static int run(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
 
     std::string out = "bambi-editor.png";
@@ -279,4 +280,8 @@ int main(int argc, char** argv) {
     if (!session.isNil()) bambi::LinkBus::unlinkSession(session);
     bambi::LinkDirectory::unlink(directory);
     return result;
+}
+
+int main(int argc, char** argv) {
+    return bambi::guarded("bambi-snapshot", [&] { return run(argc, argv); });
 }

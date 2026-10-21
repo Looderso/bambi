@@ -11,6 +11,7 @@
 #include "bambi/editor/CheckKit.h"
 #include "bambi/editor/HeaderChecks.h"
 #include "bambi/host/LinkNode.h"
+#include "bambi/io/guarded.hpp"
 #include "bambi/link/link.hpp"
 #include "bambi/math/sh.hpp"
 
@@ -111,7 +112,7 @@ int firstHeard(BambiDecoderProcessor& proc, int width, int channel, int blocks) 
 /// A yaw alone as the known /ypr address carries it: yaw, pitch and roll in degrees.
 std::vector<float> yprValues(float yawDeg) { return {yawDeg, 0.0f, 0.0f}; }
 
-int main() {
+static int run() {
     juce::ScopedJuceInitialiser_GUI juceInit;
     std::printf("bambi Decoder: host contract and renders\n\n");
 
@@ -894,4 +895,8 @@ int main() {
     bambi::editor::checkBypass<BambiDecoderProcessor>(busIn(16, 2), "silence", [](int, juce::int64) { return 0.0f; });
 
     return checkVerdict();
+}
+
+int main() {
+    return bambi::guarded("bambi-decoder-check", [&] { return run(); });
 }

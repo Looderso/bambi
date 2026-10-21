@@ -27,11 +27,13 @@
 #include <utility>
 #include <vector>
 
+#include "Args.hpp"
 #include "Changes.hpp"
 #include "bambi/decode/engine.hpp"
 #include "bambi/decode/headmodelfile.hpp"
 #include "bambi/decode/layouts.hpp"
 #include "bambi/decode/orientation.hpp"
+#include "bambi/io/guarded.hpp"
 #include "bambi/io/wav.hpp"
 #include "bambi/math/denormals.hpp"
 #include "bambi/math/sh.hpp"
@@ -39,6 +41,10 @@
 using namespace bambi;
 
 namespace {
+
+using tools::decimal;
+using tools::decimals;
+using tools::whole;
 
 constexpr int kStep = 256;  ///< the control grid: settings change, and the trace takes a row, every this many frames
 
@@ -77,37 +83,6 @@ struct Settings {
     DecoderFrame controls;
     double headYaw{0.0}, headPitch{0.0}, headRoll{0.0};  ///< the tracker's, degrees
 };
-
-//  A whole number or a decimal from an argument, the whole of it: anything else is refused, never read as 0.
-bool whole(const std::string& text, int& out) {
-    char* end = nullptr;
-    const long v = std::strtol(text.c_str(), &end, 10);
-    if (text.empty() || end != text.c_str() + text.size()) return false;
-    out = static_cast<int>(v);
-    return true;
-}
-
-bool decimal(const std::string& text, double& out) {
-    char* end = nullptr;
-    const double v = std::strtod(text.c_str(), &end);
-    if (text.empty() || end != text.c_str() + text.size()) return false;
-    out = v;
-    return true;
-}
-
-//  "A,B" or "A,B,C": every part a decimal, and as many as asked for.
-bool decimals(const std::string& text, std::initializer_list<double*> out) {
-    std::size_t from = 0;
-    std::size_t k = 0;
-    for (double* o : out) {
-        const std::size_t comma = text.find(',', from);
-        const bool last = ++k == out.size();
-        if (last != (comma == std::string::npos)) return false;
-        if (!decimal(text.substr(from, last ? std::string::npos : comma - from), *o)) return false;
-        from = comma + 1;
-    }
-    return true;
-}
 
 bool flag(const std::string& value, bool& out) {
     if (value != "0" && value != "1") return false;
@@ -233,21 +208,7 @@ bool readHead(const std::string& path, HeadModel& out) {
 
 }  // namespace
 
-int run(int argc, char** argv);
-
-int main(int argc, char** argv) {
-    //  one place for what a library throws: a message and a failure, never an abort
-    try {
-        return run(argc, argv);
-    } catch (const std::exception& e) {
-        std::fprintf(stderr, "decode-render: %s\n", e.what());
-    } catch (...) {
-        std::fprintf(stderr, "decode-render: failed\n");
-    }
-    return 1;
-}
-
-int run(int argc, char** argv) {
+static int run(int argc, char** argv) {
     //  Denormals flushed, as the plugin processes.
     ScopedFlushDenormals flushDenormals;
     int order = 3, fieldOrder = -1, voices = 3, blockSize = 512, busChannels = 0;
@@ -465,4 +426,8 @@ int run(int argc, char** argv) {
     std::printf("wrote    %d channels, %.2f s, %d loudspeaker outputs\n", busChannels, seconds,
                 engine.speakerOutputs());
     return 0;
+}
+
+int main(int argc, char** argv) {
+    return bambi::guarded("bambi-decode-render", [&] { return run(argc, argv); });
 }

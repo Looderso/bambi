@@ -77,11 +77,25 @@ jobs:
       - run: brew install ninja
       - run: tools/check-portable.sh
 
+  #  Bug and performance checks on all of bambi's C++: core and its tests, the plugins, the shared UI, the live host
+  #  and the tools. On macOS, where every file compiles -- the host's device layer is CoreAudio, the Decoder's helper
+  #  link Objective-C++. Only the resources the Decoder's sources include are built; nothing else is compiled.
   tidy:
-    name: clang-tidy · all of core and tools
-    runs-on: ubuntu-latest
+    name: clang-tidy · all of the code
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build clang-tidy clang-tools
-      - run: cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-      - run: run-clang-tidy -quiet -p build -warnings-as-errors='*' 'core/src/.*\.cpp$' 'tools/.*\.cpp$'
+        with:
+          submodules: true
+      - run: brew install ninja llvm
+      - name: configure
+        run: |
+          llvm="$(brew --prefix llvm)/bin"
+          cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DBAMBI_BUILD_PLUGIN=ON -DBAMBI_BUILD_HOST=ON \
+            -DBAMBI_COPY_PLUGIN=OFF -DCMAKE_C_COMPILER="$llvm/clang" -DCMAKE_CXX_COMPILER="$llvm/clang++"
+          cmake --build build --target bambi-decoder-data
+      - name: clang-tidy
+        run: |
+          llvm="$(brew --prefix llvm)/bin"
+          "$llvm/run-clang-tidy" -quiet -p build -clang-tidy-binary "$llvm/clang-tidy" -warnings-as-errors='*' \
+            '^(?!.*/third_party/)(?!.*/build/).*/(core|host|ui|editor|plugins|apps|platform|tools|tests)/.*\.(cpp|mm)$'

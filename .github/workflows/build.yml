@@ -63,6 +63,7 @@ jobs:
               - '.github/workflows/build.yml'
             tidy:
               - added|modified: 'core/src/**/*.cpp'
+              - added|modified: 'core/tests/**/*.cpp'
               - added|modified: 'tools/**/*.cpp'
 
   checks:
@@ -187,7 +188,8 @@ jobs:
             "build-rtsan/plugins/${p%%:*}/${p#*:}_artefacts/RelWithDebInfo/${p#*:}"
           done
 
-  #  Bug and performance checks on the C++ this change added or modified (core and tools: no JUCE needed to parse).
+  #  Bug and performance checks on the C++ this change added or modified in core, its tests and the tools: no JUCE
+  #  needed to parse. The nightly run checks all of it.
   tidy:
     name: clang-tidy
     needs: changes

@@ -331,7 +331,7 @@ void TimelinePage::paintSession(juce::Graphics& g, float top, const live::Playhe
     paneLanes_ = 0;
     if (clip != nullptr)
         for (const live::Lane& l : s_.lanes)
-            if (l.clip() && l.clipTrack == *chosen_ && l.slot == clip->slot) ++paneLanes_;
+            if (l.clip() && chosen_ == l.clipTrack && l.slot == clip->slot) ++paneLanes_;
     const int shownLanes = std::clamp(paneLanes_, 1, tl::paneLanes);
     paneScroll_ = std::clamp(paneScroll_, 0, std::max(0, paneLanes_ - tl::paneLanes));
     paneTop_ = h - tl::ruler - tl::lane * static_cast<float>(shownLanes);
@@ -427,14 +427,15 @@ void TimelinePage::clipPane(juce::Graphics& g, juce::Rectangle<float> area, cons
     g.fillRect(area);
     ui::ruleH(g, area.getX(), area.getRight(), area.getY(), colour::ruleStrong);
     const float top = area.getY();
-    if (clip == nullptr) {
+    if (clip == nullptr || !chosen_) {
         ui::text(g, "choose a clip: its lanes open here", ui::labelFont(), colour::label,
                  {tl::pad, top, area.getWidth(), tl::ruler}, juce::Justification::centredLeft);
         return;
     }
+    const live::TrackId chosen = chosen;
     juce::String track;
     for (const Node& n : s_.tree.nodes)
-        if (n.id == *chosen_) track = juce::String(n.name);
+        if (n.id == chosen) track = juce::String(n.name);
     ui::text(g, juce::String(clip->name) + ui::kSeparator + track, ui::labelFont(), colour::text,
              {tl::pad, top, tl::tree - tl::pad, tl::ruler}, juce::Justification::centredLeft);
     //  a clip's loop at least a sixteenth long, so an empty one still has an axis
@@ -456,7 +457,7 @@ void TimelinePage::clipPane(juce::Graphics& g, juce::Rectangle<float> area, cons
     float y = top + tl::ruler;
     int index = 0;
     for (live::Lane& l : s_.lanes) {
-        if (!(l.clip() && l.clipTrack == *chosen_ && l.slot == clip->slot)) continue;
+        if (!(l.clip() && l.clipTrack == chosen && l.slot == clip->slot)) continue;
         if (index++ < paneScroll_ || y + tl::lane > area.getBottom() + 0.5f) continue;
         y = lane(g, l, y, axis);
     }
@@ -471,7 +472,7 @@ void TimelinePage::clipPane(juce::Graphics& g, juce::Rectangle<float> area, cons
                  {tl::pad, top + tl::ruler / 2.0f, tl::tree - tl::pad, tl::ruler / 2.0f},
                  juce::Justification::centredLeft);
     //  where Live is in it
-    const auto seen = playing_.find(*chosen_);
+    const auto seen = playing_.find(chosen);
     if (seen != playing_.end() && seen->second.report.slot == clip->slot) {
         const double elapsed =
             at.playing ? (juce::Time::getMillisecondCounterHiRes() - seen->second.atMs) / 1000.0 * at.bpm / 60.0 : 0.0;
@@ -722,7 +723,7 @@ void TimelinePage::menu(juce::Graphics& g) {
             });
         }
     } else {
-        const Owned o = owned[*addInstance_];
+        const Owned& o = owned[*addInstance_];
         const ParamManifest& m = manifestOf(o.instance, o.effect);
         foot = o.name + ui::kSeparator + "esc steps back";
         if (!addGroup_) {

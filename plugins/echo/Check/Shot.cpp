@@ -7,10 +7,11 @@
 #include "PluginProcessor.h"
 #include "bambi/host/ShotScale.h"
 #include "bambi/host/TestPlayHead.h"
+#include "bambi/io/guarded.hpp"
 #include "bambi/math/sh.hpp"
 #include "bambi/region/projection.hpp"
 
-int main(int argc, char** argv) {
+static int run(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/echo.png";
     const float scale = bambi::host::takeShotScale(argc, argv);
@@ -144,7 +145,7 @@ int main(int argc, char** argv) {
     if (presets) {
         for (const char* path :
              {"verse delay", "songs/bridge, long", "songs/outro wash", "drums/slap", "drums/tight room"})
-            proc.savePreset(*bambi::parsePresetPath(path));
+            if (const auto ref = bambi::parsePresetPath(path)) proc.savePreset(*ref);
         proc.loadPreset({false, "songs", "outro wash"});
         if (auto* p = proc.hostParameter(static_cast<bambi::ParamId>(bambi::echoParams().byKey("tap1.blur"))))
             p->setValueNotifyingHost(0.8f);
@@ -166,4 +167,8 @@ int main(int argc, char** argv) {
     std::printf("%s  %d x %d\n", out.toRawUTF8(), shot.getWidth(), shot.getHeight());
     if (presets) presetDir.deleteRecursively();
     return 0;
+}
+
+int main(int argc, char** argv) {
+    return bambi::guarded("bambi-echo-shot", [&] { return run(argc, argv); });
 }

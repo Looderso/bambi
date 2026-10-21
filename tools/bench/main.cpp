@@ -23,6 +23,7 @@
 #include "bambi/echo/warp.hpp"
 #include "bambi/encode/encoder.hpp"
 #include "bambi/encode/params.hpp"
+#include "bambi/io/guarded.hpp"
 #include "bambi/link/latest.hpp"
 #include "bambi/link/link.hpp"
 #include "bambi/math/sh.hpp"
@@ -61,7 +62,7 @@ void row(const char* name, double us, const char* note = "") { std::printf("  %-
 
 }  // namespace
 
-int main() {
+static int run() {
 #ifndef NDEBUG
     std::printf("\n  *** DEBUG BUILD -- these numbers are meaningless. ***\n");
 #endif
@@ -100,6 +101,7 @@ int main() {
         enc.prepare(order);
         std::vector<std::vector<float>> bufs(static_cast<std::size_t>(nch), std::vector<float>(kBlock, 0.0f));
         std::vector<float*> ptrs;
+        ptrs.reserve(bufs.size());
         for (auto& b : bufs) ptrs.push_back(b.data());
 
         double a = 0.0;
@@ -139,6 +141,7 @@ int main() {
             const int channels = (order + 1) * (order + 1);
             std::vector<std::vector<float>> field(static_cast<std::size_t>(channels), sig);
             std::vector<const float*> pointers;
+            pointers.reserve(field.size());
             for (const auto& c : field) pointers.push_back(c.data());
             std::vector<float> power(static_cast<std::size_t>(kBlock));
             const double usP = medianMicros(9, 5000, [&] { fieldPower(pointers, kBlock, power.data()); });
@@ -624,4 +627,8 @@ int main() {
 
     std::printf("\n  block = %d samples @ 48 kHz = %.3f ms\n\n", kBlock, kBlockMs);
     return 0;
+}
+
+int main() {
+    return bambi::guarded("bambi-bench", [&] { return run(); });
 }

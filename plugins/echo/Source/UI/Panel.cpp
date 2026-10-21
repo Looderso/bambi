@@ -193,6 +193,7 @@ void EchoPanel::paintRuler(juce::Graphics& g, juce::Rectangle<float> ruler, cons
     brings its values back. The strip under it is unchanged. */
 float EchoPanel::paintPattern(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     std::vector<juce::String> names;  // no title: the row is the taps' starting points, and says so
+    names.reserve(bambi::kEchoPatternNames.size());
     for (const auto n : bambi::kEchoPatternNames) names.push_back(fromCore(n));
     const auto apply = [this](int which) {
         //  through the host's own parameters, inside gestures, so it automates and undoes as the knobs would

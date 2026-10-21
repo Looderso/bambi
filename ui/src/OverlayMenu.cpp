@@ -125,7 +125,7 @@ std::optional<OverlayKey> overlayRowAt(const OverlayMenuAreas& areas, std::span<
 
 void addOverlayClicks(HitArea& on, const OverlayToggleAreas& toggle, const OverlayMenuAreas& menu,
                       std::span<const OverlayRow> rows, OverlaySelection& selection, OverlayMenuState& state,
-                      juce::Rectangle<float> whole, std::function<void()> changed) {
+                      juce::Rectangle<float> whole, const std::function<void()>& changed) {
     const bool listed = !rows.empty();
     if (state.open && !listed) state.open = false;  // everything left the bus under an open list
 
@@ -200,7 +200,7 @@ void OverlayMenu::paintList(juce::Graphics& g, float top) {
     list_ = paintOverlayMenu(g, right_, top, rows_, selection_, state_);
 }
 
-void OverlayMenu::addClicks(HitArea& on, juce::Rectangle<float> whole, std::function<void()> changed) {
+void OverlayMenu::addClicks(HitArea& on, juce::Rectangle<float> whole, const std::function<void()>& changed) {
     //  Escape reaches the view only while it has the keyboard: opening the list takes it
     on.setWantsKeyboardFocus(true);
     addOverlayClicks(on, toggle_, list_, rows_, selection_, state_, whole, [&on, this, changed] {

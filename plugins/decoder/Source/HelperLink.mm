@@ -30,6 +30,7 @@ std::string HelperLink::bundledHelperPath() {
 namespace {
 /// The launch itself, on the shared state, both by value: the completion lands on Launch Services' own queue after
 /// the caller's frame is gone, and the block copies what it captures only when that is a value.
+// NOLINTNEXTLINE(performance-unnecessary-value-param): the blocks below must capture values
 void start(std::shared_ptr<HelperLink::Impl> impl, std::string appPath, int port, bool phone) {
     NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:appPath.c_str()]];
     NSWorkspaceOpenConfiguration* config = [NSWorkspaceOpenConfiguration configuration];
@@ -52,6 +53,7 @@ void start(std::shared_ptr<HelperLink::Impl> impl, std::string appPath, int port
 
 /// Polls every 100 ms, up to five seconds, until `old` has quit, then starts. The state and the path are taken
 /// by value: the block outlives the caller's frame, and a captured reference would dangle.
+// NOLINTNEXTLINE(performance-unnecessary-value-param): the blocks below must capture values
 void startWhenGone(std::shared_ptr<HelperLink::Impl> impl, NSRunningApplication* old, std::string appPath, int port,
                    bool phone, int triesLeft) {
     if (old == nil || old.terminated || triesLeft <= 0) {

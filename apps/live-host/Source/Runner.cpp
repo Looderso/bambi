@@ -38,7 +38,7 @@ std::vector<Runner::Route> Runner::mainOf(const std::vector<Route>& routes) {
 std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
                                                const std::vector<juce::AudioProcessor*>& slots, int levels,
                                                juce::String& error, Keep keep,
-                                               std::optional<std::vector<Route>> given) {
+                                               const std::optional<std::vector<Route>>& given) {
     const bool straight = !given.has_value();
     std::vector<Route> routes = given.value_or(std::vector<Route>{});
     //  every index a step names, checked here, so that process() can trust them
@@ -120,10 +120,11 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
 }
 
 bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                     const Setup& setup, juce::String& error, Keep keep, std::optional<std::vector<Route>> routes) {
+                     const Setup& setup, juce::String& error, Keep keep,
+                     const std::optional<std::vector<Route>>& routes) {
     setup_ = setup;
     field_ = (setup.order + 1) * (setup.order + 1);
-    auto p = build(compiled, slots, levels, error, std::move(keep), std::move(routes));
+    auto p = build(compiled, slots, levels, error, std::move(keep), routes);
     if (p == nullptr) return false;
     for (juce::AudioProcessor* plugin : slots) ready(plugin);  // no audio runs yet
     latest_ = p.get();
@@ -139,8 +140,8 @@ bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::Aud
 }
 
 bool Runner::swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                  juce::String& error, Keep keep, std::optional<std::vector<Route>> routes) {
-    auto p = build(compiled, slots, levels, error, std::move(keep), std::move(routes));
+                  juce::String& error, Keep keep, const std::optional<std::vector<Route>>& routes) {
+    auto p = build(compiled, slots, levels, error, std::move(keep), routes);
     if (p == nullptr) return false;
     //  sticky while a program is still waiting: what the audio thread adopts must fade Main if any program posted since
     //  it last adopted plays Main otherwise; published to it by the post below

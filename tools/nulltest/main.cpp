@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "Args.hpp"
 #include "bambi/io/wav.hpp"
 
 using namespace bambi;
@@ -67,10 +68,16 @@ int main(int argc, char** argv) {
     bool haveTolerance = false;
     for (int i = 3; i + 1 < argc; ++i) {
         if (std::strcmp(argv[i], "--tolerance") == 0) {
-            toleranceDb = std::atof(argv[i + 1]);
+            if (!bambi::tools::decimal(argv[i + 1], toleranceDb)) {
+                std::fprintf(stderr, "--tolerance expects a number\n");
+                return 2;
+            }
             haveTolerance = true;
         }
-        if (std::strcmp(argv[i], "--max-shift") == 0) maxShift = std::atol(argv[i + 1]);
+        if (std::strcmp(argv[i], "--max-shift") == 0 && !bambi::tools::whole(argv[i + 1], maxShift)) {
+            std::fprintf(stderr, "--max-shift expects a whole number\n");
+            return 2;
+        }
     }
 
     AudioBuffer a, b;

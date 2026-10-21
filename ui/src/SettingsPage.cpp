@@ -68,7 +68,7 @@ void SettingsPage::refresh() {
     for (const auto& choice : c.own) now << choice.selected << (choice.enabled ? 1 : 0);
     for (const auto& [name, value] : c.readout) now << value;
     if (now == shown_) return;
-    shown_ = now;
+    shown_ = std::move(now);
     ++refreshes_;
     repaint();
 }

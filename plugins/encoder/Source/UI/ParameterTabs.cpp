@@ -164,6 +164,7 @@ void ParameterTabs::paintTrajectory(juce::Graphics& g, juce::Rectangle<float> co
     //  custom is shown but not offered. Coming back to the generator that was left keeps its parameters.
     const bool hasChain = trajectory.nodes.size() >= 2;
     std::vector<juce::String> names;
+    names.reserve(kShapes.size());
     for (const auto shape : kShapes) names.push_back(fromCore(bambi::name(shape)));
     names.push_back("custom");
     int selected = static_cast<int>(kShapes.size());
@@ -216,14 +217,9 @@ void ParameterTabs::paintTrajectory(juce::Graphics& g, juce::Rectangle<float> co
 
     //  the shape's parameters
     const auto info = bambi::generatorParams(trajectory.generator);
-    const auto columnWidth = (content.getWidth() - ctl::tileColumnGap) / 2.0f;
-    const auto height = tileHeight(theme::type::valueShape);
     for (std::size_t i = 0; i < info.size(); ++i) {
         const auto& p = info[i];
-        const auto column = static_cast<float>(i % 2);
-        const auto row = static_cast<float>(i / 2);
-        const juce::Rectangle<float> tile{content.getX() + column * (columnWidth + ctl::tileColumnGap),
-                                          y + row * (height + ctl::tileRowGap), columnWidth, height};
+        const auto tile = tileCell(content, y, static_cast<int>(i), theme::type::valueShape);
         //  a continuous setting is a host parameter: the page's own tile -- row click, live mark, automation
         if (const auto id = bambi::pathParamId(trajectory.generator, static_cast<int>(i)); id != bambi::kNoParamId) {
             addParameterTile(g, tile, id, fromCore(p.label));
@@ -251,8 +247,7 @@ void ParameterTabs::paintTrajectory(juce::Graphics& g, juce::Rectangle<float> co
             },
             {}, p.min, p.max, p.wraps, {tileBar(tile), p.min, p.max});
     }
-    const auto rows = static_cast<float>((info.size() + 1) / 2);
-    y += rows * (height + ctl::tileRowGap) - ctl::tileRowGap + ctl::sectionGap;
+    y = tilesBottom(y, static_cast<int>(info.size()), theme::type::valueShape) + ctl::sectionGap;
 
     const auto line = noteLineHeight();
     //  The one way to a chain: this shape as it is now, converted, and it always replaces the chain there was.

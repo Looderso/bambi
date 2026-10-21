@@ -23,7 +23,9 @@
 #include <utility>
 #include <vector>
 
+#include "Args.hpp"
 #include "Changes.hpp"
+#include "bambi/io/guarded.hpp"
 #include "bambi/io/wav.hpp"
 #include "bambi/math/denormals.hpp"
 #include "bambi/math/sh.hpp"
@@ -155,7 +157,11 @@ bool applyRegion(ReverbRegionSettings& r, const std::string& key, const std::str
 }
 
 bool apply(Settings& s, const std::string& path, const std::string& value) {
-    const double v = std::atof(value.c_str());
+    double v = 0.0;
+    //  every setting is a number but a few by name, and a region's kind and side
+    const bool text = path == "room.shape" || path == "quality" || path == "render_quality" || path == "preset" ||
+                      path.ends_with(".kind") || path.ends_with(".side");
+    if (!tools::decimal(value, v) && !text) return false;
     ReverbSettings& u = s.user;
     if (path == "room.size") {
         u.sizeMetres = v;
@@ -270,7 +276,7 @@ ReverbFrame frameOf(ReverbResolver& r, const Settings& s, double sampleRate) {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+static int run(int argc, char** argv) {
     //  Denormals flushed, as the plugin processes: a feedback path decays to the same zeros here.
     ScopedFlushDenormals flushDenormals;
     int order = 3, voices = 4, blockSize = 512;
@@ -292,19 +298,31 @@ int main(int argc, char** argv) {
         if (a == "-h" || a == "--help") {
             usage();
             return 0;
-        } else if (a == "--order")
-            order = std::atoi(next("--order").c_str());
-        else if (a == "--seconds")
-            seconds = std::atof(next("--seconds").c_str());
-        else if (a == "--voices")
-            voices = std::atoi(next("--voices").c_str());
-        else if (a == "--block")
-            blockSize = std::atoi(next("--block").c_str());
-        else if (a == "--trace")
+        } else if (a == "--order") {
+            if (!tools::whole(next("--order"), order)) {
+                std::fprintf(stderr, "--order expects a whole number\n");
+                return 2;
+            }
+        } else if (a == "--seconds") {
+            if (!tools::decimal(next("--seconds"), seconds)) {
+                std::fprintf(stderr, "--seconds expects a number\n");
+                return 2;
+            }
+        } else if (a == "--voices") {
+            if (!tools::whole(next("--voices"), voices)) {
+                std::fprintf(stderr, "--voices expects a whole number\n");
+                return 2;
+            }
+        } else if (a == "--block") {
+            if (!tools::whole(next("--block"), blockSize)) {
+                std::fprintf(stderr, "--block expects a whole number\n");
+                return 2;
+            }
+        } else if (a == "--trace")
             tracePath = next("--trace");
         else if (a == "--impulse") {
             const std::string v = next("--impulse");
-            if (std::sscanf(v.c_str(), "%lf,%lf", &impulseAz, &impulseEl) != 2) {
+            if (!tools::decimals(v, {&impulseAz, &impulseEl})) {
                 std::fprintf(stderr, "--impulse expects AZ,EL\n");
                 return 2;
             }
@@ -317,8 +335,8 @@ int main(int argc, char** argv) {
             }
         } else if (a == "--at") {
             tools::Change c;
-            const double at = std::atof(next("--at").c_str());
-            if (!tools::parseChange(at, next("--at"), c)) {
+            double at = 0.0;
+            if (!tools::decimal(next("--at"), at) || !tools::parseChange(at, next("--at"), c)) {
                 std::fprintf(stderr, "--at expects S PATH=VALUE or S reset\n");
                 return 2;
             }
@@ -438,4 +456,8 @@ int main(int argc, char** argv) {
     }
     std::printf("wrote    %d channels, %.2f s, RT60 mid %.3f s\n", C, seconds, engine.room().rtMid);
     return 0;
+}
+
+int main(int argc, char** argv) {
+    return bambi::guarded("bambi-reverb-render", [&] { return run(argc, argv); });
 }

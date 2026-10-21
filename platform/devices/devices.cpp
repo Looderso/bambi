@@ -25,9 +25,10 @@ std::string text(CFStringRef s) {
 
 std::string stringOf(AudioObjectID d, AudioObjectPropertySelector s) {
     CFStringRef value = nullptr;
-    UInt32 size = sizeof value;
+    UInt32 size = sizeof(CFStringRef);
     const auto a = at(s);
-    if (AudioObjectGetPropertyData(d, &a, 0, nullptr, &size, &value) != noErr || value == nullptr) return {};
+    if (AudioObjectGetPropertyData(d, &a, 0, nullptr, &size, static_cast<void*>(&value)) != noErr || value == nullptr)
+        return {};
     std::string out = text(value);
     CFRelease(value);
     return out;

@@ -34,6 +34,7 @@
 #include "bambi/host/BlockBench.h"
 #include "bambi/host/LinkNode.h"
 #include "bambi/host/TestPlayHead.h"
+#include "bambi/io/guarded.hpp"
 #include "bambi/math/sh.hpp"
 #include "bambi/mod/matrix.hpp"
 #include "bambi/patch/state.hpp"
@@ -120,7 +121,7 @@ bambi::editor::EffectCheckSpec<Processor> effectSpec() {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+static int run(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     /*  `--bench`: what a whole processBlock costs, as a host drives it. The engine alone is
@@ -1466,4 +1467,8 @@ int main(int argc, char** argv) {
                                                     [](bool ok, const juce::String& what) { check(ok, what); });
 
     return checkVerdict();
+}
+
+int main(int argc, char** argv) {
+    return bambi::guarded("bambi-echo-check", [&] { return run(argc, argv); });
 }

@@ -31,10 +31,12 @@ bambi_warnings(bambi-bench)
 
 add_executable(bambi-link link/main.cpp)
 target_link_libraries(bambi-link PRIVATE bambi-encode)   # it prints the encoder's parameter names
+target_include_directories(bambi-link PRIVATE common)
 bambi_warnings(bambi-link)
 
 add_executable(bambi-orders orders/main.cpp)
 target_link_libraries(bambi-orders PRIVATE bambi-encode)
+target_include_directories(bambi-orders PRIVATE common)
 bambi_warnings(bambi-orders)
 
 add_executable(bambi-head head/main.cpp)
@@ -43,4 +45,5 @@ bambi_warnings(bambi-head)
 
 add_executable(bambi-nulltest nulltest/main.cpp)
 target_link_libraries(bambi-nulltest PRIVATE bambi-core)
+target_include_directories(bambi-nulltest PRIVATE common)
 bambi_warnings(bambi-nulltest)

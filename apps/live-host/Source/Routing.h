@@ -156,7 +156,7 @@ private:
     void addInsert(live::TrackId owner, live::Effect effect);
     void setSidechain(Waiting pick, live::TrackId from);
     void attachTo(live::TrackId orphan, live::TrackId target);
-    void removeInsert(live::TrackId owner, std::uint64_t id, juce::String name);
+    void removeInsert(live::TrackId owner, std::uint64_t id, const juce::String& name);
 
     live::Tree tree_;
     live::Shape shape_;

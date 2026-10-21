@@ -134,10 +134,11 @@ public:
             showView(effect == bambi::live::Effect::Reverb ? View::Reverb : View::Echo, engine_.effectOf(insert));
         };
         addChildComponent(io_);
-        io_.change = [this](bambi::live::AudioSettings settings) { applyAudio(std::move(settings)); };
+        io_.change = [this](const bambi::live::AudioSettings& settings) { applyAudio(settings); };
         io_.changeOrder = [this](int order) { applyOrder(order); };
-        io_.changeInputs = [this](std::vector<bambi::live::HostInput> inputs, bambi::live::AudioSettings settings) {
-            applyAudio(std::move(settings));
+        io_.changeInputs = [this](std::vector<bambi::live::HostInput> inputs,
+                                  const bambi::live::AudioSettings& settings) {
+            applyAudio(settings);
             auto shape = device_.session().shape();
             shape.inputs = std::move(inputs);
             rebuild_ = true;  // a binding moved alone changes no field: build the program again regardless
@@ -217,7 +218,7 @@ private:
                 had->at = asked.at;
             else
                 settings.placed.push_back(asked);
-            applyAudio(std::move(settings), false);
+            applyAudio(settings, false);
         }
         //  what a Decoder's own page changed -- an output lit, moved, a layout -- reaches the routes
         if (engine_.reroute() && view_ == View::Io) showIo();
@@ -309,7 +310,7 @@ private:
     }
 
     //  The I/O page's change: kept on this computer, then played; the page shown again as the engine has it.
-    void applyAudio(bambi::live::AudioSettings settings, bool show = true) {
+    void applyAudio(const bambi::live::AudioSettings& settings, bool show = true) {
         if (!bambi::livehost::saveAudioSettings(settings)) audioProblem_ = "the settings could not be saved";
         juce::String status;
         audioProblem_ = engine_.setAudio(settings, status) ? juce::String() : status;

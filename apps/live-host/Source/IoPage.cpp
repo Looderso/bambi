@@ -504,7 +504,7 @@ float IoPage::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
 // ---- the cards ----------------------------------------------------------------------------------
 
 float IoPage::cards(juce::Graphics& g, float x, float top, float width, const live::Row& row,
-                    const std::vector<Block>& blocks, std::function<void(int)> place) {
+                    const std::vector<Block>& blocks, const std::function<void(int)>& place) {
     const float pitch = cs::cell + cs::cellGap;
     int c = 1;
     float y = top;

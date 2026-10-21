@@ -48,9 +48,11 @@ ChannelStrip ChannelStrip::wrapped(float x, float top, float width, int count, f
     s.viewport = {x, top, width, static_cast<float>(lines - 1) * linePitch + cs::cell};
     s.firstOfGroup_.push_back(0);
     s.cells.reserve(static_cast<std::size_t>(std::max(count, 0)));
-    for (int i = 0; i < count; ++i)
-        s.cells.push_back({x + static_cast<float>(i % perLine) * pitch,
-                           top + static_cast<float>(i / perLine) * linePitch, cs::cell, cs::cell});
+    for (int i = 0; i < count; ++i) {
+        const int line = i / perLine;
+        s.cells.push_back({x + static_cast<float>(i % perLine) * pitch, top + static_cast<float>(line) * linePitch,
+                           cs::cell, cs::cell});
+    }
     s.bottom = s.viewport.getBottom();
     return s;
 }

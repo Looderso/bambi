@@ -132,22 +132,16 @@ float ParameterPage::paintGroupTitle(juce::Graphics& g, juce::Rectangle<float> c
 float ParameterPage::paintGroup(juce::Graphics& g, juce::Rectangle<float> content, float y, const juce::String& title,
                                 std::initializer_list<Cell> cells) {
     if (title.isNotEmpty()) y = paintGroupTitle(g, content, y, title);
-    const auto columnWidth = (content.getWidth() - ctl::tileColumnGap) / 2.0f;
-    const auto height = tileHeight(theme::type::value);
     int i = 0;
     for (const auto& cell : cells) {
-        const auto column = static_cast<float>(i % 2);
-        const auto row = static_cast<float>(i / 2);
-        const juce::Rectangle<float> tile{content.getX() + column * (columnWidth + ctl::tileColumnGap),
-                                          y + row * (height + ctl::tileRowGap), columnWidth, height};
+        const auto tile = tileCell(content, y, i);
         if (cell.custom)
             cell.custom(g, tile);
         else
             addParameterTile(g, tile, cell.id);
         ++i;
     }
-    const auto rows = static_cast<float>((i + 1) / 2);
-    return y + rows * (height + ctl::tileRowGap) - ctl::tileRowGap + static_cast<float>(theme::space::groupGap);
+    return tilesBottom(y, i) + static_cast<float>(theme::space::groupGap);
 }
 
 void ParameterPage::paintSegments(juce::Graphics& g, juce::Rectangle<float> area,

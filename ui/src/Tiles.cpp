@@ -20,13 +20,14 @@ juce::Rectangle<float> tileCell(juce::Rectangle<float> content, float y, int ind
     const auto n = static_cast<float>(columns);
     const auto columnWidth = (content.getWidth() - (n - 1.0f) * ctl::tileColumnGap) / n;
     const auto height = tileHeight(valueSize);
+    const int row = index / columns;
     return {content.getX() + static_cast<float>(index % columns) * (columnWidth + ctl::tileColumnGap),
-            y + static_cast<float>(index / columns) * (height + ctl::tileRowGap), columnWidth, height};
+            y + static_cast<float>(row) * (height + ctl::tileRowGap), columnWidth, height};
 }
 
 float tilesBottom(float y, int count, float valueSize, int columns) {
-    const auto rows = static_cast<float>((count + columns - 1) / columns);
-    return y + rows * (tileHeight(valueSize) + ctl::tileRowGap) - ctl::tileRowGap;
+    const int rows = (count + columns - 1) / columns;
+    return y + static_cast<float>(rows) * (tileHeight(valueSize) + ctl::tileRowGap) - ctl::tileRowGap;
 }
 
 juce::Rectangle<float> tileBar(juce::Rectangle<float> tile) { return tile.withTop(tile.getBottom() - ctl::barHeight); }

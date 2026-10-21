@@ -100,7 +100,7 @@ private:
     /// Every device of `row` as a card, from `top`, its channels wrapping in `width`; a click on a channel calls
     /// `place` with its row channel. Returns the bottom.
     float cards(juce::Graphics& g, float x, float top, float width, const live::Row& row,
-                const std::vector<Block>& blocks, std::function<void(int)> place);
+                const std::vector<Block>& blocks, const std::function<void(int)>& place);
 
     live::Row outputRow() const;
     live::Row inputRow() const;

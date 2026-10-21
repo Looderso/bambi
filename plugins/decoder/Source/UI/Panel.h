@@ -29,8 +29,8 @@ private:
     float paintLearn(juce::Graphics& g, juce::Rectangle<float> content, float y);  ///< learn mode: the port's list
     float paintStateTile(juce::Graphics& g, juce::Rectangle<float> tile, const juce::String& name,
                          const juce::String& value, double shown, double low, double high, double step, const char* key,
-                         bool enabled, std::function<void(DecoderState&, double)> set,
-                         std::function<void(DecoderState&)> reset);
+                         bool enabled, const std::function<void(DecoderState&, double)>& set,
+                         const std::function<void(DecoderState&)>& reset);
     void chooseLayoutFile();
     void chooseSofaFile();
 

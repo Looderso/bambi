@@ -165,7 +165,9 @@ bool RoutingPage::takes(live::TrackId node) const {
 }
 
 void RoutingPage::take(live::TrackId node) {
-    const Waiting w = *armed_.what();
+    const auto armed = armed_.what();
+    if (!armed) return;
+    const Waiting w = *armed;
     armed_.end();
     switch (w.kind) {
         case Waiting::Kind::Send: {
@@ -208,7 +210,7 @@ void RoutingPage::attachTo(live::TrackId orphan, live::TrackId target) {
 // ---- inserts --------------------------------------------------------------------------------------
 
 //  Removing an insert, after asking: its settings go with it, and the host has no undo.
-void RoutingPage::removeInsert(live::TrackId owner, std::uint64_t id, juce::String name) {
+void RoutingPage::removeInsert(live::TrackId owner, std::uint64_t id, const juce::String& name) {
     confirm_.ask("remove this " + name + "?", "its settings go with it; the host has no undo yet", "remove",
                  [this, owner, id] {
                      change([owner, id](live::Shape& s) {
@@ -388,6 +390,7 @@ void RoutingPage::menu(juce::Graphics& g) {
         foot = effectName(ins.effect) + " on " + nameOf(m.owner);
     }
     std::vector<ui::MenuItem> shown;
+    shown.reserve(items.size());
     for (const Item& i : items) shown.push_back(i.shown);
     const auto drawn = ui::drawMenu(g, m.at, rt::menuWidth, shown, foot);
     addClickArea(drawn.box, [] {});
@@ -455,7 +458,7 @@ float RoutingPage::wireChips(juce::Graphics& g, live::TrackId from, float x, flo
                         std::clamp(std::round((at + moved) * 10.0) / 10.0, live::kSilentDb, live::kLoudestDb);
                     live::Shape next = dragging_;
                     live::setWire(next, field_, from, {to, db});
-                    shape_ = next;
+                    shape_ = std::move(next);
                     field_ = live::layOut(tree_, shape_);
                     if (preview) preview(shape_);
                     repaint();
@@ -539,7 +542,7 @@ void RoutingPage::wires(juce::Graphics& g) {
         }
     }
     for (const live::TrackId id : lit)
-        if (id != *chosen_)
+        if (id != chosen_)
             if (const auto s = spots_.find(id); s != spots_.end()) ring(g, s->second.box);
     for (const std::uint64_t d : litDecoders)
         if (const auto b = decoderAt_.find(d); b != decoderAt_.end()) ring(g, b->second);

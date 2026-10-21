@@ -97,7 +97,7 @@ public:
     /// instance for, or a buffer or pair it does not have.
     bool prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
                  const Setup& setup, juce::String& error, Keep keep = {},
-                 std::optional<std::vector<Route>> routes = std::nullopt);
+                 const std::optional<std::vector<Route>>& routes = std::nullopt);
 
     /// An instance new to the runner, readied for it before it is in any program: the playhead it reads, and that
     /// it plays in real time. Message thread; prepare() readies the first program's itself.
@@ -106,7 +106,7 @@ public:
     /// A new program, while audio runs, at the setup prepare() was given; the same checks. Every instance it names
     /// not in a program before must have been readied.
     bool swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-              juce::String& error, Keep keep = {}, std::optional<std::vector<Route>> routes = std::nullopt);
+              juce::String& error, Keep keep = {}, const std::optional<std::vector<Route>>& routes = std::nullopt);
 
     /// The lanes to drive from the next piece, in place of those before; `keep` holds what their parameters
     /// belong to. Message thread.
@@ -203,7 +203,7 @@ private:
 
     std::unique_ptr<Program> build(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots,
                                    int levels, juce::String& error, Keep keep,
-                                   std::optional<std::vector<Route>> routes);
+                                   const std::optional<std::vector<Route>>& routes);
     static std::vector<Route> mainOf(const std::vector<Route>& routes);
     /// Main into its lines, and out along the program's routes, at a gain ramping from `g0` to `g1`.
     void main(const Program& p, const Inputs& in, int inStart, juce::AudioBuffer<float>& output, int outStart,

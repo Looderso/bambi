@@ -291,8 +291,8 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
 
 float DecoderPanel::paintStateTile(juce::Graphics& g, juce::Rectangle<float> tile, const juce::String& name,
                                    const juce::String& value, double shown, double low, double high, double step,
-                                   const char* key, bool enabled, std::function<void(DecoderState&, double)> set,
-                                   std::function<void(DecoderState&)> reset) {
+                                   const char* key, bool enabled, const std::function<void(DecoderState&, double)>& set,
+                                   const std::function<void(DecoderState&)>& reset) {
     TileContent t;
     t.name = name;
     t.value = value;
@@ -409,7 +409,7 @@ void DecoderPanel::chooseLayoutFile() {
                               layoutError_.clear();
                               if (file.hasFileExtension("sofa")) {
                                   juce::String error;
-                                  if (!state_.processor.loadMatrixFile(file, &error)) layoutError_ = error;
+                                  if (!state_.processor.loadMatrixFile(file, &error)) layoutError_ = std::move(error);
                                   shownKind_ = -1;
                                   repaint();
                                   return;
@@ -651,7 +651,7 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
         //  one drag per cell, as an undo step named for what it moves
         const auto cellDrag = [&](juce::Rectangle<float> area, const char* what, std::size_t i, double from,
                                   double span, double step, double low, double high, bool wraps,
-                                  std::function<void(Loudspeaker&, double)> put, double resetTo) {
+                                  const std::function<void(Loudspeaker&, double)>& put, double resetTo) {
             if (!mine) return;
             addStateDrag(
                 area, what, "decoder.layout." + std::to_string(i) + "." + what, from, span, step,

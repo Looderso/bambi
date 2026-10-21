@@ -18,7 +18,8 @@ AudioObjectID device() {
     UInt32 size = sizeof id;
     const AudioObjectPropertyAddress a{kAudioHardwarePropertyTranslateUIDToDevice, kAudioObjectPropertyScopeGlobal,
                                        kAudioObjectPropertyElementMain};
-    AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, sizeof uid, &uid, &size, &id);
+    AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, sizeof(CFStringRef), static_cast<const void*>(&uid), &size,
+                               &id);
     return id;
 }
 
@@ -40,10 +41,12 @@ std::vector<std::string> aggregated() {
             transport != kAudioDeviceTransportTypeAggregate)
             continue;
         CFArrayRef subs = nullptr;
-        UInt32 ssize = sizeof subs;
+        UInt32 ssize = sizeof(CFArrayRef);
         const AudioObjectPropertyAddress sub{kAudioAggregateDevicePropertyFullSubDeviceList,
                                              kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
-        if (AudioObjectGetPropertyData(d, &sub, 0, nullptr, &ssize, &subs) != noErr || subs == nullptr) continue;
+        if (AudioObjectGetPropertyData(d, &sub, 0, nullptr, &ssize, static_cast<void*>(&subs)) != noErr ||
+            subs == nullptr)
+            continue;
         for (CFIndex i = 0; i < CFArrayGetCount(subs); ++i) {
             const auto uid = static_cast<CFStringRef>(CFArrayGetValueAtIndex(subs, i));
             char buffer[256] = {};
@@ -77,7 +80,8 @@ bool nameChannels(const std::vector<std::string>& names) {
     }
     const AudioObjectPropertyAddress a{'bnam', kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
     CFPropertyListRef value = list;
-    const OSStatus status = AudioObjectSetPropertyData(d, &a, 0, nullptr, sizeof value, &value);
+    const OSStatus status =
+        AudioObjectSetPropertyData(d, &a, 0, nullptr, sizeof(CFPropertyListRef), static_cast<const void*>(&value));
     CFRelease(list);
     return status == noErr;
 }
@@ -85,11 +89,11 @@ bool nameChannels(const std::vector<std::string>& names) {
 std::string channelName(int channel) {
     const AudioObjectID d = device();
     CFStringRef name = nullptr;
-    UInt32 size = sizeof name;
+    UInt32 size = sizeof(CFStringRef);
     const AudioObjectPropertyAddress a{kAudioObjectPropertyElementName, kAudioObjectPropertyScopeOutput,
                                        static_cast<AudioObjectPropertyElement>(channel)};
-    if (d == kAudioObjectUnknown || AudioObjectGetPropertyData(d, &a, 0, nullptr, &size, &name) != noErr ||
-        name == nullptr)
+    if (d == kAudioObjectUnknown ||
+        AudioObjectGetPropertyData(d, &a, 0, nullptr, &size, static_cast<void*>(&name)) != noErr || name == nullptr)
         return {};
     char buf[256] = {};
     CFStringGetCString(name, buf, sizeof buf, kCFStringEncodingUTF8);
