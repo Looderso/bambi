@@ -1348,7 +1348,7 @@ int decodersFitHolds() {
                       {9, live::Effect::Echo, 0},
                       {10, live::Effect::Reverb, 0}}}};
     std::size_t left = shape.decoders.size();
-    page.reshape = [&](live::Shape s) { left = s.decoders.size(); };
+    page.reshape = [&](const live::Shape& s) { left = s.decoders.size(); };
     page.preview = [](const live::Shape&) {};
     page.show(tree, shape, live::layOut(tree, shape), {{1, 0}});
     juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
@@ -1614,9 +1614,10 @@ int railTransportHolds() {
     //  Catches: space always asking the same thing, another key taken from the plugins, the two glyphs' presses
     //  swapped or lost, stop while stopped not going back to the start, and the glyphs bunched to one side.
     const bool ok = space && !other && asked == std::vector<bool>{true, false, true, false} && starts == 1 && even;
-    std::printf("  space plays a stopped Live and stops a playing one, other keys pass, play and stop clicked, stop "
-                "again back to the start, evenly spaced %s\n",
-                ok ? "" : "  FAIL");
+    std::printf(
+        "  space plays a stopped Live and stops a playing one, other keys pass, play and stop clicked, stop "
+        "again back to the start, evenly spaced %s\n",
+        ok ? "" : "  FAIL");
     return ok ? 0 : 1;
 }
 
