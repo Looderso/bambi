@@ -95,6 +95,21 @@ TEST_CASE("an unprepared instance is inert") {
     CHECK(mag[0] == doctest::Approx(-1.0));
 }
 
+TEST_CASE("a size the transform cannot do is refused, and leaves the instance inert") {
+    //  Catches: a size that is not a multiple of 32 set up anyway, which pffft only asserts against and a release
+    //  build lets through -- 100 would then transform wrongly.
+    RealFft f;
+    for (const std::size_t size : {std::size_t{0}, std::size_t{48}, std::size_t{100}, std::size_t{7 * 32}}) {
+        CHECK_FALSE(f.prepare(size));
+        CHECK(f.size() == 0);
+    }
+    std::vector<double> x(100, 1.0), mag(51, -1.0);
+    f.magnitude(x, mag);
+    CHECK(mag[0] == -1.0);  // untouched
+    CHECK(f.prepare(96));   // 32 times 3: a size it can do
+    CHECK(f.size() == 96);
+}
+
 TEST_CASE("hann window is periodic and sums as expected") {
     //  Catches: the symmetric Hann window in place of the periodic one.
     std::vector<double> w(64);

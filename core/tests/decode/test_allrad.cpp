@@ -241,6 +241,7 @@ TEST_CASE("a ring is designed on the ring") {
     CHECK(d.triangles.empty());
     CHECK(d.points.size() == 8);
     std::vector<Vec3> ring;
+    ring.reserve(720);
     for (int k = 0; k < 720; ++k) ring.push_back({std::cos(kPi * k / 360.0), std::sin(kPi * k / 360.0), 0.0});
     CHECK(meanEnergy(d, ring) == doctest::Approx(1.0).epsilon(1e-6));
     // Close to the sampling decoder on the same ring: each loudspeaker's row the harmonics at its direction.

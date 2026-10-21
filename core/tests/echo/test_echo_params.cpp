@@ -45,15 +45,15 @@ TEST_CASE("every parameter Echo can modulate is named, and no other") {
     };
     for (const char* tap : {"tap1", "tap2", "tap3", "tap4"}) {
         const std::string t = tap;
-        for (auto target : std::vector<test::Target>{{t + ".spin", DestKind::Rate},
-                                                     {t + ".axis_az", DestKind::DirectAngle},
-                                                     {t + ".axis_el", DestKind::DirectAngle},
-                                                     {t + ".level", DestKind::DirectScalar},
-                                                     {t + ".feedback", DestKind::DirectScalar},
-                                                     {t + ".skew", DestKind::DirectScalar},
-                                                     {t + ".blur", DestKind::DirectScalar},
-                                                     {t + ".low_cut", DestKind::DirectScalar},
-                                                     {t + ".high_cut", DestKind::DirectScalar}})
+        for (const auto& target : std::vector<test::Target>{{t + ".spin", DestKind::Rate},
+                                                            {t + ".axis_az", DestKind::DirectAngle},
+                                                            {t + ".axis_el", DestKind::DirectAngle},
+                                                            {t + ".level", DestKind::DirectScalar},
+                                                            {t + ".feedback", DestKind::DirectScalar},
+                                                            {t + ".skew", DestKind::DirectScalar},
+                                                            {t + ".blur", DestKind::DirectScalar},
+                                                            {t + ".low_cut", DestKind::DirectScalar},
+                                                            {t + ".high_cut", DestKind::DirectScalar}})
             expected.push_back(target);
     }
     for (auto& t : test::regionTargets("region1")) expected.push_back(t);

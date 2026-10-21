@@ -30,7 +30,6 @@ bool SpeakerRenderer::prepare(int maxOrder, int maxOutputs, double sampleRate, d
     latency_ = std::max(0, latencyFrames);
     ringLength_ = 1;
     while (ringLength_ <= maxDelay_ + latency_) ringLength_ *= 2;
-    activeOutputs_ = 0;
     fade_ = std::max(1, static_cast<int>(std::lround(kSpeakerFadeSeconds * sampleRate)));
 
     auto room = [&](Set& s) {
@@ -107,16 +106,10 @@ void SpeakerRenderer::process(const float* in, int inChannels, float* out, int o
         live_ = sets_.latest();
         if (had) {
             fading_ = true;
-            fadePos_ = -live_->longestDelay;  // the ramp starts once the new design's lines hold its own signal
+            //  The ramp starts once the new design's lines hold its own signal: what a line held from before -- a
+            //  wider design that left it, say -- lies further back than any read of it that is heard.
+            fadePos_ = -live_->longestDelay;
         }
-        //  Lines past both designs' outputs are not written from here on: what they still hold would be heard
-        //  when a later design reaches them, so they are emptied now, once, and only as far as was ever written.
-        const int keep = std::max(live_->outputs, had ? leaving_.outputs : 0);
-        for (int k = keep; k < activeOutputs_; ++k) {
-            std::fill_n(ringLive_.data() + sz(k) * sz(ringLength_), ringLength_, 0.0f);
-            std::fill_n(ringLeave_.data() + sz(k) * sz(ringLength_), ringLength_, 0.0f);
-        }
-        activeOutputs_ = keep;
     }
     const int mask = ringLength_ - 1;
     for (int f = 0; f < frames; ++f) {
@@ -133,7 +126,6 @@ void SpeakerRenderer::process(const float* in, int inChannels, float* out, int o
         if (fading) mix(leaving_, x, inChannels, yLeave_.data());
         //  Only the outputs a design feeds are written and read, so a pair costs less than a dome.
         const int active = std::max(live_->outputs, fading ? leaving_.outputs : 0);
-        activeOutputs_ = std::max(activeOutputs_, active);
         for (int k = 0; k < active; ++k) {
             const float v = yLive_[sz(k)], w = fading ? yLeave_[sz(k)] : v;
             float* live = ringLive_.data() + sz(k) * sz(ringLength_);
@@ -160,7 +152,6 @@ void SpeakerRenderer::reset() noexcept {
     std::fill(ringLive_.begin(), ringLive_.end(), 0.0f);
     std::fill(ringLeave_.begin(), ringLeave_.end(), 0.0f);
     write_ = 0;
-    activeOutputs_ = 0;
 }
 
 bool SpeakerDecoder::prepare(int maxOrder, int maxOutputs, double sampleRate, double maxDelaySeconds,

@@ -134,13 +134,18 @@ TEST_CASE("the decode keeps the diffuse field, hears a front source in both ears
     }
 }
 
-TEST_CASE("a design whose taps do not fit its FFT is refused, and a good one after it is taken") {
-    //  Catches: taps longer than the FFT let through, where the transform would cut every filter.
+TEST_CASE("a design that does not hold together is refused, and a good one after it is taken") {
+    //  Catches: an FFT size pffft cannot transform let through, and taps longer than the FFT, where the transform
+    //  would cut every filter.
     std::vector<Vec3> dirs;
     std::vector<double> w;
     quadratureGrid(4, 7, dirs, w);
     BinauralFilterBuilder builder;
     FilterDesign bad = designOf(1);
+    bad.fftSize = 100;  // not a multiple of 32
+    bad.taps = 64;      // with taps that fit it, so that the size alone is wrong
+    CHECK_FALSE(builder.prepare(shipped(), bad, dirs, w));
+    bad = designOf(1);
     bad.taps = bad.fftSize + 1;
     CHECK_FALSE(builder.prepare(shipped(), bad, dirs, w));
     CHECK(builder.prepare(shipped(), designOf(1), dirs, w));

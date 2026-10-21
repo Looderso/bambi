@@ -14,6 +14,7 @@ using namespace bambi;
 namespace {
 std::vector<float*> ptrsOf(std::vector<std::vector<float>>& v) {
     std::vector<float*> p;
+    p.reserve(v.size());
     for (auto& c : v) p.push_back(c.data());
     return p;
 }
@@ -177,6 +178,7 @@ TEST_CASE("rendering is deterministic — the property golden-file regression re
             e.setTarget(fromAzEl(phase, phase * 0.3), 0.2);
             if (b == 0) e.snap();
             std::vector<float*> block;
+            block.reserve(out.size());
             for (auto& c : out) block.push_back(c.data() + b * 128);
             e.process(in.data() + b * 128, block, 128);
             phase += 0.11;

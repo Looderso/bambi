@@ -31,12 +31,16 @@ Region spot(double sizeDeg, double softDeg, Vec3 aim = {0, 0, 1}) {
 }  // namespace
 
 TEST_CASE("everywhere is everywhere, and its outside is nowhere") {
-    //  Catches: Everywhere evaluated as a shape with an edge at no distance, which a soft region reads as a half.
+    //  Catches: Everywhere evaluated as a shape with an edge at no distance, which a soft region reads as a half, or as
+    //  a shape at all, which a softness wider than the sphere or not a number reads as less than everywhere.
     Region r;
-    r.softness = 20.0 * kDeg2Rad;  // soft, so an edge distance of zero would read as a half
-    for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 1.0);
-    r.side = RegionSide::Outside;
-    for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 0.0);
+    for (const double softness : {20.0 * kDeg2Rad, 20.0, std::numeric_limits<double>::quiet_NaN()}) {
+        r.softness = softness;
+        r.side = RegionSide::Inside;
+        for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 1.0);
+        r.side = RegionSide::Outside;
+        for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 0.0);
+    }
 }
 
 TEST_CASE("a spot is 1 at its aim, exactly 0.5 at its edge, and 0 beyond the fade") {
@@ -49,7 +53,8 @@ TEST_CASE("a spot is 1 at its aim, exactly 0.5 at its edge, and 0 beyond the fad
     CHECK(valueAt(r, fromAzEl(0.0, (90.0 - 29.0) * kDeg2Rad)) == doctest::Approx(1.0));
     //  and the fade is monotone in between
     double last = 1.1;
-    for (double deg = 28.0; deg <= 52.0; deg += 0.5) {
+    for (int step = 0; step <= 48; ++step) {  // 28 to 52 degrees
+        const double deg = 28.0 + 0.5 * step;
         const double v = valueAt(r, fromAzEl(0.0, (90.0 - deg) * kDeg2Rad));
         CHECK(v <= last + 1e-12);
         last = v;
@@ -366,7 +371,8 @@ TEST_CASE("sectors repeat, and fill decides how much of each period is inside") 
     s.softness = 0.0;
     //  Periodic in azimuth. Catches: a period taken from the wrong count, and a fold that is not
     //  centred, which would shift every sector by half a period.
-    for (double az = -kPi; az < kPi; az += 0.037) {
+    for (int step = 0; step < 170; ++step) {  // once round, -pi up
+        const double az = -kPi + 0.037 * step;
         const double here = valueAt(s, fromAzEl(az, 0.2));
         const double next = valueAt(s, fromAzEl(az + kPi * 0.5, 0.2));
         CHECK(here == next);
@@ -401,7 +407,8 @@ TEST_CASE("a sector's fade is as wide on the sphere at every latitude") {
     s.softness = 8.0 * kDeg2Rad;
     const auto fadeArc = [&s](double elevation) {
         double lo = -1.0, hi = -1.0;
-        for (double az = 0.0; az < kPi * 0.5; az += 1e-5) {
+        for (int step = 0; step < 157080; ++step) {  // a quarter turn in steps of 1e-5
+            const double az = 1e-5 * step;
             const double v = valueAt(s, fromAzEl(az, elevation));
             if (lo < 0.0 && v <= 0.9) lo = az;
             if (v <= 0.1) {
@@ -437,11 +444,14 @@ TEST_CASE("the edge fades the way a cap blurs it, not in a straight line") {
     //  a straight line would read 0.75 there: this is what changed
     CHECK(edgeProfile(0.5 * R, soft) > 0.78);
     //  symmetric about the edge, so inside + outside stays exactly 1
-    for (double f = -1.0; f <= 1.0; f += 0.05)
+    for (int step = 0; step < 40; ++step) {
+        const double f = -1.0 + 0.05 * step;
         CHECK(edgeProfile(f * R, soft) + edgeProfile(-f * R, soft) == doctest::Approx(1.0).epsilon(1e-12));
+    }
     //  monotone
     double last = -1.0;
-    for (double f = -1.2; f <= 1.2; f += 0.01) {
+    for (int step = 0; step < 240; ++step) {
+        const double f = -1.2 + 0.01 * step;
         const double v = edgeProfile(f * R, soft);
         CHECK(v >= last - 1e-15);
         last = v;
@@ -473,7 +483,8 @@ TEST_CASE("what the flat-edge profile costs on a curved one, measured") {
     };
     const double soft = 20.0 * kDeg2Rad, R = soft * 0.5;
     double worst45 = 0.0, worst15 = 0.0;
-    for (double f = -0.9; f <= 0.9; f += 0.1) {
+    for (int step = 0; step < 19; ++step) {
+        const double f = -0.9 + 0.1 * step;
         worst45 = std::max(worst45, std::abs(edgeProfile(f * R, soft) - exactly(45.0 * kDeg2Rad, soft, f * R)));
         worst15 = std::max(worst15, std::abs(edgeProfile(f * R, soft) - exactly(15.0 * kDeg2Rad, soft, f * R)));
     }

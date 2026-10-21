@@ -82,7 +82,7 @@ TEST_CASE("an AmbDec configuration that does not hold together is refused with t
     std::string wrongCount(kAmbdec);
     wrongCount.replace(wrongCount.find("/dec/speakers     5"), 19, "/dec/speakers     4");
     CHECK_FALSE(parseAmbdecLayout(wrongCount, l, &error));
-    CHECK(error.find("4") != std::string::npos);
+    CHECK(error.find('4') != std::string::npos);
     std::string notANumber(kAmbdec);
     notANumber.replace(notANumber.find("2.000    45.0"), 13, "2.000    left");
     CHECK_FALSE(parseAmbdecLayout(notANumber, l, &error));

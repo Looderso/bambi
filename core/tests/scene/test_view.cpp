@@ -65,7 +65,7 @@ TEST_CASE("picking a point back off the view is the inverse of projecting it, on
         if (n.depth < 1e-3) continue;  // the far side is not pickable, by design
         const auto back = unproject(Projection::Globe, camera, n.x, n.y);
         REQUIRE(back.has_value());
-        CHECK(sameDir(*back, p, 1e-9));
+        CHECK(sameDir(back.value(), p, 1e-9));
         ++checked;
     }
     CHECK(checked > 800);
@@ -75,7 +75,7 @@ TEST_CASE("picking a point back off the view is the inverse of projecting it, on
         const ViewPoint n = project(Projection::Equirect, {}, p);
         const auto back = unproject(Projection::Equirect, {}, n.x, n.y);
         REQUIRE(back.has_value());
-        CHECK(sameDir(*back, p, 1e-9));
+        CHECK(sameDir(back.value(), p, 1e-9));
     }
     CHECK_FALSE(unproject(Projection::Globe, {}, 0.8, 0.8).has_value());      // outside the disc
     CHECK_FALSE(unproject(Projection::Equirect, {}, 1.01, 0.0).has_value());  // outside the frame
@@ -95,6 +95,7 @@ TEST_CASE("orbiting turns at a fixed rate per pixel and stops at the poles") {
 TEST_CASE("a path across the equirect's back seam is split at the edges, never drawn across the frame") {
     //  Catches: the step across the seam drawn as one line across the whole frame.
     std::vector<Vec3> equator;
+    equator.reserve(128);
     for (int i = 0; i < 128; ++i) equator.push_back(fromAzEl(2.0 * kPi * i / 128.0, 0.0));
     const Viewport vp{150.0, 100.0, 125.0, 100.0};
     std::vector<ScreenSegment> segments;
@@ -116,6 +117,7 @@ TEST_CASE("a path across the equirect's back seam is split at the edges, never d
 TEST_CASE("the globe marks the back hemisphere, so it can be drawn fainter") {
     //  Catches: every segment marked as facing the viewer.
     std::vector<Vec3> equator;
+    equator.reserve(360);
     for (int i = 0; i < 360; ++i) equator.push_back(fromAzEl(2.0 * kPi * i / 360.0, 0.0));
     std::vector<ScreenSegment> segments;
     projectPolyline(Projection::Globe, cameraFor(ViewPreset::Front), {100.0, 100.0, 90.0, 90.0}, equator, true,
@@ -537,7 +539,7 @@ TEST_CASE("a drag off the sphere carries on along its rim") {
     const Vec3 inside = unprojectToRim(Projection::Globe, camera, 0.3, -0.2);
     const auto exact = unproject(Projection::Globe, camera, 0.3, -0.2);
     REQUIRE(exact.has_value());
-    CHECK(length(inside - *exact) < 1e-12);
+    CHECK(length(inside - exact.value()) < 1e-12);
 
     const Vec3 edge = unprojectToRim(Projection::Equirect, camera, 1.7, -0.5);
     CHECK(std::abs(azimuth(edge)) == doctest::Approx(kPi));  // the back seam, from either side

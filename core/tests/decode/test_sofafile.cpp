@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <array>
 #include <cmath>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "bambi/decode/sofafile.hpp"
@@ -17,8 +19,8 @@ using namespace bambi::test;
  *  (m + 1)(e + 1) / 1000 + n / 100000. made-swapped.sofa puts the right ear first in the file, which the convention forbids.
  */
 namespace {
-const std::vector<std::pair<double, double>> kDirections{{0, 0},  {90, 0},  {-90, 0}, {180, 0},
-                                                         {0, 90}, {0, -90}, {45, 30}, {-135, -20}};
+constexpr std::array<std::pair<double, double>, 8> kDirections{
+    {{0, 0}, {90, 0}, {-90, 0}, {180, 0}, {0, 90}, {0, -90}, {45, 30}, {-135, -20}}};
 
 void checkMade(const MeasuredHead& m) {
     REQUIRE(m.directions.size() == 8);

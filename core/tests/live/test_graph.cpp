@@ -142,11 +142,12 @@ TEST_CASE("every path from the loop device to the output takes the same time, an
     for (int round = 0; round < 300; ++round) {
         const Plan p = randomPlan(random);
         std::string error;
-        const auto c = compile(p, &error);
-        REQUIRE_MESSAGE(c.has_value(), error);
-        const std::vector<int> got = arrivals(p, *c);
+        const auto compiled = compile(p, &error);
+        REQUIRE_MESSAGE(compiled.has_value(), error);
+        const Compiled& c = compiled.value();
+        const std::vector<int> got = arrivals(p, c);
         CHECK(static_cast<int>(got.size()) == paths(p));
-        for (const int t : got) CHECK(t == c->latency);
+        for (const int t : got) CHECK(t == c.latency);
     }
 }
 
@@ -155,20 +156,21 @@ TEST_CASE("at every place paths meet, the slowest is not delayed; of all the dec
     std::mt19937 random(12);
     for (int round = 0; round < 300; ++round) {
         const Plan p = randomPlan(random);
-        const auto c = compile(p);
-        REQUIRE(c.has_value());
-        std::vector<int> least(static_cast<std::size_t>(c->buffers), -1);
-        for (const Op& op : c->ops)
+        const auto compiled = compile(p);
+        REQUIRE(compiled.has_value());
+        const Compiled& c = compiled.value();
+        std::vector<int> least(static_cast<std::size_t>(c.buffers), -1);
+        for (const Op& op : c.ops)
             if (op.step == Step::Add)
                 least[static_cast<std::size_t>(op.to)] =
                     least[static_cast<std::size_t>(op.to)] < 0
                         ? op.delay
                         : std::min(least[static_cast<std::size_t>(op.to)], op.delay);
         int mixes = -1;  // the mixes are held to one time: the least delay over all of them is 0
-        for (int b = c->mainBuffer() + 1; b < c->buffers; ++b)
+        for (int b = c.mainBuffer() + 1; b < c.buffers; ++b)
             if (const int l = least[static_cast<std::size_t>(b)]; l >= 0) mixes = mixes < 0 ? l : std::min(mixes, l);
         CHECK((mixes == -1 || mixes == 0));
-        least.resize(static_cast<std::size_t>(c->mainBuffer() + 1));
+        least.resize(static_cast<std::size_t>(c.mainBuffer() + 1));
         for (const int l : least) CHECK((l == -1 || l == 0));
     }
 }
@@ -177,10 +179,11 @@ TEST_CASE("a source that takes no time reaches the output in the decoder's time 
     //  Catches: a meeting place padded by a constant -- the random shapes hide it when every input is slower than the
     //  pad, a source of no latency does not.
     const Plan p = source(0);
-    const auto c = compile(p);
-    REQUIRE(c.has_value());
-    CHECK(c->latency == 64);
-    for (const Op& op : c->ops) CHECK(op.delay == 0);
+    const auto compiled = compile(p);
+    REQUIRE(compiled.has_value());
+    const Compiled& c = compiled.value();
+    CHECK(c.latency == 64);
+    for (const Op& op : c.ops) CHECK(op.delay == 0);
 }
 
 TEST_CASE("whatever is read is finished: a wire after its node's inserts, a bus after what is wired into it") {
@@ -189,14 +192,15 @@ TEST_CASE("whatever is read is finished: a wire after its node's inserts, a bus 
     std::mt19937 random(13);
     for (int round = 0; round < 300; ++round) {
         const Plan p = randomPlan(random);
-        const auto c = compile(p);
-        REQUIRE(c.has_value());
-        for (std::size_t k = 0; k < c->ops.size(); ++k) {
-            const Op& read = c->ops[k];
+        const auto compiled = compile(p);
+        REQUIRE(compiled.has_value());
+        const Compiled& c = compiled.value();
+        for (std::size_t k = 0; k < c.ops.size(); ++k) {
+            const Op& read = c.ops[k];
             if (read.step != Step::Add && read.step != Step::Decode) continue;
             //  a decoder's step writes no buffer: its `to` is which decoder
-            for (std::size_t later = k + 1; later < c->ops.size(); ++later)
-                if (c->ops[later].step != Step::Decode) CHECK(c->ops[later].to != read.from);
+            for (std::size_t later = k + 1; later < c.ops.size(); ++later)
+                if (c.ops[later].step != Step::Decode) CHECK(c.ops[later].to != read.from);
         }
     }
 }
@@ -207,25 +211,26 @@ TEST_CASE("every wire reads its own level from the table, in the order the table
     std::mt19937 random(23);
     for (int round = 0; round < 200; ++round) {
         const Plan p = randomPlan(random);
-        const auto c = compile(p);
-        REQUIRE(c.has_value());
+        const auto compiled = compile(p);
+        REQUIRE(compiled.has_value());
+        const Compiled& c = compiled.value();
         const std::vector<WireOf> wires = wiresOf(p);
-        CHECK(c->levels == static_cast<int>(wires.size()));
+        CHECK(c.levels == static_cast<int>(wires.size()));
         const int nodes = static_cast<int>(p.nodes.size()), returns = static_cast<int>(p.returns.size());
         std::vector<int> read(wires.size(), 0);
-        for (const Op& op : c->ops) {
+        for (const Op& op : c.ops) {
             if (op.step != Step::Add) continue;
             REQUIRE(op.gain >= 0);
-            REQUIRE(op.gain < c->levels);
+            REQUIRE(op.gain < c.levels);
             ++read[static_cast<std::size_t>(op.gain)];
             const WireOf& w = wires[static_cast<std::size_t>(op.gain)];
             const int from = w.from == WireOf::From::Node     ? w.index
                              : w.from == WireOf::From::Return ? nodes + w.index
-                                                              : c->mainBuffer();
+                                                              : c.mainBuffer();
             const int to = w.wire.to == PlanWire::To::Node     ? w.wire.index
                            : w.wire.to == PlanWire::To::Return ? nodes + w.wire.index
-                           : w.wire.to == PlanWire::To::Main   ? c->mainBuffer()
-                                                               : c->mainBuffer() + 1 + w.wire.index;
+                           : w.wire.to == PlanWire::To::Main   ? c.mainBuffer()
+                                                               : c.mainBuffer() + 1 + w.wire.index;
             CHECK(op.from == from);
             CHECK(op.to == to);
             (void)returns;
@@ -258,7 +263,7 @@ TEST_CASE("a source added at the end leaves every other node's steps as they wer
             });
             return ops;
         };
-        CHECK(nodesOnly(before->ops) == nodesOnly(after->ops));
+        CHECK(nodesOnly(before.value().ops) == nodesOnly(after.value().ops));
     }
 }
 
@@ -279,9 +284,10 @@ TEST_CASE("the shape the first delay compensation was checked on comes out the s
     p.returns = {Return{{3}, {}}, Return{{4}, {}}, Return{{5}, {}}};
     p.main = {6};
     p.decoders = {7};
-    const auto c = compile(p);
-    REQUIRE(c.has_value());
-    CHECK(c->latency == 64 + 300 + 64);
+    const auto compiled = compile(p);
+    REQUIRE(compiled.has_value());
+    const Compiled& c = compiled.value();
+    CHECK(c.latency == 64 + 300 + 64);
 }
 
 TEST_CASE("a plan that does not hold together is refused") {
@@ -371,10 +377,11 @@ TEST_CASE("an Encoder's and an insert's step name the pair their sidechain hears
     n.inserts = {1, 2};
     p.nodes = {n};
     p.decoders = {3};
-    const auto c = compile(p);
-    REQUIRE(c.has_value());
+    const auto compiled = compile(p);
+    REQUIRE(compiled.has_value());
+    const Compiled& c = compiled.value();
     int seen = 0;
-    for (const Op& op : c->ops)
+    for (const Op& op : c.ops)
         if (op.step == Step::Process) {
             CHECK(op.sidechain == (op.slot == 1 ? 5 : -1));
             ++seen;
@@ -397,11 +404,11 @@ TEST_CASE("a source's width reaches its step, and a source neither one nor two c
     n.encoder = 0;
     p.nodes = {n};
     p.decoders = {1};
-    const auto c = compile(p);
-    REQUIRE(c.has_value());
-    const auto encode =
-        std::find_if(c->ops.begin(), c->ops.end(), [](const Op& op) { return op.step == Step::Encode; });
-    REQUIRE(encode != c->ops.end());
+    const auto compiled = compile(p);
+    REQUIRE(compiled.has_value());
+    const Compiled& c = compiled.value();
+    const auto encode = std::find_if(c.ops.begin(), c.ops.end(), [](const Op& op) { return op.step == Step::Encode; });
+    REQUIRE(encode != c.ops.end());
     CHECK((encode->from == 20 && encode->width == 1 && encode->sidechain == 3 && encode->sidechainWidth == 1));
     p.nodes[0].width = 3;
     CHECK_FALSE(compile(p).has_value());
@@ -419,15 +426,16 @@ TEST_CASE("every decoder hears its own mix, unwired Main after its chain, each b
     p.nodes = {n};
     p.main = {1};
     p.decoders = {2, 3};
-    const auto c = compile(p);
-    REQUIRE(c.has_value());
+    const auto compiled = compile(p);
+    REQUIRE(compiled.has_value());
+    const Compiled& c = compiled.value();
     std::vector<int> decoded;
-    for (const Op& op : c->ops)
+    for (const Op& op : c.ops)
         if (op.step == Step::Decode) {
-            CHECK(op.from == c->mainBuffer() + 1 + op.to);
+            CHECK(op.from == c.mainBuffer() + 1 + op.to);
             decoded.push_back(op.to);
         }
     CHECK(decoded == std::vector<int>{0, 1});
-    CHECK(c->ops.back().step == Step::Decode);
-    CHECK(c->latency == 10 + 200);
+    CHECK(c.ops.back().step == Step::Decode);
+    CHECK(c.latency == 10 + 200);
 }

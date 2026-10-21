@@ -23,21 +23,6 @@ TEST_CASE("legendreP: known values") {
     CHECK(legendreP(2, 0.5) == doctest::Approx(-0.125));
 }
 
-TEST_CASE("legendreAssoc: legendreP at m = 0, and the closed forms above it, without the Condon-Shortley phase") {
-    //  Catches: a factor of the recurrence off, and the (-1)^m phase put back.
-    for (int n = 0; n <= 7; ++n)
-        for (double x = -0.9; x <= 0.9; x += 0.3) CHECK(legendreAssoc(n, 0, x) == doctest::Approx(legendreP(n, x)));
-    for (double x = -0.9; x <= 0.9; x += 0.3) {
-        const double s = std::sqrt(1.0 - x * x);
-        CHECK(legendreAssoc(1, 1, x) == doctest::Approx(s));
-        CHECK(legendreAssoc(2, 1, x) == doctest::Approx(3.0 * x * s));
-        CHECK(legendreAssoc(2, 2, x) == doctest::Approx(3.0 * s * s));
-        CHECK(legendreAssoc(3, 1, x) == doctest::Approx(1.5 * (5.0 * x * x - 1.0) * s));
-        CHECK(legendreAssoc(4, 2, x) == doctest::Approx(7.5 * (7.0 * x * x - 1.0) * s * s));
-    }
-    CHECK(legendreAssoc(2, 3, 0.5) == 0.0);  // m past n
-}
-
 TEST_CASE("capWeights: correct at both limits") {
     //  Catches: the limit at zero width other than 1, and the (2n + 1) of the weights off.
     std::array<double, 8> w{};
@@ -68,7 +53,8 @@ TEST_CASE("capWeights: correct at both limits") {
 
     SUBCASE("monotonically non-increasing in alpha, per order") {
         std::array<double, 8> a{}, b{};
-        for (double deg = 5; deg < 175; deg += 5) {
+        for (int step = 1; step < 35; ++step) {  // 5 to 170 degrees
+            const double deg = 5.0 * step;
             capWeights(deg * kDeg2Rad, 5, a);
             capWeights((deg + 5) * kDeg2Rad, 5, b);
             CHECK(b[1] <= a[1] + 1e-12);

@@ -131,14 +131,15 @@ than a cathedral.
 | diffuser | 4 steps of per-channel delay, a shuffle with polarity flips, a Hadamard mix; the steps add up to the mixing time |
 | loop | 16 lines (8 in efficient) of 100–200 ms × size, primes; a **Householder** matrix; an allpass (g = 0.5, 5–15 ms × size) in every line |
 | damping | a low and a high **shelf per line** (250 Hz, 4 kHz), designed from the decay each band asks per pass |
-| tonal correction (Jot) | shelves on the input restoring each band's energy, so a band's decay changes how long it rings, not the tone |
-| input | 12 dB/oct low cut and high cut; a sub-bass blocker at 25 Hz in the loop |
-| modulation | each line's length drifts slowly at random (smoothstep segments of 0.3–0.9 s within ±2 ms), never changing pitch by more than 4 cents; cubic interpolation |
+| tonal correction (Jot) | shelves on the input restoring each band's energy, so a band's decay changes how long it rings, not the tone; worked out from the energy the lines hold over every pass, which parts from the decay time once a pass loses several decibels |
+| input | 12 dB/oct low cut and high cut; a sub-sonic blocker at 5 Hz in the loop, unity at Nyquist |
+| modulation | each line's length drifts slowly at random (smoothstep segments of 0.3–0.9 s within ±2 ms), never changing pitch by more than 4 cents; read by a third-order Thiran allpass, flat in level, so the drift takes nothing from any band's decay |
 | output | taken where each line starts and a third and two thirds along, at the decay there; every loudspeaker gets an orthogonal, sign-flipped mix of all lines |
 
-- **Its level:** for a unit impulse in, every pass keeps g² = 10^(−6 L / RT60) and the three taps each carry a
-  third: `(1 + g^⅔ + g^⁴⁄₃) / 3 / (1 − g²)`, times (1 − a)² + a² for a diffusion of *a*, because the lines are fed
-  the input as it came and the input diffused, two signals whose energies add. The engine's balance uses this.
+- **Its level:** for a unit impulse into the lines (past the input's cuts), every pass keeps g² = 10^(−6 L / RT60)
+  and the three taps each carry a third: `(1 + g^⅔ + g^⁴⁄₃) / 3 / (1 − g²)`, times (1 − a)² + a² for a diffusion
+  of *a*, because the lines are fed the input as it came and the input diffused, two signals whose energies add.
+  The engine's balance uses this.
 - **Sixteen lines are 2.3 s of delay**, enough for a colourless tail up to ~15 s (total delay ≥ 0.15 · T60 · fs).
 - **Spatialised through directions:** the input is read at K directions, one per line, and the tail played back at
   K directions at the tail order, 3. The tail order is not a CPU lever (3 → 1 saves 0.05 % of a core); the **line
@@ -161,9 +162,10 @@ than a cathedral.
 
 | | |
 |---|---|
-| decay at mid, set → measured | room 0.50 → 0.484 s · hall 1.90 → 1.905 · cathedral 6.50 → 6.55 |
-| C80 | ambience 18.8 dB · room 13.6 · chamber 4.1 · hall 4.2 · large hall 1.8 · cathedral 0.1 |
-| reflections into tail | in ambience and room the energy in 30 ms windows never climbs back after its peak |
+| decay at mid, set → measured | room 0.50 → 0.484 s · hall 1.90 → 1.901 · cathedral 6.50 → 6.54; the tail alone 0.500 · 1.902 · 6.50, and its bands within 1.5 % (2.76 s for 2.8 below 140 Hz, 0.89 for 0.9 above 9 kHz) |
+| tone | against a tail ringing evenly at the mid's decay, every band of a 2.8 / 2 / 0.9 s tail within 0.2 dB |
+| C80 | omni, four directions: ambience 19.5 dB · room 14.1 · chamber 4.6 · hall 6.5 · large hall 4.7 · cathedral 1.1 |
+| reflections into tail | in ambience and room the energy in 30 ms windows never climbs back after its peak, and past twice the mixing time the tail is 0.7 dB under what the balance gives it |
 | drift | never more than 4 cents, never more than 2 ms from a line's length; decay unchanged to 3 % |
 | distance | the reflections' share of the room's energy barely moves (0.17–0.21 in the hall from 1 to 14 m); in the wet, 6 → 14 m is worth 0.84 dB, in the dry 19 dB. Automated distance: 0.09 % of a core |
 | quality | 8 or 32 lines for 16: level within 1.5 dB, decay within 8 % |
@@ -174,11 +176,11 @@ than a cathedral.
 
 | | |
 |---|---|
-| ambience | 6.30 % |
-| hall | 4.76 % (8 lines: 3.30 %) |
-| cathedral | 3.95 % |
-| tail alone | 1.34 % at 8 lines, 2.53 % at 16, 5.03 % at 32 |
-| a size change in flight | 9.02 % in the hall, only while the size moves (a second `FdnTail`, 5.10 MB at 32 lines, allocated at `prepare`) |
+| ambience | 6.81 % |
+| hall | 5.22 % (8 lines: 3.49 %) |
+| cathedral | 4.44 % |
+| tail alone | 1.42 % at 8 lines, 2.80 % at 16, 5.48 % at 32 |
+| a size change in flight | 9.73 % in the hall, only while the size moves (a second `FdnTail`, 5.10 MB at 32 lines, allocated at `prepare`) |
 
 Order 7 costs what order 3 does: reflections and tail run at order 3 whatever the bus; order 1 is cheaper only
 because the bus is four channels.

@@ -94,6 +94,7 @@ TEST_CASE("sample and hold is seeded, so a bounce repeats the take") {
         Transport tp;
         tp.playing = true;  // a free LFO set to restart runs only while playing
         std::vector<double> out;
+        out.reserve(400);
         for (int i = 0; i < 400; ++i)
             out.push_back(lfo.process(kDt, tp, false, false, 4.0, 1.0, LfoShape::SampleHold, 0.0));
         return out;

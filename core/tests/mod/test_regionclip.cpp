@@ -176,11 +176,11 @@ TEST_CASE("a clip survives the clipboard, and a side written into one by hand do
     const RegionClip out = copyRegion(echoMod(), s, 0, "region1");
     const auto back = readRegionClip(writeRegionClip(out));
     REQUIRE(back.has_value());
-    CHECK(back->shape == out.shape);
-    CHECK(back->fields == out.fields);
-    REQUIRE(back->rows.size() == 1);
-    CHECK(back->rows[0].depth == doctest::Approx(-0.25));
-    CHECK(describeRegionClip(*back) == "band, 78 % soft, sets lfo 1");
+    CHECK(back.value().shape == out.shape);
+    CHECK(back.value().fields == out.fields);
+    REQUIRE(back.value().rows.size() == 1);
+    CHECK(back.value().rows[0].depth == doctest::Approx(-0.25));
+    CHECK(describeRegionClip(back.value()) == "band, 78 % soft, sets lfo 1");
 
     //  text is text: a `side` written into a descriptor by hand makes it not a descriptor
     std::string smuggled = writeRegionClip(out);

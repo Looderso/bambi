@@ -1,0 +1,7 @@
+# The root's checks, less doctest.h: it is the test framework as published, kept unedited so that it can be
+# replaced by a newer release whole.
+InheritParentConfig: true
+ExcludeHeaderFilterRegex: '.*/doctest\.h'
+CheckOptions:
+  # value() is a checked access: on an empty optional it throws, and doctest reports the test as failed.
+  bugprone-unchecked-optional-access.IgnoreValueCalls: true

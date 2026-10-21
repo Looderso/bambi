@@ -228,7 +228,8 @@ TEST_CASE("the energy field points at the energy") {
         CHECK(alphaAtLevel(-60.0) == 0.0f);
         CHECK(std::abs(alphaAtLevel(0.5 * (kEnergyDarkDb + kEnergyFullDb)) - 0.5) < 0.01);
         float last = -1.0f;
-        for (double db = -50.0; db <= 0.0; db += 2.5) {
+        for (int step = 0; step <= 20; ++step) {  // -50 to 0 dB
+            const double db = -50.0 + 2.5 * step;
             const float a = alphaAtLevel(db);
             CHECK(a >= last);
             last = a;

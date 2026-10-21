@@ -591,6 +591,7 @@ TEST_CASE("many senders can command one receiver without losing or duplicating")
     std::atomic<int> sent{0};
     std::atomic<bool> go{false};
     std::vector<std::thread> threads;
+    threads.reserve(kSenders);
     for (int i = 0; i < kSenders; ++i) {
         threads.emplace_back([&, i] {
             while (!go.load()) {}
@@ -1028,6 +1029,7 @@ TEST_CASE("instances joining at once never share a slot, even while one of them 
         std::array<LinkBus, kJoiners> buses;
         std::atomic<bool> go{false};
         std::vector<std::thread> threads;
+        threads.reserve(kJoiners);
         for (int k = 0; k < kJoiners; ++k)
             threads.emplace_back([&, k] {
                 while (!go.load(std::memory_order_acquire)) std::this_thread::yield();
@@ -1407,6 +1409,7 @@ TEST_CASE("many windows editing one instance at once never tear an edit") {
     std::atomic<bool> stop{false};
     std::atomic<int> refused{0}, sent{0}, taken{0};
     std::vector<std::thread> senders;
+    senders.reserve(3);
     for (int k = 0; k < 3; ++k) {
         senders.emplace_back([&, k] {
             LinkBus bus;
@@ -1662,7 +1665,7 @@ TEST_CASE("a peer is called by its label, or by its id until it has one") {
     //  Every window's fallback. Catches: the label read before its static section has arrived, or
     //  the fallback lost.
     LinkScene::Entry e;
-    e.instance = *Uuid::parse("ab12cd34-0000-4000-8000-000000000000");
+    e.instance = Uuid::parse("ab12cd34-0000-4000-8000-000000000000").value();
     e.st.setLabel("kick");
     CHECK(e.label() == "instance ab12");  // generation 0: the static section is not in yet
     e.generation = 1;
