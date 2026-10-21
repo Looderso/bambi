@@ -58,7 +58,7 @@ TEST_CASE(
                         var +=
                             w[static_cast<std::size_t>(i)] * w[static_cast<std::size_t>(i)] / (2.0 * acnOrder(i) + 1.0);
                     INFO("order ", order, " seed ", seed, " detail ", detail, " evolve ", evolve);
-                    CHECK(std::sqrt(var) == doctest::Approx(0.3).epsilon(1e-9));
+                    CHECK(std::abs(std::sqrt(var) - 0.3) < 1e-9);
                     for (int i = numChannels(order); i < kRegionWeights; ++i)
                         CHECK(w[static_cast<std::size_t>(i)] == 0.0);
                 }
@@ -76,11 +76,12 @@ TEST_CASE(
             mean += g * weight;
             sq += g * g * weight;
         }
-    CHECK(mean == doctest::Approx(0.5).epsilon(1e-6));
-    CHECK(std::sqrt(sq - mean * mean) == doctest::Approx(0.4).epsilon(1e-6));
+    CHECK(std::abs(mean - 0.5) < 1e-6);
+    CHECK(std::abs(std::sqrt(sq - mean * mean) - 0.4) < 1e-6);
 }
 
 TEST_CASE("clouds: evolve loops at a whole turn, and a different seed is a different pattern") {
+    //  Catches: evolve turned at half its rate, which needs two turns to come round, and the seed ignored.
     std::array<double, kRegionWeights> a{}, b{}, c{};
     regionWeights(clouds(3, 0.5, 0.6, 0.5, 0.0), 3, a);
     regionWeights(clouds(3, 0.5, 0.6, 0.5, 360.0), 3, b);
@@ -105,8 +106,7 @@ TEST_CASE("custom: projecting a band-limited field gives its weights back, and e
     std::array<double, kRegionWeights> back{};
     projectWeights(r, 3, back);
     for (int i = 0; i < 16; ++i)
-        CHECK(back[static_cast<std::size_t>(i)] ==
-              doctest::Approx(r.weights[static_cast<std::size_t>(i)]).epsilon(1e-9));
+        CHECK(std::abs(back[static_cast<std::size_t>(i)] - r.weights[static_cast<std::size_t>(i)]) < 1e-9);
     for (int i = 16; i < kRegionWeights; ++i) CHECK(back[static_cast<std::size_t>(i)] == 0.0);
 
     Region all;
@@ -120,10 +120,12 @@ TEST_CASE("custom: projecting a band-limited field gives its weights back, and e
     spot.kind = RegionKind::Spot;
     spot.size = 60.0 * kDeg2Rad;
     projectWeights(spot, 1, back);
-    CHECK(back[0] == doctest::Approx((1.0 - std::cos(spot.size)) * 0.5).epsilon(1e-3));
+    CHECK(std::abs(back[0] / ((1.0 - std::cos(spot.size)) * 0.5) - 1.0) < 5e-3);  // a hard edge on the grid
 }
 
 TEST_CASE("custom on the bus: the matrix of its weights, and a weights kind is what valueAt says it is") {
+    //  Catches: a custom region's weights scaled on their way to the matrix, and custom left out of the weights kinds,
+    //  so valueAt reads it as a shape.
     Region r;
     r.kind = RegionKind::Custom;
     r.weights[0] = 0.6;
@@ -138,7 +140,7 @@ TEST_CASE("custom on the bus: the matrix of its weights, and a weights kind is w
     std::vector<float> in(16, 0.0f), out(16, 0.0f);
     in[0] = 1.0f;
     op.apply(in.data(), out.data(), 1);
-    CHECK(out[0] == doctest::Approx(0.6).epsilon(1e-4));
+    CHECK(std::abs(out[0] - 0.6) < 1e-4);
     //  valueAt, in the region's own frame, is the weights times the harmonics
     const Vec3 up{0, 0, 1};
     std::array<double, kRegionWeights> y{};

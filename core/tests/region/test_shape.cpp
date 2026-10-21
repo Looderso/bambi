@@ -31,9 +31,9 @@ Region spot(double sizeDeg, double softDeg, Vec3 aim = {0, 0, 1}) {
 }  // namespace
 
 TEST_CASE("everywhere is everywhere, and its outside is nowhere") {
-    //  Catches: Everywhere falling through to a shape's edge distance, and a side applied before
-    //  the kind is looked at.
+    //  Catches: Everywhere evaluated as a shape with an edge at no distance, which a soft region reads as a half.
     Region r;
+    r.softness = 20.0 * kDeg2Rad;  // soft, so an edge distance of zero would read as a half
     for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 1.0);
     r.side = RegionSide::Outside;
     for (const Vec3& d : everywhere()) CHECK(valueAt(r, d) == 0.0);
@@ -123,7 +123,7 @@ TEST_CASE("a field answers what valueAt does, for every kind however it is turne
 
 TEST_CASE("a hard edge is exactly 0 or 1, and never a nan") {
     //  Softness below kHardEdge must not reach the ramp: dividing by it would give inf, and 0/0 at
-    //  the edge itself a nan. Catches: the guard inverted, or removed.
+    //  the edge itself a nan. Catches: the threshold raised past a softness that should fade.
     for (const double soft : {0.0, 0.1, 0.49}) {
         const Region r = spot(40.0, soft);
         for (const Vec3& d : everywhere()) {
@@ -154,6 +154,8 @@ TEST_CASE("aim turns the shape, and nothing else") {
 }
 
 TEST_CASE("yaw, pitch and roll are the placement's: front at zero, left, up, and about the axis") {
+    //  Catches: yaw turning clockwise in aimOf, pitch undone the wrong way in toOwnFrame so the two frames disagree,
+    //  and roll turning the other way.
     //  Closed forms, one per rotation, each of which a flipped sign gets wrong.
     Region r;
     CHECK(arc(aimOf(r), {1, 0, 0}) < 1e-12);
@@ -204,6 +206,7 @@ TEST_CASE("yaw, pitch and roll are the placement's: front at zero, left, up, and
 }
 
 TEST_CASE("dragging the aim carries a pattern; it does not spin it") {
+    //  Catches: the roll not carried along with the aim, and a polar aim snapping yaw to front.
     /*  Yaw and pitch alone turn a pattern about its axis on the way to a new aim -- a quarter turn in
         the first half degree off a pole, which is where an upright kind starts. The measure: carry
         the old frame to the new aim along the shortest arc, and ask how far the result is from that. */
@@ -295,6 +298,7 @@ TEST_CASE("the frame is a rotation at every orientation, straight down included"
 }
 
 TEST_CASE("roll turns a pattern about its axis: a whole period is nothing, half of one swaps it") {
+    //  Catches: roll about the front axis for a kind that stands upright.
     Region s;
     s.kind = RegionKind::Sectors;
     s.sectors = 5;
@@ -311,6 +315,7 @@ TEST_CASE("roll turns a pattern about its axis: a whole period is nothing, half 
 }
 
 TEST_CASE("a spot of 90 degrees is a half, and aim decides which") {
+    //  Catches: a hard edge that counts a point exactly on it as outside.
     //  The presets rely on a half being a spot of 90 degrees.
     const Region front = spot(90.0, 0.0, Vec3{1, 0, 0});
     CHECK(valueAt(front, {1, 0, 0}) == 1.0);
@@ -322,6 +327,7 @@ TEST_CASE("a spot of 90 degrees is a half, and aim decides which") {
 }
 
 TEST_CASE("a band is symmetric about its own elevation, and a full one is everywhere") {
+    //  Catches: the band centred on the mirror of its elevation.
     Region b;
     b.kind = RegionKind::Band;
     b.bandElevation = 25.0 * kDeg2Rad;
@@ -383,6 +389,7 @@ TEST_CASE("sectors repeat, and fill decides how much of each period is inside") 
 }
 
 TEST_CASE("a sector's fade is as wide on the sphere at every latitude") {
+    //  Catches: the edge distance measured in azimuth rather than arc, without the sin of the colatitude.
     //  The sin(theta) in the sector's edge distance. Without it the fade would be measured in
     //  azimuth, so near the pole -- where a degree of azimuth is a fraction of a degree of arc --
     //  the edge would fade over a band far narrower than the softness asks. Measured as the arc
@@ -416,6 +423,7 @@ TEST_CASE("a sector's fade is as wide on the sphere at every latitude") {
 }
 
 TEST_CASE("the edge fades the way a cap blurs it, not in a straight line") {
+    //  Catches: a linear ramp in place of the cap profile.
     /*  The bus applies softness as a blur by a cap of half the softness, one gain per order. This
         is that same blur in closed form -- the fraction of a disc of that radius lying inside a
         straight edge. Checked at the quarter points, where a straight line is furthest from it. */
@@ -441,6 +449,7 @@ TEST_CASE("the edge fades the way a cap blurs it, not in a straight line") {
 }
 
 TEST_CASE("what the flat-edge profile costs on a curved one, measured") {
+    //  Catches: the blur's radius taken as the whole softness rather than half of it.
     /*  edgeProfile is the flat-edge case, so error remains where the edge's own curvature is
         comparable to the blur. Measured against a quadrature of the real thing: the fraction of a
         spherical cap of half-angle softness/2, centred on the query direction, that lies inside the
@@ -474,6 +483,7 @@ TEST_CASE("what the flat-edge profile costs on a curved one, measured") {
 }
 
 TEST_CASE("near the pole a sector is narrower than its own fade, and never reaches 1") {
+    //  Catches: the edge distance without the sin of the colatitude, which keeps a sector full width at the pole.
     //  Not a defect, and worth pinning because it looks like one: a sector's width in arc closes as
     //  sin(theta), so close enough to the axis the fade is wider than the sector and its centre is
     //  already on the ramp. At 70 degrees of elevation a quarter-sector is 7.7 degrees of arc from
@@ -490,6 +500,7 @@ TEST_CASE("near the pole a sector is narrower than its own fade, and never reach
 }
 
 TEST_CASE("dot sets are the regular solids") {
+    //  Catches: a sign dropped from a golden-ratio triple, which breaks the set's antipodal symmetry.
     //  The counts, that every direction is a unit vector, and that the set is antipodally symmetric
     //  -- which every one of these solids is, and which a transcription error in a golden-ratio
     //  triple would break.
@@ -522,6 +533,7 @@ TEST_CASE("the largest dot size is half the smallest angle in the set") {
 }
 
 TEST_CASE("a dot region is 1 at every dot and 0 between them") {
+    //  Catches: the edge distance measured the wrong way round, so the dots are holes.
     Region r;
     r.kind = RegionKind::Dots;
     r.dots = 6;
@@ -536,6 +548,7 @@ TEST_CASE("a dot region is 1 at every dot and 0 between them") {
 }
 
 TEST_CASE("an unsupported dot count is empty, not everything") {
+    //  Catches: an unbuildable dot count or zero sectors read as inside everywhere.
     //  A shape that cannot be built must read as nowhere rather than as everywhere: a fallback of
     //  "inside" would silently pass a whole field.
     Region r;
@@ -578,6 +591,7 @@ TEST_CASE("a setting that is not a number never reaches the value") {
 }
 
 TEST_CASE("settings in degrees become a region in radians, every one of them, with the turn added") {
+    //  Catches: a setting left in degrees, and the integrated turn left out.
     //  Each setting gets a value no other has, so one that skipped the conversion, or landed in its
     //  neighbour's field, is off by a factor nothing else explains.
     RegionSettingsDeg in;
@@ -601,6 +615,8 @@ TEST_CASE("settings in degrees become a region in radians, every one of them, wi
 }
 
 TEST_CASE("a region that cannot be evaluated is made into one that can") {
+    //  Catches: a dot count that is no solid kept, a dot size past where dots touch, a NaN setting falling back to zero
+    //  instead of its default, and a NaN turn kept.
     //  seven dots is no solid, and would read 0 everywhere
     CHECK(sanitised({RegionKind::Dots, 4, 7}).dots == 6);
     CHECK(sanitised({RegionKind::Sectors, 0, 6}).sectors == 1);
