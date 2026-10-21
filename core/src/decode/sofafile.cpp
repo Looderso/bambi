@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bambi/decode/sofafile.hpp"
 
+#include <cerrno>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -18,9 +19,15 @@ bool fail(std::string* error, const std::string& what) {
     return false;
 }
 
+/// Why libmysofa loaded nothing: the file missing, or not a SOFA file.
+bool unloaded(std::string* error, int err) {
+    return fail(error, err == ENOENT ? std::string("the file is not there")
+                                     : "not a SOFA file (libmysofa error " + std::to_string(err) + ")");
+}
+
 /// The loaded structure into a measured head; frees it either way.
 bool take(MYSOFA_HRTF* h, int err, MeasuredHead& out, std::string* error) {
-    if (h == nullptr) return fail(error, "not a SOFA file (libmysofa error " + std::to_string(err) + ")");
+    if (h == nullptr) return unloaded(error, err);
     if (const int check = mysofa_check(h); check != MYSOFA_OK) {
         mysofa_free(h);
         return fail(error, "not a SOFA file of impulse responses as AES69 lays them out (libmysofa check " +
@@ -88,7 +95,7 @@ std::string attribute(MYSOFA_HRTF* h, const char* name) {
 bool readSofaMatrix(const std::string& path, FirMatrix& out, std::string* error) {
     int err = 0;
     MYSOFA_HRTF* h = mysofa_load(path.c_str(), &err);
-    if (h == nullptr) return fail(error, "not a SOFA file (libmysofa error " + std::to_string(err) + ")");
+    if (h == nullptr) return unloaded(error, err);
     const std::string type = attribute(h, "DataType");
     if (type != "FIR-E") {
         mysofa_free(h);

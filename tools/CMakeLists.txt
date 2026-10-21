@@ -18,6 +18,13 @@ target_link_libraries(bambi-reverb-render PRIVATE bambi-reverb)
 bambi_warnings(bambi-reverb-render)
 target_include_directories(bambi-reverb-render PRIVATE common)
 
+# The Decoder's renderer reads the heads the plugin carries from core/data/decode.
+add_executable(bambi-decode-render decode-render/main.cpp)
+target_link_libraries(bambi-decode-render PRIVATE bambi-decode)
+bambi_warnings(bambi-decode-render)
+target_include_directories(bambi-decode-render PRIVATE common)
+target_compile_definitions(bambi-decode-render PRIVATE BAMBI_CORE_DIR="${PROJECT_SOURCE_DIR}/core")
+
 add_executable(bambi-bench bench/main.cpp)
 target_link_libraries(bambi-bench PRIVATE bambi-encode bambi-echo bambi-reverb)
 bambi_warnings(bambi-bench)

@@ -72,6 +72,7 @@ while IFS='|' read -r name args column; do
     case "$name" in
       echo-*) tool=bambi-echo-render ;;
       reverb-*) tool=bambi-reverb-render ;;
+      decode-*) tool=bambi-decode-render ;;
     esac
     build/$tool $args "$TMP/$name.arm.wav" --trace "$TMP/$name.arm.csv" >/dev/null 2>&1
     # shellcheck disable=SC2086

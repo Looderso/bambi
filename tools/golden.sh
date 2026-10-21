@@ -49,11 +49,12 @@ fail=0
 out=""
 while IFS='|' read -r name args column; do
   [ -z "$name" ] && continue
-  #  A scenario named echo-* is Echo's and reverb-* is Reverb's; each is rendered by its own tool.
+  #  A scenario named echo-* is Echo's, reverb-* Reverb's and decode-* the Decoder's; each is rendered by its own tool.
   tool=$RENDER
   case "$name" in
     echo-*) tool=build/bambi-echo-render ;;
     reverb-*) tool=build/bambi-reverb-render ;;
+    decode-*) tool=build/bambi-decode-render ;;
   esac
   # shellcheck disable=SC2086
   if ! $tool $args "$TMP/$name.wav" --trace "$TMP/$name.csv" >/dev/null 2>"$TMP/err"; then
@@ -138,6 +139,21 @@ for b in 1 64 128 333 1024; do
   h=$(hash_of "$TMP/r$b.wav")
   [ -z "$BASE" ] && BASE="$h"
   if [ "$h" != "$BASE" ]; then echo "FAIL  block size $b changes Reverb's render"; fail=1; fi
+done
+
+# And for the Decoder, whose rotations glide on a hop of their own and whose convolutions gather whole
+# partitions: the scene turning at rates, the head stepping, the level moving, the outputs rebuilt and a
+# locate, all mid-render.
+BASE=""
+for b in 1 64 128 333 1024; do
+  build/bambi-decode-render --order 3 --seconds 2 \
+          --set speakers=1 --set layout=4+7+0 --set headphone_channel=13 --set yaw_rate=70 --set pitch_rate=-25 \
+          --at 0.3 head.yaw=50 --at 0.5 level=-9 --at 0.7 through_layout=1 --at 0.9 weighting=max_re --at 1.1 reset \
+          --at 1.3 through_layout=0 --at 1.5 head.pitch=-20 \
+          --block "$b" "$TMP/d$b.wav" >/dev/null 2>&1
+  h=$(hash_of "$TMP/d$b.wav")
+  [ -z "$BASE" ] && BASE="$h"
+  if [ "$h" != "$BASE" ]; then echo "FAIL  block size $b changes the Decoder's render"; fail=1; fi
 done
 
 if [ "$fail" = "0" ]; then
