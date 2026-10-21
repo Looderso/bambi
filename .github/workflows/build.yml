@@ -16,6 +16,11 @@ on:
   pull_request:
     paths-ignore: ["**/*.md", "docs/**", ".claude/**"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: Build the plugins as a release is built (link-time optimised, universal on macOS)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,16 +72,20 @@ jobs:
       - if: runner.os == 'macOS'
         run: tools/golden.sh
 
+  #  A tag, or a manual run asked to, builds the plugins as a release: link-time optimised, universal on macOS.
+  #  Everything else only checks them, and builds them without link-time optimisation and for arm64 only on
+  #  macOS, which takes a fraction of the time. The two keep separate compiler caches: their objects differ.
   plugins:
     name: plugins · ${{ matrix.os }}
     needs: core
+    env:
+      BUILD: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.release) && 'release' || 'check' }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
             system: macos
-            options: -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64
           - os: windows-latest
             system: windows
           - os: ubuntu-latest
@@ -100,13 +109,20 @@ jobs:
             libxrender-dev libxi-dev libglu1-mesa-dev mesa-common-dev
       - uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: plugins-${{ matrix.os }}
+          key: plugins-${{ env.BUILD }}-${{ matrix.os }}
           max-size: 2G
-      - name: configure
+      - name: configure (${{ env.BUILD }})
         shell: bash
-        run: >
-          cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON -DBAMBI_COPY_PLUGIN=OFF
-          -DCMAKE_JOB_POOLS=link=2 -DCMAKE_JOB_POOL_LINK=link "${{ matrix.options }}"
+        run: |
+          options=()
+          if [ "$BUILD" = release ]; then
+            if [ "$RUNNER_OS" = macOS ]; then options+=("-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"); fi
+          else
+            options+=(-DBAMBI_LTO=OFF)
+            if [ "$RUNNER_OS" = macOS ]; then options+=(-DCMAKE_OSX_ARCHITECTURES=arm64); fi
+          fi
+          cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON -DBAMBI_COPY_PLUGIN=OFF \
+            -DCMAKE_JOB_POOLS=link=2 -DCMAKE_JOB_POOL_LINK=link "${options[@]}"
       - run: cmake --build build-plugin
       - name: check suites
         shell: bash

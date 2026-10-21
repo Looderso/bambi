@@ -48,7 +48,9 @@ SOFA) into the head file the plugin ships, and `tools/matrix/jconvolver-to-sofa.
 `uv run --with netCDF4 --with numpy`) turns a jconvolver filter set into the SOFA FIR-E matrix the Decoder loads.
 
 Linking the plugins with link-time optimisation needs a lot of memory. On a machine with little of it, link
-two at a time: `-DCMAKE_JOB_POOLS=link=2 -DCMAKE_JOB_POOL_LINK=link`.
+two at a time: `-DCMAKE_JOB_POOLS=link=2 -DCMAKE_JOB_POOL_LINK=link`. Or leave it out with `-DBAMBI_LTO=OFF`:
+each plugin then links in seconds instead of a minute or more, which is what CI does for a pull request. A release is
+always built with it.
 
 ## Checking a change
 
