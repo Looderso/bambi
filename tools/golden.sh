@@ -23,7 +23,7 @@
 # %.6f and are therefore tolerance goldens.
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 RENDER=build/bambi-render
 MANIFEST=tests/golden/manifest.txt

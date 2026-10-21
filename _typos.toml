@@ -1,0 +1,15 @@
+# Spelling in bambi's own text and code. Vendored code and the generated notices are not ours to correct.
+[files]
+extend-exclude = ["third_party/", "prototypes/", "build*/", "core/tests/doctest.h", "THIRD-PARTY-NOTICES.txt"]
+
+[default.extend-words]
+acn = "acn"        # Ambisonic Channel Number
+cll = "cll"        # composite loudness level, an HRTF measure
+berkley = "berkley" # D. A. Berkley, of Allen & Berkley's image method
+sord = "sord"      # the sord library, named in a JUCE flag
+
+[default.extend-identifiers]
+nd = "nd"
+iy = "iy"
+ba = "ba"
+tru = "tru"        # a deliberately malformed JSON literal in a test

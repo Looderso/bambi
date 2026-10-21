@@ -4,7 +4,7 @@
 # Save a file, see the tests run. Polls mtimes so it needs nothing installed.
 #   tools/watch.sh [ctest args...]
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 [ -d build ] || cmake -B build -G Ninja >/dev/null
 

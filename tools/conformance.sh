@@ -5,7 +5,7 @@
 #  Needs the plugin build, which also installs the plugins: cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON
 #    tools/conformance.sh [build-dir]
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 CONF="${1:-build-plugin}/tests/bambi-conformance_artefacts/Release/bambi-conformance"
 [ -x "$CONF" ] || { echo "conformance: bambi-conformance is not built ($CONF)"; exit 1; }
 exec "$CONF"

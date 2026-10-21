@@ -20,7 +20,7 @@
 #   tools/check-portable.sh --headers    guard 1 only (about half a minute)
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 CXX=${CXX:-c++}
 fail=0
@@ -65,7 +65,7 @@ echo "portable: nulling the golden scenarios across the two architectures"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 worst=""
-while IFS='|' read -r name args column; do
+while IFS='|' read -r name args _; do
     [ -z "$name" ] && continue
     # shellcheck disable=SC2086
     tool=bambi-render

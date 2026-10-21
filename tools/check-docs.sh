@@ -16,7 +16,7 @@
 #   tools/check-docs.sh                links, then bambi's own rules
 #   tools/check-docs.sh --skip-links   bambi's own rules only (CI runs lychee as its own step)
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 links=0
 if [ "${1:-}" != "--skip-links" ]; then

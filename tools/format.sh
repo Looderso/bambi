@@ -10,7 +10,7 @@
 # Needs clang-format (Homebrew: brew install llvm). CLANG_FORMAT overrides which binary.
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 CF=${CLANG_FORMAT:-}
 if [ -z "$CF" ]; then
