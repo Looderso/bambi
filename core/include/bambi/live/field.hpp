@@ -13,12 +13,12 @@
 /*  Which of a Live set's tracks and groups the field takes, and as what: the user's shape laid over the set as it
  *  is now.
  *
- *  A node at the top of the set that plays to Main with audio is in the field once the shape takes it -- until then
- *  it plays in Live, as every node does in a shape that takes none; a return never. Such a node is a source -- its stereo, whatever Live made of it, arrives on a pair of its own and is encoded -- unless it stays
- *  not taken, or is a group the user split: then it is a bus of the field, and each of its children that plays into
- *  it with audio is laid out in turn, a source or, a group split again, a bus inside it. A split group none of whose
- *  children reaches the field is not in it. The shape's marks on a node not where they apply are ignored: "taken"
- *  below the top, "split" on a node that is no group.
+ *  A node that plays towards Main with audio, at any depth, is in the field once the shape takes it -- until then it
+ *  plays in Live, as every node does in a shape that takes none; a return never. A node taken is a source: its
+ *  stereo, whatever Live made of it, arrives on a pair of its own and is encoded -- a group taken is encoded whole,
+ *  with all it holds, and what is taken below it means nothing. A group not taken that holds something taken, at any
+ *  depth, is a bus of the field holding just that; the rest of it plays on in Live, through the same group. So a
+ *  group can be in both: its fader, mute and sends reach both halves, its Live effects only the half in Live.
  *
  *  Each part of the field, and Main, may carry a chain of inserts, Echo or Reverb, each with an id of its own that
  *  stays with it as the chain changes around it, so its instance and its settings do. A chain on a node not in the
@@ -109,8 +109,9 @@ struct Routing {
 };
 
 struct Shape {
-    std::vector<TrackId> split;         ///< groups whose children the field takes one by one, the group their bus
-    std::vector<TrackId> taken;         ///< top-level nodes the field takes; every other plays in Live
+    /// Groups an older set split, taking all they held: read from it, then adopted (`adoptSplit`) and empty.
+    std::vector<TrackId> split;
+    std::vector<TrackId> taken;         ///< the nodes the field takes, at any depth; every other plays in Live
     std::vector<Chain> chains;          ///< one per node with inserts, Main's among them
     std::vector<TrackId> returns;       ///< Live's returns the field plays, its own
     std::vector<Sidechain> sidechains;  ///< the sources whose Encoder's sidechain hears another track
@@ -128,7 +129,7 @@ struct Shape {
 
 struct Part {
     TrackId node{0};
-    bool bus{false};  ///< a split group; otherwise a source, encoded from its pair
+    bool bus{false};  ///< a group not taken that holds something taken; otherwise a source, encoded from its pair
     int parent{-1};   ///< the bus Live has it in, by index into the field's parts; -1: none, at the top
     std::vector<Insert> inserts;
     TrackId sidechain{0};     ///< a source's: the track its Encoder's sidechain hears; 0 none
@@ -159,8 +160,13 @@ struct Field {
 
 Field layOut(const Tree& tree, const Shape& shape);
 
-/// Every node at the top of `tree` that plays to Main with audio taken into the field, besides those already.
+/// Every node at the top of `tree` that plays to Main with audio taken into the field, besides those already; in a
+/// group that is a bus, what it holds not yet taken instead, so the bus stays one.
 void takeAll(Shape& shape, const Tree& tree);
+
+/// An older set's split groups, over `tree`: each taken group it split replaced by what it held, at every depth,
+/// as that set laid it out, so the field is heard as it was; `split` is left empty. Nothing without any.
+void adoptSplit(Shape& shape, const Tree& tree);
 
 /// The insert `id` on `owner`'s chain moved to place `to` in it, the others keeping their order; `to` past the end
 /// is the end. Nothing when the chain has no such insert.

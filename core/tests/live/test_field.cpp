@@ -29,9 +29,11 @@ Tree set() {
                  node(6, Node::Kind::Return)}};
 }
 
-//  The field with every node at the top taken, as "route all" leaves it.
+//  The field with every node at the top taken, as "route all" leaves it; a shape written the way an older set kept
+//  it, its groups split, adopted first.
 Field laidOut(const Tree& tree, Shape shape) {
     takeAll(shape, tree);
+    adoptSplit(shape, tree);
     return layOut(tree, shape);
 }
 
@@ -48,6 +50,18 @@ TEST_CASE("a shape that takes nothing leaves every node in Live; route all takes
     CHECK(s.taken == std::vector<TrackId>{1});
     takeAll(s, set());
     CHECK(s.taken == std::vector<TrackId>{1, 5});  // what was taken stays, once
+}
+
+TEST_CASE("route all keeps a bus a bus: what it holds not yet taken is taken, never the group whole") {
+    //  Catches: a group holding a taken track taken whole by route all, which silences that track's Encoder and
+    //  inserts, or what the bus holds left in Live.
+    Shape s;
+    s.taken = {2};
+    takeAll(s, set());
+    CHECK(s.taken == std::vector<TrackId>{2, 3, 5});
+    const Field f = layOut(set(), s);
+    CHECK(f.sources() == std::vector<TrackId>{2, 3, 5});
+    CHECK(f.parts[0].bus);
 }
 
 TEST_CASE("taken, every node at the top is a source, a group with all it holds") {
@@ -77,10 +91,36 @@ TEST_CASE("a group split inside a split group is a bus inside the bus") {
     CHECK(f.parts[3] == Part{4, false, 2, {}, 0, {{Target::node(3), 0.0}}});
 }
 
-TEST_CASE("a node at the top not taken is not in the field; below the top the mark means nothing") {
-    //  Catches: a node not taken still given a pair, or a mark below the top taking a child out of its bus.
-    const Field f = layOut(set(), Shape{{1}, {1, 2}, {}, {}, {}, {}, {}, {}});
-    CHECK(f.sources() == std::vector<TrackId>{2, 3});
+TEST_CASE("a node taken below the top is taken alone: its groups are buses of just it, the rest stays in Live") {
+    //  Catches: a taken track's siblings taken with it, a group holding nothing taken made a bus, the nested track's
+    //  groups left out, or a node not taken given a pair.
+    const Field one = layOut(set(), Shape{{}, {2}, {}, {}, {}, {}, {}, {}});
+    CHECK(one.sources() == std::vector<TrackId>{2});
+    REQUIRE(one.parts.size() == 2);
+    CHECK(one.parts[0] == Part{1, true, -1, {}, 0, {{Target::main(), 0.0}}});
+    CHECK(one.parts[1] == Part{2, false, 0, {}, 0, {{Target::node(1), 0.0}}});
+    const Field deep = layOut(set(), Shape{{}, {4}, {}, {}, {}, {}, {}, {}});  // inside group 3, inside group 1
+    CHECK(deep.sources() == std::vector<TrackId>{4});
+    REQUIRE(deep.parts.size() == 3);
+    CHECK(deep.parts[1] == Part{3, true, 0, {}, 0, {{Target::node(1), 0.0}}});
+    CHECK(deep.parts[2] == Part{4, false, 1, {}, 0, {{Target::node(3), 0.0}}});
+}
+
+TEST_CASE("a group taken is encoded whole, and what is taken inside it means nothing") {
+    //  Catches: a track inside a group encoded whole encoded beside it, which would play it twice.
+    const Field f = layOut(set(), Shape{{}, {1, 4}, {}, {}, {}, {}, {}, {}});
+    CHECK(f.sources() == std::vector<TrackId>{1});
+}
+
+TEST_CASE("an older set's split groups are adopted as what they held, taken, and heard as they were") {
+    //  Catches: a split group adopted as taken whole, its children dropped, or the split kept to be adopted again.
+    Shape old{{1, 3}, {1, 5}, {}, {}, {}, {}, {}, {}};
+    adoptSplit(old, set());
+    CHECK(old.split.empty());
+    CHECK(old.taken == std::vector<TrackId>{2, 4, 5});
+    Shape half{{1}, {1}, {}, {}, {}, {}, {}, {}};  // 3 not split: taken whole
+    adoptSplit(half, set());
+    CHECK(half.taken == std::vector<TrackId>{2, 3});
 }
 
 TEST_CASE("under a split group, only what plays into it with audio; an empty bus is not in the field") {
@@ -153,9 +193,9 @@ TEST_CASE("a source without a pair is left out of the plan, and the parts after 
 TEST_CASE("a node's chain goes with its part, Main's with the field, and one on a node not in the field nowhere") {
     //  Catches: a chain on the wrong part, Main's lost, or a chain on a node left in Live played anyway.
     const Shape shape{
-        {1}, {1}, {{2, {{7, Effect::Echo, 0}}}, {kMain, {{8, Effect::Reverb, 0}}}, {5, {{9, Effect::Echo, 0}}}},
-        {},  {},  {},
-        {},  {}};
+        {}, {2, 3}, {{2, {{7, Effect::Echo, 0}}}, {kMain, {{8, Effect::Reverb, 0}}}, {5, {{9, Effect::Echo, 0}}}},
+        {}, {},     {},
+        {}, {}};
     const Field f = layOut(set(), shape);
     REQUIRE(f.parts.size() == 3);
     CHECK(f.parts[1].node == 2);
@@ -325,9 +365,9 @@ TEST_CASE("an insert's sidechain hears its source's pair, and silence once the s
     //  Catches: a sidechain on another track's pair, on a bus's or a node's left in Live -- neither arrives on a
     //  pair of its own -- or on a source the loop device had no pair for.
     const Shape shape{
-        {1}, {1}, {{2, {{7, Effect::Reverb, 3}, {8, Effect::Echo, 5}, {9, Effect::Echo, 1}, {10, Effect::Echo, 4}}}},
-        {},  {},  {},
-        {},  {}};
+        {}, {2, 3}, {{2, {{7, Effect::Reverb, 3}, {8, Effect::Echo, 5}, {9, Effect::Echo, 1}, {10, Effect::Echo, 4}}}},
+        {}, {},     {},
+        {}, {}};
     const Field f = layOut(set(), shape);                          // bus 1 { 2, 3 }; 5 in Live
     const FieldPlan fp = planOf(f, arrivalsOf({{2, 0}, {3, 6}}));  // track 4 is in group 3, encoded whole with it
     REQUIRE(fp.effects.size() == 4);

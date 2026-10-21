@@ -14,14 +14,15 @@ bool has(const std::vector<TrackId>& ids, TrackId id) { return std::find(ids.beg
 
 bool reaches(const Node& n) { return n.path == Node::Path::Main && n.kind != Node::Kind::Return && n.audio; }
 
-//  `n` into the field under `parent`. False when nothing of it reaches the field.
+//  `n` into the field under `parent`: a source when the shape takes it; a group not taken, as a bus of what is taken
+//  inside it; else nothing, as it plays in Live. False when nothing of it reaches the field.
 bool place(const Tree& tree, const Shape& shape, const Node& n, int parent, Field& field, int depth) {
-    const bool split = n.kind == Node::Kind::Group && has(shape.split, n.id);
-    if (!split) {
+    if (has(shape.taken, n.id)) {
         const TrackId from = shape.sidechainOf(n.id);
         field.parts.push_back({n.id, false, parent, shape.insertsOn(n.id), from == n.id ? 0 : from, {}});
         return true;
     }
+    if (n.kind != Node::Kind::Group) return false;
     const int bus = static_cast<int>(field.parts.size());
     field.parts.push_back({n.id, true, parent, shape.insertsOn(n.id), 0, {}});
     bool any = false;
@@ -206,7 +207,7 @@ std::vector<TrackId> Field::sources() const {
 Field layOut(const Tree& tree, const Shape& shape) {
     Field field;
     for (const Node& n : tree.nodes)
-        if (!n.parent && reaches(n) && has(shape.taken, n.id)) place(tree, shape, n, -1, field, 0);
+        if (!n.parent && reaches(n)) place(tree, shape, n, -1, field, 0);
     for (const Node& n : tree.nodes)
         if (n.kind == Node::Kind::Return && has(shape.returns, n.id))
             field.returns.push_back({n.id, shape.insertsOn(n.id), {}});
@@ -235,8 +236,51 @@ Field layOut(const Tree& tree, const Shape& shape) {
 }
 
 void takeAll(Shape& shape, const Tree& tree) {
+    //  a group that is a bus is not taken whole, which would silence what it holds: what it holds not yet taken is
+    const auto holdsTaken = [&](const auto& self, TrackId group, int depth) -> bool {
+        for (const Node& c : tree.nodes)
+            if (c.parent == group && c.id != group &&
+                (has(shape.taken, c.id) || (depth < 64 && self(self, c.id, depth + 1))))
+                return true;
+        return false;
+    };
+    const auto take = [&](const auto& self, const Node& n, int depth) -> void {
+        if (has(shape.taken, n.id)) return;
+        if (n.kind == Node::Kind::Group && depth < 64 && holdsTaken(holdsTaken, n.id, 0)) {
+            for (const Node& c : tree.nodes)
+                if (c.parent == n.id && c.id != n.id && reaches(c)) self(self, c, depth + 1);
+            return;
+        }
+        shape.taken.push_back(n.id);
+    };
     for (const Node& n : tree.nodes)
-        if (!n.parent && reaches(n) && !has(shape.taken, n.id)) shape.taken.push_back(n.id);
+        if (!n.parent && reaches(n)) take(take, n, 0);
+}
+
+void adoptSplit(Shape& shape, const Tree& tree) {
+    if (shape.split.empty()) return;
+    std::vector<TrackId> taken;
+    const auto put = [&](TrackId id) {
+        if (!has(taken, id)) taken.push_back(id);
+    };
+    //  as such a set laid it out: a split group's children that reach it, each a source or split again
+    const auto open = [&](const auto& self, const Node& n, int depth) -> void {
+        if (n.kind != Node::Kind::Group || !has(shape.split, n.id) || depth >= 64) {
+            put(n.id);
+            return;
+        }
+        for (const Node& child : tree.nodes)
+            if (child.parent == n.id && child.id != n.id && reaches(child)) self(self, child, depth + 1);
+    };
+    for (const TrackId id : shape.taken) {
+        const auto n = std::find_if(tree.nodes.begin(), tree.nodes.end(), [&](const Node& x) { return x.id == id; });
+        if (n == tree.nodes.end() || n->parent)
+            put(id);
+        else
+            open(open, *n, 0);
+    }
+    shape.taken = std::move(taken);
+    shape.split.clear();
 }
 
 void moveInsert(Shape& shape, TrackId owner, std::uint64_t id, std::size_t to) {
@@ -421,7 +465,7 @@ Json toJson(const Shape& shape) {
         chains.push(std::move(chain));
     }
     Json j = Json::object();
-    j.set("split", ids(shape.split));
+    if (!shape.split.empty()) j.set("split", ids(shape.split));  // an older set's, until a tree adopts it
     j.set("taken", ids(shape.taken));
     j.set("chains", std::move(chains));
     j.set("returns", ids(shape.returns));

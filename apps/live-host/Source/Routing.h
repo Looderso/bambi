@@ -123,7 +123,7 @@ private:
     juce::Rectangle<float> frame(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& name,
                                  juce::Colour stripe, bool inField, live::TrackId id);
     float tag(juce::Graphics& g, float x, float cy, const juce::String& label, bool inField);
-    float encoderChip(juce::Graphics& g, live::TrackId id, float x, float y, bool removable);
+    float encoderChip(juce::Graphics& g, live::TrackId id, float x, float y);
     float sidechainSlot(juce::Graphics& g, live::TrackId heard, Waiting pick, float x, float y);
     float chain(juce::Graphics& g, live::TrackId owner, float x, float y);
     float plus(juce::Graphics& g, live::TrackId owner, float x, float y);

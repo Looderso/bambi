@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <variant>
 
+#include "bambi/live/page.hpp"
+
 namespace bambi::live {
 
 namespace {
@@ -59,40 +61,15 @@ const Node* DeviceSession::trackOn(int pair) const {
     return nullptr;
 }
 
-std::vector<Message> DeviceSession::onTree(const Tree& t, bool adopt) {
-    if (adopt && treed_) {
-        const std::vector<TrackId> before = field_.sources();
-        const auto within = [&](const Node& n, TrackId group) {  // `n` anywhere below `group`
-            std::optional<TrackId> up = n.parent;
-            for (int depth = 0; up && depth < 64; ++depth) {
-                if (*up == group) return true;
-                const auto p = std::find_if(t.nodes.begin(), t.nodes.end(), [&](const Node& x) { return x.id == *up; });
-                up = p == t.nodes.end() ? std::nullopt : p->parent;
-            }
-            return false;
-        };
-        for (const Node& g : t.nodes) {
-            if (g.kind != Node::Kind::Group) continue;
-            if (std::find(shape_.split.begin(), shape_.split.end(), g.id) != shape_.split.end()) continue;
-            const bool holdsSource = std::any_of(t.nodes.begin(), t.nodes.end(), [&](const Node& n) {
-                return within(n, g.id) && std::find(before.begin(), before.end(), n.id) != before.end();
-            });
-            if (holdsSource) shape_.split.push_back(g.id);
-        }
-        //  and the group at the top that now holds them, taken as they were
-        for (const TrackId s : before) {
-            const auto n = std::find_if(t.nodes.begin(), t.nodes.end(), [&](const Node& x) { return x.id == s; });
-            if (n == t.nodes.end() || !n->parent) continue;
-            TrackId top = *n->parent;
-            for (int depth = 0; depth < 64; ++depth) {
-                const auto p = std::find_if(t.nodes.begin(), t.nodes.end(), [&](const Node& x) { return x.id == top; });
-                if (p == t.nodes.end() || !p->parent) break;
-                top = *p->parent;
-            }
-            if (std::find(shape_.taken.begin(), shape_.taken.end(), top) == shape_.taken.end())
-                shape_.taken.push_back(top);
-        }
-    }
+std::vector<Message> DeviceSession::onTree(const Tree& t, bool fromLive) {
+    adoptSplit(shape_, t);
+    //  a track the field plays, filed by Live into a group the field encodes whole: the group opens, as an Encoder
+    //  added there opens it, so the track keeps its Encoder and inserts
+    if (fromLive && treed_)
+        for (const TrackId s : field_.sources())
+            if (std::any_of(t.nodes.begin(), t.nodes.end(), [&](const Node& n) { return n.id == s; }) &&
+                roleOf(t, layOut(t, shape_), s) == Role::InGroup)
+                addEncoder(shape_, t, s);
     tree_ = t;
     treed_ = true;
     field_ = layOut(tree_, shape_);

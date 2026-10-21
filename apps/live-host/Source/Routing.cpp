@@ -362,15 +362,13 @@ void RoutingPage::menu(juce::Graphics& g) {
     } else if (m.kind == Menu::Kind::Encoder) {
         const live::Part* part = partOf(m.owner);
         const live::TrackId heard = part != nullptr ? part->sidechain : 0;
-        const auto n =
-            std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == m.owner; });
-        const bool top = n == tree_.nodes.end() || !n->parent;
         items.push_back({{"sidechain", heard != 0 ? nameOf(heard) : juce::String(), true},
                          [this, m] { begin({Waiting::Kind::Sidechain, m.owner, 0}); }});
         if (heard != 0)
             items.push_back(
                 {{"no sidechain", "", true}, [this, m] { setSidechain({Waiting::Kind::Sidechain, m.owner, 0}, 0); }});
-        if (top && !live::isInput(m.owner))
+        //  any track's, at any depth: it alone goes back, its group a bus of what stays taken
+        if (!live::isInput(m.owner))
             items.push_back({{"back to Live", "", true}, [this, m] {
                                  change([this, m](live::Shape& s) { live::removeEncoder(s, tree_, field_, m.owner); });
                              }});
@@ -625,8 +623,7 @@ float RoutingPage::tag(juce::Graphics& g, float x, float cy, const juce::String&
     return box.getRight() + rt::gap * 2.0f;
 }
 
-float RoutingPage::encoderChip(juce::Graphics& g, live::TrackId id, float x, float y, bool removable) {
-    (void)removable;
+float RoutingPage::encoderChip(juce::Graphics& g, live::TrackId id, float x, float y) {
     const auto chip = ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, ui::productName(Product::Encoder),
                                    colour::text, colour::identity(Product::Encoder), false);
     if (idle() && pairOf(id) >= 0)
@@ -701,7 +698,7 @@ float RoutingPage::liveLine(juce::Graphics& g, const Node& n, int depth, float x
             });
         cx = whole.getRight() + rt::gap * 2.0f;
     } else {
-        cx = encoderChip(g, n.id, cx, cy, !n.parent) + rt::gap;
+        cx = encoderChip(g, n.id, cx, cy) + rt::gap;
     }
     if (inField) {
         //  the Encoder's sidechain leads the chain: on the second line with it when the first has no room
@@ -730,7 +727,7 @@ float RoutingPage::inputLine(juce::Graphics& g, const live::HostInput& in, float
     const auto nameAt = frame(g, box, juce::String(in.name), colour::label, true, in.id);
     const float cy = box.getY() + rt::boxHeight / 2.0f;
     float cx = tag(g, nameAt.getRight() + rt::gap, cy, in.width == 2 ? "stereo" : "mono", true);
-    cx = encoderChip(g, in.id, cx, cy, false) + rt::gap;
+    cx = encoderChip(g, in.id, cx, cy) + rt::gap;
     const float chainY = twoLines ? cy + rt::row : cy;
     const float chainX = sidechainSlot(g, part != nullptr ? part->sidechain : 0, {Waiting::Kind::Sidechain, in.id, 0},
                                        twoLines ? nameAt.getRight() + rt::gap : cx, chainY);

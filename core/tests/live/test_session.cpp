@@ -260,14 +260,16 @@ TEST_CASE("a new shape lays the field out again: a split group's children get pa
     CHECK(s.field().parts[0].bus);
 }
 
-TEST_CASE("the shape goes into every save and comes back with a restore") {
-    //  Catches: a shape the set never keeps, so a reopened set plays every group whole again.
+TEST_CASE("the shape goes into every save and comes back with a restore; an older set's split, adopted") {
+    //  Catches: a shape the set never keeps, so a reopened set plays every group whole again, or an older set's
+    //  split group adopted but saved as it came, to be adopted again.
     DeviceSession first = taking();
-    first.reshape(Shape{{1}, {1}, {}, {}, {}, {}, {}, {}});  // 3 not taken
+    first.reshape(Shape{{1}, {1}, {}, {}, {}, {}, {}, {}});  // as an older set kept it; 3 not taken
     first.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(3)}});
+    CHECK(first.shape() == Shape{{}, {2}, {}, {}, {}, {}, {}, {}});
     DeviceSession second = taking();
     second.answer(Restore{first.save().state});
-    CHECK(second.shape() == Shape{{1}, {1}, {}, {}, {}, {}, {}, {}});
+    CHECK(second.shape() == Shape{{}, {2}, {}, {}, {}, {}, {}, {}});
     second.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(3)}});
     CHECK(pairOf(second, 2) == pairOf(first, 2));
     CHECK(pairOf(second, 3) == -1);
@@ -283,23 +285,41 @@ TEST_CASE("the routing says which of Live's returns the field plays, so the devi
     CHECK(only<Route>(given).silent.empty());
 }
 
-TEST_CASE("tracks bambi plays grouped in Live keep their Encoders: the new group is split, its tracks its bus's") {
+TEST_CASE("tracks bambi plays grouped in Live keep their Encoders: their new groups become their buses") {
     //  Catches: a group formed around sources taken whole -- their Encoders, inserts and positions gone -- or a
-    //  nested group left whole inside the split one, or a group of untouched tracks split for nothing.
-    DeviceSession s = taking();
+    //  group of untouched tracks taken for nothing.
+    DeviceSession s;
+    s.reshape(Shape{{}, {2, 3, 4}, {}, {}, {}, {}, {}, {}});
     s.answer(Tree{{node(2), node(3), node(4)}});  // three sources at the top
     REQUIRE(pairOf(s, 2) >= 0);
     //  2 and 3 grouped into 1, which is grouped into 9 with a fresh group 5 of a new track 6
     s.answer(Tree{{node(9, Node::Kind::Group), node(1, Node::Kind::Group, TrackId{9}),
                    node(2, Node::Kind::Track, TrackId{1}), node(3, Node::Kind::Track, TrackId{1}),
                    node(5, Node::Kind::Group, TrackId{9}), node(6, Node::Kind::Track, TrackId{5}), node(4)}});
-    const auto& split = s.shape().split;
-    CHECK(std::find(split.begin(), split.end(), TrackId{1}) != split.end());
-    CHECK(std::find(split.begin(), split.end(), TrackId{9}) != split.end());
-    CHECK(std::find(split.begin(), split.end(), TrackId{5}) == split.end());  // new tracks only: whole
+    CHECK(s.shape().taken == std::vector<TrackId>{2, 3, 4});
     CHECK(pairOf(s, 2) >= 0);
     CHECK(pairOf(s, 3) >= 0);
-    CHECK(pairOf(s, 5) >= 0);  // the fresh group, whole
+    CHECK(pairOf(s, 5) == -1);  // the fresh group, in Live with its new track
+    CHECK(pairOf(s, 6) == -1);
+    REQUIRE(s.field().parts.size() == 5);  // bus 9 { bus 1 { 2, 3 } }, 4
+    CHECK(s.field().parts[0].bus);
+    CHECK(s.field().parts[1].bus);
+}
+
+TEST_CASE("a track bambi plays, filed by Live into a group encoded whole, opens the group and keeps its Encoder") {
+    //  Catches: the track's mark hidden under the group's, so its Encoder, inserts and pair are gone and it is heard
+    //  through the group's Encoder instead -- or the group's other tracks dropped to Live.
+    DeviceSession s;
+    s.reshape(Shape{{}, {1, 4}, {}, {}, {}, {}, {}, {}});
+    s.answer(Tree{{node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(4)}});
+    const int pair = pairOf(s, 4);
+    REQUIRE(pair >= 0);
+    //  Live files 4 into group 1
+    s.answer(Tree{
+        {node(1, Node::Kind::Group), node(2, Node::Kind::Track, TrackId{1}), node(4, Node::Kind::Track, TrackId{1})}});
+    CHECK(pairOf(s, 4) == pair);
+    CHECK(pairOf(s, 2) >= 0);  // heard in the field before, through the group: taken in its place
+    CHECK(pairOf(s, 1) == -1);
 }
 
 TEST_CASE("a group the user takes whole stays whole") {
@@ -340,9 +360,9 @@ TEST_CASE("the arrangement the device sends is kept as sent, the last one standi
     CHECK(s.arrangement().locators.size() == 1);
 }
 
-TEST_CASE("a set opens with everything in Live; a track taken gets a pair, and grouped in Live its group is taken") {
-    //  Catches: tracks moved before the user takes any, a taken track's pair lost when Live groups it -- the group
-    //  split but left untaken, so nothing of it reaches the field -- or untaken tracks taken with it.
+TEST_CASE("a set opens with everything in Live; a track taken gets a pair, and keeps it grouped in Live, alone") {
+    //  Catches: tracks moved before the user takes any, a taken track's pair lost when Live groups it, or the
+    //  tracks grouped with it taken along.
     DeviceSession s;
     s.answer(Tree{{node(2), node(3), node(4)}});
     CHECK(s.pairs().empty());
@@ -354,8 +374,8 @@ TEST_CASE("a set opens with everything in Live; a track taken gets a pair, and g
     CHECK(pairOf(s, 3) == -1);
     s.answer(Tree{{node(9, Node::Kind::Group), node(1, Node::Kind::Group, TrackId{9}),
                    node(2, Node::Kind::Track, TrackId{1}), node(3, Node::Kind::Track, TrackId{1}), node(4)}});
-    CHECK(s.shape().taken == std::vector<TrackId>{2, 9});
+    CHECK(s.shape().taken == std::vector<TrackId>{2});
     CHECK(pairOf(s, 2) == pair);
-    CHECK(pairOf(s, 3) >= 0);  // inside the split group, beside its sibling: Live's grouping, as for any bus
+    CHECK(pairOf(s, 3) == -1);  // grouped with it in Live, and left there
     CHECK(pairOf(s, 4) == -1);
 }

@@ -111,8 +111,12 @@ the shape and the lanes in the device's dict, so in the Live set; audio settings
 
 - **Sources.** A track bambi plays arrives on its own stereo pair and gets an Encoder; an input of the chosen
   interface (a microphone) is also a source, heard as soon as it arrives. A source past the loop device's pairs is left out.
-- **Wires.** Every node plays along wires into a bus, a return, Main or one Decoder's own mix. A group is a bus (the field is a tree) or is left whole in Live; a group is taken whole or split,
-  never both with its tracks. A split group's fader is its bus level.
+- **Wires.** Every node plays along wires into a bus, a return, Main or one Decoder's own mix. Any track or group is taken on its own, at any depth,
+  and what is not taken plays on in Live where it is. A group taken is encoded whole, with all it holds; a group
+  not taken that holds something taken is a bus of the field (the field is a tree) holding just that, while the rest
+  of it plays through the same group in Live. Its fader is the bus's level and its mute and sends reach both halves;
+  its Live effects only the half in Live ([0260](../decisions/0260-any-track-or-group-is-taken-on-its-own-a-group.md)). A shape that marks a group split, as an older set's does, is read as
+  all its tracks taken.
 - **Inserts.** Any part of the field, and Main, can carry a chain of Echo and Reverb, each with an id and state of its
   own. A chain whose track Live no longer has is shown as orphaned, removable, and attachable whole to another part.
 - **Returns.** Each return has a mode: *live* (it stays in Live, a stereo return with Live's effect playing to Main

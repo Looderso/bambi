@@ -1339,8 +1339,7 @@ int routingHolds() {
                   node(3, live::Node::Kind::Track, 1, "snare"), node(4, live::Node::Kind::Track, std::nullopt, "bass"),
                   node(9, live::Node::Kind::Return, std::nullopt, "A reverb")};
     live::Shape shape;
-    shape.taken = {1};
-    shape.split = {1};
+    shape.taken = {2, 3};  // the drums' two tracks: the group their bus
     shape.returns = {9};
     shape.decoders = {1, 2};
     shape.chains = {{2, {{7, live::Effect::Echo, 0}, {8, live::Effect::Reverb, 0}, {6, live::Effect::Echo, 0}}}};
