@@ -30,6 +30,7 @@ SpeakerDesign fieldDesign(const SpeakerDesign& array, int fieldOrder) {
     }
     field.points = array.points;
     field.imaginary = array.imaginary;
+    field.centre = array.centre;
     field.ring = array.ring;
     return field;
 }

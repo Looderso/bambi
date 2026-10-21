@@ -53,9 +53,9 @@ Face faceOf(const std::array<int, 3>& corner, const std::vector<Vec3>& at) {
  *  along either diagonal, and the panning would favour one. Each such group is split instead into a fan around its
  *  centre, a virtual point whose gain its corners share equally, so the panning is as even as the group.
  *  `faces` come in as the hull's triangles over `points`; they go out with the fans, and `points` grows by the
- *  centres (flagged imaginary) while `polygons` lists each centre's corners. */
+ *  centres (flagged imaginary and in `isCentre`) while `polygons` lists each centre's corners. */
 void fanCoplanar(std::vector<std::array<int, 3>>& faces, std::vector<Vec3>& points, std::vector<bool>& imaginary,
-                 std::vector<std::vector<int>>& polygons) {
+                 std::vector<bool>& isCentre, std::vector<std::vector<int>>& polygons) {
     const int n = static_cast<int>(faces.size());
     std::vector<Vec3> normal(sz(n));
     std::vector<double> offset(sz(n));
@@ -103,6 +103,7 @@ void fanCoplanar(std::vector<std::array<int, 3>>& faces, std::vector<Vec3>& poin
         const int id = static_cast<int>(points.size());
         points.push_back(centre);
         imaginary.push_back(true);
+        isCentre.push_back(true);
         polygons.push_back(corners);
         for (std::size_t k = 0; k < corners.size(); ++k)
             out.push_back({id, corners[k], corners[(k + 1) % corners.size()]});
@@ -183,6 +184,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
     for (const Loudspeaker& s : speakers) {
         out.points.push_back(fromAzEl(s.azimuthDeg * kDeg2Rad, s.elevationDeg * kDeg2Rad));
         out.imaginary.push_back(s.imaginary);
+        out.centre.push_back(false);
     }
     const double ringZ = std::sin(kRingDeg * kDeg2Rad);
     bool below = false, above = false, ring = true;
@@ -281,10 +283,12 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         if (!below) {
             out.points.push_back({0.0, 0.0, -1.0});
             out.imaginary.push_back(true);
+            out.centre.push_back(false);
         }
         if (!above) {
             out.points.push_back({0.0, 0.0, 1.0});
             out.imaginary.push_back(true);
+            out.centre.push_back(false);
         }
         const int n = static_cast<int>(out.points.size());
         if (n < 4) return fail(error, "too few points for a hull");
@@ -321,7 +325,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         }
         std::free(faceIndices);
         std::vector<std::vector<int>> polygons;
-        fanCoplanar(triangles, out.points, out.imaginary, polygons);
+        fanCoplanar(triangles, out.points, out.imaginary, out.centre, polygons);
         out.triangles = triangles;
         std::vector<Face> faces;
         faces.reserve(triangles.size());

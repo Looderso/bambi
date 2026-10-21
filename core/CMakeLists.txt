@@ -117,6 +117,7 @@ add_library(bambi-decode STATIC
   src/decode/speakers.cpp
   src/decode/layouts.cpp
   src/decode/virtualarray.cpp
+  src/decode/fill.cpp
   src/decode/headrotation.cpp
   src/decode/orientation.cpp
   src/decode/params.cpp
@@ -235,6 +236,7 @@ add_executable(bambi-tests
   tests/decode/test_speakers.cpp
   tests/decode/test_layouts.cpp
   tests/decode/test_virtualarray.cpp
+  tests/decode/test_fill.cpp
   tests/decode/test_headrotation.cpp
   tests/decode/test_orientation.cpp
   tests/decode/test_params.cpp

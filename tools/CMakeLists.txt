@@ -26,7 +26,8 @@ target_include_directories(bambi-decode-render PRIVATE common)
 target_compile_definitions(bambi-decode-render PRIVATE BAMBI_CORE_DIR="${PROJECT_SOURCE_DIR}/core")
 
 add_executable(bambi-bench bench/main.cpp)
-target_link_libraries(bambi-bench PRIVATE bambi-encode bambi-echo bambi-reverb)
+target_link_libraries(bambi-bench PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode)
+target_compile_definitions(bambi-bench PRIVATE BAMBI_CORE_DIR="${PROJECT_SOURCE_DIR}/core")   # the shipped heads
 bambi_warnings(bambi-bench)
 
 add_executable(bambi-link link/main.cpp)
