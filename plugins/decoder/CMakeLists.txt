@@ -105,15 +105,19 @@ if(APPLE)
   target_compile_options(bambi-decoder-helper PRIVATE -mmacosx-version-min=14.0)
   target_link_options(bambi-decoder-helper PRIVATE -mmacosx-version-min=14.0)
   #  Nested after whichever side was built: the plugin, or the helper alone, whose change would otherwise never reach
-  #  the installed bundles. The script skips a bundle that is not there yet.
+  #  the installed bundles. The installed bundle is nested into only when the build copies plugins there. The script
+  #  skips a bundle that is not there yet.
   foreach(format VST3 CLAP)
     add_dependencies(BambiDecoder_${format} bambi-decoder-helper)
     string(TOLOWER "${format}" ext)
-    set(installed "$ENV{HOME}/Library/Audio/Plug-Ins/${format}/${BAMBI_DECODER_NAME}.${ext}")
+    set(installed "")
+    if(BAMBI_COPY_PLUGIN)
+      set(installed "$ENV{HOME}/Library/Audio/Plug-Ins/${format}/${BAMBI_DECODER_NAME}.${ext}")
+    endif()
     foreach(built BambiDecoder_${format} bambi-decoder-helper)
       add_custom_command(TARGET ${built} POST_BUILD
           COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/Helper/nest.sh "$<TARGET_BUNDLE_DIR:bambi-decoder-helper>"
-                  "$<TARGET_BUNDLE_DIR:BambiDecoder_${format}>" "${installed}"
+                  "$<TARGET_BUNDLE_DIR:BambiDecoder_${format}>" ${installed}
           COMMENT "nesting the helper into the ${format} bundle")
     endforeach()
   endforeach()

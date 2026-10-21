@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Nests the helper app inside a plugin bundle's Contents/Helpers and signs the bundle again (ad hoc), since a
-# bundle changed after signing would not launch. Run after the build, on the built bundle and on the installed one.
+# bundle changed after signing would not launch. Run after the build, on the built bundle and, when the build installs
+# plugins, on the installed one.
 #
 #   nest.sh <helper.app> <plugin bundle> [<plugin bundle> ...]
 set -euo pipefail
