@@ -69,6 +69,12 @@ needs no plugin build.
 | `tools/check-portable.sh` | macOS only: every public header compiles alone, and an x86-64 build renders what the native one does |
 | `tools/conformance.sh` | every installed plugin, in both formats, negotiating its buses as a host would |
 
+**Sanitizers** run in a build tree of their own: `cmake -B build-asan -G Ninja -DBAMBI_SANITIZE=address,undefined`
+(memory errors, undefined behaviour), `thread` (data races) or `realtime` (an allocation, lock or system call inside
+`processBlock`; needs Clang 20 or later, e.g. `brew install llvm` and `-DCMAKE_CXX_COMPILER=$(brew --prefix llvm)/bin/clang++`).
+`tools/validate-plugins.sh` runs pluginval over every built VST3 and clap-validator over every CLAP. clang-tidy
+reads `.clang-tidy` (`run-clang-tidy -p <build> 'core/src/.*'`).
+
 **Commit hooks** run the fast C++ checks — formatting, theme roles, layers — on what is staged, and the
 headers guard before a push: `pre-commit install --hook-type pre-commit --hook-type pre-push`, once per checkout.
 

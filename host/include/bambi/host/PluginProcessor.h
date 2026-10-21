@@ -18,6 +18,7 @@
 #include "bambi/host/LoadMeter.h"
 #include "bambi/host/Parameters.h"
 #include "bambi/link/handoff.hpp"
+#include "bambi/math/realtime.hpp"
 #include "bambi/mod/modulation.hpp"
 #include "bambi/patch/presets.hpp"
 #include "bambi/patch/state.hpp"
@@ -67,7 +68,7 @@ public:
     bool hasEditor() const override { return true; }
 
     /// The plugin's own DSP load is measured around `renderBlock`, where it runs.
-    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) final;
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) BAMBI_REALTIME final;
     using AudioProcessor::processBlock;
     /*  The host's bypass is this plugin's own parameter, so a block arriving here is the same block:
         processBlock reads the parameter and fades. The engine keeps running underneath, so the
