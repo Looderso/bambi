@@ -6,6 +6,7 @@
 #include <set>
 
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/HostDrag.h"
 #include "bambi/ui/ProductName.h"
 #include "bambi/ui/Widgets.h"
 
@@ -438,18 +439,20 @@ float RoutingPage::wireChips(juce::Graphics& g, live::TrackId from, float x, flo
                                        true);
         const Target to = w.to;
         const double at = w.db;
-        auto pressX = std::make_shared<float>(0.0f);
+        auto pressedAt = std::make_shared<juce::Point<float>>();
         if (idle()) {
             addGestureArea(
                 chip.box.withTrimmedRight(chip.cross.getWidth()),
-                [this, pressX](juce::Point<float> p) {
-                    *pressX = p.x;
+                [this, pressedAt](juce::Point<float> p) {
+                    *pressedAt = p;
                     dragging_ = shape_;
                 },
-                [this, pressX, from, to, at](juce::Point<float> p, bool fine) {
-                    const double db = std::clamp(
-                        std::round((at + (p.x - *pressX) * rt::levelDrag * (fine ? 0.1 : 1.0)) * 10.0) / 10.0,
-                        live::kSilentDb, live::kLoudestDb);
+                [this, pressedAt, from, to, at](juce::Point<float> p, bool fine) {
+                    //  as every value is dragged: across or up, the same distance per step, finer with shift
+                    const double moved = ui::dragShare(*pressedAt, p, 0.0f, ui::theme::controls::dragPixels, fine) *
+                                         rt::levelDrag * ui::theme::controls::dragPixels;
+                    const double db =
+                        std::clamp(std::round((at + moved) * 10.0) / 10.0, live::kSilentDb, live::kLoudestDb);
                     live::Shape next = dragging_;
                     live::setWire(next, field_, from, {to, db});
                     shape_ = next;
@@ -617,9 +620,7 @@ float RoutingPage::tagWidth() { return ui::textWidth(ui::smallFont(), "in group"
 //  What the node is, in a small outlined tag: in ink while bambi plays it, in the label's colour while Live does.
 float RoutingPage::tag(juce::Graphics& g, float x, float cy, const juce::String& label, bool inField) {
     const juce::Rectangle<float> box{x, cy - rt::tagHeight / 2.0f, tagWidth(), rt::tagHeight};
-    g.setColour(inField ? colour::ruleStrong : colour::rule);
-    g.drawRect(box, ui::theme::stroke::rule);
-    ui::text(g, label, ui::smallFont(), inField ? colour::text : colour::label, box, juce::Justification::centred);
+    ui::drawTag(g, box, label, inField);
     return box.getRight() + rt::gap * 2.0f;
 }
 

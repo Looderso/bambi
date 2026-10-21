@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <functional>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <optional>
 #include <string_view>
@@ -35,6 +36,11 @@ juce::String fromCore(std::string_view s);
 
 /// A source's name as a tab shows it: "lfo 1", "sc attack". The manifest says whose sources.
 juce::String sourceLabel(const ModManifest& m, int slot);
+
+/// A toggle's square: filled when on, outlined when off, grey when it cannot be used. `inside` is what the square
+/// carries -- a tap's number -- in the inverse ink while it is filled.
+void drawToggleBox(juce::Graphics& g, juce::Rectangle<float> box, bool on, bool enabled = true,
+                   const juce::String& inside = {});
 
 /// A toggle in the scene's corner: a small square and a lowercase label. A press on `hit` must never start an orbit.
 struct SceneToggle {
@@ -118,6 +124,9 @@ struct Chip {
 };
 Chip drawChip(juce::Graphics& g, juce::Point<float> topLeft, float height, const juce::String& label, juce::Colour ink,
               std::optional<juce::Colour> accent = std::nullopt, bool closable = false);
+/// A chip's quiet kind, a tag: what a thing is, offering nothing -- "bambi", "live", "bus" -- in small text inside
+/// an outline, strong while the thing is in play. `box` is the caller's, so tags in a column line up.
+void drawTag(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& label, bool strong);
 /// How wide `drawChip` draws `label`, at `height`, with a bar and a cross or without.
 float chipWidth(const juce::String& label, float height, bool accent, bool closable);
 /// Whether an output plays, as the Decoder's tabs mark it: a light well, a dark square in it while it plays.
@@ -148,6 +157,31 @@ void drawPlayGlyph(juce::Graphics& g, juce::Rectangle<float> box, bool playing);
 /// Stop, as a square outlined in `box`. The play glyph alone says whether it plays.
 void drawStopGlyph(juce::Graphics& g, juce::Rectangle<float> box);
 
+/*  A ruler of beats and bars, drawn once for every timeline in the suite: a tick at each beat (or each bar), a
+    numbered bar's tick half the ruler's height and every other a quarter, in the rule's ink, rising from the bottom
+    edge -- or hanging from the top, for a ruler under what it measures. A bar's number stands beside its tick. */
+struct BeatRuler {
+    juce::Rectangle<float> area;
+    double from{0.0}, to{0.0};       ///< the beats it spans, 0 the first bar's first
+    std::function<float(double)> x;  ///< where a beat stands
+    int beatsPerBar{4};
+    bool beats{true};        ///< a tick at every beat; false, at every bar
+    int numberEvery{1};      ///< every bar numbered, or every n-th, as room allows
+    bool hangs{false};       ///< the ticks from the top edge, the numbers under them
+    float labelInset{0.0f};  ///< from the edge the ticks leave to the numbers: room for what is drawn there
+};
+void drawBeatRuler(juce::Graphics& g, const BeatRuler& ruler);
+
+/// A value where a tile does not fit -- a tap's level in its row, a loudspeaker's angle in its table: the number in
+/// a box of the panel's ground, in the matrix's type, dragged as a tile's box is. No bar. A selected row's ground
+/// stops before it: they share the colour.
+void drawValueCell(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& value, bool enabled,
+                   juce::Justification justification = juce::Justification::centredRight);
+
+/// The selected row -- the one whose settings a panel shows -- on the highlight ground, the selection bar down its
+/// left edge in the selection colour. A loaded row (the current preset) is the chosen ink instead; a row under the
+/// pointer or the keyboard's cursor, the highlight alone.
+void drawSelectedRow(juce::Graphics& g, juce::Rectangle<float> row);
 /// The cross that closes something temporary, in `box`. Returns the area a press on it should take.
 juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> box);
 

@@ -123,6 +123,18 @@ anyone editing it. The Encoder's own window is [encoder/UI.md](../encoder/UI.md)
   than the space, it scrolls sideways with the wheel under a thin bar, and the shown output is brought into view. In
   lines that wrap on the live host's device cards, where the page has room for every channel. An empty cell carries
   its number, a placed one the channel it plays (L, R, 1…). Never a dropdown, never cells that shrink.
+  Every cell is painted by the strip: the panel's ground, or its owner's ink; dashed for the host's own copy or an
+  output's own channel while it does not play; two things on one, framed strong with their count.
+- **A selected row** -- the one whose settings a panel shows -- is the highlight with the selection bar down its left
+  edge (`ui::drawSelectedRow`); the loaded row (the current preset) is ink; a row under the pointer, the highlight
+  alone.
+- **A value where a tile does not fit** (a tap's level, a loudspeaker's angle) is a value cell: the number on the
+  panel's ground in the matrix's type, dragged as a tile's box is (`ui::drawValueCell`); a selected row's ground
+  stops before it. Every value drags the same way, across or up, finer with shift.
+- **Beats and bars are one ruler** (`ui::drawBeatRuler`): a numbered bar's tick half its height, every other a
+  quarter, rising from its foot, or hanging from its top under what it measures.
+- **A toggle's square** carries a number when it stands for one (a tap), and **a tag** is a chip that offers
+  nothing: what a thing is, strong while it is in play (`ui::drawToggleBox`, `ui::drawTag`).
 - **A text field is a value's box with a caret.** There is one, the instance's name: the panel's ground, the rule's
   outline going strong when it has the keyboard, no menu of JUCE's own. Return and escape give the keyboard back,
   because the next key after naming a track is the host's space bar.

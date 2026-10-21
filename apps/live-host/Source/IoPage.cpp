@@ -42,13 +42,10 @@ float gridBottom(float top, int count, int columns) {
     return ui::tilesBottom(top + ctl::tileBoxPadY, count, ui::theme::type::value, columns) + ctl::tileBoxPadY;
 }
 
-//  A thing in a tab's list: its frame, and while chosen the selected row's ground inside the strong rule.
+//  A thing in a tab's list: its frame, and while it is what a click on a channel places, the selected row's marks.
 void itemFrame(juce::Graphics& g, juce::Rectangle<float> box, bool chosen) {
-    if (chosen) {
-        g.setColour(colour::highlight);
-        g.fillRect(box);
-    }
-    ui::drawFrame(g, box, chosen ? colour::ruleStrong : colour::rule, ui::theme::stroke::rule, false);
+    if (chosen) ui::drawSelectedRow(g, box);
+    ui::drawFrame(g, box, colour::rule, ui::theme::stroke::rule, false);
 }
 
 //  A thing's colour before its name: filled in its owner's colour, or dashed in it for the host's own copy.
@@ -543,24 +540,18 @@ float IoPage::cards(juce::Graphics& g, float x, float top, float width, const li
             for (const Block& b : blocks)
                 for (std::size_t n = 0; n < b.channels.size(); ++n)
                     if (b.channels[n] == c) here.push_back({&b, n});
-            const bool clash = here.size() > 1;
             const Block* owner = here.empty() ? nullptr : here.front().first;
             //  in its owner's colour; the host's own copy dashed in it, and empty
-            const bool filled = owner != nullptr && !owner->host && !clash;
-            if (filled) {
-                g.setColour(owner->ink);
-                g.fillRect(box);
+            ui::ChannelCell cell{juce::String(i + 1), {}, {}, static_cast<int>(here.size())};
+            if (owner != nullptr) {
+                const std::size_t n = here.front().second;
+                cell.label = n < owner->labels.size() ? owner->labels[n] : juce::String();
+                if (owner->host)
+                    cell.dashed = owner->ink;
+                else
+                    cell.fill = owner->ink;
             }
-            const juce::Colour frame = clash ? colour::ruleStrong : owner == nullptr ? colour::rule : owner->ink;
-            ui::drawFrame(g, box, frame, ui::theme::stroke::rule, clash || (owner != nullptr && owner->host));
-            const juce::String label = clash              ? juce::String::fromUTF8("\xc3\x97") + juce::String(here.size())
-                                       : owner == nullptr ? juce::String(i + 1)
-                                       : here.front().second < owner->labels.size()
-                                           ? owner->labels[here.front().second]
-                                           : juce::String();
-            ui::text(g, label, ui::smallFont(),
-                     filled ? colour::textInverse : owner == nullptr ? colour::inactive : colour::text, box,
-                     juce::Justification::centred);
+            ui::ChannelStrip::paintCell(g, box, cell);
             //  under the first channel of each run: what plays there, as far as the next run on its line
             for (const auto& [b, n] : here) {
                 if (n != 0 || b->caption.isEmpty()) continue;

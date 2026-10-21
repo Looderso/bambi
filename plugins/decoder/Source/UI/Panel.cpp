@@ -172,23 +172,17 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
         const bool byHp = d.headphonesPlay && std::find(hpAt.begin(), hpAt.end(), ch) != hpAt.end();
         const bool bySp = d.speakersPlay && std::find(spAt.begin(), spAt.end(), ch) != spAt.end();
         const bool own = std::find(mineAt.begin(), mineAt.end(), ch) != mineAt.end();
-        g.setColour(byHp ? colour::text : bySp ? colour::label : colour::panel);
-        g.fillRect(box);
-        g.setColour(colour::text);
-        if (own && !playing) {
-            //  this output's own, not playing: dashed, as the scene draws what is not placed
-            juce::Path edge;
-            edge.addRectangle(box.reduced(stroke::toggle / 2.0f));
-            bambi::ui::strokeDashed(g, edge, stroke::unplacedDash, juce::PathStrokeType(stroke::toggle));
-        }
         //  a host's row counts each device's channels from 1
         int number = ch;
         for (int count : groups) {
             if (!onHost || number <= count) break;
             number -= count;
         }
-        text(g, juce::String(number), smallFont(), byHp || bySp ? colour::textInverse : colour::label, box,
-             juce::Justification::centred);
+        ChannelCell cell{juce::String(number), {}, {}, 0};
+        if (byHp || bySp) cell.fill = byHp ? colour::text : colour::label;
+        if (own && !playing)
+            cell.dashed = colour::text;  // this output's own, not playing: as the scene draws what is not placed
+        ChannelStrip::paintCell(g, box, cell);
         const auto shown = box.getIntersection(strip.viewport);
         if (model().showingAnother()) continue;
         if (onHost) {
@@ -703,13 +697,13 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
             for (int c = 0; c < 6; ++c) {
                 const juce::Rectangle<float> cell{cx, y, colW[c], rowH};
                 const bool dragged = c <= 3 && !(c == 0 && s.imaginary);
-                if (dragged) {
-                    //  a value is a box, as the matrix's cell is
-                    g.setColour(colour::panel);
-                    g.fillRect(cell.reduced(1.0f, (rowH - static_cast<float>(metrics::matrixCell)) / 2.0f));
-                }
-                text(g, cells[c], font(type::matrix), ink, cell.reduced(static_cast<float>(space::grid) / 2.0f, 0.0f),
-                     c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight);
+                const auto just = c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight;
+                if (dragged)
+                    drawValueCell(g, cell.reduced(1.0f, (rowH - static_cast<float>(metrics::matrixCell)) / 2.0f),
+                                  cells[c], mine, just);
+                else
+                    text(g, cells[c], font(type::matrix), ink,
+                         cell.reduced(static_cast<float>(space::grid) / 2.0f, 0.0f), just);
                 cx += colW[c];
                 switch (c) {
                     case 0:

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <numeric>
 
+#include "bambi/ui/Draw.h"
 #include "bambi/ui/Theme.h"
 
 namespace bambi::ui {
@@ -57,6 +58,28 @@ ChannelStrip ChannelStrip::wrapped(float x, float top, float width, int count, f
 float ChannelStrip::groupLeft(std::size_t group) const {
     return group < firstOfGroup_.size() && firstOfGroup_[group] < cells.size() ? cells[firstOfGroup_[group]].getX()
                                                                                : viewport.getX();
+}
+
+void ChannelStrip::paintCell(juce::Graphics& g, juce::Rectangle<float> box, const ChannelCell& cell) {
+    namespace colour = theme::colour;
+    const bool clash = cell.clash > 1;
+    g.setColour(!clash && cell.fill ? *cell.fill : colour::panel);
+    g.fillRect(box);
+    if (clash) {
+        g.setColour(colour::ruleStrong);
+        g.drawRect(box, theme::stroke::rule);
+    } else if (cell.dashed) {
+        juce::Path edge;
+        edge.addRectangle(box.reduced(theme::stroke::toggle / 2.0f));
+        g.setColour(*cell.dashed);
+        strokeDashed(g, edge, theme::stroke::unplacedDash, juce::PathStrokeType(theme::stroke::toggle));
+    }
+    const juce::String label = clash ? juce::String::fromUTF8("\xc3\x97") + juce::String(cell.clash) : cell.label;
+    text(g, label, smallFont(),
+         !clash && cell.fill    ? colour::textInverse
+         : clash || cell.dashed ? colour::text
+                                : colour::label,
+         box, juce::Justification::centred);
 }
 
 void ChannelStrip::paintBar(juce::Graphics& g, juce::Colour ink, float scroll) const {

@@ -2,6 +2,7 @@
 #include "bambi/ui/Widgets.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "bambi/mod/matrix.hpp"
 #include "bambi/mod/sources.hpp"
@@ -255,6 +256,12 @@ Chip drawChip(juce::Graphics& g, juce::Point<float> topLeft, float height, const
     return c;
 }
 
+void drawTag(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& label, bool strong) {
+    g.setColour(strong ? theme::colour::ruleStrong : theme::colour::rule);
+    g.drawRect(box, theme::stroke::rule);
+    text(g, label, smallFont(), strong ? theme::colour::text : theme::colour::label, box, juce::Justification::centred);
+}
+
 juce::Rectangle<float> drawCloseCross(juce::Graphics& g, juce::Rectangle<float> box) {
     g.setColour(theme::colour::label);
     g.drawLine(box.getX(), box.getY(), box.getRight(), box.getBottom(), theme::stroke::glyph);
@@ -333,6 +340,24 @@ float sceneToggleWidth(const juce::String& label) {
     return theme::scene::toggleBox + theme::scene::toggleGap + textWidth(labelFont(), label);
 }
 
+void drawToggleBox(juce::Graphics& g, juce::Rectangle<float> box, bool on, bool enabled, const juce::String& inside) {
+    namespace colour = theme::colour;
+    //  filled when on, outlined when off; grey only when it cannot be used
+    if (on) {
+        g.setColour(enabled ? colour::chosen : colour::inactive);
+        g.fillRect(box);
+    } else {
+        g.setColour(enabled ? colour::text : colour::inactive);
+        g.drawRect(box, theme::stroke::toggle);
+    }
+    if (inside.isNotEmpty())
+        text(g, inside, labelFont(),
+             on        ? colour::textInverse
+             : enabled ? colour::text
+                       : colour::inactive,
+             box, juce::Justification::centred);
+}
+
 SceneToggle paintSceneToggle(juce::Graphics& g, juce::Rectangle<float> strip, float rightEdge,
                              const juce::String& label, bool on, bool enabled) {
     namespace colour = theme::colour;
@@ -345,14 +370,7 @@ SceneToggle paintSceneToggle(juce::Graphics& g, juce::Rectangle<float> strip, fl
                                      strip.getY() + (strip.getHeight() - sc::toggleBox) / 2.0f, sc::toggleBox,
                                      sc::toggleBox};
 
-    //  filled when on, outlined when off; grey only when it cannot be used
-    if (on) {
-        g.setColour(enabled ? colour::chosen : colour::inactive);
-        g.fillRect(box);
-    } else {
-        g.setColour(enabled ? colour::text : colour::inactive);
-        g.drawRect(box, theme::stroke::toggle);
-    }
+    drawToggleBox(g, box, on, enabled);
     //  greyed, never hidden: what is not in use here is inert, and says so
     text(g, label, font, enabled ? colour::label : colour::inactive,
          {labelX, strip.getY(), wide + 1.0f, strip.getHeight()});
@@ -422,6 +440,41 @@ std::optional<float> drawNiceGrid(juce::Graphics& g, juce::Rectangle<float> plot
         if (tick.zero) zeroRow = row;
     }
     return zeroRow;
+}
+
+void drawBeatRuler(juce::Graphics& g, const BeatRuler& r) {
+    namespace br = theme::beatRuler;
+    const int step = r.beats ? 1 : r.beatsPerBar;
+    const auto first = static_cast<long>(std::ceil(r.from / step)) * step;
+    const float h = r.area.getHeight();
+    for (auto beat = std::max(0L, first); static_cast<double>(beat) <= r.to; beat += step) {
+        const float x = r.x(static_cast<double>(beat));
+        const long bar = beat / r.beatsPerBar;
+        const bool numbered = beat % r.beatsPerBar == 0 && bar % std::max(1, r.numberEvery) == 0;
+        const float tick = h * (numbered ? br::barTick : br::beatTick);
+        g.setColour(theme::colour::rule);
+        g.fillRect(x, r.hangs ? r.area.getY() : r.area.getBottom() - tick, theme::stroke::rule, tick);
+        if (numbered)
+            text(g, juce::String(bar + 1), smallFont(), theme::colour::label,
+                 {x + br::labelGap, r.hangs ? r.area.getCentreY() : r.area.getY() + r.labelInset, br::label,
+                  h / 2.0f - (r.hangs ? 0.0f : r.labelInset)},
+                 juce::Justification::centredLeft);
+    }
+}
+
+void drawValueCell(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& value, bool enabled,
+                   juce::Justification justification) {
+    g.setColour(theme::colour::panel);
+    g.fillRect(box);
+    text(g, value, font(theme::type::matrix), enabled ? theme::colour::text : theme::colour::inactive,
+         box.reduced(static_cast<float>(theme::space::grid) / 2.0f, 0.0f), justification);
+}
+
+void drawSelectedRow(juce::Graphics& g, juce::Rectangle<float> row) {
+    g.setColour(theme::colour::highlight);
+    g.fillRect(row);
+    g.setColour(theme::colour::selected());
+    g.fillRect(row.withWidth(theme::stroke::selectionBar));
 }
 
 }  // namespace bambi::ui

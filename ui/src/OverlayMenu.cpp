@@ -79,13 +79,7 @@ OverlayMenuAreas paintOverlayMenu(juce::Graphics& g, float rightEdge, float top,
         }
         float x = box.getX() + sh::overlayRowPad + (row.part ? sh::overlayPartIndent - sc::toggleBox : 0.0f);
         const juce::Rectangle<float> tick{x, box.getCentreY() - sc::toggleBox / 2.0f, sc::toggleBox, sc::toggleBox};
-        if (selection.chosen(row.key)) {
-            g.setColour(dim ? colour::inactive : colour::chosen);
-            g.fillRect(tick);
-        } else {
-            g.setColour(dim ? colour::inactive : colour::text);
-            g.drawRect(tick, theme::stroke::toggle);
-        }
+        drawToggleBox(g, tick, selection.chosen(row.key), !dim);
         x = tick.getRight() + sh::overlayRowGap;
         if (!row.part) {
             const float r = theme::shape::otherSourceDot;

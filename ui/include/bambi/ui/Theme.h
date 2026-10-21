@@ -509,6 +509,15 @@ namespace rail
     inline constexpr float transportGap = 10.0f;  ///< between them
 } // namespace rail
 
+// ---- a ruler of beats and bars: Echo's taps, the live host's timeline ---------------------------
+namespace beatRuler
+{
+    inline constexpr float barTick   = 0.5f;    ///< a numbered bar's tick, as a share of the ruler's height
+    inline constexpr float beatTick  = 0.25f;   ///< every other tick
+    inline constexpr float labelGap  = 3.0f;    ///< from a bar's tick to its number
+    inline constexpr float label     = 40.0f;   ///< room for a bar's number, and so the least between two numbered
+}
+
 // ---- a run of channels: the decoder's bus in a row, the live host's device cards wrapped -----------
 namespace channelStrip
 {
@@ -532,7 +541,7 @@ namespace timeline
     inline constexpr float locator   = 5.0f;    ///< a locator's mark
     inline constexpr float loopBrace = 4.0f;    ///< the loop's band at the ruler's top
     inline constexpr float reach     = 6.0f;    ///< pixels within which a click finds a locator
-    inline constexpr float barLabel  = 40.0f;   ///< the least room between two numbered bars
+    inline constexpr float barLabel  = 40.0f;   ///< the least room a clip's name is drawn in
     inline constexpr float pad       = 14.0f;   ///< the tree's inset
     inline constexpr float gap       = 3.0f;    ///< from a mark to its label: a bar's number, a locator's name
     inline constexpr int   frameMs   = 33;      ///< the playhead redrawn this often while Live plays
@@ -573,7 +582,7 @@ namespace routing
     inline constexpr float hearsLine  = 14.0f;   ///< a line of what a Decoder hears
     inline constexpr float headingGap = 18.0f;   ///< before a group's heading
     inline constexpr float ringGap    = 2.0f;    ///< from a box to the ring round it
-    inline constexpr float levelDrag  = 0.25f;   ///< dB per pixel a wire's level moves; a tenth of it with shift
+    inline constexpr float levelDrag  = 0.25f;   ///< dB per pixel a wire's level moves, across or up; finer with shift
     inline constexpr float menuWidth  = 150.0f;
     inline constexpr float labelPad   = 4.0f;    ///< round a level on a wire, over what it crosses
     inline constexpr float sendRoom   = 48.0f;   ///< kept at a line's right end for "send"
