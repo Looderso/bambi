@@ -139,6 +139,7 @@ TEST_CASE("one session listed from many processes at once is one entry, with its
         std::atomic<bool> go{false};
         std::atomic<int> opened{0};
         std::vector<std::thread> threads;
+        threads.reserve(8);
         for (int k = 0; k < 8; ++k)
             threads.emplace_back([&, k] {
                 LinkDirectory d(t.name);
@@ -206,6 +207,7 @@ TEST_CASE("a listed session id is never torn, however entries churn") {
     std::atomic<long> seen{0}, torn{0};
     std::atomic<int> opened{0};
     std::vector<std::thread> writers;
+    writers.reserve(4);
     for (int w = 0; w < 4; ++w)
         writers.emplace_back([&, w] {
             LinkDirectory d(t.name);

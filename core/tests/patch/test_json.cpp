@@ -119,7 +119,7 @@ TEST_CASE("malformed input fails with a message rather than silently") {
 TEST_CASE("deep nesting is refused rather than blowing the stack") {
     //  Catches: the depth limit raised past what a document can nest.
     std::string deep(200, '[');
-    deep += "1";
+    deep += '1';
     deep.append(200, ']');
     std::string err;
     Json::parse(deep, &err);

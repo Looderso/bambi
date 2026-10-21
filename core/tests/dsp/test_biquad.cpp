@@ -35,12 +35,14 @@ TEST_CASE("a shelf has its gain on its own side and none on the other, and never
         //  half the gain at the corner, and between 0 and the gain everywhere: a slope of 1 has no bump
         CHECK(dB(magnitudeAt(low, 250.0, kFs)) == doctest::Approx(gain / 2.0).epsilon(0.02));
         CHECK(dB(magnitudeAt(high, 4000.0, kFs)) == doctest::Approx(gain / 2.0).epsilon(0.02));
-        for (double hz = 10.0; hz < 23000.0; hz *= 1.1)
+        for (int step = 0; step < 82; ++step) {  // 10 Hz to 23 kHz, a tenth higher each
+            const double hz = 10.0 * std::pow(1.1, step);
             for (const BiquadCoeffs& c : {low, high}) {
                 const double g = dB(magnitudeAt(c, hz, kFs));
                 CHECK(g <= std::max(0.0, gain) + 1e-6);
                 CHECK(g >= std::min(0.0, gain) - 1e-6);
             }
+        }
     }
 }
 

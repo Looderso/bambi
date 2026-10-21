@@ -81,7 +81,12 @@ double rt60(const std::vector<float>& w) {
 
 }  // namespace
 
-const std::vector<Vec3> kAround{fromAzEl(0.3, 0.1), fromAzEl(2.0, -0.4), fromAzEl(-1.2, 0.6), fromAzEl(3.0, 0.0)};
+/// Four directions the room is heard from.
+const std::vector<Vec3>& around() {
+    static const std::vector<Vec3> directions{fromAzEl(0.3, 0.1), fromAzEl(2.0, -0.4), fromAzEl(-1.2, 0.6),
+                                              fromAzEl(3.0, 0.0)};
+    return directions;
+}
 
 TEST_CASE("the decay that is set is the decay of the whole room, at mid") {
     //  Catches: the tail given another band's decay than the mid's.
@@ -91,7 +96,7 @@ TEST_CASE("the decay that is set is the decay of the whole room, at mid") {
     for (const ReverbFrame& s : {preset(5.0, RoomShape::Room, 0.5, 0.42, 0.75, 2.0), hall(),
                                  preset(38.0, RoomShape::Tall, 6.5, 0.35, 0.5, 14.0)}) {
         engine.set(s);
-        const double measured = rt60(mids(omniResponse(engine, kAround[0], s.room.decay * 2.0 + 0.5)));
+        const double measured = rt60(mids(omniResponse(engine, around()[0], s.room.decay * 2.0 + 0.5)));
         INFO("set ", s.room.decay, " measured ", measured);
         CHECK(std::abs(measured / s.room.decay - 1.0) < 0.06);
     }
@@ -113,8 +118,8 @@ TEST_CASE("reflections and tail are one room: what is heard is what the balance 
         CHECK(b.roomEnergy > b.mirrorEnergy);
         CHECK(b.tailEnergy == doctest::Approx(b.roomEnergy - b.mirrorEnergy));
         double heard = 0.0;
-        for (const Vec3& u : kAround)
-            heard += energy(omniResponse(engine, u, s.room.decay * 2.0 + 0.5), 0.0, 100.0) / kAround.size();
+        for (const Vec3& u : around())
+            heard += energy(omniResponse(engine, u, s.room.decay * 2.0 + 0.5), 0.0, 100.0) / around().size();
         const double a = engine.room().diffusion, asHeard = (1.0 - a) * (1.0 - a) + a * a;
         const double expected = (0.75 * b.mirrorEnergy + asHeard * b.tailEnergy) / b.roomEnergy;
         INFO("heard ", heard, " expected ", expected);
@@ -122,8 +127,8 @@ TEST_CASE("reflections and tail are one room: what is heard is what the balance 
         CHECK(heard < 1.0);
         //  and before the mixing time it is the reflections that are heard: most of their energy is there
         double early = 0.0;
-        for (const Vec3& u : kAround)
-            early += energy(omniResponse(engine, u, 0.3), 0.0, engine.room().mixingTime) / kAround.size();
+        for (const Vec3& u : around())
+            early += energy(omniResponse(engine, u, 0.3), 0.0, engine.room().mixingTime) / around().size();
         CHECK(early > 0.6 * 0.75 * b.mirrorEnergy / b.roomEnergy);
     }
 }
@@ -142,7 +147,7 @@ TEST_CASE("the tail takes over from the reflections without a step, at the level
         engine.set(s);
         const int count = 30;
         std::vector<double> env(count, 0.0);
-        for (const Vec3& u : kAround) {
+        for (const Vec3& u : around()) {
             const auto w = omniResponse(engine, u, 0.5);
             for (int i = 0; i < count; ++i) env[static_cast<std::size_t>(i)] += energy(w, i * 0.01, i * 0.01 + 0.03);
         }
@@ -157,7 +162,7 @@ TEST_CASE("the tail takes over from the reflections without a step, at the level
         const double tm = engine.room().mixingTime, rt = engine.room().rtMid, a = engine.room().diffusion;
         const ReverbBalance b = engine.balance();
         double late = 0.0;
-        for (const Vec3& u : kAround) late += energy(omniResponse(engine, u, 1.5), 2.0 * tm, 10.0) / kAround.size();
+        for (const Vec3& u : around()) late += energy(omniResponse(engine, u, 1.5), 2.0 * tm, 10.0) / around().size();
         const double given = ((1.0 - a) * (1.0 - a) + a * a) * b.tailEnergy / b.roomEnergy *
                              std::exp(-13.8 * (2.0 * tm - b.preDelaySeconds) / rt);
         INFO("the tail past twice the mixing time: ", 10.0 * std::log10(late / given), " dB against the balance");
@@ -247,16 +252,16 @@ TEST_CASE("the level is a level, and the quality switch changes density, not lou
     engine.prepare(3, kFs);
     ReverbFrame s = hall();
     engine.set(s);
-    const double reference = energy(omniResponse(engine, kAround[0], 4.0), 0.0, 100.0);
+    const double reference = energy(omniResponse(engine, around()[0], 4.0), 0.0, 100.0);
     s.levelDb = -6.0;
     engine.set(s);
-    CHECK(std::abs(energy(omniResponse(engine, kAround[0], 4.0), 0.0, 100.0) / (reference * std::pow(10.0, -0.6)) -
+    CHECK(std::abs(energy(omniResponse(engine, around()[0], 4.0), 0.0, 100.0) / (reference * std::pow(10.0, -0.6)) -
                    1.0) < 0.01);
     s.levelDb = 0.0;
     for (const int lines : {8, 32}) {
         s.tailLines = lines;
         engine.set(s);
-        const auto w = omniResponse(engine, kAround[0], 4.0);
+        const auto w = omniResponse(engine, around()[0], 4.0);
         INFO("lines ", lines);
         CHECK(std::abs(10.0 * std::log10(energy(w, 0.0, 100.0) / reference)) < 1.5);  // within 1.5 dB
         CHECK(rt60(mids(w)) == doctest::Approx(1.9).epsilon(0.08));

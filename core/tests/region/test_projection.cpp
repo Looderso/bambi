@@ -403,7 +403,8 @@ TEST_CASE("a gain at a direction is the matrix's gain on a wave from there, and 
         /*  Catches: gainAt reading the region at the point, which jumps from 0 to 1 when the edge passes. */
         const Vec3 d = unit({std::cos(70.0 * kDeg2Rad), std::sin(70.0 * kDeg2Rad), 0.0});
         double last = -1.0, biggest = 0.0;
-        for (double size = 5.0; size <= 175.0; size += 1.0) {
+        for (int deg = 5; deg <= 175; ++deg) {
+            const double size = deg;
             Region r;
             r.kind = RegionKind::Spot;
             r.size = size * kDeg2Rad;

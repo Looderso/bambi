@@ -191,7 +191,7 @@ TEST_CASE("the button, open host and the transport are remembered; a device gone
     CHECK(s.on());
     CHECK(s.shows() == 1);
     REQUIRE(s.transport().has_value());
-    CHECK(s.transport()->ppq == 4.0);
+    CHECK(s.transport().value().ppq == 4.0);
     s.disconnected();
     CHECK_FALSE(s.on());
     CHECK_FALSE(s.connected());

@@ -13,8 +13,8 @@ TEST_CASE("a track's clip runs on from its last report at the tempo, only while 
     CHECK(clock.playing(1) == 2);
     CHECK(clock.playing(9) == -1);
     //  120 bpm at 48 kHz: a quarter note every 24000 samples
-    CHECK(*clock.position(1, 2, 48000 + 24000, 120.0, 48000.0) == 2.0);
-    CHECK(*clock.position(1, 2, 48000 + 96000, 120.0, 48000.0) == 1.0);  // looped
+    CHECK(clock.position(1, 2, 48000 + 24000, 120.0, 48000.0).value() == 2.0);
+    CHECK(clock.position(1, 2, 48000 + 96000, 120.0, 48000.0).value() == 1.0);  // looped
     CHECK_FALSE(clock.position(1, 0, 48000, 120.0, 48000.0).has_value());
     clock.receive({1, -1, 0.0, 0.0, 0.0, false}, 60000);
     CHECK(clock.playing(1) == -1);

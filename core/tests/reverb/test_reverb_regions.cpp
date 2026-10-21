@@ -311,7 +311,8 @@ TEST_CASE("a growing send or return admits the tail gradually, not one line at a
     const double full = energy(render(engine, hall(), kFront, 1.6), C, 0.6, 1.6);
     for (const bool send : {true, false}) {
         double last = -1.0, biggest = 0.0;
-        for (double size = 10.0; size <= 120.0; size += 3.0) {
+        for (int step = 0; step < 37; ++step) {  // 10 to 118 degrees
+            const double size = 10.0 + 3.0 * step;
             ReverbFrame s = hall();
             (send ? s.send : s.returnRegion) = spot(0.0, size * kDeg2Rad, 0.0);
             const double e = energy(render(engine, s, kFront, 1.6), C, 0.6, 1.6);

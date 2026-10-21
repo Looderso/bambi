@@ -26,6 +26,7 @@ TrajectoryState converted(GeneratorType g, int nodes = 16) {
 //  A circle of `nodes` nodes on the equator, fitted as any chain is.
 FitResult circle(TrajectoryState& s, int nodes) {
     std::vector<Vec3> dense;
+    dense.reserve(1500);
     for (int i = 0; i < 1500; ++i) dense.push_back(fromAzEl(i / 1500.0 * 2.0 * kPi, 0.0));
     return fitNodes(s, dense, nodes, true);
 }

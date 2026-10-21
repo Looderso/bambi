@@ -24,7 +24,7 @@ double hostPpq(std::int64_t sample, double bpm) { return static_cast<double>(sam
  *  sub-blocks that all carry the HOST block's reading, as a CLAP wrapper does. Returns the position
  *  of every control step, pinned to the timeline as the control grid pins it. */
 std::vector<double> play(std::int64_t start, std::int64_t total, std::int64_t block, double bpm,
-                         std::vector<std::int64_t> split = {}) {
+                         const std::vector<std::int64_t>& split = {}) {
     BeatClock clock;
     std::vector<double> steps;
     for (std::int64_t t = start; t < start + total; t += block) {

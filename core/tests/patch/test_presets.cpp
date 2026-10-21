@@ -32,6 +32,7 @@ PresetLibrary echoLibrary(const fs::path& root) {
 
 std::vector<std::string> paths(const std::vector<PresetRef>& refs) {
     std::vector<std::string> out;
+    out.reserve(refs.size());
     for (const auto& r : refs) out.push_back((r.factory ? "f:" : "u:") + presetPath(r));
     return out;
 }
@@ -49,7 +50,7 @@ TEST_CASE("a typed name: a slash makes the folder, one level deep") {
     CHECK_FALSE(parsePresetPath("").has_value());
     CHECK_FALSE(parsePresetPath(" / ").has_value());
     CHECK_FALSE(parsePresetPath("..").has_value());
-    CHECK(presetPath(*parsePresetPath("drums/tight room")) == "drums/tight room");
+    CHECK(presetPath(parsePresetPath("drums/tight room").value()) == "drums/tight room");
 }
 
 TEST_CASE("a typed name cannot leave the preset directory") {
@@ -57,11 +58,11 @@ TEST_CASE("a typed name cannot leave the preset directory") {
     //  ".." loses its dots, so no segment can climb
     const auto ref = parsePresetPath("../../etc/passwd");
     REQUIRE(ref.has_value());
-    CHECK(ref->folder == "etc");
-    CHECK(ref->name == "passwd");
+    CHECK(ref.value().folder == "etc");
+    CHECK(ref.value().name == "passwd");
     Scratch scratch("climb");
     auto lib = echoLibrary(scratch.dir);
-    const auto file = lib.fileOf(*ref).lexically_normal().string();
+    const auto file = lib.fileOf(ref.value()).lexically_normal().string();
     CHECK(file.starts_with(scratch.dir.lexically_normal().string()));
 }
 
@@ -184,8 +185,8 @@ TEST_CASE("a library: save, list, load, in list order") {
 
     const auto back = lib.load({false, "songs", "outro"});
     REQUIRE(back.has_value());
-    CHECK(back->params[0] == m[0].max);
-    CHECK(sameSound(Product::Echo, m, *back, s));
+    CHECK(back.value().params[0] == m[0].max);
+    CHECK(sameSound(Product::Echo, m, back.value(), s));
     CHECK_FALSE(lib.load({false, "songs", "nothing"}).has_value());
 
     //  a second library over the same directory finds them: they are files, not a session's
@@ -342,8 +343,8 @@ TEST_CASE("default is the fresh patch the plugin hands over, not the manifest's"
     PresetLibrary lib(Product::Encoder, m, fresh, {}, scratch.dir);
     const auto loaded = lib.load(kDefaultPreset);
     REQUIRE(loaded.has_value());
-    CHECK(loaded->trajectory.genParams[0] == 0.25);
-    CHECK(loaded->identity.label.empty());
+    CHECK(loaded.value().trajectory.genParams[0] == 0.25);
+    CHECK(loaded.value().identity.label.empty());
 }
 
 TEST_CASE("Reverb's factory rooms are built from the room table, not from a copy of it") {
@@ -364,14 +365,14 @@ TEST_CASE("Reverb's factory rooms are built from the room table, not from a copy
             m, static_cast<ReverbPreset>(room),
             [&](int at, float normalised) {
                 ++touched;
-                CHECK(loaded->params[static_cast<std::size_t>(at)] ==
+                CHECK(loaded.value().params[static_cast<std::size_t>(at)] ==
                       doctest::Approx(fromNormalised(m, at, normalised)));
             },
             roomState);
         CHECK(touched >= 7);
         //  and the room's selection and shape came with it, as state
-        CHECK(loaded->room == roomState);
-        CHECK(loaded->room.preset == room);
+        CHECK(loaded.value().room == roomState);
+        CHECK(loaded.value().room.preset == room);
         //  and everything the table does not list is as a fresh instance has it
         PluginState expected{m};
         applyPreset(
@@ -380,9 +381,9 @@ TEST_CASE("Reverb's factory rooms are built from the room table, not from a copy
                 expected.params[static_cast<std::size_t>(at)] = fromNormalised(m, at, normalised);
             },
             expected.room);
-        CHECK(sameSound(Product::Reverb, m, *loaded, expected));
+        CHECK(sameSound(Product::Reverb, m, loaded.value(), expected));
     }
-    CHECK_FALSE(sameSound(Product::Reverb, m, *lib.load(lib.all()[1]), *lib.load(lib.all()[6])));
+    CHECK_FALSE(sameSound(Product::Reverb, m, lib.load(lib.all()[1]).value(), lib.load(lib.all()[6]).value()));
 }
 
 namespace {

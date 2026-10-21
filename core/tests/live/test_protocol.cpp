@@ -20,8 +20,8 @@ T read(const std::string& line) {
     std::string error;
     const auto m = parse(line, &error);
     REQUIRE_MESSAGE(m.has_value(), error);
-    REQUIRE(std::holds_alternative<T>(*m));
-    return std::get<T>(*m);
+    REQUIRE(std::holds_alternative<T>(m.value()));
+    return std::get<T>(m.value());
 }
 
 template <typename T>
@@ -147,7 +147,7 @@ TEST_CASE("every message comes back from the wire as it went") {
     CHECK(again(sp) == sp);
     const auto stopped = parse(R"({"type": "slot", "id": 4})");
     REQUIRE(stopped.has_value());
-    CHECK(std::get<SlotPlay>(*stopped).slot == -1);
+    CHECK(std::get<SlotPlay>(stopped.value()).slot == -1);
     (void)again(Busy{});
     (void)again(Refresh{});
     (void)again(Show{});

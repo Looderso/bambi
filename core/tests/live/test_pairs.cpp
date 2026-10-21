@@ -56,6 +56,7 @@ TEST_CASE("no pair is given twice, and new tracks fill the gaps from the lowest"
     CHECK(pairOf(a, 9) == 4);
     CHECK(pairOf(a, 10) == 6);
     std::vector<int> used;
+    used.reserve(a.pairs.size());
     for (const TrackPair& p : a.pairs) used.push_back(p.pair);
     std::sort(used.begin(), used.end());
     CHECK(std::adjacent_find(used.begin(), used.end()) == used.end());

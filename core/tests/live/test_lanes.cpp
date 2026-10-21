@@ -11,10 +11,10 @@ TEST_CASE("a lane's value runs straight between points, holds before the first a
     //  Catches: a step where a ramp belongs, a value before the first point taken as zero, the last not held.
     const std::vector<LanePoint> p{{4.0, -30.0}, {8.0, 30.0}, {12.0, 0.0}};
     CHECK_FALSE(valueAt({}, 1.0).has_value());
-    CHECK(*valueAt(p, 0.0) == -30.0);
-    CHECK(*valueAt(p, 6.0) == 0.0);
-    CHECK(*valueAt(p, 10.0) == 15.0);
-    CHECK(*valueAt(p, 99.0) == 0.0);
+    CHECK(valueAt(p, 0.0).value() == -30.0);
+    CHECK(valueAt(p, 6.0).value() == 0.0);
+    CHECK(valueAt(p, 10.0).value() == 15.0);
+    CHECK(valueAt(p, 99.0).value() == 0.0);
 }
 
 TEST_CASE("points stay in time order: put at their time, moved only between their neighbours, removed") {

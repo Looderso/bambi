@@ -22,8 +22,8 @@ TEST_CASE("uuid: format and round trip") {
 
     const auto back = Uuid::parse(s);
     REQUIRE(back.has_value());
-    CHECK(*back == u);
-    CHECK(back->toString() == s);
+    CHECK(back.value() == u);
+    CHECK(back.value().toString() == s);
 }
 
 TEST_CASE("uuid: parse rejects malformed input rather than guessing") {

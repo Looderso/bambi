@@ -53,7 +53,8 @@ TEST_CASE("capWeights: correct at both limits") {
 
     SUBCASE("monotonically non-increasing in alpha, per order") {
         std::array<double, 8> a{}, b{};
-        for (double deg = 5; deg < 175; deg += 5) {
+        for (int step = 1; step < 35; ++step) {  // 5 to 170 degrees
+            const double deg = 5.0 * step;
             capWeights(deg * kDeg2Rad, 5, a);
             capWeights((deg + 5) * kDeg2Rad, 5, b);
             CHECK(b[1] <= a[1] + 1e-12);

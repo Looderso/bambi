@@ -126,8 +126,9 @@ TEST_CASE("Attack opens continuously, so one ULP cannot move a whole hop of gain
     };
 
     std::vector<double> swept;
-    for (double amp = 1e-3; amp <= 1e-1; amp *= 1.0116)  // 0.1 dB steps
-        swept.push_back(attackAt(static_cast<float>(amp)));
+    swept.reserve(400);
+    for (int step = 0; step < 400; ++step)  // 0.1 dB steps from 1e-3 to 1e-1
+        swept.push_back(attackAt(static_cast<float>(1e-3 * std::pow(1.0116, step))));
 
     double worstStep = 0.0;
     for (std::size_t i = 1; i < swept.size(); ++i) worstStep = std::max(worstStep, std::abs(swept[i] - swept[i - 1]));
@@ -212,7 +213,8 @@ TEST_CASE("the gate opens over a band, so a level rounded differently cannot mov
     };
     const FeatureConfig cfg;
     std::vector<double> swept;
-    for (double db = cfg.gateDb - 5.0; db <= cfg.gateDb + 5.0; db += 0.1) swept.push_back(gateAt(db));
+    swept.reserve(101);
+    for (int step = 0; step <= 100; ++step) swept.push_back(gateAt(cfg.gateDb - 5.0 + 0.1 * step));
     double worstStep = 0.0;
     for (std::size_t i = 1; i < swept.size(); ++i) worstStep = std::max(worstStep, std::abs(swept[i] - swept[i - 1]));
     INFO("worst adjacent step ", worstStep);
@@ -285,6 +287,7 @@ std::vector<std::vector<float>> encoded(const std::vector<float>& mono, Vec3 fro
 /// Level at the end of a field, heard through W with the field's power beside it, or through W alone.
 double levelOf(const std::vector<std::vector<float>>& field, bool withPower) {
     std::vector<const float*> channels;
+    channels.reserve(field.size());
     for (const auto& c : field) channels.push_back(c.data());
     const int n = static_cast<int>(field[0].size());
     std::vector<float> power(static_cast<std::size_t>(n));

@@ -265,7 +265,8 @@ TEST_CASE("sphere maths: exp and log are inverses") {
     //  Catches: expMap moving by sin(d) rather than d along the sphere, and logMap returning a unit vector rather than
     //  one of length d.
     const Vec3 p = fromAzEl(0.7, 0.3);
-    for (double d = 0.05; d < 2.5; d += 0.3) {
+    for (int step = 0; step < 9; ++step) {  // 0.05 to 2.45
+        const double d = 0.05 + 0.3 * step;
         const Vec3 tan = unit(tangentAt(p, {0, 0, 1})) * d;
         const Vec3 q = expMap(p, tan);
         CHECK(length(q) == doctest::Approx(1.0));
@@ -340,6 +341,7 @@ TEST_CASE("a small circle's centre is its own middle, on the side the path is on
 TEST_CASE("extent shrinks a path toward its centre without moving it") {
     //  Catches: extent applied to the angle other than in proportion.
     std::vector<Vec3> equator;
+    equator.reserve(128);
     for (int i = 0; i < 128; ++i) equator.push_back(fromAzEl(2.0 * kPi * i / 128.0, 0.0));
     const Vec3 c = pathCentre(equator);
 
@@ -384,6 +386,7 @@ TEST_CASE("the default transform leaves every generator exactly where it was") {
 TEST_CASE("yaw rotates the path around the listener") {
     //  Catches: yaw turning clockwise.
     std::vector<Vec3> ring;
+    ring.reserve(64);
     for (int i = 0; i < 64; ++i) ring.push_back(fromAzEl(2.0 * kPi * i / 64.0, 0.4));
     const Vec3 c = pathCentre(ring);
 
@@ -415,6 +418,7 @@ TEST_CASE("pitch tilts the path upward") {
 TEST_CASE("transform preserves arc length ratios — it places, it does not distort") {
     //  Catches: a rotation about an axis that is not a unit vector, which is no longer rigid.
     std::vector<Vec3> ring;
+    ring.reserve(128);
     for (int i = 0; i < 128; ++i) ring.push_back(fromAzEl(2.0 * kPi * i / 128.0, 0.3));
     const Vec3 c = pathCentre(ring);
     PathTransform t;

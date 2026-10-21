@@ -34,6 +34,7 @@ std::vector<std::vector<float>> render(const DecoderState& d, const DecoderFrame
     REQUIRE(engine.prepare(d, 1, kRate, kFrames, levelDb));
     std::vector<std::vector<float>> out(static_cast<std::size_t>(bus), std::vector<float>(kFrames, 1.0f));
     std::vector<float*> channels;
+    channels.reserve(out.size());
     for (auto& ch : out) channels.push_back(ch.data());
     const std::vector<float> in = click(1);
     engine.process(d, c, in.data(), channels.data(), bus, kFrames);

@@ -192,8 +192,13 @@ TEST_CASE("a feature's calibration is read from the detector's configuration, so
         return std::any_of(facts.begin(), facts.end(),
                            [&](const SourceFact& f) { return f.label == label && f.value == value; });
     };
-    const std::string minus = "\xe2\x88\x92";
-    CHECK(has(featureCalibration(Feature::Level), "range", minus + "55 to " + minus + "6 dB"));
+    const auto range = [](const char* top) {  // "-55 to <top>", with the typographic minus
+        std::string r = "\xe2\x88\x92";
+        r += "55 to \xe2\x88\x92";
+        r += top;
+        return r;
+    };
+    CHECK(has(featureCalibration(Feature::Level), "range", range("6 dB")));
     CHECK(has(featureCalibration(Feature::Attack), "ratio", "1.0 to 2.2"));
     CHECK(has(featureCalibration(Feature::Tonal), "band", "100 hz to 8 khz"));
     CHECK(has(featureCalibration(Feature::Mid), "band", "250 hz to 2 khz"));
@@ -201,13 +206,14 @@ TEST_CASE("a feature's calibration is read from the detector's configuration, so
     FeatureConfig cfg;
     cfg.levelHiDb = -3.0;
     cfg.bandSplitHiHz = 2500.0;
-    CHECK(has(featureCalibration(Feature::Level, cfg), "range", minus + "55 to " + minus + "3 dB"));
+    CHECK(has(featureCalibration(Feature::Level, cfg), "range", range("3 dB")));
     CHECK(has(featureCalibration(Feature::High, cfg), "band", "above 2.5 khz"));
 
     for (int f = 0; f < kNumFeatures; ++f) {
         //  every feature is gated but Level, whose own range ends where the gate opens
-        CHECK(has(featureCalibration(static_cast<Feature>(f)), "gate", minus + "55 dB") ==
-              (static_cast<Feature>(f) != Feature::Level));
+        CHECK(has(featureCalibration(static_cast<Feature>(f)), "gate",
+                  "\xe2\x88\x92"
+                  "55 dB") == (static_cast<Feature>(f) != Feature::Level));
     }
 }
 
