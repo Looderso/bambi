@@ -19,7 +19,7 @@ Run `tools/check-docs.sh` (links, decision numbers, size budgets) after doc chan
 
 ## Reviewers and skills
 
-Four **reviewer** agents (`.claude/agents/`) check finished work. After a broader phase — a feature, a bug fix, an
+Five **reviewer** agents (`.claude/agents/`) check finished work. After a broader phase — a feature, a bug fix, an
 open question resolved — run the relevant one, fix what it finds in one pass, and say which you used. A checkpoint,
 not a crutch.
 
@@ -29,6 +29,7 @@ not a crutch.
 | `realtime-safety` | the audio thread and thread boundaries, determinism, session portability |
 | `dsp-performance` | per-sample and per-block code, benchmarks, allocation and RAM |
 | `ui-uniformity` | UI and UX across every plugin: colours, interactions, component reuse |
+| `wording` | any text a musician or contributor reads: the audio world's terms, not bambi's own; saying what a thing does |
 
 Several in parallel for a phase that touches several areas.
 

@@ -57,8 +57,8 @@ bambi is built to be worked on with coding agents, and everything they need is i
 - **`.claude/skills/`** holds the recurring procedures — adding a parameter or a plugin, writing a doc, a comment
   pass, a prototype, issues and pull requests. They are plain Markdown, usable with any tool. Testing in a real host
   is a person's checklist, `docs/HOST-CHECKS.md`.
-- **`.claude/agents/`** holds four reviewers to run over finished work: architecture, real-time safety, DSP cost
-  and UI uniformity.
+- **`.claude/agents/`** holds five reviewers to run over finished work: architecture, real-time safety, DSP cost,
+  UI uniformity and wording.
 
 Work made with an agent says so: its `Co-Authored-By` trailer on the commits and a line in the pull request. The
 rules are the same as for anyone — `tools/verify.sh` decides when a change is ready.
