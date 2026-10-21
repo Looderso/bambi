@@ -9,6 +9,17 @@ namespace {
 /// A core string as JUCE wants it.
 juce::String toJuce(std::string_view s) { return juce::String::fromUTF8(s.data(), static_cast<int>(s.size())); }
 
+const juce::String kRealMinus = juce::String::fromUTF8("\xe2\x88\x92");
+
+/// A number as a host shows it: the interface's digits, with an ASCII minus, since some hosts and wrappers pass the
+/// text on as bytes they do not read as UTF-8.
+juce::String hostText(double value, int decimals) {
+    return toJuce(formatNumber(value, decimals)).replace(kRealMinus, "-");
+}
+
+/// A number as a host's text field gives it back; a real minus sign, typed or pasted, read as a minus.
+float numberOf(const juce::String& text) { return text.replace(kRealMinus, "-").trim().getFloatValue(); }
+
 }  // namespace
 
 juce::AudioProcessorValueTreeState::ParameterLayout parameterLayout(const ParamManifest& m) {
@@ -24,8 +35,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout parameterLayout(const ParamM
                 //  to the host and another to the editor.
                 juce::NormalisableRange<float> range(d.min, d.max);
                 if (const float centre = m.skewCentreOf(at); centre > 0.0f) range.setSkewForCentre(centre);
+                //  written to the digits the interface shows, so text to value to text is stable; JUCE's own seven
+                //  decimals are finer than the value the host stores
+                const int decimals = displayDecimals(d);
                 layout.add(std::make_unique<juce::AudioParameterFloat>(
-                    id, name, range, d.def, juce::AudioParameterFloatAttributes().withLabel(unit)));
+                    id, name, range, d.def,
+                    juce::AudioParameterFloatAttributes()
+                        .withLabel(unit)
+                        .withStringFromValueFunction(
+                            [decimals](float v, int) { return hostText(static_cast<double>(v), decimals); })
+                        .withValueFromStringFunction([](const juce::String& text) { return numberOf(text); })));
                 break;
             }
             case ParamType::Choice: {

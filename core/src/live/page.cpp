@@ -57,8 +57,10 @@ std::vector<Line> linesOf(const Tree& tree) {
                 if (listed(child) && filedUnder(child) == n.id && child.id != n.id) self(self, child, depth + 1);
     };
     //  listed where Live files it, not where its audio goes: a member routed by hand past its group is still its member here
-    for (const Node& n : tree.nodes)
-        if (listed(n) && (!filedUnder(n) || find(tree, *filedUnder(n)) == nullptr)) add(add, n, 0);
+    for (const Node& n : tree.nodes) {
+        const std::optional<TrackId> group = filedUnder(n);
+        if (listed(n) && (!group || find(tree, *group) == nullptr)) add(add, n, 0);
+    }
     return out;
 }
 

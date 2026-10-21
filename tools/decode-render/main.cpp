@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <sstream>
 #include <string>
@@ -77,6 +78,37 @@ struct Settings {
     double headYaw{0.0}, headPitch{0.0}, headRoll{0.0};  ///< the tracker's, degrees
 };
 
+//  A whole number or a decimal from an argument, the whole of it: anything else is refused, never read as 0.
+bool whole(const std::string& text, int& out) {
+    char* end = nullptr;
+    const long v = std::strtol(text.c_str(), &end, 10);
+    if (text.empty() || end != text.c_str() + text.size()) return false;
+    out = static_cast<int>(v);
+    return true;
+}
+
+bool decimal(const std::string& text, double& out) {
+    char* end = nullptr;
+    const double v = std::strtod(text.c_str(), &end);
+    if (text.empty() || end != text.c_str() + text.size()) return false;
+    out = v;
+    return true;
+}
+
+//  "A,B" or "A,B,C": every part a decimal, and as many as asked for.
+bool decimals(const std::string& text, std::initializer_list<double*> out) {
+    std::size_t from = 0;
+    std::size_t k = 0;
+    for (double* o : out) {
+        const std::size_t comma = text.find(',', from);
+        const bool last = ++k == out.size();
+        if (last != (comma == std::string::npos)) return false;
+        if (!decimal(text.substr(from, last ? std::string::npos : comma - from), *o)) return false;
+        from = comma + 1;
+    }
+    return true;
+}
+
 bool flag(const std::string& value, bool& out) {
     if (value != "0" && value != "1") return false;
     out = value == "1";
@@ -85,7 +117,8 @@ bool flag(const std::string& value, bool& out) {
 
 /// Sets one setting; `stateChanged` says whether the engine must build again.
 bool apply(Settings& s, const std::string& path, const std::string& value, bool& stateChanged) {
-    const double v = std::atof(value.c_str());
+    double v = 0.0;
+    const bool isNumber = decimal(value, v);
     DecoderState& d = s.state;
     DecoderFrame& c = s.controls;
     stateChanged = true;
@@ -97,12 +130,10 @@ bool apply(Settings& s, const std::string& path, const std::string& value, bool&
     if (path == "static") return flag(value, d.sceneStatic);
     if (path == "tracker_turns_scene") return flag(value, d.trackerTurnsScene);
     if (path == "headphone_channel") {
-        d.headphoneChannel = std::atoi(value.c_str());
-        return d.headphoneChannel >= 1;
+        return whole(value, d.headphoneChannel) && d.headphoneChannel >= 1;
     }
     if (path == "first_channel") {
-        d.speakerFirstChannel = std::atoi(value.c_str());
-        return d.speakerFirstChannel >= 1;
+        return whole(value, d.speakerFirstChannel) && d.speakerFirstChannel >= 1;
     }
     if (path == "hrtf") {
         if (value != "model" && value != "ku100") return false;
@@ -110,10 +141,12 @@ bool apply(Settings& s, const std::string& path, const std::string& value, bool&
         return true;
     }
     if (path == "head_size") {
+        if (!isNumber) return false;
         d.headSize = static_cast<float>(v);
         return true;
     }
     if (path == "ear_shift") {
+        if (!isNumber) return false;
         d.earShift = static_cast<float>(v);
         return true;
     }
@@ -131,8 +164,7 @@ bool apply(Settings& s, const std::string& path, const std::string& value, bool&
     }
     if (path == "speaker") {
         Loudspeaker one;
-        if (std::sscanf(value.c_str(), "%lf,%lf,%lf", &one.azimuthDeg, &one.elevationDeg, &one.radiusM) != 3)
-            return false;
+        if (!decimals(value, {&one.azimuthDeg, &one.elevationDeg, &one.radiusM})) return false;
         int channel = 0;
         for (const Loudspeaker& l : d.layout) channel = std::max(channel, l.channel);
         one.channel = channel + 1;
@@ -155,6 +187,7 @@ bool apply(Settings& s, const std::string& path, const std::string& value, bool&
         return true;
     }
     stateChanged = false;
+    if (path != "rates" && !isNumber) return false;  // every other setting from here on is a number
     if (path == "yaw")
         c.yawDeg = v;
     else if (path == "pitch")
@@ -200,7 +233,21 @@ bool readHead(const std::string& path, HeadModel& out) {
 
 }  // namespace
 
+int run(int argc, char** argv);
+
 int main(int argc, char** argv) {
+    //  one place for what a library throws: a message and a failure, never an abort
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "decode-render: %s\n", e.what());
+    } catch (...) {
+        std::fprintf(stderr, "decode-render: failed\n");
+    }
+    return 1;
+}
+
+int run(int argc, char** argv) {
     //  Denormals flushed, as the plugin processes.
     ScopedFlushDenormals flushDenormals;
     int order = 3, fieldOrder = -1, voices = 3, blockSize = 512, busChannels = 0;
@@ -222,25 +269,43 @@ int main(int argc, char** argv) {
         if (a == "-h" || a == "--help") {
             usage();
             return 0;
-        } else if (a == "--order")
-            order = std::atoi(next("--order").c_str());
-        else if (a == "--field-order")
-            fieldOrder = std::atoi(next("--field-order").c_str());
-        else if (a == "--seconds")
-            seconds = std::atof(next("--seconds").c_str());
-        else if (a == "--voices")
-            voices = std::atoi(next("--voices").c_str());
-        else if (a == "--channels")
-            busChannels = std::atoi(next("--channels").c_str());
-        else if (a == "--block")
-            blockSize = std::atoi(next("--block").c_str());
-        else if (a == "--heads")
+        } else if (a == "--order") {
+            if (!whole(next("--order"), order)) {
+                std::fprintf(stderr, "--order expects a whole number\n");
+                return 2;
+            }
+        } else if (a == "--field-order") {
+            if (!whole(next("--field-order"), fieldOrder)) {
+                std::fprintf(stderr, "--field-order expects a whole number\n");
+                return 2;
+            }
+        } else if (a == "--seconds") {
+            if (!decimal(next("--seconds"), seconds)) {
+                std::fprintf(stderr, "--seconds expects a number\n");
+                return 2;
+            }
+        } else if (a == "--voices") {
+            if (!whole(next("--voices"), voices)) {
+                std::fprintf(stderr, "--voices expects a whole number\n");
+                return 2;
+            }
+        } else if (a == "--channels") {
+            if (!whole(next("--channels"), busChannels)) {
+                std::fprintf(stderr, "--channels expects a whole number\n");
+                return 2;
+            }
+        } else if (a == "--block") {
+            if (!whole(next("--block"), blockSize)) {
+                std::fprintf(stderr, "--block expects a whole number\n");
+                return 2;
+            }
+        } else if (a == "--heads")
             heads = next("--heads");
         else if (a == "--trace")
             tracePath = next("--trace");
         else if (a == "--impulse") {
             const std::string v = next("--impulse");
-            if (std::sscanf(v.c_str(), "%lf,%lf", &impulseAz, &impulseEl) != 2) {
+            if (!decimals(v, {&impulseAz, &impulseEl})) {
                 std::fprintf(stderr, "--impulse expects AZ,EL\n");
                 return 2;
             }
@@ -254,8 +319,8 @@ int main(int argc, char** argv) {
             }
         } else if (a == "--at") {
             tools::Change c;
-            const double at = std::atof(next("--at").c_str());
-            if (!tools::parseChange(at, next("--at"), c)) {
+            double at = 0.0;
+            if (!decimal(next("--at"), at) || !tools::parseChange(at, next("--at"), c)) {
                 std::fprintf(stderr, "--at expects S PATH=VALUE or S reset\n");
                 return 2;
             }

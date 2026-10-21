@@ -3,14 +3,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <span>
 
 #include "bambi/math/sh.hpp"
 
 namespace bambi {
 namespace {
 
-constexpr double kSilent = 1e-5;  // a tap quieter than this is not played
-const double kLowpassQ = std::pow(10.0, 0.5 / 20.0);
+constexpr double kSilent = 1e-5;                  // a tap quieter than this is not played
+constexpr double kLowpassQ = 1.0592537251772889;  // 10^(0.5 / 20): half a decibel of peak
 
 double classHz(int k) { return 800.0 * std::pow(25.0, k / 9.0); }
 int classOf(double hz) {
@@ -30,7 +31,7 @@ std::array<Vec3, 6> sixDirections() {
 
 //  The energy of a set of (sample, amplitude) taps played as an impulse response: taps on one sample
 //  add their amplitudes, taps apart their energies.
-double energyOf(std::vector<std::pair<int, double>>& taps) {
+double energyOf(std::span<std::pair<int, double>> taps) {
     std::sort(taps.begin(), taps.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     double energy = 0.0;
     for (std::size_t i = 0; i < taps.size();) {
@@ -57,7 +58,6 @@ void EarlyReflections::prepare(int busOrder, double sampleRate) {
     lineSize_ = static_cast<int>(std::ceil(kMaxReflectionSeconds * sampleRate)) + 4;
     for (auto& l : line_) l.assign(static_cast<std::size_t>(lineSize_), 0.0f);
     bus_ = std::make_unique<BusReflections>();
-    scratch_.reserve(static_cast<std::size_t>(kVirtualSources * kMaxImages));
     for (auto& k : acc_) k.assign(static_cast<std::size_t>(kEarlyChannels * 64), 0.0f);
 
     //  Reading the bus at a direction with a max-rE beam: by the addition theorem the beam toward v of
@@ -125,10 +125,11 @@ void EarlyReflections::setRoom(const Room& room, double distance) noexcept {
     std::array<Reflection, kMaxImages> one{};
     for (const Vec3& u : sixDirections()) {
         reflectionsOf(room, u, distance, one);
-        scratch_.clear();
+        std::size_t taken = 0;
         for (int i = 0; i < count; ++i) {
             const Reflection& t = one[static_cast<std::size_t>(i)];
-            if (t.mirror > kSilent) scratch_.emplace_back(static_cast<int>(std::lround(t.delay * fs_)), t.mirror);
+            if (t.mirror > kSilent && taken < scratch_.size())
+                scratch_[taken++] = {static_cast<int>(std::lround(t.delay * fs_)), t.mirror};
             mirrorEnergy_ += t.mirror * t.mirror / 6.0;
             scatteredEnergy_ += t.scattered * t.scattered / 6.0;
             if (t.delay < room.mixingTime) {
@@ -141,7 +142,7 @@ void EarlyReflections::setRoom(const Room& room, double distance) noexcept {
             if (one[static_cast<std::size_t>(i)].order == 1)
                 wall = std::min(wall, one[static_cast<std::size_t>(i)].delay);
         firstWall_ += wall / 6.0;
-        exact += energyOf(scratch_);
+        exact += energyOf(std::span(scratch_).first(taken));
 
         //  the same source as the bus hears it: at every virtual source, by its beam, weights keeping energy
         std::array<double, kVirtualSources> weight{};
@@ -151,15 +152,15 @@ void EarlyReflections::setRoom(const Room& room, double distance) noexcept {
                 maxReBeam(order, dot(bus_->direction[static_cast<std::size_t>(v)], u));
             sum += weight[static_cast<std::size_t>(v)] * weight[static_cast<std::size_t>(v)];
         }
-        scratch_.clear();
+        taken = 0;
         for (int v = 0; v < kVirtualSources; ++v)
             for (int i = 0; i < count; ++i) {
                 const Reflection& t = bus_->taps[static_cast<std::size_t>(v)][static_cast<std::size_t>(i)];
-                if (t.mirror > kSilent)
-                    scratch_.emplace_back(static_cast<int>(std::lround(t.delay * fs_)),
-                                          t.mirror * weight[static_cast<std::size_t>(v)] / std::sqrt(sum));
+                if (t.mirror > kSilent && taken < scratch_.size())
+                    scratch_[taken++] = {static_cast<int>(std::lround(t.delay * fs_)),
+                                         t.mirror * weight[static_cast<std::size_t>(v)] / std::sqrt(sum)};
             }
-        onBus += energyOf(scratch_);
+        onBus += energyOf(std::span(scratch_).first(taken));
     }
     level_ = onBus > 0.0 ? std::sqrt(exact / onBus) : 1.0;
 

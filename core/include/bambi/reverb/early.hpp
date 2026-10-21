@@ -2,6 +2,7 @@
 #pragma once
 #include <array>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "bambi/dsp/biquad.hpp"
@@ -96,7 +97,8 @@ private:
     std::array<int, kCutoffClasses> classWide_{};         ///< widest tap in each dullness class
     std::array<std::vector<float>, kCutoffClasses> acc_;  ///< a class's sixteen channels over a chunk, a run a channel
     std::unique_ptr<BusReflections> bus_;
-    std::vector<std::pair<int, double>> scratch_;  ///< for the level matching: (sample, amplitude)
+    /// For the level matching, (sample, amplitude): a fixed table, so setting a room allocates and throws nothing.
+    std::array<std::pair<int, double>, static_cast<std::size_t>(kVirtualSources* kMaxImages)> scratch_{};
 };
 
 }  // namespace bambi

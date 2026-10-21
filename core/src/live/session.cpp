@@ -2,8 +2,10 @@
 #include "bambi/live/session.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdlib>
+#include <string_view>
 #include <variant>
 
 #include "bambi/live/page.hpp"
@@ -27,8 +29,9 @@ void take(Node& n, const Value& v) {
     else if (v.what == "fader")
         n.fader = v.value.isNumber() ? std::optional<double>(v.value.numberOr(0.0)) : std::nullopt;
     else if (v.what.rfind("send:", 0) == 0) {
-        const long index = std::atol(v.what.c_str() + 5);
-        if (index < 0) return;
+        long index = -1;
+        const std::string_view digits = std::string_view(v.what).substr(5);
+        if (std::from_chars(digits.data(), digits.data() + digits.size(), index).ec != std::errc{} || index < 0) return;
         if (static_cast<std::size_t>(index) >= n.sends.size()) n.sends.resize(static_cast<std::size_t>(index) + 1);
         n.sends[static_cast<std::size_t>(index)] =
             v.value.isNumber() ? std::optional<double>(v.value.numberOr(0.0)) : std::nullopt;
@@ -78,6 +81,7 @@ std::vector<Message> DeviceSession::onTree(const Tree& t, bool fromLive) {
     pairs_ = a.pairs;
     unassigned_ = a.unassigned;
     std::vector<TrackId> silent;
+    silent.reserve(field_.returns.size());
     for (const FieldReturn& r : field_.returns) silent.push_back(r.node);
     return {Route{pairs_, std::move(silent)}, Save{state()}, Info{s_.latencyMs, s_.rate, {}}};
 }

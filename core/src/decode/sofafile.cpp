@@ -2,6 +2,7 @@
 #include "bambi/decode/sofafile.hpp"
 
 #include <cerrno>
+#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -117,7 +118,11 @@ bool readSofaMatrix(const std::string& path, FirMatrix& out, std::string* error)
             for (std::size_t e = 0; e < E; ++e)
                 out.filters[(e * R + r) * N + n] = h->DataIR.values[(r * N + n) * E + e];
     const std::string order = attribute(h, "AmbisonicsOrder");
-    out.order = order.empty() ? -1 : std::atoi(order.c_str());
+    //  a number, or none: an attribute that does not parse is as good as absent
+    out.order = -1;
+    if (int read = 0;
+        !order.empty() && std::from_chars(order.data(), order.data() + order.size(), read).ec == std::errc{})
+        out.order = read;
     out.channelOrder = attribute(h, "AmbisonicsChannelOrder");
     out.normalization = attribute(h, "AmbisonicsNormalization");
     out.title = attribute(h, "Title");

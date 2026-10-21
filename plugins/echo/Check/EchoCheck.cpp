@@ -149,6 +149,9 @@ int main(int argc, char** argv) {
 
     bambi::editor::checkHeaderHoldsStill<Processor>(bambi::Product::Echo);
 
+    bambi::editor::checkParameterText<Processor>();
+    bambi::editor::checkStateRoundTrip<Processor>(
+        bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)));
     bambi::editor::checkBypass<Processor>(bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)),
                                           "the field as it arrived",
                                           [](int c, juce::int64 at) { return bambi::editor::fieldSample(c, at); });

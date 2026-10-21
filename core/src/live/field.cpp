@@ -87,6 +87,7 @@ std::vector<Wire> defaultWires(const Field& f, TrackId node) {
     const From from = fromOf(f, node);
     if (from.kind == From::Kind::Main) {
         std::vector<Wire> all;
+        all.reserve(f.decoders.size());
         for (const std::uint64_t d : f.decoders) all.push_back({Target::decoder(d), 0.0});
         return all;
     }
@@ -297,6 +298,7 @@ void moveInsert(Shape& shape, TrackId owner, std::uint64_t id, std::size_t to) {
 
 std::vector<Arrival> arrivalsOf(const std::vector<TrackPair>& pairs) {
     std::vector<Arrival> out;
+    out.reserve(pairs.size());
     for (const TrackPair& p : pairs) out.push_back({p.track, kFirstTrackChannel + 2 * p.pair, 2});
     return out;
 }

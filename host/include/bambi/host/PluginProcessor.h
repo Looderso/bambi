@@ -94,6 +94,9 @@ public:
     void commitDocument(PluginState next, bool snap);
     /// What a save writes: the committed state, this instance's identity, the host's parameters live.
     PluginState documentState() const;
+    /// How far a host's parameter may stand from the document's value, as a share of its range, and still be that
+    /// value: a float's rounding, far finer than any move a host or a person makes.
+    static constexpr float kParamStands = 1.0e-6f;
 
     //  ---- the patch, its history, and this instance on the bus -----------------------------
     Document& document() override { return document_; }

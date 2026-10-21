@@ -889,6 +889,8 @@ int main() {
 
     bambi::editor::checkHeaderHoldsStill<BambiDecoderProcessor>(bambi::Product::Decoder);
 
+    bambi::editor::checkParameterText<BambiDecoderProcessor>();
+    bambi::editor::checkStateRoundTrip<BambiDecoderProcessor>(busIn(16, 2));
     bambi::editor::checkBypass<BambiDecoderProcessor>(busIn(16, 2), "silence", [](int, juce::int64) { return 0.0f; });
 
     return checkVerdict();

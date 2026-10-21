@@ -175,7 +175,7 @@ TEST_CASE("the band never raises a level, passes nothing at DC, and compounds wi
 }
 
 TEST_CASE("blur compounds as the root of the passes") {
-    //  Catches: the quarter-degree threshold dropped, so every tap is a little dull, and cap weights mis-normalised, so
+    //  Catches: the quarter-degree threshold dropped, so every tap is a little dull, and cap weights normalised wrongly, so
     //  a blur no longer compounds as the ping draws it.
     /*  A loop applies the same gain per order every pass, so after j passes a blur of a is the cap
         weights to the j, which is approximately a blur of a * sqrt(j). The ping draws blur with
