@@ -84,7 +84,8 @@ double rt60(const std::vector<float>& w) {
 const std::vector<Vec3> kAround{fromAzEl(0.3, 0.1), fromAzEl(2.0, -0.4), fromAzEl(-1.2, 0.6), fromAzEl(3.0, 0.0)};
 
 TEST_CASE("the decay that is set is the decay of the whole room, at mid") {
-    //  Measured: room 0.50 -> 0.53, hall 1.90 -> 1.91, cathedral 6.50 -> 6.18.
+    //  Catches: the tail given another band's decay than the mid's.
+    //  Measured: room 0.50 -> 0.48, hall 1.90 -> 1.91, cathedral 6.50 -> 6.55.
     ReverbEngine engine;
     engine.prepare(3, kFs);
     for (const ReverbFrame& s : {preset(5.0, RoomShape::Room, 0.5, 0.42, 0.75, 2.0), hall(),
@@ -92,7 +93,7 @@ TEST_CASE("the decay that is set is the decay of the whole room, at mid") {
         engine.set(s);
         const double measured = rt60(mids(omniResponse(engine, kAround[0], s.room.decay * 2.0 + 0.5)));
         INFO("set ", s.room.decay, " measured ", measured);
-        CHECK(measured == doctest::Approx(s.room.decay).epsilon(0.06));
+        CHECK(std::abs(measured / s.room.decay - 1.0) < 0.06);
     }
 }
 
@@ -117,7 +118,7 @@ TEST_CASE("reflections and tail are one room: what is heard is what the balance 
         const double a = engine.room().diffusion, asHeard = (1.0 - a) * (1.0 - a) + a * a;
         const double expected = (0.75 * b.mirrorEnergy + asHeard * b.tailEnergy) / b.roomEnergy;
         INFO("heard ", heard, " expected ", expected);
-        CHECK(heard == doctest::Approx(expected).epsilon(0.25));
+        CHECK(std::abs(heard / expected - 1.0) < 0.25);
         CHECK(heard < 1.0);
         //  and before the mixing time it is the reflections that are heard: most of their energy is there
         double early = 0.0;
@@ -131,8 +132,9 @@ TEST_CASE("the tail takes over from the reflections without a step") {
     /*  In a small room -- where a tail brought in late shows as a hump at 100 ms -- the energy in
         30 ms windows, a step every 10, over four directions, falls from its peak and never climbs back by
         more than a few decibels. (A hall's first reflections are sparse, single arrivals tens of
-        milliseconds apart, and its envelope is not smooth that early by nature.) Catches the tail
-        brought in too loud, or later than the reflections it takes over from. */
+        milliseconds apart, and its envelope is not smooth that early by nature.) Catches: the tail
+        brought in well after the reflections it takes over from -- 100 ms late is a hole and then a hump. A
+        tail too loud is the balance's to catch, not this: four times too loud still falls from its peak. */
     ReverbEngine engine;
     engine.prepare(3, kFs);
     for (const ReverbFrame& s :
@@ -157,6 +159,7 @@ TEST_CASE("the tail takes over from the reflections without a step") {
 }
 
 TEST_CASE("a source farther off excites more room, and the wet sound stays as loud") {
+    //  Catches: the reflections' geometry built at one distance whatever the room is given.
     /*  K is the room's energy against a direct sound of 1: it grows as r squared until the walls hold
         the source in. The reflections' share of it barely moves -- both go as r squared -- so what
         the geometry changes in the wet sound is when things arrive, and the two gains fall together.
@@ -185,7 +188,7 @@ TEST_CASE("a source farther off excites more room, and the wet sound stays as lo
     ReverbFrame one = hall();
     one.distance = 1.0;
     near.set(one);
-    CHECK(near.balance().roomEnergy == doctest::Approx(before / 100.0).epsilon(0.5));  // r squared, roughly
+    CHECK(std::abs(near.balance().roomEnergy / (before / 100.0) - 1.0) < 0.5);  // r squared, roughly
 }
 
 TEST_CASE("a distance that moves on its own costs nothing and moves the dry, not the room") {
@@ -215,6 +218,8 @@ TEST_CASE("a distance that moves on its own costs nothing and moves the dry, not
     CHECK(at14.earlyGain == doctest::Approx(at6.earlyGain));
     CHECK(at14.tailGain == doctest::Approx(at6.tailGain));
     CHECK(at14.preDelaySeconds == doctest::Approx(at6.preDelaySeconds));
+    //  but the dry is a trim on the ratio, so it falls as the source moves away
+    CHECK(at14.dryGain == doctest::Approx(at6.dryGain * 6.0 / 14.0));
 
     //  and the room built at 14 m is a different room, so the geometry still depends on distance --
     //  it is only the recomputation that is dropped, not the dependency
@@ -227,6 +232,7 @@ TEST_CASE("a distance that moves on its own costs nothing and moves the dry, not
 }
 
 TEST_CASE("the level is a level, and the quality switch changes density, not loudness or decay") {
+    //  Catches: a level in decibels read as a power, and a tail whose level does not follow its own line count.
     ReverbEngine engine;
     engine.prepare(3, kFs);
     ReverbFrame s = hall();
@@ -234,21 +240,22 @@ TEST_CASE("the level is a level, and the quality switch changes density, not lou
     const double reference = energy(omniResponse(engine, kAround[0], 4.0), 0.0, 100.0);
     s.levelDb = -6.0;
     engine.set(s);
-    CHECK(energy(omniResponse(engine, kAround[0], 4.0), 0.0, 100.0) ==
-          doctest::Approx(reference * std::pow(10.0, -0.6)).epsilon(0.01));
+    CHECK(std::abs(energy(omniResponse(engine, kAround[0], 4.0), 0.0, 100.0) / (reference * std::pow(10.0, -0.6)) -
+                   1.0) < 0.01);
     s.levelDb = 0.0;
     for (const int lines : {8, 32}) {
         s.tailLines = lines;
         engine.set(s);
         const auto w = omniResponse(engine, kAround[0], 4.0);
         INFO("lines ", lines);
-        CHECK(10.0 * std::log10(energy(w, 0.0, 100.0) / reference) ==
-              doctest::Approx(0.0).epsilon(1.5));  // within 1.5 dB
+        CHECK(std::abs(10.0 * std::log10(energy(w, 0.0, 100.0) / reference)) < 1.5);  // within 1.5 dB
         CHECK(rt60(mids(w)) == doctest::Approx(1.9).epsilon(0.08));
     }
 }
 
 TEST_CASE("the room does not care how the audio is cut, a reset is a fresh start, and what is not a number stays out") {
+    //  Catches: a NaN let into the room, a reset that leaves the reflections ringing, and a gain ramped from the chunk
+    //  rather than the hop.
     const int C = 16, frames = 9000;
     std::vector<float> in(static_cast<std::size_t>(C * frames));
     unsigned seed = 4u;

@@ -86,11 +86,15 @@ const Vec3 kFront{1.0, 0.0, 0.0}, kBack{-1.0, 0.0, 0.0};
 }  // namespace
 
 TEST_CASE("a region that is everywhere at an amount of one is not there at all") {
-    //  Catches: any gain applied where it should not be, or a projection run for a plain region.
+    //  Catches: a gain that a region before it left on the lines carried past a reset.
     ReverbEngine a, b;
     a.prepare(3, kFs);
     b.prepare(3, kFs);
     const std::vector<float> plain = render(a, hall(), kFront, 0.5);
+    ReverbFrame spot = hall();  // a region there before, so a gain it left behind would show
+    spot.send.kind = spot.returnRegion.kind = RegionKind::Spot;
+    spot.send.size = spot.returnRegion.size = 1.0;
+    b.set(spot);
     ReverbFrame s = hall();
     s.send = Region{};
     s.returnRegion = Region{};
@@ -119,7 +123,7 @@ TEST_CASE("a send hears what is inside it and not what is behind it") {
     //  and with no send at all the two directions are alike: the room has no front
     ReverbFrame open = hall();
     const std::vector<float> f2 = render(engine, open, kFront, 1.0), b2 = render(engine, open, kBack, 1.0);
-    CHECK(energy(b2, C, 0.0, 1.0) == doctest::Approx(energy(f2, C, 0.0, 1.0)).epsilon(0.35));
+    CHECK(std::abs(energy(b2, C, 0.0, 1.0) / energy(f2, C, 0.0, 1.0) - 1.0) < 0.35);
 }
 
 TEST_CASE("a return puts the room back where it says, in the reflections and in the tail") {
@@ -196,11 +200,11 @@ TEST_CASE("the amounts are gains, and each scales the half it belongs to") {
 
     ReverbFrame quiet = hall();
     quiet.returnAmount = 0.5;
-    CHECK(energy(render(engine, quiet, kFront, 0.5), C, 0.0, 0.5) == doctest::Approx(0.25 * full).epsilon(1e-3));
+    CHECK(std::abs(energy(render(engine, quiet, kFront, 0.5), C, 0.0, 0.5) / (0.25 * full) - 1.0) < 1e-3);
 
     ReverbFrame halfSend = hall();
     halfSend.sendAmount = 0.5;
-    CHECK(energy(render(engine, halfSend, kFront, 0.5), C, 0.0, 0.5) == doctest::Approx(0.25 * full).epsilon(1e-3));
+    CHECK(std::abs(energy(render(engine, halfSend, kFront, 0.5), C, 0.0, 0.5) / (0.25 * full) - 1.0) < 1e-3);
 
     ReverbFrame shut = hall();
     shut.sendAmount = 0.0;
