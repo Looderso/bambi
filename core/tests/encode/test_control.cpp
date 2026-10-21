@@ -454,7 +454,7 @@ TEST_CASE("stereo puts the left at one point and the right at the other, at one 
     CHECK(onlyAt(two.frame.right, -1.0) < 1e-12);  // R = M - S at the right
     CHECK(length(two.frame.left - two.frame.right) > 0.3);
 
-    CHECK(energyOf(two.mid) == doctest::Approx(energyOf(one.mid)).epsilon(1e-9));
+    CHECK(std::abs(energyOf(two.mid) / energyOf(one.mid) - 1.0) < 1e-9);
     CHECK(gainsOf(zero.mid) == gainsOf(one.mid));  // no offset: exactly sum
     CHECK(zero.side.silent());
 }

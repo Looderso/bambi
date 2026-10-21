@@ -69,6 +69,7 @@ TEST_CASE("taken, every node at the top is a source, a group with all it holds")
     const Field f = laidOut(set(), {});
     CHECK(f.sources() == std::vector<TrackId>{1, 5});
     for (const Part& p : f.parts) CHECK_FALSE(p.bus);
+    CHECK(f.returns.empty());
 }
 
 TEST_CASE("a split group is a bus, and what plays into it is laid out under it") {
@@ -138,6 +139,8 @@ TEST_CASE("under a split group, only what plays into it with audio; an empty bus
     const Field f = laidOut(t, Shape{{1}, {}, {}, {}, {}, {}, {}, {}});
     REQUIRE(f.parts.size() == 1);
     CHECK(f.parts[0] == Part{4, false, -1, {}, 0, {{Target::main(), 0.0}}});
+    //  taken by hand, they still do not reach the field
+    CHECK(layOut(t, Shape{{}, {2, 3, 4}, {}, {}, {}, {}, {}, {}}).sources() == std::vector<TrackId>{4});
 }
 
 TEST_CASE("split on a track means nothing") {
@@ -604,5 +607,7 @@ TEST_CASE("an insert moved along its chain keeps its id and leaves the others in
     CHECK(s.chains[0].inserts.size() == 3);
     moveInsert(s, 2, 9, 0);  // not on this chain
     CHECK(s.chains[1].inserts.size() == 1);
+    CHECK(s.chains[0].inserts.front().id == 1);
+    moveInsert(s, 4, 1, 2);  // insert 1 is not on owner 4's chain: nothing moves
     CHECK(s.chains[0].inserts.front().id == 1);
 }

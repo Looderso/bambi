@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -376,7 +377,7 @@ TEST_CASE("makeStart rotates the seam without changing the shape") {
 
     Trajectory after;
     after.build(s);
-    CHECK(after.lengthRad() == doctest::Approx(before.lengthRad()).epsilon(1e-6));
+    CHECK(std::abs(after.lengthRad() / before.lengthRad() - 1.0) < 1e-6);
     CHECK(hausdorff(denseOf(s), a) * kRad2Deg < 0.5);
 }
 

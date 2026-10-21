@@ -120,7 +120,8 @@ TEST_CASE("a member routed past its group is listed under it, as Live files it")
 TEST_CASE("what a member is follows where its audio goes: one routed past its group is its own path") {
     /*  Catches: a hand-routed member read as inside the group the group encodes -- it would never be heard in the field,
         since its audio does not reach the group -- or an Encoder on it opening the group it does not play into, or one
-        on a member that does play into it leaving the group whole, which plays that member twice. */
+        on a member that does play into it leaving the group whole, which plays that member twice -- or a member
+        routed elsewhere from inside the group taken along when it opens. */
     const Tree t = handRouted();
     Shape s;
     s.taken = {1};
@@ -136,4 +137,13 @@ TEST_CASE("what a member is follows where its audio goes: one routed past its gr
     addEncoder(member, t, 2);
     CHECK(member.taken == std::vector<TrackId>{2});
     CHECK(roleOf(t, layOut(t, member), 1) == Role::Bus);
+
+    //  and the group opened round a member leaves out one routed elsewhere from inside it
+    Tree away = t;
+    Node elsewhere = node(4, Node::Kind::Track, TrackId{1});
+    elsewhere.path = Node::Path::Elsewhere;
+    away.nodes.push_back(elsewhere);
+    Shape opened = s;
+    addEncoder(opened, away, 2);
+    CHECK(opened.taken == std::vector<TrackId>{2});
 }

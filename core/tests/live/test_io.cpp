@@ -72,10 +72,12 @@ TEST_CASE("the settings read back as written, and an older file's missing fields
     CHECK(s.at(kLiveMain) == s.main);
     //  a file from when there was one Decoder
     const AudioSettings one = audioSettingsFrom(Json::parse(
-        R"({"headphones": {"device": "box", "number": 1}, "copies": [{"of": "headphones", "toLive": true}]})"));
+        R"({"headphones": {"device": "box", "number": 1},
+            "copies": [{"of": "headphones", "toLive": true}, {"of": "main", "at": {"device": "box", "number": 5}}]})"));
     CHECK(one.at({kFirstDecoder, Output::Headphones}) == DeviceChannel{"box", 1});
-    REQUIRE(one.copies.size() == 1);
+    REQUIRE(one.copies.size() == 2);
     CHECK(one.copies[0].of == Out{kFirstDecoder, Output::Headphones});
+    CHECK(one.copies[1].of.main());
     const AudioSettings old = audioSettingsFrom(Json::parse(R"({"devices": ["i16"]})"));
     CHECK(old.buffer == 64);
     CHECK(old.liveMidiMs == 0.0);

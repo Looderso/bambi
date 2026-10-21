@@ -23,6 +23,10 @@ TEST_CASE("MIDI waits for the piece it falls in, taken in sample order, the rest
     for (int i = 0; i < MidiPending::kCapacity; ++i) CHECK(p.add({i, {0x90, 1, 1}, 3}));
     CHECK_FALSE(p.add({5, {0x90, 2, 1}, 3}));
     CHECK(p.take(2, out, 8) == 2);
+    //  and what was refused took nothing's place
+    std::vector<MidiEvent> rest(static_cast<std::size_t>(MidiPending::kCapacity));
+    CHECK(p.take(1 << 20, rest.data(), MidiPending::kCapacity) == MidiPending::kCapacity - 2);
+    for (int i = 0; i < MidiPending::kCapacity - 2; ++i) CHECK(rest[static_cast<std::size_t>(i)].bytes[1] == 1);
 }
 
 TEST_CASE("the lead of Live's MIDI is the middle of the last measurements, and says how far they agree") {
@@ -33,8 +37,12 @@ TEST_CASE("the lead of Live's MIDI is the middle of the last measurements, and s
     CHECK(lead.count() == 5);
     CHECK(lead.median() == 11.8);
     CHECK(lead.spread() < 1.0);
+    CHECK(lead.spread() > 0.2);  // half the middle half's width: 11.5 to 12
     for (int i = 0; i < MidiLead::kKept; ++i) lead.add(20.0);
     CHECK(lead.median() == 20.0);
+    CHECK(lead.spread() == 0.0);  // every older one let go
+    for (int i = 0; i < MidiLead::kKept; ++i) lead.add(30.0);
+    CHECK(lead.median() == 30.0);  // and let go again, however many came before
     CHECK(lead.count() == MidiLead::kKept);
 }
 
@@ -60,5 +68,7 @@ TEST_CASE("a note is paired with the click it sets off, after it or just before,
     m.listen(quiet.data(), nullptr, 4800, 29280);
     m.listen(quiet.data(), nullptr, 4800, 34080);
     m.listen(click.data(), nullptr, 4800, 38880);  // past 300 ms
+    CHECK_FALSE(m.took().has_value());
+    m.note(38880 + 20000);  // and a note long after that click is not paired with it
     CHECK_FALSE(m.took().has_value());
 }
