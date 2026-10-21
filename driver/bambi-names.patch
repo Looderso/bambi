@@ -1,5 +1,5 @@
 diff --git a/BlackHole/BlackHole.c b/BlackHole/BlackHole.c
-index 143af9d..fa2f27d 100644
+index 143af9d..bbd61c6 100644
 --- a/BlackHole/BlackHole.c
 +++ b/BlackHole/BlackHole.c
 @@ -253,6 +253,12 @@ struct ObjectInfo {
@@ -15,6 +15,32 @@ index 143af9d..fa2f27d 100644
  static UInt32                       gPlugIn_RefCount                    = 0;
  static AudioServerPlugInHostRef     gPlugIn_Host                        = NULL;
  
+@@ -780,7 +786,7 @@ static OSStatus	BlackHole_Initialize(AudioServerPlugInDriverRef inDriver, AudioS
+ 	//	set the box name directly as a last resort
+ 	if(gBox_Name == NULL)
+ 	{
+-		gBox_Name = CFSTR("BlackHole Box");
++		gBox_Name = CFSTR(kDriver_Name " Box");
+ 	}
+ 	
+ 	//	calculate the host ticks per frame
+@@ -1912,14 +1918,14 @@ static OSStatus	BlackHole_GetBoxPropertyData(AudioServerPlugInDriverRef inDriver
+ 		case kAudioObjectPropertyModelName:
+ 			//	This is the human readable name of the maker of the box.
+ 			FailWithAction(inDataSize < sizeof(CFStringRef), theAnswer = kAudioHardwareBadPropertySizeError, Done, "BlackHole_GetBoxPropertyData: not enough space for the return value of kAudioObjectPropertyManufacturer for the box");
+-			*((CFStringRef*)outData) = CFSTR("BlackHole");
++			*((CFStringRef*)outData) = CFSTR(kDriver_Name);
+ 			*outDataSize = sizeof(CFStringRef);
+ 			break;
+ 			
+ 		case kAudioObjectPropertyManufacturer:
+ 			//	This is the human readable name of the maker of the box.
+ 			FailWithAction(inDataSize < sizeof(CFStringRef), theAnswer = kAudioHardwareBadPropertySizeError, Done, "BlackHole_GetBoxPropertyData: not enough space for the return value of kAudioObjectPropertyManufacturer for the box");
+-			*((CFStringRef*)outData) = CFSTR("Existential Audio Inc.");
++			*((CFStringRef*)outData) = CFSTR(kManufacturer_Name);
+ 			*outDataSize = sizeof(CFStringRef);
+ 			break;
+ 			
 @@ -2207,6 +2213,16 @@ static Boolean	BlackHole_HasDeviceProperty(AudioServerPlugInDriverRef inDriver,
  		case kAudioDevicePropertyPreferredChannelLayout:
  			theAnswer = (inAddress->mScope == kAudioObjectPropertyScopeInput) || (inAddress->mScope == kAudioObjectPropertyScopeOutput);

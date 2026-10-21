@@ -141,6 +141,7 @@ add_library(bambi-live STATIC
   src/live/lanes.cpp
   src/live/clips.cpp
   src/live/midi.cpp
+  src/live/library.cpp
 )
 target_include_directories(bambi-live PUBLIC include)
 #  the protocol reads and writes through patch/'s Json
@@ -250,6 +251,7 @@ add_executable(bambi-tests
   tests/live/test_lanes.cpp
   tests/live/test_clips.cpp
   tests/live/test_midi.cpp
+  tests/live/test_library.cpp
 )
 target_link_libraries(bambi-tests PRIVATE bambi-encode bambi-echo bambi-reverb bambi-decode bambi-live)
 # The tests read the shipped head model and its fixtures from the source tree.

@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # The loop device: BlackHole (GPL-3.0, Existential Audio), fetched at a pinned commit, with bambi's patch --
-# channel names, set from outside through a custom device property -- and built as "bambi", with its own
-# bundle id so it sits beside an installed BlackHole without colliding. Signed ad hoc, which a driver built
-# on this machine needs and no other machine accepts.
+# channel names, set from outside through a custom device property, and the box named from the build's names -- and
+# built as "bambi", made by "bambi", with its own bundle id so it sits beside an installed BlackHole without
+# colliding: BlackHole's licence keeps its name and branding off other builds. Signed ad hoc, which a driver built
+# on this machine needs and no other machine accepts; a release signs it again.
 #
 #   driver/build.sh            builds driver/build/bambi.driver
 #   driver/build.sh install    and prints the two lines that install it (they need an administrator)
+#   driver/build.sh source     only fetches BlackHole's source at the pin, unpatched: what a release's source carries
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -20,6 +22,7 @@ if [ ! -d BlackHole ]; then
     git clone -q "$REPO" BlackHole
 fi
 git -C BlackHole checkout -q "$PIN" 2>/dev/null || { git -C BlackHole fetch -q --unshallow 2>/dev/null || true; git -C BlackHole checkout -q "$PIN"; }
+[ "${1:-}" = source ] && exit 0
 if git -C BlackHole apply --check ../bambi-names.patch 2>/dev/null; then
     git -C BlackHole apply ../bambi-names.patch
 elif ! git -C BlackHole apply --reverse --check ../bambi-names.patch 2>/dev/null; then
@@ -36,6 +39,7 @@ xcodebuild -quiet \
     CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
     GCC_PREPROCESSOR_DEFINITIONS='$GCC_PREPROCESSOR_DEFINITIONS
       kDriver_Name=\"bambi\"
+      kManufacturer_Name=\"bambi\"
       kPlugIn_BundleID=\"org.bambi.loop\"
       kHas_Driver_Name_Format=false
       kDevice_Name=\"bambi\"

@@ -1,18 +1,27 @@
 bambi for macOS: VST3 and CLAP, Apple silicon and Intel
 
+The easiest way in is the installer, bambi-macos.pkg, beside this zip on the release page. It installs the plugins
+for every user of this Mac and, if you choose it, the live host for Ableton Live. This zip holds the plugins alone,
+to copy by hand:
+
 1. Copy the plugins into your plugin folders:
-     VST3/*.vst3  ->  ~/Library/Audio/Plug-Ins/VST3/
-     CLAP/*.clap  ->  ~/Library/Audio/Plug-Ins/CLAP/
+     VST3/*.vst3  ->  ~/Library/Audio/Plug-Ins/VST3/   (or /Library/Audio/Plug-Ins/VST3/ for every user)
+     CLAP/*.clap  ->  ~/Library/Audio/Plug-Ins/CLAP/   (or /Library/Audio/Plug-Ins/CLAP/)
    (~/Library is hidden in Finder: Go > Go to Folder..., then type the path.)
 
-2. These alpha builds are not signed. macOS blocks unsigned plugins that came from the internet, so remove
-   the quarantine flag once, in Terminal:
-     xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/bambi*.vst3 ~/Library/Audio/Plug-Ins/CLAP/bambi*.clap
+2. Restart your DAW and rescan its plugins.
 
-3. Restart your host and rescan its plugins.
+Keep one copy of each plugin: an earlier build in ~/Library/Audio/Plug-Ins beside one the installer put in
+/Library/Audio/Plug-Ins shows up twice in your DAW. Remove the one you no longer want.
 
-The Decoder's AirPods and phone head tracking use a helper app nested in its bundle; macOS asks once for the
-motion permission in the helper's name. OSC head tracking needs no helper.
+The Decoder's AirPods and phone head tracking use a helper app nested in its bundle; macOS asks once, under the
+helper's name, for access to motion data. OSC head tracking needs no helper.
+
+The live host (installer only): open "bambi live host" from Applications once. It puts the bambi Max for Live
+device into Live's User Library, where Live's browser lists it under Max for Live > Max Audio Effect > bambi, and
+macOS asks once for microphone access: that is how the live host receives Live's tracks through bambi's virtual
+audio driver. To remove everything the installer put on this Mac, run in Terminal:
+  sudo "/Library/Application Support/bambi/uninstall.sh"
 
 The plugins are licensed under the GNU AGPLv3 (LICENSE-AGPL-3.0.md), bambi's own code under the GPLv3
 (LICENSE); third-party components and their licences are in THIRD-PARTY-NOTICES.txt. The complete source

@@ -11,11 +11,13 @@ const vm = require("vm");
 
 let now = 1000000;
 let launches = 0;
+let launched = [];
 let sockets = [];
 const timers = [];
 
 function load(appExists) {
     launches = 0;
+    launched = [];
     sockets = [];
     timers.length = 0;
     const stand = {
@@ -30,7 +32,7 @@ function load(appExists) {
         },
         path: require("path"),
         fs: {existsSync(p) { return appExists && String(p).endsWith(".app"); }},
-        child_process: {spawn() { ++launches; return {unref() {}}; }},
+        child_process: {spawn(cmd, args) { ++launches; launched = args; return {unref() {}}; }},
     };
     const context = {
         require: name => stand[name] || stand[name.replace(/^node:/, "")],
@@ -103,13 +105,25 @@ function check(name, got, want) {
     check("a host that answered and was lost is started again at the next refusal", launches, 2);
 }
 {
-    //  Catches: a launch with no host built, which would count as started and then never be tried again.
+    //  Catches: a device away from a source checkout -- in Live's User Library -- that starts nothing, or starts the
+    //  checkout's path, which is not there.
     const c = load(false);
     const first = sockets[0];
     first.settled = true;
     first.handlers.error({code: "ECONNREFUSED"});
     first.handlers.close();
-    check("with nothing to start, nothing is started", launches, 0);
+    check("with no host built beside it, the installed host is started by its bundle id", launched,
+          ["-b", "org.bambi.livehost"]);
+}
+{
+    //  Catches: a checkout's own host passed over for an installed one, which would test the wrong build.
+    const c = load(true);
+    const first = sockets[0];
+    first.settled = true;
+    first.handlers.error({code: "ECONNREFUSED"});
+    first.handlers.close();
+    check("in a source checkout, the host built there is started", launched.length === 1 && launched[0].endsWith(".app"),
+          true);
 }
 
 console.log(failed === 0 ? "ok: " + passed + " checks" : failed + " FAILED, " + passed + " passed");

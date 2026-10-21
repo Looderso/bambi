@@ -11,12 +11,21 @@ juce_add_gui_app(bambi-live-host PRODUCT_NAME "bambi live host" COMPANY_NAME "${
                  MICROPHONE_PERMISSION_TEXT "bambi live host plays the tracks Live sends it through the loop device.")
 # JUCE renders the icon while configuring; an edit to the mark configures again.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${BAMBI_MARK}")
-target_sources(bambi-live-host PRIVATE Source/Main.cpp Source/Device.cpp Source/Engine.cpp Source/Rail.cpp Source/Routing.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/IoPage.cpp Source/Timeline.cpp)
+target_sources(bambi-live-host PRIVATE Source/Main.cpp Source/Device.cpp Source/Engine.cpp Source/Rail.cpp Source/Routing.cpp Source/Plugins.cpp Source/Runner.cpp Source/Settings.cpp Source/IoPage.cpp Source/Timeline.cpp Source/LiveDevice.cpp)
 target_compile_definitions(bambi-live-host PRIVATE JUCE_APPLICATION_NAME_STRING="bambi live host"
                                                    JUCE_APPLICATION_VERSION_STRING="0.1.0")
 target_link_libraries(bambi-live-host
     PRIVATE bambi-live bambi-encode bambi-echo bambi-reverb bambi-loop bambi-net bambi-devices bambi-remote bambi-ui bambi-juce-hosting
             juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+
+# The Max for Live device travels in the bundle, which the host copies into Live's User Library at start: the
+# device and the scripts it loads, not its generator or its checks. As sources, so an edit to one is copied again.
+if(APPLE)
+  file(GLOB BAMBI_LIVE_DEVICE CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/device/bambi-live*.amxd
+                                                ${CMAKE_CURRENT_SOURCE_DIR}/device/bambi-live*.js)
+  target_sources(bambi-live-host PRIVATE ${BAMBI_LIVE_DEVICE})
+  set_source_files_properties(${BAMBI_LIVE_DEVICE} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/device)
+endif()
 
 # macOS asks for the microphone again for every new signature, and holds the host's first input until it is
 # answered; an ad-hoc signature is new with every build. Signed with a fixed identity, the answer is kept.

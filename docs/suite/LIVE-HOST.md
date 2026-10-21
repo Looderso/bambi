@@ -19,8 +19,14 @@ loop device), `core/include/bambi/live/` (protocol, plan, field, pairs, io, time
 |---|---|---|---|
 | **Max device** | a Max for Live audio effect on Live's Main (`apps/live-host/device/bambi-live.amxd`) | tracks, groups, returns, names, colours, sends, faders, mute, solo, routing, tempo, transport, arrangement and session clips | each track's channel pair; which returns are silent; the host's state to save |
 | **Host** | a JUCE app (`apps/live-host/`), loading the installed VST3 plugins | the sources, the field, inserts, Decoders, the audio setup, lanes | the tree, values, transport and arrangement |
-| **Loop device** | a BlackHole fork named *bambi* (`driver/`), 64 channels, ids of its own | its channels and their names | names, set by the host through the custom property `bnam` |
+| **Loop device** | a BlackHole fork named and made by *bambi* (`driver/`), 64 channels, ids of its own | its channels and their names | names, set by the host through the custom property `bnam` |
 | **Plugins** | Encoders, Echo, Reverb, Decoders, as in any DAW | their state | track name and colour (`updateTrackProperties`), the playhead, state, MIDI |
+
+Installed by the macOS package ([0261](../DECISIONS.md)): the host in `/Applications`, the loop device in
+`/Library/Audio/Plug-Ins/HAL`. The Max device travels in the host's bundle; at every start the host copies it into
+the User Library that the newest Live's `Library.cfg` names (`Presets/Audio Effects/Max Audio Effect/bambi`)
+wherever it differs, and the device starts the host it finds beside it in a source checkout, else the installed one
+by its bundle id.
 
 Live is the truth for tracks and their names, colours, sends and faders; the host for encoding, pairs and effects. The device applies the host's routing and decides nothing. Names and colours reach plugins as
 a DAW hands them.
