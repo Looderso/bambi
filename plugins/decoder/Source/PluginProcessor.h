@@ -15,17 +15,12 @@
 #include <vector>
 
 #include "HelperLink.h"
-#include "bambi/decode/convolver.hpp"
-#include "bambi/decode/decoder.hpp"
+#include "bambi/decode/engine.hpp"
 #include "bambi/decode/headmodel.hpp"
-#include "bambi/decode/headrotation.hpp"
 #include "bambi/decode/orientation.hpp"
 #include "bambi/decode/outputs.hpp"
 #include "bambi/decode/params.hpp"
 #include "bambi/decode/remote.hpp"
-#include "bambi/decode/sofafile.hpp"
-#include "bambi/decode/speakers.hpp"
-#include "bambi/decode/virtualarray.hpp"
 #include "bambi/host/FieldBuffer.h"
 #include "bambi/host/Layout.h"
 #include "bambi/host/PluginProcessor.h"
@@ -45,9 +40,9 @@
  *
  *  Everything that is not a host parameter -- what plays and where, the layout, the listener's two
  *  sliders, the weighting, the tracker's setup -- is state (`DecoderState`), edited as a document and
- *  adopted whole. The filters and the decoder are designed on commit, here on the message thread, so a
- *  state load is heard whole and a bounce hears the state, never a worker's timing. The audio thread
- *  swaps finished sets in whole.
+ *  adopted whole. What plays is bambi::DecoderEngine's, which bambi-decode-render drives too; it designs the
+ *  filters and the decoder on commit, here on the message thread, so a state load is heard whole and a bounce
+ *  hears the state, never a worker's timing.
  *
  *  Verified headless by `bambi-decoder-check`.
  */
@@ -57,8 +52,8 @@ class BambiDecoderProcessor final : public bambi::host::PluginProcessor,
 public:
     static constexpr int kMaxOutputs = bambi::kMaxDecoderOutputs;
     static constexpr std::int64_t kTimelineSlack =
-        64;                                ///< the timeline may sit this far off before it counts as a locate
-    static constexpr int kPartition = 64;  ///< the binaural convolution's block, and the latency reported
+        64;  ///< the timeline may sit this far off before it counts as a locate
+    static constexpr int kPartition = bambi::DecoderEngine::kPartition;  ///< the latency reported
     static constexpr int kMaxHostOrder = bambi::host::kMaxHostOrder;
 
     BambiDecoderProcessor();
@@ -135,9 +130,7 @@ public:
     const Diagnostics& diagnostics() const noexcept { return diag_; }
     int engineOrder() const noexcept override { return engineOrder_; }
     bool modelLoaded() const noexcept { return modelLoaded_; }
-    const bambi::HeadModel& headModel() const noexcept {
-        return chosenHead_ == 2 ? fileModel_ : models_[static_cast<std::size_t>(chosenHead_)];
-    }
+    const bambi::HeadModel& headModel() const noexcept { return engine_.headModel(); }
     /// Why the layout could not be designed, or empty. Message thread.
     juce::String designError() const;
     /// The layout's design as last built, for the page and the scene. Message thread.
@@ -172,9 +165,9 @@ public:
     void forgetCalibration();  ///< back to Apple's documented frame
 
     /// The sliders the binaural filters were last built with, for a check.
-    std::pair<double, double> builtSliders() const { return {builtShift_, builtSize_}; }
+    std::pair<double, double> builtSliders() const { return {engine_.builtEarShift(), engine_.builtHeadSize()}; }
     int builtHead() const {
-        return chosenHead_;
+        return engine_.builtHead();
     }  ///< 0 the model, 1 the KU100, 2 a file: what the filters are built from
     /*  Message thread: a SOFA file read, fitted into a head and put into the state as a head file's text, so the
         session opens without the file; the head plays at the next commit. Seconds for a dense set. False, with
@@ -195,59 +188,23 @@ private:
     void describe(bambi::LinkStatic& st) const override;
     int order() const override { return engineOrder_ < 0 ? 1 : engineOrder_; }
 
-    /// Designs what `d` asks for that is not built yet: the filters for the sliders, the layout's decoder, the
-    /// array on headphones. Message thread, under `workMutex_`. Allocates.
+    /// Builds what `d` asks for that is not built yet, and says how many loudspeaker outputs play. Message thread,
+    /// under `workMutex_`. Allocates.
     void build(const bambi::DecoderState& d);
-    void buildMatrix(const bambi::DecoderState& d);  ///< under workMutex_: reads, resamples, publishes
-    /// Parses the state's file head when its text changed; then which head the state asks for and can have.
-    int headIndex(const bambi::DecoderState& d);
     void connectTracker(const bambi::DecoderState& d);
     void oscMessageReceived(const juce::OSCMessage& message) override;
 
-    std::array<bambi::HeadModel, 2> models_;  ///< the model, and the KU100 as measured
-    bool modelLoaded_{false};
-    bambi::HeadModel fileModel_;                       ///< a SOFA file's head, parsed from the state's text
-    std::shared_ptr<const std::string> fileHeadText_;  ///< the text fileModel_ was parsed from
-    bool fileLoaded_{false};
-    int chosenHead_{0};      ///< 0 the model, 1 the KU100, 2 the file: what the chain plays; message thread
-    juce::String sofaNote_;  ///< what the last file load said: the set and how close the fit came
+    bool modelLoaded_{false};  ///< both built-in heads parsed: the engine has something to play
+    juce::String sofaNote_;    ///< what the last file load said: the set and how close the fit came
 
-    //  The engines. Prepared in prepareToPlay, fed on commit, read by the audio thread.
-    bambi::BinauralDecoder binaural_;
-    bambi::SpeakerDecoder speakers_;
-    //  A decoder as filters, a SOFA FIR-E file's: read on the message thread, resampled to the host's rate, published
-    //  whole; the audio thread convolves with it in place of the layout's matrix while matrixPlays_ says so.
-    bambi::MatrixConvolver matrix_;
-    bambi::FirMatrix matrixData_;  ///< the file as read, kept so a change of normalisation needs no second read
-    std::string matrixDataFile_;   ///< which file matrixData_ holds
-    std::atomic<bool> matrixPlays_{false};
-    std::atomic<bool> inConvolver_{false};  ///< the audio thread is inside the matrix convolver; a rebuild waits on it
-    int preparedInputs_{0}, preparedOutputs_{0}, preparedTaps_{0};  ///< the convolver's shape as last allocated
-    std::string builtMatrixFile_;
-    int builtMatrixNormalization_{-1}, builtMatrixOrder_{-1};
-    juce::String matrixNote_, matrixError_;  ///< what the page says of the matrix; under workMutex_
-    bambi::VirtualArray virtual_;
-    bambi::HeadRotation scene_;              ///< the scene's turn, heard by every output
-    bambi::HeadRotation turn_;               ///< the head undone, for the binaural decode and the slice
-    bambi::RotationClock sceneClock_;        ///< the rates integrated; audio thread
+    bambi::DecoderEngine
+        engine_;  ///< prepared in prepare(), built on commit under workMutex_, played by the audio thread
     bambi::host::TransportWatch transport_;  ///< a start or a locate zeroes the rates' turn unless they continue
-    std::int64_t hopPos_{0};  ///< frames since prepare: where in its rotation hop the scene's turn is set; audio thread
-    mutable std::mutex workMutex_;  ///< prepare and build: never the audio thread
+    mutable std::mutex workMutex_;           ///< prepare and build: never the audio thread
     double sampleRate_{48000.0};
     int engineOrder_{-1};  ///< what prepareToPlay built for; -1 until it has run
     int maxBlock_{0};
-    double builtShift_{0.0}, builtSize_{1.0};
-    bambi::Microphones builtMicrophones_;
-    std::atomic<bool> pairFollows_{false};  ///< the layout is a pair that follows the head: the turned field feeds it
-    bool headBuilt_{false};
-    std::vector<bambi::Loudspeaker> builtLayout_;
-    int builtWeighting_{-1}, builtOrder_{-1};
-    bool builtDistance_{true};
-
-    bambi::host::FieldBuffer field_;                                 ///< the input, interleaved
-    std::vector<float> sceneField_, turned_, stereo_, speakersOut_;  ///< scratch, sized in prepareToPlay
-    std::vector<float> gainRamp_;                                    ///< the level per sample of the block
-    float gainNow_{1.0f}, gainCoefficient_{1.0f};
+    bambi::host::FieldBuffer field_;  ///< the input, interleaved
 
     //  The tracker. The OSC callback runs on the message thread and is the handoff's one writer; the audio
     //  thread reads it and is both rotation stages' one writer.

@@ -14,14 +14,7 @@ int orderForChannels(int channels) noexcept {
     return root * root == channels ? root - 1 : -1;
 }
 
-int orderThatFits(int channels) noexcept {
-    if (channels < 1) return -1;
-    int order = static_cast<int>(std::sqrt(static_cast<double>(channels))) - 1;
-    //  The square root of a perfect square can land a hair either side of the integer.
-    while (numChannels(order + 1) <= channels) ++order;
-    while (order > 0 && numChannels(order) > channels) --order;
-    return std::min(order, kMaxHostOrder);
-}
+int orderThatFits(int channels) noexcept { return std::min(orderFitting(channels), kMaxHostOrder); }
 
 juce::String describeLayout(const juce::AudioProcessor::BusesLayout& layout) {
     const auto set = [](const juce::AudioChannelSet& s) {

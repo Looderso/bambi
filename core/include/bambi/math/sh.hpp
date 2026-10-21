@@ -18,6 +18,14 @@ inline constexpr int kMaxChannels = (kMaxOrder + 1) * (kMaxOrder + 1);
 
 constexpr int numChannels(int order) { return (order + 1) * (order + 1); }
 
+/// The highest order whose channels fit in `channels`; -1 for none. Channels past the order go unused.
+constexpr int orderFitting(int channels) {
+    if (channels < 1) return -1;
+    int order = 0;
+    while (numChannels(order + 1) <= channels) ++order;
+    return order;
+}
+
 /// Order n of an ACN channel index.
 constexpr int acnOrder(int acn) {
     int n = 0;

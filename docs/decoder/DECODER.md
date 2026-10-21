@@ -172,4 +172,12 @@ render turns it by) and the output gain. Everything else is state, never automat
 what plays and where, the layout's contents, the head file's text, the sliders, weighting, the tracker's setup. A
 session reopened elsewhere renders as it did.
 
+**Rendered offline** (`tools/decode-render`, `bambi-decode-render`): the engine the plugin plays through
+(`core/include/bambi/decode/engine.hpp`), with no plugin and no host; the input generated from a seed, the heads read
+from `core/data/decode`. Six goldens in `tests/golden/scenarios.txt` hash the bus and the control trace: headphones at
+the default head and with the head turning, the scene turning at its rates through a locate, ten loudspeakers through
+their distance delays and gains, a filter matrix resampled and read as N3D, and a first-order field through a layout
+heard on headphones. The render is identical at block sizes 1, 64, 128, 333 and 1024 with the scene and the head
+turning, the level moving, the outputs rebuilt and a locate inside it.
+
 Background: decisions 0165, 0228.
