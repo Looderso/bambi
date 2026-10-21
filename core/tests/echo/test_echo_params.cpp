@@ -4,9 +4,25 @@
 
 #include "../patch/targets.hpp"
 #include "bambi/echo/params.hpp"
+#include "bambi/patch/state.hpp"
 #include "doctest.h"
 
 using namespace bambi;
+
+TEST_CASE("a new Echo's region is everywhere, and a saved one keeps its own") {
+    //  Catches: a new Echo starting with a spot, a fresh Echo's region dropped when saved, and the loader starting
+    //  from the state it loads into, so a state saved with a spot (which is not written) loads into a fresh Echo
+    //  as everywhere.
+    const PluginState fresh = freshEchoState();
+    CHECK(fresh.regions[0].shape.kind == RegionKind::Everywhere);
+    PluginState back{echoParams()};
+    REQUIRE(loadState(Product::Echo, echoParams(), saveState(Product::Echo, echoParams(), fresh), back).ok);
+    CHECK(back.regions[0].shape.kind == RegionKind::Everywhere);
+    const PluginState spot{echoParams()};
+    PluginState old = freshEchoState();
+    REQUIRE(loadState(Product::Echo, echoParams(), saveState(Product::Echo, echoParams(), spot), old).ok);
+    CHECK(old.regions[0].shape.kind == RegionKind::Spot);
+}
 
 TEST_CASE("Echo's modulation manifest names a real parameter for every role") {
     //  Catches: a misspelled generator key, a missing source amount, or a base target that is not

@@ -53,7 +53,6 @@ void DecoderPanel::paint(juce::Graphics& g) {
     const auto tabName = [](TempTab t) -> const char* {
         switch (t) {
             case TempTab::Tracking: return "tracking";
-            case TempTab::Personalise: return "personalise";
             case TempTab::Loudspeakers: return "loudspeakers";
         }
         return "";
@@ -105,7 +104,6 @@ void DecoderPanel::paint(juce::Graphics& g) {
     }
     switch (state_.temps[static_cast<std::size_t>(shown - 1)]) {
         case TempTab::Tracking: paintTracking(g, frame.content); break;
-        case TempTab::Personalise: paintPersonalise(g, frame.content); break;
         case TempTab::Loudspeakers: paintLoudspeakers(g, frame.content); break;
     }
 }
@@ -338,12 +336,11 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
     //  the two sliders make the model the listener's; a measured head keeps its ears and scales its time
     //  difference with the head
     paintStateTile(
-        g, tileCell(content, y, 0), "head", juce::String(d.headSize, 2) + " " + juce::String::fromUTF8("\xc3\x97"),
-        d.headSize, 0.75, 1.3, 0.01, "decoder.head_size", mine,
-        [](DecoderState& s, double v) { s.headSize = static_cast<float>(v); },
+        g, tileCell(content, y, 0), "head", juce::String(d.headSize, 2), d.headSize, 0.75, 1.3, 0.01,
+        "decoder.head_size", mine, [](DecoderState& s, double v) { s.headSize = static_cast<float>(v); },
         [](DecoderState& s) { s.headSize = 1.0f; });
     paintStateTile(
-        g, tileCell(content, y, 1), "ears", juce::String(d.earShift, 2) + " erb", d.earShift, -2.0, 2.0, 0.01,
+        g, tileCell(content, y, 1), "ears", juce::String(d.earShift, 2), d.earShift, -2.0, 2.0, 0.01,
         "decoder.ear_shift", mine && head == 0, [](DecoderState& s, double v) { s.earShift = static_cast<float>(v); },
         [](DecoderState& s) { s.earShift = 0.0f; });
     y = tilesBottom(y, 2) + ctl::sectionGap;
@@ -392,12 +389,6 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
           content.getRight() - toggle.hit.getRight() - static_cast<float>(space::grid), lineH},
          juce::Justification::centredLeft);
     y += lineH + ctl::segmentGap;
-    y += static_cast<float>(space::groupGap);
-
-    //  the deep part, a tab of its own
-    y = paintButtonNote(
-        g, content, y, juce::String::fromUTF8("personalise\xe2\x80\xa6"), true,
-        [this] { state_.openTemp(TempTab::Personalise); }, "the head's sliders against a real loudspeaker");
     noteContentBottom(y + static_cast<float>(space::grid));
 }
 
@@ -1011,17 +1002,6 @@ float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content
     line("3  say how the phone is worn, tap start, face the front and press recentre", colour::label, textX, textW);
     line(status, colour::label, textX, textW);
     return std::max(y, top + side);
-}
-
-void DecoderPanel::paintPersonalise(juce::Graphics& g, juce::Rectangle<float> content) {
-    float y = content.getY();
-    text(g,
-         "a real loudspeaker and a virtual one alternate; turn and nod; move each slider until the two sit in one "
-         "place.",
-         labelFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 5)},
-         juce::Justification::topLeft);
-    y += static_cast<float>(space::grid * 5);
-    noteContentBottom(y + static_cast<float>(space::grid));
 }
 
 }  // namespace bambi::ui

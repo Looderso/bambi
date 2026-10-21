@@ -119,9 +119,10 @@ anyone editing it. The Encoder's own window is [encoder/UI.md](../encoder/UI.md)
   name, the link session, the order and the host's reported buses, with the plugin's own beside it. The footer and the
   level column stay in front of it. Presets are the header's `‹ preset · name * ›` and a browser over the panel
   ([PRESETS](PRESETS.md)).
-- **A run of channels is one row of cells of one size**: the Decoder's map, a device's outputs in the live host.
-  Grouped; wider than the space, it scrolls sideways with the wheel under a thin bar, and the shown output is brought
-  into view. Every cell carries its number. Never a dropdown, never cells that shrink (`ui/ChannelStrip`).
+- **A run of channels is cells of one size** (`ui/ChannelStrip`). In one row, grouped, on the Decoder's map: wider
+  than the space, it scrolls sideways with the wheel under a thin bar, and the shown output is brought into view. In
+  lines that wrap on the live host's device cards, where the page has room for every channel. An empty cell carries
+  its number, a placed one the channel it plays (L, R, 1…). Never a dropdown, never cells that shrink.
 - **A text field is a value's box with a caret.** There is one, the instance's name: the panel's ground, the rule's
   outline going strong when it has the keyboard, no menu of JUCE's own. Return and escape give the keyboard back,
   because the next key after naming a track is the host's space bar.

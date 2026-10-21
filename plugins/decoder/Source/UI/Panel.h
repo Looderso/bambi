@@ -10,7 +10,7 @@
 namespace bambi::ui {
 
 /*  The decoder's right panel: the open output's page -- headphones, speakers -- and the temporary tabs: tracking
- *  from the orientation strip, personalisation from the headphones page, the loudspeaker table from the speakers page.
+ *  from the orientation strip, the loudspeaker table from the speakers page.
  *  Every page opens with what the output is, its own settings under that, then its channel map -- the bus's
  *  channels, what plays on each, this output's own outlined -- then its options. The frame is the shared one.
  */
@@ -27,7 +27,6 @@ private:
     void paintTracking(juce::Graphics& g, juce::Rectangle<float> content);
     float paintPhone(juce::Graphics& g, juce::Rectangle<float> content, float y);  ///< the QR code and the steps
     float paintLearn(juce::Graphics& g, juce::Rectangle<float> content, float y);  ///< learn mode: the port's list
-    void paintPersonalise(juce::Graphics& g, juce::Rectangle<float> content);
     float paintStateTile(juce::Graphics& g, juce::Rectangle<float> tile, const juce::String& name,
                          const juce::String& value, double shown, double low, double high, double step, const char* key,
                          bool enabled, std::function<void(DecoderState&, double)> set,

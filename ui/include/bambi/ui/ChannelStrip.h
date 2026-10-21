@@ -6,10 +6,11 @@
 
 namespace bambi::ui {
 
-/*  A run of channels in one row, however many: the live host's channel map and the Decoder's map both lay their
- *  cells out with it. Every cell is the same normal size, in groups with a gap between; a run wider than the
- *  space is a window onto it, moved sideways with the wheel, a thin bar under it saying where the window is. What a
- *  cell shows -- who plays there, a clash -- stays the caller's to draw, inside `viewport`. */
+/*  A run of channels, however many, every cell the same normal size. In one row, in groups with a gap between, as
+ *  the Decoder's map lays them out: a run wider than the space is a window onto it, moved sideways with the wheel, a
+ *  thin bar under it saying where the window is. Or wrapped into lines, as the live host's device cards lay them
+ *  out where the page has the room to show every channel. What a cell shows -- who plays there, a clash -- stays the
+ *  caller's to draw, inside `viewport`. */
 struct ChannelStrip {
     std::vector<juce::Rectangle<float>> cells;  ///< one per channel in order, scrolled: some lie outside `viewport`
     juce::Rectangle<float> viewport;            ///< where the row shows
@@ -20,6 +21,9 @@ struct ChannelStrip {
     /// within the run; `reveal`, a channel from 1 (0 for none), is moved into view when it is not.
     static ChannelStrip layout(float x, float top, float width, const std::vector<int>& groups, float& scroll,
                                int reveal = 0);
+
+    /// `count` channels in lines that wrap at `width`, each line `linePitch` below the last: every cell in view.
+    static ChannelStrip wrapped(float x, float top, float width, int count, float linePitch);
 
     /// The x of group `group`'s first cell, for a name over the group.
     float groupLeft(std::size_t group) const;

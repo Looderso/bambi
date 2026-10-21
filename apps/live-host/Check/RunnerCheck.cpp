@@ -29,6 +29,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <optional>
 #include <random>
+#include <set>
 #include <vector>
 
 #include "../Source/IoPage.h"
@@ -1541,6 +1542,42 @@ int railTransportHolds() {
     return ok ? 0 : 1;
 }
 
+//  The outputs tab over two devices, a Decoder's headphones chosen: pressed on a grid across the devices' cards, and
+//  each device the headphones were placed on noted. Catches: the cards numbering each device's channels from the
+//  row's start, so a click on the second device's channels places on the first's.
+int ioPagePlacesOnEveryDevice() {
+    livehost::IoPage page;
+    page.setSize(1100, 760);
+    livehost::IoPage::Shown s;
+    s.system = {{"a", "Interface", 16, 8, 120, 100, false}, {"b", "Box", 4, 2, 80, 70, false}};
+    s.settings.devices = {"a", "b"};
+    s.settings.main = {"a", 1};
+    DecoderReport one;
+    one.bus = 61;
+    one.headphonesOn = true;
+    one.headphoneChannel = 1;
+    s.decoders = {{1, one, 64}};
+    std::set<std::string> on;
+    page.change = [&](live::AudioSettings next) {
+        for (const auto& p : next.placed)
+            if (p.out == live::Out{1, Output::Headphones}) on.insert(p.at.device);
+    };
+    juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
+    //  right of the list, so nothing there chooses another output
+    for (int y = 0; y < page.getHeight(); y += 5)
+        for (int x = static_cast<int>(ui::theme::sheet::listWidth) + 60; x < page.getWidth(); x += 5) {
+            page.show(s);
+            page.showTab(livehost::IoPage::Tab::Outputs);
+            juce::Graphics g(image);
+            page.paint(g);
+            page.clickAt({static_cast<float>(x), static_cast<float>(y)});
+        }
+    const bool ok = on.count("a") == 1 && on.count("b") == 1;
+    std::printf("  the headphones placed on the interface: %s, on the box: %s %s\n", on.count("a") ? "yes" : "no",
+                on.count("b") ? "yes" : "no", ok ? "" : "  FAIL");
+    return ok ? 0 : 1;
+}
+
 //  The I/O page with two devices, both outputs playing, a copy and an input: each tab painted, then pressed
 //  everywhere on a grid, painted again after each press. What it asks for is counted; nothing may fall over.
 int ioPageHolds() {
@@ -2222,6 +2259,8 @@ int main() {
     failed += railTransportHolds();
     std::printf("the I/O page\n");
     failed += ioPageHolds();
+    std::printf("the I/O page places on every device\n");
+    failed += ioPagePlacesOnEveryDevice();
 
     std::printf("one session for every plugin the host loads\n");
     failed += oneSession();

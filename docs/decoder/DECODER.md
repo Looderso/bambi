@@ -151,8 +151,8 @@ The shared shell, theme, controls and scene view with a different centre. Built 
   own controls), then *channels* (the headphones' pair; or the layout's first channel and the bus's channels with
   what plays on each, a key for the two outputs' inks), then *options* (listening situation and distance
   compensation, or the layout heard through on headphones). A two-loudspeaker layout gets *fold · slice* between
-  the layout and the channels. The loudspeaker table opens as a temporary tab from `loudspeakers…`; personalisation
-  and the tracker's setup do the same, each with a close cross.
+  the layout and the channels. The loudspeaker table opens as a temporary tab from `loudspeakers…`; the tracker's
+  setup does the same, each with a close cross. The head and ears sliders show their values without units.
 - **The orientation strip sits where the effects have their matrix**: tabs for the tracker (none · osc · airpods ·
   phone), the tracker's word at the right (whether it speaks and how often, or that the input has no direction);
   under them *head · scene*, recentre, setup and *static*, greyed under *none*; then the scene's yaw, pitch and

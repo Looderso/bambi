@@ -6,6 +6,7 @@
 
 #include "bambi/ui/ChannelStrip.h"
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/Tiles.h"
 #include "bambi/ui/Widgets.h"
 
 namespace bambi::livehost {
@@ -15,6 +16,7 @@ namespace {
 namespace colour = ui::theme::colour;
 namespace sh = ui::theme::sheet;
 namespace ctl = ui::theme::controls;
+namespace cs = ui::theme::channelStrip;
 using bambi::Output;
 
 using ui::kSeparator;
@@ -27,6 +29,41 @@ juce::Rectangle<float> button(juce::Graphics& g, float x, float cy, const juce::
     const juce::Rectangle<float> box{x, cy - sh::control / 2.0f, ui::framedButtonWidth(label), sh::control};
     ui::drawFramedButton(g, box, label, true);
     return box;
+}
+
+//  The `index`th tile of a grid of `columns` across `area`, from `top`: its frame inside `area`, as a page's are.
+juce::Rectangle<float> gridCell(juce::Rectangle<float> area, float top, int index, int columns) {
+    return ui::tileCell(area.reduced(ctl::tileBoxPadX, 0.0f), top + ctl::tileBoxPadY, index, ui::theme::type::value,
+                        columns);
+}
+
+//  Where that grid of `count` tiles ends, its frames included.
+float gridBottom(float top, int count, int columns) {
+    return ui::tilesBottom(top + ctl::tileBoxPadY, count, ui::theme::type::value, columns) + ctl::tileBoxPadY;
+}
+
+//  A thing in a tab's list: its frame, and while chosen the selected row's ground inside the strong rule.
+void itemFrame(juce::Graphics& g, juce::Rectangle<float> box, bool chosen) {
+    if (chosen) {
+        g.setColour(colour::highlight);
+        g.fillRect(box);
+    }
+    ui::drawFrame(g, box, chosen ? colour::ruleStrong : colour::rule, ui::theme::stroke::rule, false);
+}
+
+//  A thing's colour before its name: filled in its owner's colour, or dashed in it for the host's own copy.
+void swatch(juce::Graphics& g, float x, float cy, juce::Colour ink, bool dashed) {
+    const juce::Rectangle<float> box{x, cy - sh::swatch / 2.0f, sh::swatch, sh::swatch};
+    if (dashed) {
+        ui::drawFrame(g, box, ink, ui::theme::stroke::rule, true);
+        return;
+    }
+    g.setColour(ink);
+    g.fillRect(box);
+}
+
+juce::Colour inkOf(const live::Out& out) {
+    return out.main() ? colour::text : colour::identity(Product::Decoder);
 }
 
 }  // namespace
@@ -51,8 +88,9 @@ void IoPage::setLead(double ms, double spreadMs, int count) {
 }
 
 bool IoPage::keyPressed(const juce::KeyPress& key) {
-    if (key != juce::KeyPress::escapeKey || !(arming_ || menu_)) return false;
-    arming_.reset();
+    if (key != juce::KeyPress::escapeKey) return false;
+    const bool waited = armed_.escape();
+    if (!waited && !menu_) return false;
     menu_ = false;
     repaint();
     return true;
@@ -89,8 +127,32 @@ juce::String IoPage::where(const live::Row& row, int at, int width) const {
 void IoPage::paint(juce::Graphics& g) {
     g.fillAll(colour::ground);
     clearRegions();
+    const auto top = static_cast<float>(ui::theme::metrics::headerHeight);
+    setViewport(top, static_cast<float>(getHeight()));
 
-    //  the band: the tabs, with what each holds, as the other pages carry their own controls there
+    //  under the band, its edges where the band's are, as the other pages' are; what is taller scrolls under it
+    float bottom = top;
+    {
+        const ContentClip clip(*this, g);
+        auto page = getLocalBounds().toFloat().withTrimmedTop(top).reduced(ui::theme::metrics::bandInset, sh::pad);
+        page.translate(0.0f, -scroll());
+        armed_.ground(*this, getLocalBounds().toFloat(), [this] { repaint(); });
+        if (s_.problem.isNotEmpty()) {
+            ui::text(g, s_.problem, ui::labelFont(), colour::text, page.removeFromTop(sh::line),
+                     juce::Justification::centredLeft);
+        }
+        if (tab_ == Tab::Interface)
+            bottom = interfacePage(g, page);
+        else if (tab_ == Tab::Outputs)
+            bottom = outputsPage(g, page);
+        else if (tab_ == Tab::Inputs)
+            bottom = inputsPage(g, page);
+        else
+            bottom = midiPage(g, page);
+    }
+    noteContentBottom(bottom + scroll() + sh::pad);
+
+    //  the band over what scrolls: the tabs, with what each holds, as the other pages carry their own controls there
     const auto band = ui::drawPageBand(g, static_cast<float>(getWidth()));
     const float tabHeight = ctl::tabBarHeight - ctl::matrixTabsTop;
     const auto row = outputRow();
@@ -101,31 +163,11 @@ void IoPage::paint(juce::Graphics& g) {
     paintTabRowAt(g, band.getX(), band.getCentreY() - tabHeight / 2.0f, tabHeight, names, static_cast<int>(tab_),
                   [this](int t) {
                       tab_ = static_cast<Tab>(t);
-                      arming_.reset();
+                      armed_.end();
                       menu_ = false;
+                      scrollTo(0.0f);
                       repaint();
                   });
-
-    //  under the band, its edges where the band's are, as the other pages' are
-    auto page = getLocalBounds()
-                    .toFloat()
-                    .withTrimmedTop(static_cast<float>(ui::theme::metrics::headerHeight))
-                    .reduced(ui::theme::metrics::bandInset, sh::pad);
-    //  nothing past them: what does not fit is cut
-    juce::Graphics::ScopedSaveState clip(g);
-    g.reduceClipRegion(page.toNearestInt());
-    if (s_.problem.isNotEmpty()) {
-        const auto line = page.removeFromBottom(sh::line);
-        ui::text(g, s_.problem, ui::labelFont(), colour::text, line, juce::Justification::centredLeft);
-    }
-    if (tab_ == Tab::Interface)
-        interfacePage(g, page);
-    else if (tab_ == Tab::Outputs)
-        outputsPage(g, page);
-    else if (tab_ == Tab::Inputs)
-        inputsPage(g, page);
-    else
-        midiPage(g, page);
 }
 
 // ---- interface ----------------------------------------------------------------------------------
@@ -137,31 +179,26 @@ float IoPage::interfacePage(juce::Graphics& g, juce::Rectangle<float> page) {
     for (std::size_t k = 0; k < chosen.size(); ++k) {
         const std::string uid = chosen[k];
         const auto d = std::find_if(joined.begin(), joined.end(), [&](const live::AudioDevice& x) { return x.uid == uid; });
-        const juce::Rectangle<float> line{page.getX(), y, page.getWidth(), sh::line};
-        auto rest = line;
         const bool here = d != joined.end();
-        ui::text(g, here ? juce::String(d->name) : juce::String(uid), ui::labelFont(),
-                 here ? colour::text : colour::inactive, rest.removeFromLeft(sh::nameColumn),
-                 juce::Justification::centredLeft);
-        if (here) {
-            ui::text(g, juce::String(d->outs) + " out" + kSeparator + juce::String(d->ins) + " in", ui::smallFont(),
-                     colour::label, rest.removeFromLeft(sh::ioColumn), juce::Justification::centredLeft);
-            ui::text(g, k == 0 ? "the clock" : "drift corrected", ui::smallFont(), colour::label,
-                     rest.removeFromLeft(sh::roleColumn), juce::Justification::centredLeft);
-            ui::text(g, ms(d->outLatency, s_.rate), ui::smallFont(), colour::label,
-                     rest.removeFromLeft(sh::latencyColumn), juce::Justification::centredLeft);
-        } else {
-            ui::text(g, "not here, or past what the row holds", ui::smallFont(), colour::inactive,
-                     rest.removeFromLeft(sh::ioColumn + sh::roleColumn + sh::latencyColumn), juce::Justification::centredLeft);
-        }
-        const juce::Rectangle<float> x{line.getRight() - ctl::closeGlyph, line.getCentreY() - ctl::closeGlyph / 2.0f,
-                                       ctl::closeGlyph, ctl::closeGlyph};
+        const auto tile = gridCell(page, y, static_cast<int>(k), sh::deviceColumns);
+        ui::TileContent t;
+        t.value = here ? juce::String(d->name) : juce::String(uid);
+        t.name = here ? (k == 0 ? juce::String("the clock") : juce::String("drift corrected")) + kSeparator +
+                            juce::String(d->outs) + " out" + kSeparator + juce::String(d->ins) + " in" + kSeparator +
+                            ms(d->outLatency, s_.rate)
+                      : juce::String("not here, or past what the row holds");
+        t.enabled = here;
+        t.bar = false;
+        ui::drawTile(g, tile, t);
+        const juce::Rectangle<float> x{tile.getRight() - ctl::closeGlyph, tile.getY(), ctl::closeGlyph,
+                                       ctl::closeGlyph};
         addClickArea(ui::drawCloseCross(g, x), [this, k] {
             edit([k](live::AudioSettings& s) { s.devices.erase(s.devices.begin() + static_cast<long>(k)); });
         });
         if (k > 0 && here) {
-            const auto make = button(g, x.getX() - sh::gap - ui::framedButtonWidth("make clock"), line.getCentreY(),
-                                     "make clock");
+            const auto box = ui::tileBox(tile);
+            const auto make = button(g, box.getRight() - sh::itemPad - ui::framedButtonWidth("make clock"),
+                                     box.getCentreY(), "make clock");
             addClickArea(make, [this, k] {
                 edit([k](live::AudioSettings& s) {
                     std::rotate(s.devices.begin(), s.devices.begin() + static_cast<long>(k),
@@ -169,9 +206,9 @@ float IoPage::interfacePage(juce::Graphics& g, juce::Rectangle<float> page) {
                 });
             });
         }
-        y += sh::line;
     }
-    const auto add = button(g, page.getX(), y + sh::control / 2.0f + ctl::segmentGap, "+ device");
+    y = gridBottom(y, static_cast<int>(chosen.size()), sh::deviceColumns) + ctl::segmentGap;
+    const auto add = button(g, page.getX(), y + sh::control / 2.0f, "+ device");
     addClickArea(add, [this] {
         menu_ = !menu_;
         repaint();
@@ -186,58 +223,50 @@ float IoPage::interfacePage(juce::Graphics& g, juce::Rectangle<float> page) {
         ui::text(g,
                  "The host holds the quicker devices back by up to " + ms(most - least, s_.rate) +
                      ", so every device plays in step; one that is not the clock is resampled to follow it.",
-                 ui::labelFont(), colour::label, {page.getX(), y, page.getWidth(), sh::line},
+                 ui::smallFont(), colour::label, {page.getX(), y, page.getWidth(), sh::noteLine},
                  juce::Justification::centredLeft);
-        y += sh::line;
+        y += sh::noteLine;
     }
 
-    y = ui::drawGroupHeading(g, page.getX(), y + sh::gap, page.getWidth(), "timing");
-    ui::drawFactRow(g, {page.getX(), y, page.getWidth(), sh::line}, "rate",
-                    juce::String(s_.rate / 1000.0, juce::roundToInt(s_.rate) % 1000 == 0 ? 0 : 1) +
-                        " kHz" + kSeparator + "Live's");
-    y += sh::line + ctl::segmentGap;
-    ui::text(g, "buffer", ui::labelFont(), colour::label, {page.getX(), y, sh::labelColumn, sh::control},
-             juce::Justification::centredLeft);
+    //  the timing and the order, a tile each; the two choices under their tiles
+    y = ui::drawGroupHeading(g, page.getX(), y + sh::gap, page.getWidth(), "timing and order");
     const std::vector<juce::String> buffers{"32", "64", "128", "256"};
+    const std::vector<juce::String> orders{"1", "2", "3", "4", "5", "6", "7"};
     const int chosenBuffer = static_cast<int>(
         std::find(buffers.begin(), buffers.end(), juce::String(s_.settings.buffer)) - buffers.begin());
-    const auto cells = ui::drawSegments(
-        g, {page.getX() + sh::labelColumn, y, ui::segmentsWidth(buffers), sh::control}, buffers, chosenBuffer, true);
+    const int field = (s_.order + 1) * (s_.order + 1);
+    const float share = std::clamp(s_.load, 0.0f, 1.0f);
+    ui::TileContent rate, buffer, order, load;
+    rate.name = "rate" + kSeparator + "Live's";
+    rate.value = juce::String(s_.rate / 1000.0, juce::roundToInt(s_.rate) % 1000 == 0 ? 0 : 1) + " kHz";
+    rate.bar = false;
+    buffer.name = "buffer" + kSeparator + ms(s_.settings.buffer, s_.rate);
+    buffer.value = juce::String(s_.settings.buffer) + " samples";
+    buffer.fillTo = static_cast<double>(std::max(chosenBuffer, 0)) / static_cast<double>(buffers.size() - 1);
+    order.name = "order" + kSeparator + "every plugin" + kSeparator + "with the set";
+    order.value = juce::String(s_.order) + kSeparator + juce::String(field) + " channels";
+    order.fillTo = static_cast<double>(s_.order - 1) / static_cast<double>(orders.size() - 1);
+    load.name = "load" + kSeparator + "this machine, now";
+    load.value = juce::String(juce::roundToInt(100.0f * share)) + "% of each block";
+    load.fillTo = share;
+    const std::vector<ui::TileContent> tiles{rate, buffer, order, load};
+    for (std::size_t i = 0; i < tiles.size(); ++i)
+        ui::drawTile(g, gridCell(page, y, static_cast<int>(i), sh::settingColumns), tiles[i]);
+    const auto under = [&](int index) {
+        const auto box = ui::tileBox(gridCell(page, y, index, sh::settingColumns));
+        return juce::Rectangle<float>{box.getX(), box.getBottom() + ctl::segmentGap, box.getWidth(), sh::control};
+    };
+    const auto cells = ui::drawSegments(g, under(1), buffers, chosenBuffer, true);
     for (std::size_t i = 0; i < cells.size(); ++i)
         addClickArea(cells[i], [this, v = buffers[i].getIntValue()] {
             edit([v](live::AudioSettings& s) { s.buffer = v; });
         });
-    y += sh::control + sh::gap;
-
-    y = ui::drawGroupHeading(g, page.getX(), y, page.getWidth(), "order");
-    //  every plugin's, with the set: a new one loads every plugin again
-    ui::text(g, "every plugin", ui::labelFont(), colour::label, {page.getX(), y, sh::labelColumn, sh::control},
-             juce::Justification::centredLeft);
-    const std::vector<juce::String> orders{"1", "2", "3", "4", "5", "6", "7"};
-    const auto orderCells = ui::drawSegments(
-        g, {page.getX() + sh::labelColumn, y, ui::segmentsWidth(orders), sh::control}, orders, s_.order - 1, true);
+    const auto orderCells = ui::drawSegments(g, under(2), orders, s_.order - 1, true);
     for (std::size_t i = 0; i < orderCells.size(); ++i)
-        addClickArea(orderCells[i], [this, order = static_cast<int>(i) + 1] {
-            if (order != s_.order && changeOrder) changeOrder(order);
+        addClickArea(orderCells[i], [this, next = static_cast<int>(i) + 1] {
+            if (next != s_.order && changeOrder) changeOrder(next);
         });
-    const int field = (s_.order + 1) * (s_.order + 1);
-    ui::text(g, juce::String(field) + " channels" + kSeparator + "with the set", ui::smallFont(), colour::label,
-             {page.getX() + sh::labelColumn + ui::segmentsWidth(orders) + sh::gap, y, sh::valueColumn * 2.0f,
-              sh::control},
-             juce::Justification::centredLeft);
-    y += sh::control + ctl::segmentGap;
-    ui::text(g, "load" + kSeparator + "this machine, now", ui::labelFont(), colour::label,
-             {page.getX(), y, sh::wideLabel, sh::line}, juce::Justification::centredLeft);
-    const float share = std::clamp(s_.load, 0.0f, 1.0f);
-    ui::BarContent bar;
-    bar.fillTo = share;
-    bar.ink = colour::now;
-    ui::drawValueBar(
-        g, {page.getX() + sh::wideLabel, y + (sh::line - ctl::barHeight) / 2.0f, sh::barWidth, ctl::barHeight}, bar);
-    ui::text(g, juce::String(juce::roundToInt(100.0f * share)) + "% of each block", ui::smallFont(), colour::label,
-             {page.getX() + sh::wideLabel + sh::barWidth + sh::gap, y, sh::valueColumn, sh::line},
-             juce::Justification::centredLeft);
-    y += sh::line;
+    y = under(1).getBottom() + sh::gap;
 
     //  the menu last, over what is under it; a press anywhere else closes it
     if (menu_) {
@@ -264,6 +293,7 @@ float IoPage::interfacePage(juce::Graphics& g, juce::Rectangle<float> page) {
                     menu_ = false;
                     edit([uid](live::AudioSettings& s) { s.devices.push_back(uid); });
                 });
+        y = std::max(y, menu.box.getBottom());
     }
     return y;
 }
@@ -282,126 +312,141 @@ juce::String IoPage::decoderName(std::uint64_t id) const {
     return "a decoder";
 }
 
-void IoPage::outputRow(juce::Graphics& g, juce::Rectangle<float> line, const live::Out& out) {
+float IoPage::outputItem(juce::Graphics& g, float x, float y, float width, const live::Out& out) {
     const auto row = outputRow();
-    if (out == chosen_) {
-        g.setColour(colour::highlight);
-        g.fillRect(line);
-    }
-    addClickArea(line, [this, out] {
-        chosen_ = out;
-        repaint();
-    });
-    float x = line.getX() + ctl::segmentGap;
-    const auto bus = live::busChannels(out, s_.decoders);
-    const int width = bus.empty() ? 0 : bus.back() - bus.front() + 1;
-    juce::String what = out.main() ? juce::String("Live's Main") : out.which == Output::Headphones ? "headphones" : "speakers";
-    ui::text(g, what, ui::labelFont(), colour::text, {x, line.getY(), sh::outputName, line.getHeight()},
+    const juce::Rectangle<float> box{x, y, width, sh::itemHeight};
+    itemFrame(g, box, out == chosen_);
+    if (!armed_.on())
+        addClickArea(box, [this, out] {
+            chosen_ = out;
+            repaint();
+        });
+    const auto inner = box.reduced(sh::itemPad);
+    const juce::Rectangle<float> head{inner.getX(), inner.getY(), inner.getWidth(), sh::noteLine};
+    swatch(g, head.getX(), head.getCentreY(), inkOf(out), false);
+    const juce::String what =
+        out.main() ? juce::String("Live's Main") : out.which == Output::Headphones ? "headphones" : "speakers";
+    ui::text(g, what, ui::labelFont(), colour::text, head.withTrimmedLeft(sh::swatch + sh::itemPad),
              juce::Justification::centredLeft);
-    x += sh::outputName;
-    //  how wide it is, and for the speakers the Decoder's layout: what is placed, never set here
-    juce::String size = juce::String(width) + " channels";
+
+    //  how wide it is, and for the speakers the Decoder's layout; where it plays
+    const auto bus = live::busChannels(out, s_.decoders);
+    const int width2 = bus.empty() ? 0 : bus.back() - bus.front() + 1;
+    juce::String size = juce::String(width2) + " ch";
     if (!out.main() && out.which == Output::Speakers)
         for (const auto& d : s_.decoders)
             if (d.id == out.decoder && !d.report.layoutName.empty()) size += kSeparator + juce::String(d.report.layoutName);
-    ui::text(g, size, ui::smallFont(), colour::label, {x, line.getY(), sh::outputWhere, line.getHeight()},
-             juce::Justification::centredLeft);
-    x += sh::outputWhere;
     const auto taken = live::takenBy(out, s_.settings.at(out), row, s_.decoders);
     const juce::String at = taken.empty() ? juce::String("placed nowhere: not heard")
                                           : where(row, taken.front(), taken.back() - taken.front() + 1);
-    ui::text(g, at, ui::smallFont(), taken.empty() ? colour::text : colour::label,
-             {x, line.getY(), sh::outputWhere, line.getHeight()}, juce::Justification::centredLeft);
-    x += sh::outputWhere;
+    ui::text(g, size + kSeparator + at, ui::smallFont(), taken.empty() ? colour::text : colour::label, head,
+             juce::Justification::centredRight);
 
-    //  its copies, the host's, then the ways to make another
-    const float chipTop = line.getCentreY() - sh::control / 2.0f;
-    for (std::size_t i = 0; i < s_.settings.copies.size(); ++i) {
-        const live::Copy& c = s_.settings.copies[i];
-        if (!(c.of == out)) continue;
-        const auto copied = live::takenBy(c.of, c.at, row, s_.decoders);
-        const juce::String label =
-            c.toLive ? juce::String("also back to Live")
-                     : "also " + (copied.empty() ? juce::String("nowhere")
-                                                 : where(row, copied.front(), copied.back() - copied.front() + 1));
-        const auto chip = ui::drawChip(g, {x, chipTop}, sh::control, label, colour::text, std::nullopt, true);
-        addClickArea(chip.cross, [this, i] {
-            edit([i](live::AudioSettings& s) { s.copies.erase(s.copies.begin() + static_cast<long>(i)); });
-        });
-        x = chip.box.getRight() + ctl::segmentGap;
+    //  the ways to make a copy, or the copy waiting for its channel
+    const float cy = inner.getBottom() - sh::control / 2.0f;
+    if (armed_.what() && *armed_.what() == out) {
+        const juce::String waits = "click a channel";
+        armed_.block(*this, g, {inner.getX(), cy - sh::control / 2.0f, ui::Armed<live::Out>::width(waits), sh::control},
+                     waits, [this] { repaint(); });
+        return box.getBottom();
     }
-    if (arming_ && *arming_ == out) {
-        const juce::String waiting = "click the map" + kSeparator + "esc cancels";
-        const juce::Rectangle<float> box{x, chipTop, ui::framedButtonWidth(waiting), sh::control};
-        ui::drawWaiting(g, box, waiting, ui::smallFont());
-        addClickArea(box, [this] {
-            arming_.reset();
-            repaint();
-        });
-        return;
+    const auto copy = button(g, inner.getX(), cy, "+ copy");
+    const bool backAlready = std::any_of(s_.settings.copies.begin(), s_.settings.copies.end(),
+                                         [&](const live::Copy& c) { return c.of == out && c.toLive; });
+    const bool offersBack = !out.main() && bus.size() == 2 && !backAlready;
+    const auto back = offersBack ? button(g, copy.getRight() + ctl::segmentGap, cy, "+ back to Live")
+                                 : juce::Rectangle<float>{};
+    if (armed_.on()) {
+        armed_.over(*this, g, box, false, {});
+        return box.getBottom();
     }
-    const auto copy = ui::drawChip(g, {x, chipTop}, sh::control, "+ copy", colour::label);
-    addClickArea(copy.box, [this, out] {
-        arming_ = out;
+    addClickArea(copy, [this, out] {
+        armed_.begin(out);
         chosen_ = out;
         repaint();
     });
-    x = copy.box.getRight() + ctl::segmentGap;
-    const bool backAlready = std::any_of(s_.settings.copies.begin(), s_.settings.copies.end(),
-                                         [&](const live::Copy& c) { return c.of == out && c.toLive; });
-    if (!out.main() && bus.size() == 2 && !backAlready) {
-        const auto back = ui::drawChip(g, {x, chipTop}, sh::control, "+ back to Live", colour::label);
-        addClickArea(back.box, [this, out] {
+    if (offersBack)
+        addClickArea(back, [this, out] {
             edit([out](live::AudioSettings& s) { s.copies.push_back({out, {}, true}); });
         });
-    }
+    return box.getBottom();
+}
+
+float IoPage::copyItem(juce::Graphics& g, float x, float y, float width, std::size_t index) {
+    const auto row = outputRow();
+    const live::Copy& c = s_.settings.copies[index];
+    const juce::Rectangle<float> box{x, y, width, sh::copyHeight};
+    itemFrame(g, box, false);
+    const auto inner = box.reduced(sh::itemPad);
+    const juce::Rectangle<float> head{inner.getX(), inner.getY(), inner.getWidth(), sh::noteLine};
+    swatch(g, head.getX(), head.getCentreY(), inkOf(c.of), true);
+    ui::text(g, "copy of " + nameOf(c.of), ui::labelFont(), colour::text,
+             head.withTrimmedLeft(sh::swatch + sh::itemPad).withTrimmedRight(ctl::closeGlyph + sh::itemPad),
+             juce::Justification::centredLeft);
+    const juce::Rectangle<float> cross{head.getRight() - ctl::closeGlyph, head.getCentreY() - ctl::closeGlyph / 2.0f,
+                                       ctl::closeGlyph, ctl::closeGlyph};
+    const auto hit = ui::drawCloseCross(g, cross);
+    if (!armed_.on())
+        addClickArea(hit, [this, index] {
+            edit([index](live::AudioSettings& s) { s.copies.erase(s.copies.begin() + static_cast<long>(index)); });
+        });
+    const auto copied = live::takenBy(c.of, c.at, row, s_.decoders);
+    const juce::String at = c.toLive ? juce::String("back to Live, on the bambi track")
+                            : copied.empty()
+                                ? juce::String("nowhere")
+                                : where(row, copied.front(), copied.back() - copied.front() + 1);
+    ui::text(g, at, ui::smallFont(), colour::label,
+             {head.getX() + sh::swatch + sh::itemPad, head.getBottom(), head.getWidth(), sh::noteLine},
+             juce::Justification::centredLeft);
+    armed_.over(*this, g, box, false, {});
+    return box.getBottom();
 }
 
 float IoPage::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
     const auto row = outputRow();
-    float y = page.getY();
-    outputRow(g, {page.getX(), y, page.getWidth(), sh::line}, live::kLiveMain);
-    y += sh::line + ctl::segmentGap;
+    const float listX = page.getX(), listWidth = sh::listWidth;
+    const float cardsX = listX + listWidth + sh::gap, cardsWidth = page.getRight() - cardsX;
 
-    //  each Decoder: what it plays, to be placed; how it plays is set on its own page
+    //  the list: Live's Main, each Decoder's outputs that play, then the copies
+    float y = outputItem(g, listX, page.getY(), listWidth, live::kLiveMain) + sh::itemGap;
     for (const live::PlayingDecoder& d : s_.decoders) {
-        const juce::Rectangle<float> head{page.getX(), y, page.getWidth(), sh::noteLine};
-        ui::text(g, decoderName(d.id) + kSeparator + "what it plays, and how, is set on its page", ui::smallFont(),
-                 colour::label, head, juce::Justification::centredLeft);
-        const auto open = ui::drawChip(g, {head.getRight() - ui::chipWidth("open", sh::control, false, false), y},
-                                       sh::control, "open", colour::label);
-        addClickArea(open.box, [this, id = d.id] {
-            if (openDecoder) openDecoder(id);
-        });
-        y += std::max(sh::noteLine, sh::control);
+        const juce::Rectangle<float> head{listX, y, listWidth, std::max(sh::noteLine, sh::control)};
+        ui::text(g, decoderName(d.id), ui::smallFont(), colour::label, head, juce::Justification::centredLeft);
+        const auto open = button(g, head.getRight() - ui::framedButtonWidth("open"), head.getCentreY(), "open");
+        if (armed_.on())
+            armed_.over(*this, g, open, false, {});
+        else
+            addClickArea(open, [this, id = d.id] {
+                if (openDecoder) openDecoder(id);
+            });
+        y = head.getBottom() + sh::itemGap;
         bool any = false;
         for (const Output which : {Output::Headphones, Output::Speakers}) {
             const live::Out out{d.id, which};
             if (live::busChannels(out, s_.decoders).empty()) continue;
-            outputRow(g, {page.getX(), y, page.getWidth(), sh::line}, out);
-            y += sh::line;
+            y = outputItem(g, listX, y, listWidth, out) + sh::itemGap;
             any = true;
         }
         if (!any) {
-            ui::text(g, "it plays nothing", ui::smallFont(), colour::label,
-                     {page.getX() + ctl::segmentGap, y, page.getWidth(), sh::noteLine}, juce::Justification::centredLeft);
-            y += sh::noteLine;
+            ui::text(g, "it plays nothing" + kSeparator + "set on its page", ui::smallFont(), colour::label,
+                     {listX, y, listWidth, sh::noteLine}, juce::Justification::centredLeft);
+            y += sh::noteLine + sh::itemGap;
         }
-        y += ctl::segmentGap;
     }
-    ui::text(g,
-             "A copy is the host's, after the decoder: the same signal on other channels, or a pair back to Live's "
-             "bambi track for recording. Live renders nothing that does not come back to it.",
-             ui::smallFont(), colour::label, {page.getX(), y, page.getWidth(), sh::noteLine},
-             juce::Justification::centredLeft);
-    y += sh::noteLine + sh::gap;
+    if (!s_.settings.copies.empty()) {
+        ui::text(g, "copies", ui::smallFont(), colour::label, {listX, y, listWidth, sh::noteLine},
+                 juce::Justification::centredLeft);
+        y += sh::noteLine + sh::itemGap;
+        for (std::size_t i = 0; i < s_.settings.copies.size(); ++i)
+            y = copyItem(g, listX, y, listWidth, i) + sh::itemGap;
+    }
 
-    //  the map, at the page's foot
+    //  the devices, each a card of its output channels
+    float ry = page.getY();
     if (row.width() == 0) {
         ui::text(g, "No device chosen: the headphones go back to Live, on the bambi track. Choose one on interface.",
-                 ui::labelFont(), colour::label, {page.getX(), page.getBottom() - sh::line, page.getWidth(), sh::line},
-                 juce::Justification::centredLeft);
-        return y;
+                 ui::labelFont(), colour::label, {cardsX, ry, cardsWidth, sh::line}, juce::Justification::centredLeft);
+        return std::max(y, ry + sh::line);
     }
     std::vector<Block> blocks;
     const auto labelsOf = [&](const live::Out& out, const std::vector<int>& taken) {
@@ -412,29 +457,35 @@ float IoPage::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
             labels.push_back(juce::String(bus[i] - bus.front() + 1));
         return labels;
     };
+    //  short, to fit under its run: "main", "dec 1", and which output when a Decoder plays both
+    const auto shortName = [&](const live::Out& out) {
+        if (out.main()) return juce::String("main");
+        const bool both = !live::busChannels({out.decoder, Output::Headphones}, s_.decoders).empty() &&
+                          !live::busChannels({out.decoder, Output::Speakers}, s_.decoders).empty();
+        const juce::String name = decoderName(out.decoder).replace("decoder", "dec");
+        return both ? name + (out.which == Output::Headphones ? " hp" : " sp") : name;
+    };
     const auto place = [&](const live::Out& out, const live::DeviceChannel& at, bool host) {
         const auto taken = live::takenBy(out, at, row, s_.decoders);
-        if (!taken.empty()) blocks.push_back({taken, labelsOf(out, taken), host, !host && out == chosen_});
+        if (taken.empty()) return;
+        blocks.push_back({taken, labelsOf(out, taken), host ? juce::String("copy") : shortName(out), host, inkOf(out)});
     };
-    place(live::kLiveMain, s_.settings.main, true);
-    if (!blocks.empty()) blocks.back().chosen = chosen_.main();
+
+    place(live::kLiveMain, s_.settings.main, false);
     for (const live::PlayingDecoder& d : s_.decoders)
         for (const Output which : {Output::Headphones, Output::Speakers})
             place({d.id, which}, s_.settings.at({d.id, which}), false);
     for (const live::Copy& c : s_.settings.copies)
         if (!c.toLive) place(c.of, c.at, true);
-    const juce::String what = arming_ ? "a click puts a copy of " + nameOf(*arming_) + " there"
-                                      : "the outputs of every device" + kSeparator + "a click puts " + nameOf(chosen_) +
-                                            " there";
-    const float mapHeight = sh::line + sh::noteLine + ui::theme::channelStrip::cell + ui::theme::channelStrip::barGap +
-                            ui::theme::channelStrip::bar;
-    const float top = std::max(y, page.getBottom() - mapHeight);
-    ui::text(g, what, ui::labelFont(), colour::label, {page.getX(), top, page.getWidth(), sh::line},
+    const juce::String what = armed_.what() ? "a click on a channel puts a copy of " + nameOf(*armed_.what()) + " there"
+                                      : "a click on a channel puts " + nameOf(chosen_) +
+                                            " there, on whichever device it is";
+    ui::text(g, what, ui::labelFont(), colour::label, {cardsX, ry, cardsWidth, sh::line},
              juce::Justification::centredLeft);
-    return map(g, page.getX(), top + sh::line, page.getWidth(), row, blocks, outputsScroll_, [this, row](int c) {
-        if (arming_) {
-            const live::Out of = *arming_;
-            arming_.reset();
+    ry = cards(g, cardsX, ry + sh::line, cardsWidth, row, blocks, [this, row](int c) {
+        if (armed_.what()) {
+            const live::Out of = *armed_.what();
+            armed_.end();
             edit([&](live::AudioSettings& s) { s.copies.push_back({of, row.channel(c), false}); });
             return;
         }
@@ -451,87 +502,95 @@ float IoPage::outputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
                 s.placed.push_back({out, row.channel(c)});
         });
     });
+    ui::text(g, "A copy is the host's, after the decoder. Live renders nothing that does not come back to it.",
+             ui::smallFont(), colour::label, {cardsX, ry, cardsWidth, sh::noteLine}, juce::Justification::centredLeft);
+    return std::max(y, ry + sh::noteLine);
 }
 
-// ---- the map ------------------------------------------------------------------------------------
+// ---- the cards ----------------------------------------------------------------------------------
 
-float IoPage::map(juce::Graphics& g, float x, float top, float width, const live::Row& row,
-                      const std::vector<Block>& blocks, float& scroll, std::function<void(int)> place) {
-    std::vector<int> groups;
-    for (const live::AudioDevice& d : row.devices)
-        if (const int count = row.inputs ? d.ins : d.outs; count > 0) groups.push_back(count);
-    const float labelLine = sh::noteLine;
-    //  the first channel an output takes is brought into view, so the map opens on what is placed
-    int reveal = 0;
-    for (const Block& b : blocks)
-        if (b.chosen && !b.channels.empty()) reveal = b.channels.front();
-    const int revealNow = reveal != revealed_ ? reveal : 0;
-    revealed_ = reveal;
-    const auto strip = ui::ChannelStrip::layout(x, top + labelLine, width, groups, scroll, revealNow);
-    //  under the cells, so a press finds a cell first
-    addRegion({strip.viewport.withTop(top), {}, {}, {}, {}, {}, [shift = &scroll](float by) { *shift += by; }});
-    g.saveState();
-    g.reduceClipRegion(strip.viewport.withTop(top).toNearestIntEdges());
+float IoPage::cards(juce::Graphics& g, float x, float top, float width, const live::Row& row,
+                    const std::vector<Block>& blocks, std::function<void(int)> place) {
+    const float pitch = cs::cell + cs::cellGap;
     int c = 1;
-    std::size_t group = 0;
-    for (const live::AudioDevice& d : row.devices) {
+    float y = top;
+    for (std::size_t k = 0; k < row.devices.size(); ++k) {
+        const live::AudioDevice& d = row.devices[k];
         const int count = row.inputs ? d.ins : d.outs;
         if (count == 0) continue;
-        const float left = strip.groupLeft(group++);
-        const auto& last = strip.cells[static_cast<std::size_t>(c - 1 + count - 1)];
-        ui::text(g, juce::String(d.name), ui::smallFont(), colour::label, {left, top, last.getRight() - left, labelLine},
+        //  the channels first, so the card is as tall as their lines
+        const float left = x + sh::itemPad, stripTop = y + sh::itemPad + sh::noteLine;
+        const auto strip = ui::ChannelStrip::wrapped(left + sh::stripLabel, stripTop,
+                                                     width - 2.0f * sh::itemPad - sh::stripLabel, count,
+                                                     cs::cell + sh::caption);
+        const juce::Rectangle<float> card{x, y, width, strip.bottom + sh::caption + sh::itemPad - y};
+        ui::drawFrame(g, card, colour::ruleStrong, ui::theme::stroke::rule, false);
+        auto head = juce::Rectangle<float>{left, y + sh::itemPad, width - 2.0f * sh::itemPad, sh::noteLine};
+        const juce::String name(d.name);
+        ui::text(g, name, ui::labelFont(), colour::text, head.removeFromLeft(ui::textWidth(ui::labelFont(), name) + sh::itemPad),
                  juce::Justification::centredLeft);
+        ui::text(g,
+                 juce::String(d.outs) + " out" + kSeparator + juce::String(d.ins) + " in" + kSeparator +
+                     (k == 0 ? "the clock" : "drift corrected") + kSeparator +
+                     ms(row.inputs ? d.inLatency : d.outLatency, s_.rate),
+                 ui::smallFont(), colour::label, head, juce::Justification::centredLeft);
+        ui::text(g, row.inputs ? "in" : "out", ui::smallFont(), colour::label, {left, stripTop, sh::stripLabel, cs::cell},
+                 juce::Justification::centredLeft);
+        const int first = c;
         for (int i = 0; i < count; ++i, ++c) {
-            const juce::Rectangle<float> box = strip.cells[static_cast<std::size_t>(c - 1)];
+            const auto box = strip.cells[static_cast<std::size_t>(i)];
             std::vector<std::pair<const Block*, std::size_t>> here;
             for (const Block& b : blocks)
-                for (std::size_t k = 0; k < b.channels.size(); ++k)
-                    if (b.channels[k] == c) here.push_back({&b, k});
+                for (std::size_t n = 0; n < b.channels.size(); ++n)
+                    if (b.channels[n] == c) here.push_back({&b, n});
             const bool clash = here.size() > 1;
-            const Block* top1 = here.empty() ? nullptr : here.front().first;
-            const bool chosen = top1 != nullptr && top1->chosen && !clash;
-            if (chosen) {
-                g.setColour(colour::chosen);
+            const Block* owner = here.empty() ? nullptr : here.front().first;
+            //  in its owner's colour; the host's own copy dashed in it, and empty
+            const bool filled = owner != nullptr && !owner->host && !clash;
+            if (filled) {
+                g.setColour(owner->ink);
                 g.fillRect(box);
             }
-            const juce::Colour frame = clash             ? colour::ruleStrong
-                                       : top1 == nullptr ? colour::rule
-                                       : top1->host      ? colour::label
-                                       : chosen          ? colour::chosen
-                                                         : top1->ink;
-            ui::drawFrame(g, box, frame, ui::theme::stroke::rule, clash || (top1 != nullptr && top1->host));
-            const juce::String label = clash             ? juce::String::fromUTF8("\xc3\x97") + juce::String(here.size())
-                                       : top1 == nullptr ? juce::String(i + 1)
-                                       : here.front().second < top1->labels.size()
-                                           ? top1->labels[here.front().second]
+            const juce::Colour frame = clash ? colour::ruleStrong : owner == nullptr ? colour::rule : owner->ink;
+            ui::drawFrame(g, box, frame, ui::theme::stroke::rule, clash || (owner != nullptr && owner->host));
+            const juce::String label = clash              ? juce::String::fromUTF8("\xc3\x97") + juce::String(here.size())
+                                       : owner == nullptr ? juce::String(i + 1)
+                                       : here.front().second < owner->labels.size()
+                                           ? owner->labels[here.front().second]
                                            : juce::String();
             ui::text(g, label, ui::smallFont(),
-                     chosen ? colour::textInverse : top1 == nullptr ? colour::inactive : colour::text, box,
+                     filled ? colour::textInverse : owner == nullptr ? colour::inactive : colour::text, box,
                      juce::Justification::centred);
-            addRegion({box.getIntersection(strip.viewport), {}, {}, {}, [place, c] { place(c); }, {}, {}});
+            //  under the first channel of each run: what plays there, as far as the next run on its line
+            for (const auto& [b, n] : here) {
+                if (n != 0 || b->caption.isEmpty()) continue;
+                int next = c + 1;
+                while (next < first + count &&
+                       std::abs(strip.cells[static_cast<std::size_t>(next - first)].getY() - box.getY()) < 0.5f &&
+                       std::none_of(blocks.begin(), blocks.end(), [&](const Block& o) {
+                           return !o.channels.empty() && o.channels.front() == next;
+                       }))
+                    ++next;
+                ui::text(g, b->caption, ui::smallFont(), colour::label,
+                         {box.getX(), box.getBottom(), static_cast<float>(next - c) * pitch - cs::cellGap, sh::caption},
+                         juce::Justification::centredLeft);
+            }
+            if (armed_.on())
+                armed_.over(*this, g, box, true, [place, c] { place(c); });
+            else
+                addClickArea(box, [place, c] { place(c); });
         }
+        y = card.getBottom() + sh::itemGap;
     }
-    g.restoreState();
-    strip.paintBar(g, colour::label, scroll);
-    return strip.bottom;
+    return y;
 }
 
 // ---- inputs -------------------------------------------------------------------------------------
 
 float IoPage::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
     const auto row = inputRow();
-    float y = page.getY();
-    ui::text(g,
-             "An input of any device, a source of the field at the least latency: an Encoder, inserts and sends as any "
-             "track's, beside Live's.",
-             ui::labelFont(), colour::label, {page.getX(), y, page.getWidth(), sh::line},
-             juce::Justification::centredLeft);
-    y += sh::line + ctl::segmentGap;
-    if (row.width() == 0) {
-        ui::text(g, "None of the chosen devices has inputs.", ui::labelFont(), colour::label,
-                 {page.getX(), y, page.getWidth(), sh::line}, juce::Justification::centredLeft);
-        return y + sh::line;
-    }
+    const float listX = page.getX(), listWidth = sh::listWidth;
+    const float cardsX = listX + listWidth + sh::gap, cardsWidth = page.getRight() - cardsX;
     const auto atOf = [&](live::TrackId id) {
         for (const auto& in : s_.settings.inputs)
             if (in.input == id) return row.at(in.at);
@@ -543,33 +602,33 @@ float IoPage::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
         if (changeInputs) changeInputs(std::move(inputs), std::move(settings));
         repaint();
     };
+
+    //  the list: each input, how wide, and where it is heard
+    float y = page.getY();
     for (const live::HostInput& in : s_.inputs) {
-        const juce::Rectangle<float> line{page.getX(), y, page.getWidth(), sh::line};
-        if (in.id == input_) {
-            g.setColour(colour::highlight);
-            g.fillRect(line);
-        }
-        addClickArea(line, [this, id = in.id] {
+        const juce::Rectangle<float> box{listX, y, listWidth, sh::itemHeight};
+        itemFrame(g, box, in.id == input_);
+        addClickArea(box, [this, id = in.id] {
             input_ = id;
             repaint();
         });
-        ui::text(g, juce::String(in.name), ui::labelFont(), colour::text,
-                 {line.getX() + ctl::segmentGap, y, sh::inputName, sh::line}, juce::Justification::centredLeft);
+        const auto inner = box.reduced(sh::itemPad);
+        const juce::Rectangle<float> head{inner.getX(), inner.getY(), inner.getWidth(), sh::noteLine};
+        swatch(g, head.getX(), head.getCentreY(), colour::label, false);
+        ui::text(g, juce::String(in.name), ui::labelFont(), colour::text, head.withTrimmedLeft(sh::swatch + sh::itemPad),
+                 juce::Justification::centredLeft);
         const int at = atOf(in.id);
         const bool oneDevice = at != 0 && row.deviceOf(at) == row.deviceOf(at + in.width - 1);
-        ui::text(g, at == 0 ? juce::String("nowhere") : where(row, at, in.width), ui::smallFont(),
-                 oneDevice || at == 0 ? colour::label : colour::text,
-                 {line.getX() + sh::inputName, y, sh::inputWhere, sh::line}, juce::Justification::centredLeft);
-        if (at != 0 && !oneDevice)
-            ui::text(g, "not on one device: not heard", ui::smallFont(), colour::text,
-                     {line.getX() + sh::inputName + sh::inputWhere, y, sh::nameColumn, sh::line},
-                     juce::Justification::centredLeft);
+        ui::text(g,
+                 at == 0       ? juce::String("nowhere")
+                 : oneDevice ? where(row, at, in.width)
+                             : juce::String("not on one device: not heard"),
+                 ui::smallFont(), oneDevice || at == 0 ? colour::label : colour::text, head,
+                 juce::Justification::centredRight);
         const std::vector<juce::String> widths{"mono", "stereo"};
-        const auto cells =
-            ui::drawSegments(g,
-                             {line.getRight() - 2.0f * sh::gap - ctl::closeGlyph - ui::segmentsWidth(widths),
-                              line.getCentreY() - sh::control / 2.0f, ui::segmentsWidth(widths), sh::control},
-                             widths, in.width - 1, true);
+        const auto cells = ui::drawSegments(
+            g, {inner.getX(), inner.getBottom() - sh::control, ui::segmentsWidth(widths), sh::control}, widths,
+            in.width - 1, true);
         for (std::size_t i = 0; i < cells.size(); ++i)
             addClickArea(cells[i], [this, changeAll, id = in.id, width = static_cast<int>(i) + 1] {
                 auto inputs = s_.inputs;
@@ -577,9 +636,9 @@ float IoPage::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
                     if (x.id == id) x.width = width;
                 changeAll(inputs, s_.settings);
             });
-        const juce::Rectangle<float> cross{line.getRight() - ctl::closeGlyph - ctl::segmentGap,
-                                           line.getCentreY() - ctl::closeGlyph / 2.0f, ctl::closeGlyph,
-                                           ctl::closeGlyph};
+        const juce::Rectangle<float> cross{inner.getRight() - ctl::closeGlyph,
+                                           inner.getBottom() - sh::control / 2.0f - ctl::closeGlyph / 2.0f,
+                                           ctl::closeGlyph, ctl::closeGlyph};
         addClickArea(ui::drawCloseCross(g, cross), [this, changeAll, id = in.id] {
             auto inputs = s_.inputs;
             auto settings = s_.settings;
@@ -590,9 +649,9 @@ float IoPage::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
                                   settings.inputs.end());
             changeAll(inputs, settings);
         });
-        y += sh::line;
+        y = box.getBottom() + sh::itemGap;
     }
-    const auto add = button(g, page.getX(), y + sh::control / 2.0f + ctl::segmentGap, "+ input");
+    const auto add = button(g, listX, y + sh::control / 2.0f, "+ input");
     addClickArea(add, [this, changeAll, row] {
         auto inputs = s_.inputs;
         auto settings = s_.settings;
@@ -608,11 +667,15 @@ float IoPage::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
         input_ = id;
         changeAll(inputs, settings);
     });
-    y = add.getBottom() + sh::gap;
+    y = add.getBottom() + sh::itemGap;
 
-    const auto chosen = std::find_if(s_.inputs.begin(), s_.inputs.end(),
-                                     [&](const live::HostInput& i) { return i.id == input_; });
-    if (chosen == s_.inputs.end()) return y;
+    //  the devices, each a card of its input channels
+    float ry = page.getY();
+    if (row.width() == 0) {
+        ui::text(g, "None of the chosen devices has inputs.", ui::labelFont(), colour::label,
+                 {cardsX, ry, cardsWidth, sh::line}, juce::Justification::centredLeft);
+        return std::max(y, ry + sh::line);
+    }
     std::vector<Block> blocks;
     for (const live::HostInput& in : s_.inputs) {
         const int at = atOf(in.id);
@@ -621,17 +684,19 @@ float IoPage::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
         for (int k = 0; k < in.width; ++k) b.channels.push_back(at + k);
         b.labels = in.width == 2 ? std::vector<juce::String>{"L", "R"}
                                  : std::vector<juce::String>{juce::String(in.name).substring(0, 3)};
-        b.chosen = in.id == input_;
-        b.ink = colour::in;
+        b.caption = juce::String(in.name);
+        b.ink = colour::label;
         blocks.push_back(std::move(b));
     }
-    const float mapHeight = sh::line + sh::noteLine + ui::theme::channelStrip::cell + ui::theme::channelStrip::barGap +
-                            ui::theme::channelStrip::bar;
-    const float top = std::max(y, page.getBottom() - mapHeight);
-    ui::text(g, "the inputs of every device" + kSeparator + "a click puts " + juce::String(chosen->name) + " there",
-             ui::labelFont(), colour::label, {page.getX(), top, page.getWidth(), sh::line},
-             juce::Justification::centredLeft);
-    return map(g, page.getX(), top + sh::line, page.getWidth(), row, blocks, inputsScroll_, [this, changeAll, row](int c) {
+    const auto chosen = std::find_if(s_.inputs.begin(), s_.inputs.end(),
+                                     [&](const live::HostInput& i) { return i.id == input_; });
+    ui::text(g,
+             chosen == s_.inputs.end() ? juce::String("an input is a source of the field, beside Live's tracks")
+                                       : "a click on a channel puts " + juce::String(chosen->name) +
+                                             " there, on whichever device it is",
+             ui::labelFont(), colour::label, {cardsX, ry, cardsWidth, sh::line}, juce::Justification::centredLeft);
+    ry = cards(g, cardsX, ry + sh::line, cardsWidth, row, blocks, [this, changeAll, row](int c) {
+        if (input_ == 0) return;
         auto settings = s_.settings;
         bool found = false;
         for (auto& x : settings.inputs)
@@ -642,77 +707,79 @@ float IoPage::inputsPage(juce::Graphics& g, juce::Rectangle<float> page) {
         if (!found) settings.inputs.push_back({input_, row.channel(c)});
         changeAll(s_.inputs, settings);
     });
+    ui::text(g, "An input is heard at the least latency, with an Encoder, inserts and sends as any track's.",
+             ui::smallFont(), colour::label, {cardsX, ry, cardsWidth, sh::noteLine}, juce::Justification::centredLeft);
+    return std::max(y, ry + sh::noteLine);
 }
 
 // ---- midi ---------------------------------------------------------------------------------------
 
 float IoPage::midiPage(juce::Graphics& g, juce::Rectangle<float> page) {
-    float y = ui::drawGroupHeading(g, page.getX(), page.getY(), page.getWidth(), "inputs");
-    for (std::size_t k = 0; k < s_.midiInputs.size(); ++k) {
-        auto line = juce::Rectangle<float>{page.getX(), y, page.getWidth(), sh::line};
-        ui::text(g, s_.midiInputs[k], ui::labelFont(), colour::text, line.removeFromLeft(sh::nameColumn),
-                 juce::Justification::centredLeft);
-        if (k + 1 == s_.midiInputs.size())
-            ui::text(g, "the host's own: Live's MIDI tracks send here", ui::smallFont(), colour::label, line,
-                     juce::Justification::centredLeft);
-        y += sh::line;
+    const float top = page.getY();
+    int index = 0;
+    for (std::size_t k = 0; k < s_.midiInputs.size(); ++k, ++index) {
+        ui::TileContent t;
+        t.name = k + 1 == s_.midiInputs.size() ? "midi in" + kSeparator + "the host's own: Live's MIDI tracks"
+                                               : juce::String("midi in");
+        t.value = s_.midiInputs[k];
+        t.nameActive = true;
+        t.bar = false;
+        ui::drawTile(g, gridCell(page, top, index, sh::deviceColumns), t);
     }
     if (s_.midiInputs.empty()) {
-        ui::text(g, "none", ui::labelFont(), colour::inactive, {page.getX(), y, page.getWidth(), sh::line},
-                 juce::Justification::centredLeft);
-        y += sh::line;
+        ui::TileContent t;
+        t.name = "midi in";
+        t.value = "none";
+        t.enabled = false;
+        t.bar = false;
+        ui::drawTile(g, gridCell(page, top, index++, sh::deviceColumns), t);
     }
-    ui::text(g, "Every plugin hears all of it, and answers to the channel and note it learned.", ui::smallFont(),
-             colour::label, {page.getX(), y, page.getWidth(), sh::line}, juce::Justification::centredLeft);
-    y += sh::line;
 
-    y = ui::drawGroupHeading(g, page.getX(), y + sh::gap, page.getWidth(), "Live's MIDI");
-    const double held = s_.settings.liveMidiMs;
-    ui::text(g, "held back", ui::labelFont(), colour::label, {page.getX(), y, sh::labelColumn, sh::control},
-             juce::Justification::centredLeft);
-    float x = page.getX() + sh::labelColumn;
+    //  Live's MIDI, held back to meet its audio: a tile, its steps and "measure" under it
+    ui::TileContent lead;
+    lead.name = "Live's MIDI held back";
+    lead.value = juce::String(s_.settings.liveMidiMs, 1) + " ms";
+    lead.fillTo = s_.settings.liveMidiMs / live::kMaxLiveMidiMs;
+    const auto tile = gridCell(page, top, index, sh::deviceColumns);
+    ui::drawTile(g, tile, lead);
+    const auto box = ui::tileBox(tile);
+    const std::vector<juce::String> steps{kDash, "+", "measure"};
+    const auto cells = ui::drawSegments(
+        g, {box.getX(), box.getBottom() + ctl::segmentGap, box.getWidth(), sh::control}, steps,
+        s_.measuring ? 2 : -1, true);
     const auto step = [this](double by) {
         edit([by](live::AudioSettings& a) { a.liveMidiMs = std::clamp(std::round(a.liveMidiMs + by), 0.0, live::kMaxLiveMidiMs); });
     };
-    const auto less = button(g, x, y + sh::control / 2.0f, kDash);
-    addClickArea(less, [step] { step(-1.0); });
-    x = less.getRight() + ctl::segmentGap;
-    const juce::String value = juce::String(held, 1) + " ms";
-    ui::text(g, value, ui::labelFont(), colour::text, {x, y, sh::valueColumn, sh::control},
-             juce::Justification::centred);
-    x += sh::valueColumn + ctl::segmentGap;
-    const auto more = button(g, x, y + sh::control / 2.0f, "+");
-    addClickArea(more, [step] { step(1.0); });
-    x = more.getRight() + sh::gap;
-    const juce::Rectangle<float> measureAt{x, y, ui::framedButtonWidth("measure"), sh::control};
-    ui::drawFramedButton(g, measureAt, "measure", true, s_.measuring);
-    addClickArea(measureAt, [this] {
+    addClickArea(cells[0], [step] { step(-1.0); });
+    addClickArea(cells[1], [step] { step(1.0); });
+    addClickArea(cells[2], [this] {
         s_.measuring = !s_.measuring;
         if (measure) measure(s_.measuring);
         repaint();
     });
-    y += sh::control + ctl::segmentGap;
+    float y = std::max(gridBottom(top, index + 1, sh::deviceColumns), cells[0].getBottom() + sh::gap);
 
     if (s_.leadCount > 0) {
-        auto line = juce::Rectangle<float>{page.getX(), y, page.getWidth(), sh::line};
-        ui::text(g,
-                 "measured " + juce::String(s_.leadMs, 1) + " ms " + juce::String::fromUTF8("\xc2\xb1") + " " +
-                     juce::String(s_.leadSpreadMs, 1) + kSeparator + juce::String(s_.leadCount) +
-                     (s_.leadCount == 1 ? " note" : " notes"),
-                 ui::labelFont(), colour::text, line.removeFromLeft(sh::nameColumn + sh::ioColumn),
+        const juce::String found = "measured " + juce::String(s_.leadMs, 1) + " ms " + juce::String::fromUTF8("\xc2\xb1") +
+                                   " " + juce::String(s_.leadSpreadMs, 1) + kSeparator + juce::String(s_.leadCount) +
+                                   (s_.leadCount == 1 ? " note" : " notes");
+        const float w = ui::textWidth(ui::labelFont(), found) + sh::itemPad;
+        ui::text(g, found, ui::labelFont(), colour::text, {page.getX(), y, w, sh::line},
                  juce::Justification::centredLeft);
-        const double found = std::clamp(s_.leadMs, 0.0, live::kMaxLiveMidiMs);
-        const auto use = button(g, line.getX(), line.getCentreY(), "use");
-        addClickArea(use, [this, found] { edit([found](live::AudioSettings& a) { a.liveMidiMs = found; }); });
+        const double value = std::clamp(s_.leadMs, 0.0, live::kMaxLiveMidiMs);
+        const auto use = button(g, page.getX() + w, y + sh::line / 2.0f, "use");
+        addClickArea(use, [this, value] { edit([value](live::AudioSettings& a) { a.liveMidiMs = value; }); });
         y += sh::line;
     }
     ui::text(g,
              s_.measuring ? "Listening: a MIDI track sending to bambi, and on Main a click on its notes, nothing else."
                           : "Measure with a MIDI track sending to bambi and, on Main, a click on its notes.",
-             ui::smallFont(), colour::label, {page.getX(), y, page.getWidth(), sh::line},
+             ui::smallFont(), colour::label, {page.getX(), y, page.getWidth(), sh::noteLine},
              juce::Justification::centredLeft);
-    y += sh::line;
-    return y;
+    y += sh::noteLine;
+    ui::text(g, "Every plugin hears all of it, and answers to the channel and note it learned.", ui::smallFont(),
+             colour::label, {page.getX(), y, page.getWidth(), sh::noteLine}, juce::Justification::centredLeft);
+    return y + sh::noteLine;
 }
 
 }  // namespace bambi::livehost

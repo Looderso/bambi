@@ -38,6 +38,22 @@ ChannelStrip ChannelStrip::layout(float x, float top, float width, const std::ve
     return s;
 }
 
+ChannelStrip ChannelStrip::wrapped(float x, float top, float width, int count, float linePitch) {
+    ChannelStrip s;
+    const float pitch = cs::cell + cs::cellGap;
+    const int perLine = std::max(1, static_cast<int>((width + cs::cellGap) / pitch));
+    const int lines = std::max(1, (count + perLine - 1) / perLine);
+    s.contentWidth = width;
+    s.viewport = {x, top, width, static_cast<float>(lines - 1) * linePitch + cs::cell};
+    s.firstOfGroup_.push_back(0);
+    s.cells.reserve(static_cast<std::size_t>(std::max(count, 0)));
+    for (int i = 0; i < count; ++i)
+        s.cells.push_back({x + static_cast<float>(i % perLine) * pitch,
+                           top + static_cast<float>(i / perLine) * linePitch, cs::cell, cs::cell});
+    s.bottom = s.viewport.getBottom();
+    return s;
+}
+
 float ChannelStrip::groupLeft(std::size_t group) const {
     return group < firstOfGroup_.size() && firstOfGroup_[group] < cells.size() ? cells[firstOfGroup_[group]].getX()
                                                                                : viewport.getX();

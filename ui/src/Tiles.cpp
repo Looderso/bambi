@@ -16,15 +16,16 @@ float tileHeight(float valueSize) {
            ctl::barHeight;
 }
 
-juce::Rectangle<float> tileCell(juce::Rectangle<float> content, float y, int index, float valueSize) {
-    const auto columnWidth = (content.getWidth() - ctl::tileColumnGap) / 2.0f;
+juce::Rectangle<float> tileCell(juce::Rectangle<float> content, float y, int index, float valueSize, int columns) {
+    const auto n = static_cast<float>(columns);
+    const auto columnWidth = (content.getWidth() - (n - 1.0f) * ctl::tileColumnGap) / n;
     const auto height = tileHeight(valueSize);
-    return {content.getX() + static_cast<float>(index % 2) * (columnWidth + ctl::tileColumnGap),
-            y + static_cast<float>(index / 2) * (height + ctl::tileRowGap), columnWidth, height};
+    return {content.getX() + static_cast<float>(index % columns) * (columnWidth + ctl::tileColumnGap),
+            y + static_cast<float>(index / columns) * (height + ctl::tileRowGap), columnWidth, height};
 }
 
-float tilesBottom(float y, int count, float valueSize) {
-    const auto rows = static_cast<float>((count + 1) / 2);
+float tilesBottom(float y, int count, float valueSize, int columns) {
+    const auto rows = static_cast<float>((count + columns - 1) / columns);
     return y + rows * (tileHeight(valueSize) + ctl::tileRowGap) - ctl::tileRowGap;
 }
 
@@ -59,6 +60,7 @@ juce::Rectangle<float> drawTile(juce::Graphics& g, juce::Rectangle<float> tile, 
          {tile.getX(), valueTop, tile.getWidth(), valueHeight});
 
     //  The one bar: the tile only says what to show, never how to draw it.
+    if (!t.bar) return {};
     BarContent bar;
     bar.fillFrom = t.fillFrom;
     bar.fillTo = t.fillTo;

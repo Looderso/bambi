@@ -934,6 +934,10 @@ int main(int argc, char** argv) {
         const int joinTicks = 8;  // a few ticks is enough for a join to be seen
         auto first = std::make_unique<BambiEchoProcessor>();
         auto second = std::make_unique<BambiEchoProcessor>();
+        //  a spot, for the angle reset below: a new Echo's region is everywhere, which has no yaw to reset
+        for (auto* p : {first.get(), second.get()})
+            p->document().edit("spot",
+                               [](bambi::PluginState& st) { st.regions[0].shape.kind = bambi::RegionKind::Spot; });
         for (int i = 0; i < joinTicks; ++i) {
             first->linkTick();
             second->linkTick();
