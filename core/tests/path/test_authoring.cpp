@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@ TrajectoryState converted(GeneratorType g, int nodes = 16) {
 //  A circle of `nodes` nodes on the equator, fitted as any chain is.
 FitResult circle(TrajectoryState& s, int nodes) {
     std::vector<Vec3> dense;
+    dense.reserve(1500);
     for (int i = 0; i < 1500; ++i) dense.push_back(fromAzEl(i / 1500.0 * 2.0 * kPi, 0.0));
     return fitNodes(s, dense, nodes, true);
 }
@@ -109,6 +111,7 @@ TrajectoryState naiveFit(const std::vector<Vec3>& dense, int N) {
 /*  THE headline authoring property: inserting a node must not move the curve. Anything else
  *  and the editor fights the user on every click. */
 TEST_CASE("insertion is non-destructive") {
+    //  Catches: a new node's in-handle taken from the wrong point of the subdivision, which moves the curve.
     TrajectoryState s = converted(GeneratorType::Lissajous);
     Trajectory before;
     before.build(s);
@@ -138,6 +141,7 @@ TEST_CASE("insertion is non-destructive") {
 }
 
 TEST_CASE("an inserted node lands on the curve, with handles halved") {
+    //  Catches: the neighbour's handle left at its old length, and a new node made a corner.
     TrajectoryState s = converted(GeneratorType::Orbit, 12);
     const double span = handleLength(s, 3, Handle::Out);
 
@@ -156,6 +160,7 @@ TEST_CASE("an inserted node lands on the curve, with handles halved") {
 }
 
 TEST_CASE("insertion goes between the actual neighbours, not at the end") {
+    //  Catches: the new node appended at the end of the chain.
     TrajectoryState s = converted(GeneratorType::Wave, 12);
     const Vec3 before = s.nodes[5].p, after = s.nodes[6].p;
     const std::size_t i = insertNode(s, 5, 0.5);
@@ -165,14 +170,17 @@ TEST_CASE("insertion goes between the actual neighbours, not at the end") {
 }
 
 TEST_CASE("insertion refuses an out-of-range segment") {
+    //  Catches: a segment past the end accepted, which reads past the nodes.
     TrajectoryState s = converted(GeneratorType::Orbit, 8);
     const std::size_t n = s.nodes.size();
     CHECK(insertNode(s, 99, 0.5) == n);
     CHECK(s.nodes.size() == n);
 }
 
-/*  The measurement that justified curvature placement in the first place. */
-TEST_CASE("curvature placement beats equal arc length on an orbit wave") {
+/*  Against the naive fit: nodes at equal arc length, handles a third of their span. Placement alone and the
+ *  handle search alone each beat it on this shape, so what fails here is a fit that does worse than both. */
+TEST_CASE("a fitted chain follows a wave closer than equal arc length with third-span handles does") {
+    //  Catches: a handle search that keeps the worst trial instead of the best.
     TrajectoryState src;
     src.generator = GeneratorType::Wave;
     generatorDefaults(GeneratorType::Wave, src.genParams);
@@ -193,6 +201,7 @@ TEST_CASE("curvature placement beats equal arc length on an orbit wave") {
 }
 
 TEST_CASE("every generator converts to a faithful chain") {
+    //  Catches: the fitted chain not taking the shape's closedness, so a spiral converts to a closed loop.
     for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                    GeneratorType::Spiral}) {
         TrajectoryState s;
@@ -207,9 +216,11 @@ TEST_CASE("every generator converts to a faithful chain") {
     }
 }
 
-/*  A geodesic has zero curvature, so its discrete curvature is pure noise. Without a floor
- *  every sample looks like a feature and the arc gets runt segments that then cusp. */
+/*  A corner is several neighbouring samples of high curvature, and a straight edge's curvature is noise. Two
+ *  guards keep them from becoming nodes a sample apart -- a least gap between candidates, and a pass that
+ *  drops runts -- and either alone is enough here. */
 TEST_CASE("a polygon's straight edges convert without runt segments") {
+    //  Catches: both guards gone: candidates allowed beside each other, and no pass to drop runts.
     TrajectoryState s;
     s.generator = GeneratorType::Polygon;
     generatorDefaults(GeneratorType::Polygon, s.genParams);
@@ -223,6 +234,7 @@ TEST_CASE("a polygon's straight edges convert without runt segments") {
 }
 
 TEST_CASE("a fitted chain never backtracks on itself") {
+    //  Catches: a node's in-handle pointing forward, which puts a cusp at every node.
     // A handle longer than its segment cusps, and playback walks by arc length, so the
     // backtrack becomes an audible stall.
     for (auto g : {GeneratorType::Spiral}) {
@@ -241,6 +253,7 @@ TEST_CASE("a fitted chain never backtracks on itself") {
 }
 
 TEST_CASE("a fitted circle is actually round") {
+    //  Catches: a node's in-handle pointing forward, which turns the circle into cusps.
     TrajectoryState s;
     const FitResult r = circle(s, 4);
     CHECK(r.nodes == 4);
@@ -251,6 +264,7 @@ TEST_CASE("a fitted circle is actually round") {
 }
 
 TEST_CASE("open and close round-trip exactly") {
+    //  Catches: opening a path dropping a node rather than only the closing segment.
     TrajectoryState s;
     circle(s, 4);
     Trajectory t;
@@ -274,6 +288,7 @@ TEST_CASE("open and close round-trip exactly") {
 }
 
 TEST_CASE("an open path's outer handles are inert") {
+    //  Catches: every handle reported live, so an open path's outer handles look draggable.
     TrajectoryState s;
     circle(s, 5);
     CHECK(handleIsLive(s, 0, Handle::In));
@@ -286,6 +301,7 @@ TEST_CASE("an open path's outer handles are inert") {
 }
 
 TEST_CASE("handles: smooth mirrors, corner does not") {
+    //  Catches: a corner mirrored like a smooth node, and a smooth node mirrored onto the same side.
     TrajectoryState s;
     circle(s, 6);
     const std::size_t i = 2;
@@ -296,7 +312,7 @@ TEST_CASE("handles: smooth mirrors, corner does not") {
         setHandle(s, i, Handle::Out, fromAzEl(1.0, 0.5));
         CHECK(dot(handleDirection(s, i, Handle::In), handleDirection(s, i, Handle::Out)) ==
               doctest::Approx(-1.0).epsilon(1e-6));
-        CHECK(handleLength(s, i, Handle::In) == doctest::Approx(lenIn).epsilon(1e-6));
+        CHECK(std::abs(handleLength(s, i, Handle::In) / lenIn - 1.0) < 1e-6);
     }
 
     SUBCASE("corner leaves the opposite handle untouched") {
@@ -309,6 +325,7 @@ TEST_CASE("handles: smooth mirrors, corner does not") {
 }
 
 TEST_CASE("handle length is clamped in interactive editing") {
+    //  Catches: a dragged handle's length not clamped.
     TrajectoryState s;
     circle(s, 4);
     const Vec3 p = s.nodes[1].p, along = unit(tangentAt(p, {0, 0, 1}));
@@ -319,6 +336,7 @@ TEST_CASE("handle length is clamped in interactive editing") {
 }
 
 TEST_CASE("moving a node carries its handles rigidly") {
+    //  Catches: a handle left behind when its node moves.
     TrajectoryState s;
     circle(s, 5);
     const std::size_t i = 2;
@@ -327,12 +345,13 @@ TEST_CASE("moving a node carries its handles rigidly") {
 
     moveNode(s, i, fromAzEl(2.0, 0.6));
     CHECK(arc(s.nodes[i].p, fromAzEl(2.0, 0.6)) < 1e-7);
-    CHECK(handleLength(s, i, Handle::In) == doctest::Approx(lIn).epsilon(1e-9));
-    CHECK(handleLength(s, i, Handle::Out) == doctest::Approx(lOut).epsilon(1e-9));
-    CHECK(arc(s.nodes[i].cin, s.nodes[i].cout) == doctest::Approx(between).epsilon(1e-9));
+    CHECK(std::abs(handleLength(s, i, Handle::In) / lIn - 1.0) < 1e-9);
+    CHECK(std::abs(handleLength(s, i, Handle::Out) / lOut - 1.0) < 1e-9);
+    CHECK(std::abs(arc(s.nodes[i].cin, s.nodes[i].cout) / between - 1.0) < 1e-9);
 }
 
 TEST_CASE("delete keeps at least two nodes") {
+    //  Catches: deletion allowed down to one node.
     TrajectoryState s;
     circle(s, 4);
     CHECK(deleteNode(s, 1));
@@ -345,6 +364,7 @@ TEST_CASE("delete keeps at least two nodes") {
 }
 
 TEST_CASE("makeStart rotates the seam without changing the shape") {
+    //  Catches: the new start swapped with the old one rather than the chain rotated, which reorders it.
     TrajectoryState s;
     circle(s, 6);
     Trajectory before;
@@ -358,11 +378,12 @@ TEST_CASE("makeStart rotates the seam without changing the shape") {
 
     Trajectory after;
     after.build(s);
-    CHECK(after.lengthRad() == doctest::Approx(before.lengthRad()).epsilon(1e-6));
+    CHECK(std::abs(after.lengthRad() / before.lengthRad() - 1.0) < 1e-6);
     CHECK(hausdorff(denseOf(s), a) * kRad2Deg < 0.5);
 }
 
 TEST_CASE("authoring operations tolerate degenerate input") {
+    //  Catches: an index not checked against the chain, which reads past the end of an empty one.
     TrajectoryState s;  // no nodes at all
     CHECK(insertNode(s, 0, 0.5) == 0);
     CHECK_FALSE(deleteNode(s, 0));
@@ -378,6 +399,7 @@ TEST_CASE("authoring operations tolerate degenerate input") {
  *  is not more expressive, only harder to edit. Every way a chain can grow has
  *  to respect that, or the cap is only a suggestion. */
 TEST_CASE("a custom trajectory never exceeds the node cap") {
+    //  Catches: insertion not refused at the cap, and a fit asked for more not held to it.
     SUBCASE("insertion is refused at the cap, and changes nothing") {
         TrajectoryState s;
         circle(s, 4);

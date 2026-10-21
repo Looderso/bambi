@@ -20,6 +20,7 @@
 #include <thread>
 #include <vector>
 
+#include "Args.hpp"
 #include "bambi/encode/params.hpp"
 #include "bambi/link/link.hpp"
 #include "bambi/math/vec3.hpp"
@@ -64,6 +65,18 @@ const char* argAfter(int argc, char** argv, const char* flag) {
     return nullptr;
 }
 
+//  The number after `flag`, `otherwise` when the flag is absent; a value that is no number ends the run.
+double numberAfter(int argc, char** argv, const char* flag, double otherwise) {
+    const char* arg = argAfter(argc, argv, flag);
+    if (arg == nullptr) return otherwise;
+    double v = 0.0;
+    if (!bambi::tools::decimal(arg, v)) {
+        std::fprintf(stderr, "%s expects a number\n", flag);
+        std::exit(2);
+    }
+    return v;
+}
+
 bool hasFlag(int argc, char** argv, const char* flag) {
     for (int i = 1; i < argc; ++i)
         if (std::strcmp(argv[i], flag) == 0) return true;
@@ -102,8 +115,7 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    const char* secArg = argAfter(argc, argv, "--seconds");
-    const double seconds = secArg ? std::atof(secArg) : 2.0;
+    const double seconds = numberAfter(argc, argv, "--seconds", 2.0);
 
     if (cmd == "unlink") {
         LinkBus::unlinkSession(*session);
@@ -120,10 +132,8 @@ int main(int argc, char** argv) {
 
     if (cmd == "publish") {
         const char* label = argAfter(argc, argv, "--label");
-        const char* reshapeArg = argAfter(argc, argv, "--reshape-after");
-        const char* stopsArg = argAfter(argc, argv, "--audio-stops-after");
-        const double reshapeAfter = reshapeArg ? std::atof(reshapeArg) : -1.0;
-        const double audioStopsAfter = stopsArg ? std::atof(stopsArg) : -1.0;
+        const double reshapeAfter = numberAfter(argc, argv, "--reshape-after", -1.0);
+        const double audioStopsAfter = numberAfter(argc, argv, "--audio-stops-after", -1.0);
 
         std::printf("%s\n", self.toString().c_str());  // so a script can address us
         std::fflush(stdout);
@@ -233,8 +243,7 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "watch") {
-        const char* expectArg = argAfter(argc, argv, "--expect");
-        const int expect = expectArg ? std::atoi(expectArg) : -1;
+        const int expect = static_cast<int>(numberAfter(argc, argv, "--expect", -1));
         const bool expectReshape = hasFlag(argc, argv, "--expect-reshape");
 
         const auto t0 = Clock::now();
@@ -337,7 +346,7 @@ int main(int argc, char** argv) {
 
         LinkCommand c;
         c.param = static_cast<std::uint32_t>(id);
-        c.value = static_cast<float>(std::atof(valueArg));
+        c.value = static_cast<float>(numberAfter(argc, argv, "--value", 0.0));
         if (const char* g = argAfter(argc, argv, "--gesture")) {
             if (std::strcmp(g, "begin") == 0)
                 c.gesture = kLinkGestureBegin;
@@ -357,8 +366,7 @@ int main(int argc, char** argv) {
 
         //  Stay alive, heartbeat and all, the way a window in the middle of a drag would, so a
         //  script can kill -9 this process to play a sender that dies mid-edit.
-        const char* holdArg = argAfter(argc, argv, "--hold");
-        const double hold = holdArg ? std::atof(holdArg) : 0.0;
+        const double hold = numberAfter(argc, argv, "--hold", 0.0);
         const auto t0 = Clock::now();
         while (secondsSince(t0) < hold) {
             bus.publishDynamic(LinkDynamic{});

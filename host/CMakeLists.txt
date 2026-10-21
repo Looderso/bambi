@@ -20,7 +20,7 @@ target_link_libraries(bambi-host PUBLIC bambi-core bambi-juce-headers bambi-remo
 bambi_warnings(bambi-host)
 # Link-time optimisation, as every plugin target has: FieldEffectProcessor is the audio thread's
 # outer loop, and with LTO it costs what it would compiled inside each plugin (within 0.4 %).
-target_link_libraries(bambi-host PRIVATE juce::juce_recommended_lto_flags)
+target_link_libraries(bambi-host PRIVATE bambi-lto)
 
 # bambi-remote — the interface through which a host that knows the suite sets one of its plugins: the plugins
 # answer it, the live host asks it. Only the VST3 SDK's base headers, which JUCE carries.

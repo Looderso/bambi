@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 //  bambi-live-host-shot: a PNG of the live host's window, with no Live and no audio device -- the host's own column
-//  beside one of its pages, over a set built here: a drum group split into its tracks, a bass, keys left in Live, a
-//  vocal through an Echo, a return through a Reverb, a microphone of the host's own, two Decoders.
+//  beside one of its pages, over a set built here: a drum group with two of its tracks in bambi and the hats in
+//  Live, a bass, keys left in Live, a vocal through an Echo, a return through a Reverb, a microphone of the host's
+//  own, two Decoders.
 //
 //    bambi-live-host-shot out.png [mode] [--scale N]
 //
@@ -26,11 +27,11 @@
 #include <vector>
 
 #include "../Source/IoPage.h"
-#include "bambi/ui/ProductName.h"
 #include "../Source/Rail.h"
 #include "../Source/Routing.h"
 #include "../Source/Timeline.h"
 #include "bambi/host/ShotScale.h"
+#include "bambi/ui/ProductName.h"
 #include "bambi/ui/Theme.h"
 
 using namespace bambi;
@@ -78,8 +79,7 @@ Fixture fixture() {
                     node(kPlate, Kind::Return, std::nullopt, "A Plate", "#9a8fc4"),
                     node(kSlap, Kind::Return, std::nullopt, "B Slap", "#9a8fc4")};
 
-    f.shape.taken = {kDrums, kBass, kVox};
-    f.shape.split = {kDrums};
+    f.shape.taken = {kKick, kSnare, kBass, kVox};  // the hats stay in Live, in the same group
     f.shape.returns = {kPlate};
     f.shape.decoders = {kHeadphones, kSpeakers};
     f.shape.chains = {{kVox, {{kVoxEcho, live::Effect::Echo, 0}}}, {kPlate, {{kPlateReverb, live::Effect::Reverb, 0}}}};
@@ -87,7 +87,7 @@ Fixture fixture() {
     f.shape.routing = {{kVox, {{live::Target::main(), 0.0}, {live::Target::node(kPlate), -8.0}}},
                        {kSnare, {{live::Target::node(kDrums), 0.0}, {live::Target::node(kPlate), -14.0}}}};
     f.field = live::layOut(f.tree, f.shape);
-    f.pairs = {{kKick, 0}, {kSnare, 1}, {kHats, 2}, {kBass, 3}, {kVox, 4}};
+    f.pairs = {{kKick, 0}, {kSnare, 1}, {kBass, 2}, {kVox, 3}};
 
     //  in quarter notes, four to a bar: forty-eight bars, in three sections
     auto& a = f.arrangement;
@@ -197,8 +197,8 @@ int main(int argc, char** argv) {
 
     //  the column as the host fills it with every kind of plugin playing: the plugins, then the host's own pages at
     //  its foot
-    const std::vector<juce::String> labels{ui::productName(Product::Encoder), "echo", "reverb", "decoder", {}, "I/O",
-                                           "routing", "timeline"};
+    const std::vector<juce::String> labels{
+        ui::productName(Product::Encoder), "echo", "reverb", "decoder", {}, "I/O", "routing", "timeline"};
     const juce::String open = tab ? "I/O" : timeline ? "timeline" : "routing";
     const auto at = std::find(labels.begin(), labels.end(), open) - labels.begin();
     jassert(at < static_cast<std::ptrdiff_t>(labels.size()));

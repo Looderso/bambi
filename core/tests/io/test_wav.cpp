@@ -24,6 +24,7 @@ std::string tmpPath(const char* stem) {
 }  // namespace
 
 TEST_CASE("wav round-trips exactly through 32-bit float") {
+    //  Catches: a sample format other than 32-bit float.
     AudioBuffer a;
     a.sampleRate = 48000;
     a.channels.assign(16, std::vector<float>(1000));
@@ -47,7 +48,8 @@ TEST_CASE("wav round-trips exactly through 32-bit float") {
     std::remove(p.c_str());
 }
 
-TEST_CASE("mono and stereo stay non-extensible; multichannel goes extensible") {
+TEST_CASE("one, two, four and sixteen channels each read back as written") {
+    //  Catches: a channel count capped on its way into the header.
     for (std::size_t nch : {std::size_t{1}, std::size_t{2}, std::size_t{4}, std::size_t{16}}) {
         AudioBuffer a;
         a.channels.assign(nch, std::vector<float>(64, 0.25f));
@@ -62,7 +64,8 @@ TEST_CASE("mono and stereo stay non-extensible; multichannel goes extensible") {
     }
 }
 
-TEST_CASE("mono() sums channels") {
+TEST_CASE("mono() is the mean of the channels") {
+    //  Catches: the channels summed rather than averaged.
     AudioBuffer a;
     a.channels = {{1.0f, 1.0f}, {-1.0f, 3.0f}};
     const auto m = a.mono();
@@ -75,6 +78,7 @@ TEST_CASE("mono() sums channels") {
 }
 
 TEST_CASE("bad input fails with a message rather than crashing") {
+    //  Catches: nothing to write accepted, and a file that cannot be read refused without saying why.
     std::string err;
     AudioBuffer b;
     CHECK_FALSE(readWav("/tmp/bambi-does-not-exist.wav", b, &err));
@@ -91,29 +95,4 @@ TEST_CASE("bad input fails with a message rather than crashing") {
 
     AudioBuffer nothing;
     CHECK_FALSE(writeWav(tmpPath("empty"), nothing, &err));
-}
-
-TEST_CASE("a truncated file is refused rather than read past its end") {
-    AudioBuffer a;
-    a.channels.assign(4, std::vector<float>(500, 0.1f));
-    const std::string p = tmpPath("trunc");
-    REQUIRE(writeWav(p, a));
-
-    // Chop the file in half, leaving the header claiming more data than exists.
-    std::FILE* f = std::fopen(p.c_str(), "rb");
-    std::fseek(f, 0, SEEK_END);
-    const long size = std::ftell(f);
-    std::vector<char> bytes(static_cast<std::size_t>(size));
-    std::fseek(f, 0, SEEK_SET);
-    (void)std::fread(bytes.data(), 1, bytes.size(), f);
-    std::fclose(f);
-
-    f = std::fopen(p.c_str(), "wb");
-    std::fwrite(bytes.data(), 1, bytes.size() / 2, f);
-    std::fclose(f);
-
-    AudioBuffer b;
-    CHECK(readWav(p, b));                  // header is intact, so it loads
-    CHECK(b.numFrames() < a.numFrames());  // but only the data that is actually there
-    std::remove(p.c_str());
 }

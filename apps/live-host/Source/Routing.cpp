@@ -6,6 +6,7 @@
 #include <set>
 
 #include "bambi/ui/Draw.h"
+#include "bambi/ui/HostDrag.h"
 #include "bambi/ui/ProductName.h"
 #include "bambi/ui/Widgets.h"
 
@@ -164,7 +165,9 @@ bool RoutingPage::takes(live::TrackId node) const {
 }
 
 void RoutingPage::take(live::TrackId node) {
-    const Waiting w = *armed_.what();
+    const auto armed = armed_.what();
+    if (!armed) return;
+    const Waiting w = *armed;
     armed_.end();
     switch (w.kind) {
         case Waiting::Kind::Send: {
@@ -207,7 +210,7 @@ void RoutingPage::attachTo(live::TrackId orphan, live::TrackId target) {
 // ---- inserts --------------------------------------------------------------------------------------
 
 //  Removing an insert, after asking: its settings go with it, and the host has no undo.
-void RoutingPage::removeInsert(live::TrackId owner, std::uint64_t id, juce::String name) {
+void RoutingPage::removeInsert(live::TrackId owner, std::uint64_t id, const juce::String& name) {
     confirm_.ask("remove this " + name + "?", "its settings go with it; the host has no undo yet", "remove",
                  [this, owner, id] {
                      change([owner, id](live::Shape& s) {
@@ -362,15 +365,13 @@ void RoutingPage::menu(juce::Graphics& g) {
     } else if (m.kind == Menu::Kind::Encoder) {
         const live::Part* part = partOf(m.owner);
         const live::TrackId heard = part != nullptr ? part->sidechain : 0;
-        const auto n =
-            std::find_if(tree_.nodes.begin(), tree_.nodes.end(), [&](const Node& x) { return x.id == m.owner; });
-        const bool top = n == tree_.nodes.end() || !n->parent;
         items.push_back({{"sidechain", heard != 0 ? nameOf(heard) : juce::String(), true},
                          [this, m] { begin({Waiting::Kind::Sidechain, m.owner, 0}); }});
         if (heard != 0)
             items.push_back(
                 {{"no sidechain", "", true}, [this, m] { setSidechain({Waiting::Kind::Sidechain, m.owner, 0}, 0); }});
-        if (top && !live::isInput(m.owner))
+        //  any track's, at any depth: it alone goes back, its group a bus of what stays taken
+        if (!live::isInput(m.owner))
             items.push_back({{"back to Live", "", true}, [this, m] {
                                  change([this, m](live::Shape& s) { live::removeEncoder(s, tree_, field_, m.owner); });
                              }});
@@ -389,6 +390,7 @@ void RoutingPage::menu(juce::Graphics& g) {
         foot = effectName(ins.effect) + " on " + nameOf(m.owner);
     }
     std::vector<ui::MenuItem> shown;
+    shown.reserve(items.size());
     for (const Item& i : items) shown.push_back(i.shown);
     const auto drawn = ui::drawMenu(g, m.at, rt::menuWidth, shown, foot);
     addClickArea(drawn.box, [] {});
@@ -440,21 +442,23 @@ float RoutingPage::wireChips(juce::Graphics& g, live::TrackId from, float x, flo
                                        true);
         const Target to = w.to;
         const double at = w.db;
-        auto pressX = std::make_shared<float>(0.0f);
+        auto pressedAt = std::make_shared<juce::Point<float>>();
         if (idle()) {
             addGestureArea(
                 chip.box.withTrimmedRight(chip.cross.getWidth()),
-                [this, pressX](juce::Point<float> p) {
-                    *pressX = p.x;
+                [this, pressedAt](juce::Point<float> p) {
+                    *pressedAt = p;
                     dragging_ = shape_;
                 },
-                [this, pressX, from, to, at](juce::Point<float> p, bool fine) {
-                    const double db = std::clamp(
-                        std::round((at + (p.x - *pressX) * rt::levelDrag * (fine ? 0.1 : 1.0)) * 10.0) / 10.0,
-                        live::kSilentDb, live::kLoudestDb);
+                [this, pressedAt, from, to, at](juce::Point<float> p, bool fine) {
+                    //  as every value is dragged: across or up, the same distance per step, finer with shift
+                    const double moved = ui::dragShare(*pressedAt, p, 0.0f, ui::theme::controls::dragPixels, fine) *
+                                         rt::levelDrag * ui::theme::controls::dragPixels;
+                    const double db =
+                        std::clamp(std::round((at + moved) * 10.0) / 10.0, live::kSilentDb, live::kLoudestDb);
                     live::Shape next = dragging_;
                     live::setWire(next, field_, from, {to, db});
-                    shape_ = next;
+                    shape_ = std::move(next);
                     field_ = live::layOut(tree_, shape_);
                     if (preview) preview(shape_);
                     repaint();
@@ -538,7 +542,7 @@ void RoutingPage::wires(juce::Graphics& g) {
         }
     }
     for (const live::TrackId id : lit)
-        if (id != *chosen_)
+        if (id != chosen_)
             if (const auto s = spots_.find(id); s != spots_.end()) ring(g, s->second.box);
     for (const std::uint64_t d : litDecoders)
         if (const auto b = decoderAt_.find(d); b != decoderAt_.end()) ring(g, b->second);
@@ -619,14 +623,11 @@ float RoutingPage::tagWidth() { return ui::textWidth(ui::smallFont(), "in group"
 //  What the node is, in a small outlined tag: in ink while bambi plays it, in the label's colour while Live does.
 float RoutingPage::tag(juce::Graphics& g, float x, float cy, const juce::String& label, bool inField) {
     const juce::Rectangle<float> box{x, cy - rt::tagHeight / 2.0f, tagWidth(), rt::tagHeight};
-    g.setColour(inField ? colour::ruleStrong : colour::rule);
-    g.drawRect(box, ui::theme::stroke::rule);
-    ui::text(g, label, ui::smallFont(), inField ? colour::text : colour::label, box, juce::Justification::centred);
+    ui::drawTag(g, box, label, inField);
     return box.getRight() + rt::gap * 2.0f;
 }
 
-float RoutingPage::encoderChip(juce::Graphics& g, live::TrackId id, float x, float y, bool removable) {
-    (void)removable;
+float RoutingPage::encoderChip(juce::Graphics& g, live::TrackId id, float x, float y) {
     const auto chip = ui::drawChip(g, {x, y - rt::control / 2.0f}, rt::control, ui::productName(Product::Encoder),
                                    colour::text, colour::identity(Product::Encoder), false);
     if (idle() && pairOf(id) >= 0)
@@ -701,7 +702,7 @@ float RoutingPage::liveLine(juce::Graphics& g, const Node& n, int depth, float x
             });
         cx = whole.getRight() + rt::gap * 2.0f;
     } else {
-        cx = encoderChip(g, n.id, cx, cy, !n.parent) + rt::gap;
+        cx = encoderChip(g, n.id, cx, cy) + rt::gap;
     }
     if (inField) {
         //  the Encoder's sidechain leads the chain: on the second line with it when the first has no room
@@ -730,7 +731,7 @@ float RoutingPage::inputLine(juce::Graphics& g, const live::HostInput& in, float
     const auto nameAt = frame(g, box, juce::String(in.name), colour::label, true, in.id);
     const float cy = box.getY() + rt::boxHeight / 2.0f;
     float cx = tag(g, nameAt.getRight() + rt::gap, cy, in.width == 2 ? "stereo" : "mono", true);
-    cx = encoderChip(g, in.id, cx, cy, false) + rt::gap;
+    cx = encoderChip(g, in.id, cx, cy) + rt::gap;
     const float chainY = twoLines ? cy + rt::row : cy;
     const float chainX = sidechainSlot(g, part != nullptr ? part->sidechain : 0, {Waiting::Kind::Sidechain, in.id, 0},
                                        twoLines ? nameAt.getRight() + rt::gap : cx, chainY);

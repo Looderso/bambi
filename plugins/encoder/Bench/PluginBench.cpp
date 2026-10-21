@@ -19,6 +19,7 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "bambi/host/TestPlayHead.h"
+#include "bambi/io/guarded.hpp"
 #include "bambi/ui/ProbeView.h"
 #include "bambi/ui/RegionOverlay.h"
 
@@ -91,7 +92,7 @@ bool runProcessor(int order, int block, Stats& out, bool energyLooked = false) {
 }
 }  // namespace
 
-int main() {
+static int run() {
     juce::ScopedJuceInitialiser_GUI gui;
 #if JUCE_DEBUG
     std::printf("\n  *** DEBUG BUILD -- these numbers are meaningless. ***\n");
@@ -240,4 +241,8 @@ int main() {
     }
     editor.reset();
     return 0;
+}
+
+int main() {
+    return bambi::guarded("bambi-plugin-bench", [&] { return run(); });
 }

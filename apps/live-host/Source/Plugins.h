@@ -6,9 +6,9 @@
 #include <string>
 #include <string_view>
 
-#include "bambi/patch/layout.hpp"
 #include "bambi/live/field.hpp"
 #include "bambi/live/lanes.hpp"
+#include "bambi/patch/layout.hpp"
 #include "bambi/patch/parameters.hpp"
 #include "bambi/remote/Remote.h"
 

@@ -34,8 +34,8 @@ juce::File userLibrary() {
 }  // namespace
 
 void installLiveDevice() {
-    const auto source = juce::File::getSpecialLocation(juce::File::currentApplicationFile)
-                            .getChildFile("Contents/Resources/device");
+    const auto source =
+        juce::File::getSpecialLocation(juce::File::currentApplicationFile).getChildFile("Contents/Resources/device");
     if (!source.isDirectory()) return;
     const auto library = userLibrary();
     if (library == juce::File()) {

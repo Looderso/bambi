@@ -6,9 +6,9 @@ name: docs
 on:
   push:
     branches: [main]
-    paths: ["**/*.md", "docs/**", ".claude/**", "tools/check-docs.sh"]
+    paths: ["**/*.md", "docs/**", ".claude/**", "tools/check-docs.sh", "lychee.toml"]
   pull_request:
-    paths: ["**/*.md", "docs/**", ".claude/**", "tools/check-docs.sh"]
+    paths: ["**/*.md", "docs/**", ".claude/**", "tools/check-docs.sh", "lychee.toml"]
   workflow_dispatch:
 
 permissions:
@@ -20,4 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: tools/check-docs.sh
+      - uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --config lychee.toml 'docs/**/*.md' '*.md' '**/AGENTS.md' '.claude/**/*.md'
+      - run: tools/check-docs.sh --skip-links

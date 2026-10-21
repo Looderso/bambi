@@ -175,8 +175,16 @@ int main(int argc, const char* argv[]) {
         int port = 9000;
         BOOL phone = NO;
         for (int i = 1; i < argc; ++i) {
-            if (strcmp(argv[i], "--host-pid") == 0 && i + 1 < argc) hostPid = atoi(argv[i + 1]);
-            if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) port = atoi(argv[i + 1]);
+            //  read whole: a value that is no number leaves the default
+            char* end = NULL;
+            if (strcmp(argv[i], "--host-pid") == 0 && i + 1 < argc) {
+                const long v = strtol(argv[i + 1], &end, 10);
+                if (*argv[i + 1] != 0 && *end == 0) hostPid = (pid_t)v;
+            }
+            if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+                const long v = strtol(argv[i + 1], &end, 10);
+                if (*argv[i + 1] != 0 && *end == 0 && v > 0 && v < 65536) port = (int)v;
+            }
             if (strcmp(argv[i], "--phone") == 0) phone = YES;
         }
         sock = socket(AF_INET, SOCK_DGRAM, 0);

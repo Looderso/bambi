@@ -211,6 +211,7 @@ float paintRegionEditor(ParameterPage& page, juce::Graphics& g, juce::Rectangle<
     //  custom where it is; picking custom shows the kept one.
     const bool hasCustom = std::any_of(shape.weights.begin(), shape.weights.end(), [](double w) { return w != 0.0; });
     std::vector<juce::String> kindNames;
+    kindNames.reserve(kRegionKindNames.size());
     for (const char* n : kRegionKindNames) kindNames.emplace_back(n);
     const auto kinds = page.paintPicker(
         g, content.getX(), y, content.getWidth(), kindNames,

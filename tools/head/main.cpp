@@ -21,6 +21,7 @@
 #include "bambi/decode/headmodelfile.hpp"
 #include "bambi/decode/measuredhead.hpp"
 #include "bambi/decode/sofafile.hpp"
+#include "bambi/io/guarded.hpp"
 #include "bambi/math/vec3.hpp"
 
 namespace {
@@ -68,7 +69,7 @@ bool readMeasured(const std::string& path, bambi::MeasuredHead& m, std::string& 
 }
 }  // namespace
 
-int main(int argc, char** argv) {
+static int run(int argc, char** argv) {
     if (argc < 3) {
         std::fprintf(stderr,
                      "usage: bambi-head <measured.bin> <out.json> [--name N] [--order N] [--itd-order N] [--step S] "
@@ -125,4 +126,8 @@ int main(int argc, char** argv) {
     std::ofstream out(argv[2], std::ios::binary);
     out << json;
     return out ? 0 : 1;
+}
+
+int main(int argc, char** argv) {
+    return bambi::guarded("bambi-head", [&] { return run(argc, argv); });
 }

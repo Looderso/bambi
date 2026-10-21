@@ -69,23 +69,16 @@ float EchoPanel::paintStrip(juce::Graphics& g, juce::Rectangle<float> content, f
         //  first: the row selects. Everything registered after this lies on top of it.
         addRegion({row, {}, {}, {}, [this, i] { selectTap(i); }, {}});
 
-        if (i == state_.tap) {
-            g.setColour(colour::selected());
-            g.fillRect(row.getX(), row.getY(), theme::stroke::selectionBar, row.getHeight());
-        }
+        //  the selected row's ground stops before the level's value cell, which shares its colour and would vanish
+        if (i == state_.tap)
+            drawSelectedRow(g, row.withRight(row.getRight() - levelWidth - static_cast<float>(theme::space::grid)));
 
         const auto x0 = row.getX() + theme::stroke::selectionBar + static_cast<float>(theme::space::grid);
         const juce::Rectangle<float> switchBox{x0, row.getY() + (rowHeight - ctl::segmentHeight) / 2.0f,
                                                ctl::segmentHeight, ctl::segmentHeight};
         const auto onOff = state_.tapParam(i, "on");
         const bool on = state_.value(onOff) > 0.5f;
-        g.setColour(on ? colour::chosen : colour::text);
-        if (on)
-            g.fillRect(switchBox);
-        else
-            g.drawRect(switchBox, theme::stroke::rule);
-        text(g, juce::String(i + 1), font(theme::type::body), on ? colour::textInverse : colour::text, switchBox,
-             juce::Justification::centred);
+        drawToggleBox(g, switchBox, on, true, juce::String(i + 1));
         switchAreas_[static_cast<std::size_t>(i)] = switchBox;
         noteControl(onOff, switchBox, true);
         //  after the row, so it takes the press instead of it.
@@ -112,11 +105,8 @@ float EchoPanel::paintStrip(juce::Graphics& g, juce::Rectangle<float> content, f
             a box, so it reads as a control and not as the tail of the sequence." */
         const auto level = state_.tapParam(i, "level");
         const auto& levelDesc = model().manifest()[static_cast<int>(level)];
-        g.setColour(on ? colour::rule : colour::inactive);
-        g.drawRect(levelBox, theme::stroke::rule);
-        text(g, fromCore(bambi::formatParameter(levelDesc, static_cast<double>(state_.value(level)))), labelFont(),
-             on ? colour::text : colour::inactive, levelBox.reduced(ctl::tileBoxPadX, 0.0f),
-             juce::Justification::centredRight);
+        drawValueCell(g, levelBox,
+                      fromCore(bambi::formatParameter(levelDesc, static_cast<double>(state_.value(level)))), on);
         //  after the row, so a drag edits the level and never selects.
         noteControl(level, levelBox, on);
         if (on) addHostDrag(levelBox, level, false);
@@ -186,17 +176,15 @@ void EchoPanel::paintTrack(juce::Graphics& g, juce::Rectangle<float> track, cons
 /// Beats under the shared axis, so an offset can be read against them.
 void EchoPanel::paintRuler(juce::Graphics& g, juce::Rectangle<float> ruler, const StripContent& content) {
     if (content.spanSeconds <= 0.0 || content.beatSeconds <= 0.0) return;
-    const int beats = juce::roundToInt(content.spanSeconds / content.beatSeconds);
-    for (int b = 0; b <= beats; ++b) {
-        const auto at = static_cast<float>(static_cast<double>(b) * content.beatSeconds / content.spanSeconds);
-        const auto x = ruler.getX() + at * ruler.getWidth();
-        const bool bar = b % 4 == 0;
-        g.setColour(bar ? colour::rule : colour::inactive);
-        g.fillRect(x, ruler.getY(), theme::stroke::rule, bar ? ruler.getHeight() : ruler.getHeight() * 0.5f);
-        if (bar)
-            text(g, juce::String(b / 4 + 1), labelFont(), colour::label,
-                 {x + 3.0f, ruler.getY(), 20.0f, ruler.getHeight()});
-    }
+    //  under the taps it measures: the ticks hang from them
+    BeatRuler r;
+    r.area = ruler;
+    r.to = static_cast<double>(juce::roundToInt(content.spanSeconds / content.beatSeconds));
+    r.x = [&](double beat) {
+        return ruler.getX() + static_cast<float>(beat * content.beatSeconds / content.spanSeconds) * ruler.getWidth();
+    };
+    r.hangs = true;
+    drawBeatRuler(g, r);
 }
 
 /*  The pattern: one row of starting points above the taps. A pattern writes the four taps' pattern
@@ -205,6 +193,7 @@ void EchoPanel::paintRuler(juce::Graphics& g, juce::Rectangle<float> ruler, cons
     brings its values back. The strip under it is unchanged. */
 float EchoPanel::paintPattern(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     std::vector<juce::String> names;  // no title: the row is the taps' starting points, and says so
+    names.reserve(bambi::kEchoPatternNames.size());
     for (const auto n : bambi::kEchoPatternNames) names.push_back(fromCore(n));
     const auto apply = [this](int which) {
         //  through the host's own parameters, inside gestures, so it automates and undoes as the knobs would

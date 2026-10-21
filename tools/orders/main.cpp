@@ -16,6 +16,7 @@
 #include <random>
 #include <vector>
 
+#include "Args.hpp"
 #include "bambi/encode/encoder.hpp"
 #include "bambi/math/legendre.hpp"
 #include "bambi/math/sh.hpp"
@@ -107,7 +108,10 @@ const char* ceilingNote(int order) {
 int main(int argc, char** argv) {
     int maxOrder = kMaxOrder;
     for (int i = 1; i + 1 < argc; ++i)
-        if (std::strcmp(argv[i], "--max") == 0) maxOrder = std::atoi(argv[i + 1]);
+        if (std::strcmp(argv[i], "--max") == 0 && !bambi::tools::whole(argv[i + 1], maxOrder)) {
+            std::fprintf(stderr, "--max expects a whole number\n");
+            return 2;
+        }
     maxOrder = std::clamp(maxOrder, 1, kMaxOrder);
 
 #ifndef NDEBUG
@@ -139,6 +143,7 @@ int main(int argc, char** argv) {
         enc.prepare(order);
         std::vector<std::vector<float>> bufs(static_cast<std::size_t>(ch), std::vector<float>(kBlock, 0.0f));
         std::vector<float*> ptrs;
+        ptrs.reserve(bufs.size());
         for (auto& b : bufs) ptrs.push_back(b.data());
         double az = 0.0;
         const int encIters = std::max(50, 200000 / ch);

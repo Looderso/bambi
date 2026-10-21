@@ -1,0 +1,6 @@
+# Links and anchors in the docs, every AGENTS.md, the skills and reviewers: offline, local files only.
+# tools/check-docs.sh runs it; CI runs it through lycheeverse/lychee-action.
+offline = true
+include_fragments = "anchor-only"
+no_progress = true
+exclude_path = ["^third_party/", "^build", "^prototypes/", "^\\.claude/worktrees/"]

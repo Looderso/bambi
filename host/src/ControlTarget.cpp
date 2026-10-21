@@ -142,7 +142,8 @@ void RemoteTarget::follow(const LinkScene::Entry& peer, double dt) {
 
     //  An edit shows until the target has applied it -- sequences only grow, so a later one covers it -- or
     //  until it has plainly been lost.
-    if (hasPending_ && (controls_.appliedEdit >= pendingSequence_ || (pendingSeconds_ += dt) > kPendingSeconds)) {
+    if (hasPending_ && controls_.appliedEdit < pendingSequence_) pendingSeconds_ += dt;
+    if (hasPending_ && (controls_.appliedEdit >= pendingSequence_ || pendingSeconds_ > kPendingSeconds)) {
         hasPending_ = false;
         hasPendingPreset_ = false;
     }
@@ -153,7 +154,8 @@ void RemoteTarget::follow(const LinkScene::Entry& peer, double dt) {
         const auto& d = host_.linkHost().manifest()[static_cast<int>(i)];
         const bool arrived =
             i < controls_.paramCount && std::abs(controls_.params[i] - h.plain) <= 1.0e-4f * (d.max - d.min);
-        if (arrived || (h.seconds += dt) > kHeldSeconds) h.active = false;
+        if (!arrived) h.seconds += dt;
+        if (arrived || h.seconds > kHeldSeconds) h.active = false;
     }
 }
 

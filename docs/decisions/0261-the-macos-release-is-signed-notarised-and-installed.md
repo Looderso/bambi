@@ -13,7 +13,7 @@ cannot remove what it installed. A notarised zip of the plugins stays for anyone
 Live device is not in the package: the installer runs as root and cannot know whose Live to serve, so the host
 copies the device from its bundle into the User Library its own user's Live names, at every start, whenever it
 differs. All of it is `tools/release/macos/` and the build workflow's `macos-package` job, on a tag or a run started
-by hand.
+by hand with `release` on.
 
 **The loop driver carries none of BlackHole's name.** BlackHole's licence keeps its name and branding off
 third-party builds: the driver, its device and its box are named and made by *bambi*, and the notices credit

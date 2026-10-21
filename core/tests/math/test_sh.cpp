@@ -35,6 +35,7 @@ Quadrature exactQuadrature(int order) {
 }  // namespace
 
 TEST_CASE("acn indexing") {
+    //  Catches: acnOrder off by one at the first channel of each order.
     CHECK(numChannels(0) == 1);
     CHECK(numChannels(3) == 16);
     CHECK(numChannels(7) == 64);
@@ -52,6 +53,7 @@ TEST_CASE("acn indexing") {
  *  note that it is blind to sign errors, which is what the agreement test below is for.
  */
 TEST_CASE("SN3D normalisation is exact on every channel, up to the ceiling") {
+    //  Catches: the sqrt(2) of SN3D's m > 0 channels left out.
     const Quadrature q = exactQuadrature(kMaxOrder);
     std::vector<double> y(static_cast<std::size_t>(kMaxChannels)), acc(y.size(), 0.0);
     for (std::size_t i = 0; i < q.points.size(); ++i) {
@@ -75,6 +77,7 @@ TEST_CASE("SN3D normalisation is exact on every channel, up to the ceiling") {
 /*  Normalisation alone is blind to two harmonics leaking into each other. Every pair, to 10th
  *  order -- the highest order a REAPER track can carry (121 of its 128 channels). */
 TEST_CASE("SN3D channels are mutually orthogonal, every pair, to 10th order") {
+    //  Catches: the sine recurrence with a sign wrong, which mixes the m > 1 channels.
     constexpr int kOrder = 10;
     const int ch = numChannels(kOrder);
     const Quadrature q = exactQuadrature(kOrder);
@@ -97,6 +100,7 @@ TEST_CASE("SN3D channels are mutually orthogonal, every pair, to 10th order") {
 }
 
 TEST_CASE("cardinal directions land on the expected channels") {
+    //  Catches: the cosine and sine channels swapped.
     std::array<double, kMaxChannels> y{};
 
     shSN3D(fromAzEl(0, 0), 3, y);  // front -> +x -> ACN 3
@@ -122,6 +126,7 @@ TEST_CASE("cardinal directions land on the expected channels") {
  *  every normalisation check, perfectly intact.
  */
 TEST_CASE("recursive implementation agrees with the closed-form oracle to 1e-12") {
+    //  Catches: the Condon-Shortley phase put back.
     std::mt19937 rng(20260910);
     std::uniform_real_distribution<double> uni(-1.0, 1.0);
 
@@ -146,9 +151,10 @@ TEST_CASE("recursive implementation agrees with the closed-form oracle to 1e-12"
 }
 
 TEST_CASE("order argument limits how many channels are written") {
+    //  Catches: a channel written past the order asked for.
     std::array<double, kMaxChannels> y{};
     y.fill(-999.0);
     shSN3D(fromAzEl(0.3, 0.2), 1, y);
     CHECK(y[3] != -999.0);
-    CHECK(y[4] == -999.0);  // untouched beyond numChannels(1)
+    for (std::size_t c = 4; c < 9; ++c) CHECK(y[c] == -999.0);  // untouched beyond numChannels(1)
 }

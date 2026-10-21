@@ -9,6 +9,7 @@ using namespace bambi;
  *  three modules downstream.
  */
 TEST_CASE("convention: x front, y left, z up; azimuth CCW from front") {
+    //  Catches: azimuth turned clockwise, so left is -y.
     const double d = kDeg2Rad;
 
     SUBCASE("cardinal directions") {
@@ -30,8 +31,10 @@ TEST_CASE("convention: x front, y left, z up; azimuth CCW from front") {
     }
 
     SUBCASE("round trip") {
-        for (double az = -170; az <= 170; az += 37) {
-            for (double el = -80; el <= 80; el += 23) {
+        for (int i = 0; i < 10; ++i) {  // -170 to 163 degrees in azimuth
+            const double az = -170.0 + 37.0 * i;
+            for (int j = 0; j < 7; ++j) {  // -80 to 58 in elevation
+                const double el = -80.0 + 23.0 * j;
                 const Vec3 p = fromAzEl(az * d, el * d);
                 CHECK(azimuth(p) * kRad2Deg == doctest::Approx(az).epsilon(1e-9));
                 CHECK(elevation(p) * kRad2Deg == doctest::Approx(el).epsilon(1e-9));

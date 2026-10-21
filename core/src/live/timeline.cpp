@@ -53,6 +53,7 @@ double snapAt(double ppq, const std::vector<double>& edges, double grid, double 
 
 std::vector<double> edgesOf(const Arrangement& a, TrackId track) {
     std::vector<double> edges;
+    edges.reserve(a.locators.size());
     for (const Locator& l : a.locators) edges.push_back(l.time);
     for (const TrackClips& t : a.tracks)
         if (track != 0 && t.id == track)

@@ -12,6 +12,7 @@ RoomSettings hall() { return {20.0, RoomShape::Hall, 1.9, 0.5, 0.6}; }
 }  // namespace
 
 TEST_CASE("a room is a box with its depth along front, and Eyring runs both ways") {
+    //  Catches: the depth laid along the width, and the two directions of Eyring's formula disagreeing.
     const Room r = deriveRoom(hall());
     CHECK(r.y == 20.0);                          // width
     CHECK(r.x == doctest::Approx(36.0));         // depth, 1.8 x -- along x, which is front
@@ -30,6 +31,8 @@ TEST_CASE("a room is a box with its depth along front, and Eyring runs both ways
 }
 
 TEST_CASE("tone shortens the highs and lengthens the lows, and the air takes its share of the highs") {
+    //  Catches: the air left out of the highs' decay, the lows' share the wrong way round, and the air counted into the
+    //  walls' absorption.
     RoomSettings s = hall();
     s.tone = 0.0;
     const Room dark = deriveRoom(s);
@@ -48,6 +51,7 @@ TEST_CASE("tone shortens the highs and lengthens the lows, and the air takes its
 }
 
 TEST_CASE("a room cannot be drier than its walls allow, and says when it was asked to be") {
+    //  Catches: a decay below what the walls allow let through, or not reported.
     RoomSettings s{5.0, RoomShape::Room, 0.01, 0.5, 0.5};
     const Room r = deriveRoom(s);
     CHECK(r.tooDry);
@@ -58,6 +62,8 @@ TEST_CASE("a room cannot be drier than its walls allow, and says when it was ask
 }
 
 TEST_CASE("the mixing time and the lines follow the volume, between the limits the ear set") {
+    //  Catches: the mixing time's lower limit off, the lines following the square root of the volume rather than its
+    //  cube root, and the scatter not 0.8 of the roughness.
     //  sqrt(V) ms between 25 and 80; 1.2 * cbrt(V / 8640) between 0.55 and 2
     const Room small = deriveRoom({4.0, RoomShape::Room, 0.35, 0.5, 0.8});  // 52 m3
     const Room mid = deriveRoom({10.0, RoomShape::Room, 1.0, 0.5, 0.5});    // 812 m3
@@ -71,7 +77,7 @@ TEST_CASE("the mixing time and the lines follow the volume, between the limits t
     //  between the limits it goes as the cube root: a room a third the hall's volume has lines 0.84 as long
     const Room third = deriveRoom({14.0, RoomShape::Hall, 1.5, 0.5, 0.5});
     CHECK(third.lineScale == doctest::Approx(1.2 * std::cbrt(14.0 * 25.2 * 8.4 / 8640.0)));
-    CHECK(third.lineScale == doctest::Approx(0.84).epsilon(0.01));
+    CHECK(std::abs(third.lineScale - 0.84) < 0.01);
     //  roughness is one axis: it scatters the reflections and diffuses the onset
     CHECK(deriveRoom(hall()).scatter == doctest::Approx(0.48));
     CHECK(deriveRoom(hall()).diffusion == doctest::Approx(0.6));

@@ -34,6 +34,7 @@
 #include "bambi/editor/RegionChecks.h"
 #include "bambi/encode/params.hpp"
 #include "bambi/host/TestPlayHead.h"
+#include "bambi/io/guarded.hpp"
 #include "bambi/link/directory.hpp"
 #include "bambi/link/link.hpp"
 #include "bambi/math/sh.hpp"
@@ -41,6 +42,7 @@
 #include "bambi/mod/sources.hpp"
 #include "bambi/patch/state.hpp"
 #include "bambi/path/generator.hpp"
+#include "bambi/ui/Widgets.h"
 
 namespace {
 constexpr double kRate = bambi::editor::kCheckRate;
@@ -169,7 +171,7 @@ struct GestureRecorder final : juce::AudioProcessorListener {
 };
 }  // namespace
 
-int main() {
+static int run() {
     juce::ScopedJuceInitialiser_GUI gui;
     using Set = juce::AudioChannelSet;
 
@@ -1415,7 +1417,7 @@ int main() {
                 const double b2 = d.sourceValues[static_cast<std::size_t>(i + bambi::kSourcesPerTab)].load();
                 shown +=
                     "  " +
-                    juce::String(bambi::sourceColumn(bambi::encodeMod(), bambi::MatrixTab::Features, i).name.data()) +
+                    bambi::ui::fromCore(bambi::sourceColumn(bambi::encodeMod(), bambi::MatrixTab::Features, i).name) +
                     " " + juce::String(a, 3) + "/" + juce::String(b2, 3);
                 if (std::abs(a - b2) > worst) {
                     worst = std::abs(a - b2);
@@ -1426,10 +1428,11 @@ int main() {
             check(worst < 0.02,
                   "the same audio on both buses reads the same on both sets of sources (worst " +
                       juce::String(worst, 4) +
-                      (worstAt >= 0 ? " on " + juce::String(bambi::sourceColumn(bambi::encodeMod(),
-                                                                                bambi::MatrixTab::Features, worstAt)
-                                                                .name.data())
-                                    : juce::String()) +
+                      (worstAt >= 0
+                           ? " on " +
+                                 bambi::ui::fromCore(
+                                     bambi::sourceColumn(bambi::encodeMod(), bambi::MatrixTab::Features, worstAt).name)
+                           : juce::String()) +
                       ")");
         }
     }
@@ -1816,7 +1819,8 @@ int main() {
                 Every offset, a head clicked at each. Catches the content's regions not being clipped
                 to the viewport. */
             int missed = 0;
-            for (float at = 0.0f; at <= range; at += 2.0f) {
+            for (int i = 0; 2.0f * static_cast<float>(i) <= range; ++i) {
+                const float at = 2.0f * static_cast<float>(i);
                 shell->showControls(0, bambi::MatrixTab::Features);  // whatever the last click opened, closed
                 shell->scrollMatrixTo(at);
                 shell->clickSourceColumn(bambi::MatrixTab::Features, 0);
@@ -2815,9 +2819,16 @@ int main() {
 
     bambi::editor::checkHeaderHoldsStill<BambiEncoderProcessor>(bambi::Product::Encoder);
 
+    bambi::editor::checkParameterText<BambiEncoderProcessor>();
+    bambi::editor::checkStateRoundTrip<BambiEncoderProcessor>(
+        layout(Set::stereo(), Set::disabled(), Set::ambisonic(3)));
     bambi::editor::checkBypass<BambiEncoderProcessor>(
         layout(Set::mono(), Set::disabled(), Set::ambisonic(3)), "its input unplaced, in W alone",
         [](int c, juce::int64 at) { return c == 0 ? bambi::editor::fieldSample(0, at) : 0.0f; });
 
     return checkVerdict();
+}
+
+int main() {
+    return bambi::guarded("bambi-plugin-check", [&] { return run(); });
 }

@@ -1,0 +1,104 @@
+#  The slow, exhaustive checks: every night on main, on a release tag before it ships, and by hand. A pull request
+#  runs the quick, targeted versions (build.yml); these run them on everything.
+
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanitize:
+    name: core · ${{ matrix.sanitize }}
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitize: ["address,undefined", "thread"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libc++-dev libc++abi-dev
+      #  Clang and its own standard library, as on pull requests, for the reasons build.yml gives
+      - run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBAMBI_SANITIZE=${{ matrix.sanitize }} \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS=-stdlib=libc++
+      - run: cmake --build build
+      - run: ./build/bambi-tests
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+          TSAN_OPTIONS: halt_on_error=1
+
+  #  Every plugin built normally, checked by its own suite under RTSan, then by pluginval at its strictest and by
+  #  clap-validator, in both formats.
+  plugins:
+    name: plugins · realtime, pluginval, clap-validator
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - run: brew install ninja llvm
+      - name: realtime build and check suites
+        run: |
+          cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBAMBI_BUILD_PLUGIN=ON \
+            -DBAMBI_COPY_PLUGIN=OFF -DBAMBI_SANITIZE=realtime \
+            -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++"
+          cmake --build build-rtsan --target bambi-plugin-check bambi-echo-check bambi-reverb-check bambi-decoder-check
+          for p in encoder:bambi-plugin-check echo:bambi-echo-check reverb:bambi-reverb-check decoder:bambi-decoder-check; do
+            "build-rtsan/plugins/${p%%:*}/${p#*:}_artefacts/RelWithDebInfo/${p#*:}"
+          done
+      - name: plugins
+        run: |
+          cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON -DBAMBI_COPY_PLUGIN=OFF \
+            -DCMAKE_JOB_POOLS=link=2 -DCMAKE_JOB_POOL_LINK=link
+          cmake --build build-plugin
+      - name: validators
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.0.4 --repo Tracktion/pluginval -p pluginval_macOS.zip -D tools-dl
+          gh release download 0.4.1 --repo free-audio/clap-validator -p '*macos-15-aarch64.zip' -D tools-dl
+          (cd tools-dl && unzip -q pluginval_macOS.zip && unzip -q ./clap-validator-*.zip && tar -xzf ./clap-validator-*.tar.gz)
+          tools/validate-plugins.sh build-plugin tools-dl/pluginval.app/Contents/MacOS/pluginval tools-dl/clap-validator 10
+
+  portable:
+    name: portability guards
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install ninja
+      - run: tools/check-portable.sh
+
+  #  Bug and performance checks on all of bambi's C++: core and its tests, the plugins, the shared UI, the live host
+  #  and the tools. On macOS, where every file compiles -- the host's device layer is CoreAudio, the Decoder's helper
+  #  link Objective-C++. Only the resources the Decoder's sources include are built; nothing else is compiled.
+  tidy:
+    name: clang-tidy · all of the code
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - run: brew install ninja llvm
+      - name: configure
+        run: |
+          llvm="$(brew --prefix llvm)/bin"
+          cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DBAMBI_BUILD_PLUGIN=ON -DBAMBI_BUILD_HOST=ON \
+            -DBAMBI_COPY_PLUGIN=OFF -DCMAKE_C_COMPILER="$llvm/clang" -DCMAKE_CXX_COMPILER="$llvm/clang++"
+          cmake --build build --target bambi-decoder-data
+      - name: clang-tidy
+        run: |
+          llvm="$(brew --prefix llvm)/bin"
+          "$llvm/run-clang-tidy" -quiet -p build -clang-tidy-binary "$llvm/clang-tidy" -warnings-as-errors='*' \
+            '^(?!.*/third_party/)(?!.*/build/).*/(core|host|ui|editor|plugins|apps|platform|tools|tests)/.*\.(cpp|mm)$'

@@ -100,6 +100,7 @@ bool Engine::open(juce::String& status) {
     //  BlackHole
     const auto joined = live::aggregateOf(s_.audio.devices, devices::system());
     std::vector<std::string> uids;
+    uids.reserve(joined.size());
     for (const live::AudioDevice& d : joined) uids.push_back(d.uid);
     std::string aggregateError;
     const int loopWidth = devices::loopChannels();
@@ -144,7 +145,7 @@ bool Engine::open(juce::String& status) {
     }
     s_.rate = device->getCurrentSampleRate();
     block_ = device->getCurrentBufferSizeSamples();
-    opened_ = opened;
+    opened_ = std::move(opened);
     //  the callback's buffers, while no audio runs: a device may hand over more than its buffer at once, played in
     //  pieces of these
     const int piece = std::max(block_, 1024);
@@ -398,11 +399,13 @@ bool Engine::setField(const live::Field& field, const std::vector<live::TrackPai
     }
     const auto ids = [](const std::vector<Dec>& list) {
         std::vector<std::uint64_t> out;
+        out.reserve(list.size());
         for (const Dec& d : list) out.push_back(d.id);
         return out;
     };
     const auto sidechains = [](const live::Plan& p) {
         std::vector<int> out;
+        out.reserve(p.slots.size());
         for (const live::Slot& slot : p.slots) out.push_back(slot.sidechain);
         return out;
     };
@@ -588,6 +591,7 @@ void Engine::drive() {
         const Target t = targetOf(lane.instance, lane.owner, lane.param);
         if (t.plugin == nullptr) continue;
         std::vector<live::LanePoint> points;
+        points.reserve(lane.points.size());
         for (const live::LanePoint& p : lane.points)
             points.push_back(
                 {p.ppq, toNormalised(*t.manifest, t.at, clampToRange(*t.manifest, t.at, static_cast<float>(p.value)))});
@@ -688,6 +692,7 @@ void Engine::openMidi() {
 
 std::vector<juce::String> Engine::midiInputs() const {
     std::vector<juce::String> out;
+    out.reserve(midiInputs_.size());
     for (const auto& in : midiInputs_) out.push_back(in->getName());
     if (port_ != nullptr) out.push_back(port_->getName());
     return out;
@@ -716,7 +721,8 @@ void Engine::takeMidi(const float* const* inputs, int inputCount, int frames, st
     for (TimedMidi m; midi_.pop(m);) {
         //  where it arrived, on the host's samples: in the past, or ahead when the sender scheduled it
         const std::int64_t arrived = start - std::llround(1e-9 * static_cast<double>(now - m.stampNs) * s_.rate);
-        if (m.live && measuring && m.size == 3 && (m.bytes[0] & 0xf0) == 0x90 && m.bytes[2] > 0) meter_->note(arrived);
+        if (m.live && meter_ && measuring && m.size == 3 && (m.bytes[0] & 0xf0) == 0x90 && m.bytes[2] > 0)
+            meter_->note(arrived);
         const std::int64_t at = arrived + (m.live ? liveMidi_.load(std::memory_order_relaxed) : block_);
         if (!pending_.add({std::max(at, start), m.bytes, m.size})) silence_ = true;
     }
@@ -727,7 +733,7 @@ void Engine::takeMidi(const float* const* inputs, int inputCount, int frames, st
             (void)pending_.add({start, {static_cast<std::uint8_t>(0xb0 | channel), 123, 0}, 3});
         silence_ = false;
     }
-    if (!measuring) return;
+    if (!measuring || !meter_) return;
     const auto channel = [&](int c) { return c < inputCount ? inputs[c] : nullptr; };
     meter_->listen(channel(mainChannel_), channel(mainChannel_ + 1), frames, start);
     if (const auto lead = meter_->took()) (void)leads_.push(*lead);
@@ -745,17 +751,18 @@ void Engine::audioDeviceIOCallbackWithContext(const float* const* inputs, int in
                                               int outputCount, int frames, const juce::AudioIODeviceCallbackContext&) {
     for (int ch = 0; ch < outputCount; ++ch)
         if (outputs[ch] != nullptr) juce::FloatVectorOperations::clear(outputs[ch], frames);
-    if (!playable_.load(std::memory_order_relaxed) || outputCount < outputChannels_) return;
+    if (!playable_.load(std::memory_order_relaxed) || outputCount < outputChannels_ || !arrivals_) return;
 
+    live::Arrivals& arrivals = *arrivals_;
     const std::int64_t now = nowNs();
     for (Timed t; queue_.pop(t);)
-        projector_.receive(t.message, arrivals_->at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
+        projector_.receive(t.message, arrivals.at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
     if (projector_.locates() != locates_.load(std::memory_order_relaxed)) {
         lastLocateSeconds_.store(projector_.lastLocateSeconds(), std::memory_order_relaxed);
         locates_.store(projector_.locates(), std::memory_order_release);
     }
     for (TimedSlot t; slots_.pop(t);)
-        clips_.receive(t.report, arrivals_->at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
+        clips_.receive(t.report, arrivals.at(runner_.sample(), 1e-9 * static_cast<double>(now - t.stampNs)));
 
     //  The output copied out of the host's own buffer, made before it started: a buffer referring to this many
     //  channels would allocate. A device giving fewer plays nothing.

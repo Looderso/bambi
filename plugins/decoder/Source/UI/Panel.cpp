@@ -53,7 +53,6 @@ void DecoderPanel::paint(juce::Graphics& g) {
     const auto tabName = [](TempTab t) -> const char* {
         switch (t) {
             case TempTab::Tracking: return "tracking";
-            case TempTab::Personalise: return "personalise";
             case TempTab::Loudspeakers: return "loudspeakers";
         }
         return "";
@@ -105,7 +104,6 @@ void DecoderPanel::paint(juce::Graphics& g) {
     }
     switch (state_.temps[static_cast<std::size_t>(shown - 1)]) {
         case TempTab::Tracking: paintTracking(g, frame.content); break;
-        case TempTab::Personalise: paintPersonalise(g, frame.content); break;
         case TempTab::Loudspeakers: paintLoudspeakers(g, frame.content); break;
     }
 }
@@ -174,23 +172,17 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
         const bool byHp = d.headphonesPlay && std::find(hpAt.begin(), hpAt.end(), ch) != hpAt.end();
         const bool bySp = d.speakersPlay && std::find(spAt.begin(), spAt.end(), ch) != spAt.end();
         const bool own = std::find(mineAt.begin(), mineAt.end(), ch) != mineAt.end();
-        g.setColour(byHp ? colour::text : bySp ? colour::label : colour::panel);
-        g.fillRect(box);
-        g.setColour(colour::text);
-        if (own && !playing) {
-            //  this output's own, not playing: dashed, as the scene draws what is not placed
-            juce::Path edge;
-            edge.addRectangle(box.reduced(stroke::toggle / 2.0f));
-            bambi::ui::strokeDashed(g, edge, stroke::unplacedDash, juce::PathStrokeType(stroke::toggle));
-        }
         //  a host's row counts each device's channels from 1
         int number = ch;
         for (int count : groups) {
             if (!onHost || number <= count) break;
             number -= count;
         }
-        text(g, juce::String(number), smallFont(), byHp || bySp ? colour::textInverse : colour::label, box,
-             juce::Justification::centred);
+        ChannelCell cell{juce::String(number), {}, {}, 0};
+        if (byHp || bySp) cell.fill = byHp ? colour::text : colour::label;
+        if (own && !playing)
+            cell.dashed = colour::text;  // this output's own, not playing: as the scene draws what is not placed
+        ChannelStrip::paintCell(g, box, cell);
         const auto shown = box.getIntersection(strip.viewport);
         if (model().showingAnother()) continue;
         if (onHost) {
@@ -299,8 +291,8 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
 
 float DecoderPanel::paintStateTile(juce::Graphics& g, juce::Rectangle<float> tile, const juce::String& name,
                                    const juce::String& value, double shown, double low, double high, double step,
-                                   const char* key, bool enabled, std::function<void(DecoderState&, double)> set,
-                                   std::function<void(DecoderState&)> reset) {
+                                   const char* key, bool enabled, const std::function<void(DecoderState&, double)>& set,
+                                   const std::function<void(DecoderState&)>& reset) {
     TileContent t;
     t.name = name;
     t.value = value;
@@ -338,12 +330,11 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
     //  the two sliders make the model the listener's; a measured head keeps its ears and scales its time
     //  difference with the head
     paintStateTile(
-        g, tileCell(content, y, 0), "head", juce::String(d.headSize, 2) + " " + juce::String::fromUTF8("\xc3\x97"),
-        d.headSize, 0.75, 1.3, 0.01, "decoder.head_size", mine,
-        [](DecoderState& s, double v) { s.headSize = static_cast<float>(v); },
+        g, tileCell(content, y, 0), "head", juce::String(d.headSize, 2), d.headSize, 0.75, 1.3, 0.01,
+        "decoder.head_size", mine, [](DecoderState& s, double v) { s.headSize = static_cast<float>(v); },
         [](DecoderState& s) { s.headSize = 1.0f; });
     paintStateTile(
-        g, tileCell(content, y, 1), "ears", juce::String(d.earShift, 2) + " erb", d.earShift, -2.0, 2.0, 0.01,
+        g, tileCell(content, y, 1), "ears", juce::String(d.earShift, 2), d.earShift, -2.0, 2.0, 0.01,
         "decoder.ear_shift", mine && head == 0, [](DecoderState& s, double v) { s.earShift = static_cast<float>(v); },
         [](DecoderState& s) { s.earShift = 0.0f; });
     y = tilesBottom(y, 2) + ctl::sectionGap;
@@ -392,12 +383,6 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
           content.getRight() - toggle.hit.getRight() - static_cast<float>(space::grid), lineH},
          juce::Justification::centredLeft);
     y += lineH + ctl::segmentGap;
-    y += static_cast<float>(space::groupGap);
-
-    //  the deep part, a tab of its own
-    y = paintButtonNote(
-        g, content, y, juce::String::fromUTF8("personalise\xe2\x80\xa6"), true,
-        [this] { state_.openTemp(TempTab::Personalise); }, "the head's sliders against a real loudspeaker");
     noteContentBottom(y + static_cast<float>(space::grid));
 }
 
@@ -424,7 +409,7 @@ void DecoderPanel::chooseLayoutFile() {
                               layoutError_.clear();
                               if (file.hasFileExtension("sofa")) {
                                   juce::String error;
-                                  if (!state_.processor.loadMatrixFile(file, &error)) layoutError_ = error;
+                                  if (!state_.processor.loadMatrixFile(file, &error)) layoutError_ = std::move(error);
                                   shownKind_ = -1;
                                   repaint();
                                   return;
@@ -666,7 +651,7 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
         //  one drag per cell, as an undo step named for what it moves
         const auto cellDrag = [&](juce::Rectangle<float> area, const char* what, std::size_t i, double from,
                                   double span, double step, double low, double high, bool wraps,
-                                  std::function<void(Loudspeaker&, double)> put, double resetTo) {
+                                  const std::function<void(Loudspeaker&, double)>& put, double resetTo) {
             if (!mine) return;
             addStateDrag(
                 area, what, "decoder.layout." + std::to_string(i) + "." + what, from, span, step,
@@ -712,13 +697,13 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
             for (int c = 0; c < 6; ++c) {
                 const juce::Rectangle<float> cell{cx, y, colW[c], rowH};
                 const bool dragged = c <= 3 && !(c == 0 && s.imaginary);
-                if (dragged) {
-                    //  a value is a box, as the matrix's cell is
-                    g.setColour(colour::panel);
-                    g.fillRect(cell.reduced(1.0f, (rowH - static_cast<float>(metrics::matrixCell)) / 2.0f));
-                }
-                text(g, cells[c], font(type::matrix), ink, cell.reduced(static_cast<float>(space::grid) / 2.0f, 0.0f),
-                     c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight);
+                const auto just = c == 0 ? juce::Justification::centredLeft : juce::Justification::centredRight;
+                if (dragged)
+                    drawValueCell(g, cell.reduced(1.0f, (rowH - static_cast<float>(metrics::matrixCell)) / 2.0f),
+                                  cells[c], mine, just);
+                else
+                    text(g, cells[c], font(type::matrix), ink,
+                         cell.reduced(static_cast<float>(space::grid) / 2.0f, 0.0f), just);
                 cx += colW[c];
                 switch (c) {
                     case 0:
@@ -1011,17 +996,6 @@ float DecoderPanel::paintPhone(juce::Graphics& g, juce::Rectangle<float> content
     line("3  say how the phone is worn, tap start, face the front and press recentre", colour::label, textX, textW);
     line(status, colour::label, textX, textW);
     return std::max(y, top + side);
-}
-
-void DecoderPanel::paintPersonalise(juce::Graphics& g, juce::Rectangle<float> content) {
-    float y = content.getY();
-    text(g,
-         "a real loudspeaker and a virtual one alternate; turn and nod; move each slider until the two sit in one "
-         "place.",
-         labelFont(), colour::label, {content.getX(), y, content.getWidth(), static_cast<float>(space::grid * 5)},
-         juce::Justification::topLeft);
-    y += static_cast<float>(space::grid * 5);
-    noteContentBottom(y + static_cast<float>(space::grid));
 }
 
 }  // namespace bambi::ui

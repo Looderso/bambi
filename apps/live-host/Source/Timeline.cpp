@@ -238,10 +238,7 @@ void TimelinePage::paint(juce::Graphics& g) {
         //  a row's header: its name, indented by its depth, a click choosing it for the panel
         const auto header = [&](live::TrackId id, const juce::String& name, int depth, const juce::String& kind) {
             const juce::Rectangle<float> row{0.0f, y, right, tl::row};
-            if (chosen_ && *chosen_ == id) {
-                g.setColour(colour::highlight);
-                g.fillRect(row.withWidth(tl::tree));
-            }
+            if (chosen_ && *chosen_ == id) ui::drawSelectedRow(g, row.withWidth(tl::tree));
             g.setColour(colour::rowDivider);
             g.fillRect(row.getX(), row.getBottom() - 1.0f, row.getWidth(), 1.0f);
             const float indent = tl::pad + tl::indent * static_cast<float>(depth);
@@ -334,7 +331,7 @@ void TimelinePage::paintSession(juce::Graphics& g, float top, const live::Playhe
     paneLanes_ = 0;
     if (clip != nullptr)
         for (const live::Lane& l : s_.lanes)
-            if (l.clip() && l.clipTrack == *chosen_ && l.slot == clip->slot) ++paneLanes_;
+            if (l.clip() && chosen_ == l.clipTrack && l.slot == clip->slot) ++paneLanes_;
     const int shownLanes = std::clamp(paneLanes_, 1, tl::paneLanes);
     paneScroll_ = std::clamp(paneScroll_, 0, std::max(0, paneLanes_ - tl::paneLanes));
     paneTop_ = h - tl::ruler - tl::lane * static_cast<float>(shownLanes);
@@ -351,10 +348,7 @@ void TimelinePage::paintSession(juce::Graphics& g, float top, const live::Playhe
         g.reduceClipRegion(heads.toNearestInt());
         for (std::size_t i = 0; i < tracks.size(); ++i) {
             const juce::Rectangle<float> head{columnX(i), top, tl::sessionColumn, tl::ruler};
-            if (chosen_ && *chosen_ == tracks[i]->id) {
-                g.setColour(colour::highlight);
-                g.fillRect(head);
-            }
+            if (chosen_ && *chosen_ == tracks[i]->id) ui::drawSelectedRow(g, head);
             ui::text(g, juce::String(tracks[i]->name), ui::labelFont(), colour::text, head.reduced(tl::gap, 0.0f),
                      juce::Justification::centredLeft);
             const auto clickable = head.getIntersection(heads);
@@ -433,30 +427,27 @@ void TimelinePage::clipPane(juce::Graphics& g, juce::Rectangle<float> area, cons
     g.fillRect(area);
     ui::ruleH(g, area.getX(), area.getRight(), area.getY(), colour::ruleStrong);
     const float top = area.getY();
-    if (clip == nullptr) {
+    if (clip == nullptr || !chosen_) {
         ui::text(g, "choose a clip: its lanes open here", ui::labelFont(), colour::label,
                  {tl::pad, top, area.getWidth(), tl::ruler}, juce::Justification::centredLeft);
         return;
     }
+    const live::TrackId chosen = chosen;
     juce::String track;
     for (const Node& n : s_.tree.nodes)
-        if (n.id == *chosen_) track = juce::String(n.name);
+        if (n.id == chosen) track = juce::String(n.name);
     ui::text(g, juce::String(clip->name) + ui::kSeparator + track, ui::labelFont(), colour::text,
              {tl::pad, top, tl::tree - tl::pad, tl::ruler}, juce::Justification::centredLeft);
     //  a clip's loop at least a sixteenth long, so an empty one still has an axis
     const double start = clip->loopStart, length = std::max(0.25, clip->loopEnd - clip->loopStart);
     const Axis axis{left_, width_, start, length, {clip->loopStart, clip->loopEnd}};
-    for (int beat = 0; beat <= static_cast<int>(length); ++beat) {
-        const float x = axis.x(start + beat);
-        const bool bar = beat % live::kBeatsPerBar == 0;
-        g.setColour(colour::rule);
-        g.fillRect(x, top + tl::ruler - (bar ? tl::ruler / 2.0f : tl::ruler / 4.0f), 1.0f,
-                   bar ? tl::ruler / 2.0f : tl::ruler / 4.0f);
-        if (bar)
-            ui::text(g, juce::String(beat / live::kBeatsPerBar + 1), ui::smallFont(), colour::label,
-                     {x + tl::gap, top + tl::loopBrace, tl::barLabel, tl::ruler / 2.0f},
-                     juce::Justification::centredLeft);
-    }
+    ui::BeatRuler beats;
+    beats.area = {axis.left, top, axis.width, tl::ruler};
+    beats.to = std::floor(length);
+    beats.x = [&](double beat) { return axis.x(start + beat); };
+    beats.beatsPerBar = live::kBeatsPerBar;
+    beats.labelInset = tl::loopBrace;
+    ui::drawBeatRuler(g, beats);
     if (clip->looping) {
         g.setColour(colour::text);
         g.fillRect(axis.left, top, axis.width, tl::loopBrace);
@@ -466,7 +457,7 @@ void TimelinePage::clipPane(juce::Graphics& g, juce::Rectangle<float> area, cons
     float y = top + tl::ruler;
     int index = 0;
     for (live::Lane& l : s_.lanes) {
-        if (!(l.clip() && l.clipTrack == *chosen_ && l.slot == clip->slot)) continue;
+        if (!(l.clip() && l.clipTrack == chosen && l.slot == clip->slot)) continue;
         if (index++ < paneScroll_ || y + tl::lane > area.getBottom() + 0.5f) continue;
         y = lane(g, l, y, axis);
     }
@@ -481,7 +472,7 @@ void TimelinePage::clipPane(juce::Graphics& g, juce::Rectangle<float> area, cons
                  {tl::pad, top + tl::ruler / 2.0f, tl::tree - tl::pad, tl::ruler / 2.0f},
                  juce::Justification::centredLeft);
     //  where Live is in it
-    const auto seen = playing_.find(*chosen_);
+    const auto seen = playing_.find(chosen);
     if (seen != playing_.end() && seen->second.report.slot == clip->slot) {
         const double elapsed =
             at.playing ? (juce::Time::getMillisecondCounterHiRes() - seen->second.atMs) / 1000.0 * at.bpm / 60.0 : 0.0;
@@ -732,7 +723,7 @@ void TimelinePage::menu(juce::Graphics& g) {
             });
         }
     } else {
-        const Owned o = owned[*addInstance_];
+        const Owned& o = owned[*addInstance_];
         const ParamManifest& m = manifestOf(o.instance, o.effect);
         foot = o.name + ui::kSeparator + "esc steps back";
         if (!addGroup_) {
@@ -795,19 +786,18 @@ void TimelinePage::ruler(juce::Graphics& g, float top) {
     //  the bars, numbered as room allows
     const float barWidth = width_ * static_cast<float>(live::kBeatsPerBar / time_.span);
     int every = 1;
-    while (barWidth * static_cast<float>(every) < tl::barLabel) every *= 2;
+    while (barWidth * static_cast<float>(every) < ui::theme::beatRuler::label) every *= 2;
     const auto [firstBar, lastBar] = barsIn(time_);
-    for (int bar = std::max(0, firstBar); bar <= lastBar; ++bar) {
-        const float x = xOf(bar * live::kBeatsPerBar);
-        const bool numbered = bar % every == 0;
-        g.setColour(colour::rule);
-        g.fillRect(x, top + tl::ruler - (numbered ? tl::ruler / 2.0f : tl::ruler / 4.0f), 1.0f,
-                   numbered ? tl::ruler / 2.0f : tl::ruler / 4.0f);
-        if (numbered)
-            ui::text(g, juce::String(bar + 1), ui::smallFont(), colour::label,
-                     {x + tl::gap, top + tl::loopBrace, tl::barLabel, tl::ruler / 2.0f},
-                     juce::Justification::centredLeft);
-    }
+    ui::BeatRuler bars;
+    bars.area = strip;
+    bars.from = static_cast<double>(firstBar * live::kBeatsPerBar);
+    bars.to = static_cast<double>(lastBar * live::kBeatsPerBar);
+    bars.x = [this](double beat) { return xOf(beat); };
+    bars.beatsPerBar = live::kBeatsPerBar;
+    bars.beats = false;
+    bars.numberEvery = every;
+    bars.labelInset = tl::loopBrace;
+    ui::drawBeatRuler(g, bars);
     //  the locators: a mark and a name
     for (const live::Locator& l : s_.arrangement.locators) {
         const float x = xOf(l.time);

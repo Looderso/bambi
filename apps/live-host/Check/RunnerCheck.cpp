@@ -27,14 +27,16 @@
 #include <cstdlib>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <limits>
 #include <optional>
 #include <random>
+#include <set>
 #include <vector>
 
-#include "../Source/IoPage.h"
-#include "../Source/Rail.h"
 #include "../Source/Engine.h"
+#include "../Source/IoPage.h"
 #include "../Source/Plugins.h"
+#include "../Source/Rail.h"
 #include "../Source/Routing.h"
 #include "../Source/Runner.h"
 #include "../Source/Timeline.h"
@@ -42,6 +44,7 @@
 #include "bambi/decode/remote.hpp"
 #include "bambi/echo/params.hpp"
 #include "bambi/encode/params.hpp"
+#include "bambi/io/guarded.hpp"
 #include "bambi/link/directory.hpp"
 #include "bambi/link/link.hpp"
 #include "bambi/live/clips.hpp"
@@ -129,6 +132,7 @@ juce::AudioBuffer<float> throughRunner(int block) {
         return {};
     }
     std::vector<juce::AudioProcessor*> slots;
+    slots.reserve(s.plugins.size());
     for (auto& plugin : s.plugins) slots.push_back(plugin.get());
     livehost::Runner runner;
     juce::String why;
@@ -448,13 +452,14 @@ Swapped swapRender(int block, const live::Plan& first, const live::Plan* second,
     live::Plan played = first;
     for (std::size_t i = 0; i < s.plugins.size(); ++i) played.slots[i].latency = s.plugins[i]->getLatencySamples();
     std::vector<juce::AudioProcessor*> slots;
+    slots.reserve(s.plugins.size());
     for (auto& plugin : s.plugins) slots.push_back(plugin.get());
     livehost::Runner runner;
     juce::String why;
     auto kept = std::make_shared<int>(1);
     const std::weak_ptr<int> watch = kept;
-    if (!runner.prepare(*live::compile(played), slots, live::compile(played)->levels, {kOrder, kMaxBlock, 4, 2}, why,
-                        {kept})) {
+    const auto compiled = live::compile(played);
+    if (!compiled || !runner.prepare(*compiled, slots, compiled->levels, {kOrder, kMaxBlock, 4, 2}, why, {kept})) {
         std::printf("  the runner: %s\n", why.toRawUTF8());
         return r;
     }
@@ -467,7 +472,8 @@ Swapped swapRender(int block, const live::Plan& first, const live::Plan* second,
             live::Plan next = *second;
             for (std::size_t i = 0; i < s.plugins.size(); ++i)
                 next.slots[i].latency = s.plugins[i]->getLatencySamples();
-            if (!runner.swap(*live::compile(next), slots, live::compile(next)->levels, why))
+            const auto swapped = live::compile(next);
+            if (!swapped || !runner.swap(*swapped, slots, swapped->levels, why))
                 std::printf("  the swap: %s\n", why.toRawUTF8());
         }
         const int n = std::min(block, kLength - at);
@@ -482,7 +488,7 @@ Swapped swapRender(int block, const live::Plan& first, const live::Plan* second,
 }
 
 //  Low noise on the pairs asked for, silence on the others.
-juce::AudioBuffer<float> noiseOn(std::vector<int> pairs) {
+juce::AudioBuffer<float> noiseOn(const std::vector<int>& pairs) {
     juce::AudioBuffer<float> b(4, kLength);
     b.clear();
     std::mt19937 random(9);
@@ -743,6 +749,7 @@ int aggregateOpens() {
         return live::aggregateOf(uids, devices::system());
     }();
     std::vector<std::string> uids;
+    uids.reserve(joined.size());
     for (const auto& d : joined) uids.push_back(d.uid);
     devices::Aggregate aggregate;
     std::string error;
@@ -1025,6 +1032,9 @@ bool midiPlaced(int block) {
     return first.heard == want && second.heard == want && pending.size() == 0;
 }
 
+//  What a lane with no value at a point is compared against: always further off than any tolerance.
+constexpr double kNoValue = std::numeric_limits<double>::infinity();
+
 //  A lane from 0 at the song's start to 1 at quarter note 4, Live playing at 120 bpm: after every block the
 //  parameter holds the lane's value where the last piece was played. The largest difference.
 double laneFollows(int block) {
@@ -1056,7 +1066,7 @@ double laneFollows(int block) {
     double worst = 0.0;
     for (int at = 0; at < 4 * 24000; at += block) {
         runner.process(row, part, std::min(block, 4 * 24000 - at));
-        const double want = *live::valueAt(points, runner.shown().ppq);
+        const double want = live::valueAt(points, runner.shown().ppq).value_or(kNoValue);
         worst = std::max(worst, std::abs(static_cast<double>(knob.depth->get()) - want));
     }
     return worst;
@@ -1099,7 +1109,7 @@ std::pair<double, bool> clipLaneFollows(int block) {
     bool moved = false;
     for (int at = 0; at < 6 * 24000; at += block) {
         runner.process(row, part, std::min(block, 6 * 24000 - at));
-        const double want = *live::valueAt(points, live::clipPosition(playing, runner.shown().ppq));
+        const double want = live::valueAt(points, live::clipPosition(playing, runner.shown().ppq)).value_or(kNoValue);
         worst = std::max(worst, std::abs(static_cast<double>(knob.depth->get()) - want));
         moved = moved || std::abs(held.depth->get() - 0.5f) > 1e-6f;
     }
@@ -1266,7 +1276,7 @@ int timelineHolds() {
         {2, live::Instance::Insert, 7, "output.wet", {}, 0, -1, {}},
         {3, live::Instance::Decoder, live::kFirstDecoder, "output.gain", {}, 0, -1, {}}};
     int edits = 0;
-    page.lanesChanged = [&](std::vector<live::Lane>) { ++edits; };
+    page.lanesChanged = [&](const std::vector<live::Lane>&) { ++edits; };
     page.show({tree, a, shape, field, lanes});
     page.slotPlayed({2, 0, 1.0, 0.0, 4.0, true});
     juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
@@ -1338,7 +1348,7 @@ int decodersFitHolds() {
                       {9, live::Effect::Echo, 0},
                       {10, live::Effect::Reverb, 0}}}};
     std::size_t left = shape.decoders.size();
-    page.reshape = [&](live::Shape s) { left = s.decoders.size(); };
+    page.reshape = [&](const live::Shape& s) { left = s.decoders.size(); };
     page.preview = [](const live::Shape&) {};
     page.show(tree, shape, live::layOut(tree, shape), {{1, 0}});
     juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
@@ -1390,8 +1400,7 @@ int routingHolds() {
                   node(3, live::Node::Kind::Track, 1, "snare"), node(4, live::Node::Kind::Track, std::nullopt, "bass"),
                   node(9, live::Node::Kind::Return, std::nullopt, "A reverb")};
     live::Shape shape;
-    shape.taken = {1};
-    shape.split = {1};
+    shape.taken = {2, 3};  // the drums' two tracks: the group their bus
     shape.returns = {9};
     shape.decoders = {1, 2};
     shape.chains = {{2, {{7, live::Effect::Echo, 0}, {8, live::Effect::Reverb, 0}, {6, live::Effect::Echo, 0}}}};
@@ -1462,7 +1471,9 @@ int routingHolds() {
     };
     //  along a line's middle, from `from` to `to`, until `done`
     const auto along = [&](juce::Rectangle<float> line, float from, float to, float step, auto&& done) {
-        for (float x = from; step > 0 ? x < to : x > to; x += step) {
+        for (int i = 0;; ++i) {
+            const float x = from + step * static_cast<float>(i);
+            if (step > 0 ? x >= to : x <= to) break;
             page.clickAt({x, line.getCentreY()});
             paint();
             if (done()) return true;
@@ -1478,7 +1489,8 @@ int routingHolds() {
     const auto line = page.drawnAt(4);
     const auto second = page.drawnDecoderAt(2);
     if (taken && line && second)
-        for (float x = line->getRight() - 2.0f; x > line->getRight() - 60.0f && !wired; x -= 2.0f) {
+        for (int i = 1; i < 30 && !wired; ++i) {
+            const float x = line->getRight() - 2.0f * static_cast<float>(i);
             page.clickAt({x, line->getCentreY()});
             paint();
             page.clickAt(second->getCentre());
@@ -1492,13 +1504,17 @@ int routingHolds() {
         page.clickAt(name);
         paint();
         const float chipY = line->getBottom() + ui::theme::routing::row / 2.0f;
-        for (float x = line->getX(); x < line->getRight() && !dragged; x += 4.0f) {
+        for (int i = 0; !dragged; ++i) {
+            const float x = line->getX() + 4.0f * static_cast<float>(i);
+            if (x >= line->getRight()) break;
             page.dragBetween({x, chipY}, {x + 40.0f, chipY});
             paint();
             const auto db = wiredTo2();
             dragged = db && *db > 5.0;
         }
-        for (float x = line->getX(); x < line->getRight() && !removed && dragged; x += 2.0f) {
+        for (int i = 0; !removed && dragged; ++i) {
+            const float x = line->getX() + 2.0f * static_cast<float>(i);
+            if (x >= line->getRight()) break;
             page.clickAt({x, chipY});
             paint();
             removed = !wiredTo2().has_value();
@@ -1512,7 +1528,9 @@ int routingHolds() {
     paint();
     bool reordered = false;
     if (const auto kick = page.drawnAt(2))
-        for (float x = kick->getX(); x < kick->getRight() && !reordered; x += 3.0f) {
+        for (int i = 0; !reordered; ++i) {
+            const float x = kick->getX() + 3.0f * static_cast<float>(i);
+            if (x >= kick->getRight()) break;
             page.dragBetween({x, kick->getY() + ui::theme::routing::boxHeight / 2.0f},
                              {kick->getRight() + 200.0f, kick->getY() + ui::theme::routing::boxHeight / 2.0f});
             paint();
@@ -1533,7 +1551,9 @@ int routingHolds() {
     paint();
     bool sidechained = false;
     if (const auto kick = page.drawnAt(2))
-        for (float x = kick->getX(); x < kick->getRight() && !sidechained; x += 3.0f) {
+        for (int i = 0; !sidechained; ++i) {
+            const float x = kick->getX() + 3.0f * static_cast<float>(i);
+            if (x >= kick->getRight()) break;
             page.clickAt({x, kick->getY() + ui::theme::routing::boxHeight / 2.0f});
             paint();
             const auto items = page.drawnMenu();
@@ -1594,9 +1614,46 @@ int railTransportHolds() {
     //  Catches: space always asking the same thing, another key taken from the plugins, the two glyphs' presses
     //  swapped or lost, stop while stopped not going back to the start, and the glyphs bunched to one side.
     const bool ok = space && !other && asked == std::vector<bool>{true, false, true, false} && starts == 1 && even;
-    std::printf("  space plays a stopped Live and stops a playing one, other keys pass, play and stop clicked, stop "
-                "again back to the start, evenly spaced %s\n",
-                ok ? "" : "  FAIL");
+    std::printf(
+        "  space plays a stopped Live and stops a playing one, other keys pass, play and stop clicked, stop "
+        "again back to the start, evenly spaced %s\n",
+        ok ? "" : "  FAIL");
+    return ok ? 0 : 1;
+}
+
+//  The outputs tab over two devices, a Decoder's headphones chosen: pressed on a grid across the devices' cards, and
+//  each device the headphones were placed on noted. Catches: the cards numbering each device's channels from the
+//  row's start, so a click on the second device's channels places on the first's.
+int ioPagePlacesOnEveryDevice() {
+    livehost::IoPage page;
+    page.setSize(1100, 760);
+    livehost::IoPage::Shown s;
+    s.system = {{"a", "Interface", 16, 8, 120, 100, false}, {"b", "Box", 4, 2, 80, 70, false}};
+    s.settings.devices = {"a", "b"};
+    s.settings.main = {"a", 1};
+    DecoderReport one;
+    one.bus = 61;
+    one.headphonesOn = true;
+    one.headphoneChannel = 1;
+    s.decoders = {{1, one, 64}};
+    std::set<std::string> on;
+    page.change = [&](const live::AudioSettings& next) {
+        for (const auto& p : next.placed)
+            if (p.out == live::Out{1, Output::Headphones}) on.insert(p.at.device);
+    };
+    juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
+    //  right of the list, so nothing there chooses another output
+    for (int y = 0; y < page.getHeight(); y += 5)
+        for (int x = static_cast<int>(ui::theme::sheet::listWidth) + 60; x < page.getWidth(); x += 5) {
+            page.show(s);
+            page.showTab(livehost::IoPage::Tab::Outputs);
+            juce::Graphics g(image);
+            page.paint(g);
+            page.clickAt({static_cast<float>(x), static_cast<float>(y)});
+        }
+    const bool ok = on.count("a") == 1 && on.count("b") == 1;
+    std::printf("  the headphones placed on the interface: %s, on the box: %s %s\n", on.count("a") ? "yes" : "no",
+                on.count("b") ? "yes" : "no", ok ? "" : "  FAIL");
     return ok ? 0 : 1;
 }
 
@@ -1633,8 +1690,8 @@ int ioPageHolds() {
     s.leadMs = 21.5;
     s.settings.liveMidiMs = 20.0;
     int asked = 0;
-    page.change = [&](live::AudioSettings) { ++asked; };
-    page.changeInputs = [&](std::vector<live::HostInput>, live::AudioSettings) { ++asked; };
+    page.change = [&](const live::AudioSettings&) { ++asked; };
+    page.changeInputs = [&](const std::vector<live::HostInput>&, const live::AudioSettings&) { ++asked; };
     juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
     for (const auto tab : {livehost::IoPage::Tab::Interface, livehost::IoPage::Tab::Outputs,
                            livehost::IoPage::Tab::Inputs, livehost::IoPage::Tab::Midi}) {
@@ -1932,6 +1989,10 @@ int oneSession() {
         return 1;
     }
     const auto session = Uuid::parse(named);
+    if (!session) {
+        std::printf("  the session named for the process is not an id  FAIL\n");
+        return 1;
+    }
     for (int i = 0; i < 10; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
 
     //  A state from another run: the same Encoder's, its session and its instance another's.
@@ -1968,7 +2029,7 @@ int oneSession() {
     return ok ? 0 : 1;
 }
 
-int main() {
+static int run() {
     juce::ScopedJuceInitialiser_GUI juce;  // the plugins' editors and message thread exist even unseen
     std::printf("the direct render, block 512\n");
     const auto reference = direct();
@@ -2283,6 +2344,8 @@ int main() {
     failed += railTransportHolds();
     std::printf("the I/O page\n");
     failed += ioPageHolds();
+    std::printf("the I/O page places on every device\n");
+    failed += ioPagePlacesOnEveryDevice();
 
     std::printf("one session for every plugin the host loads\n");
     failed += oneSession();
@@ -2306,4 +2369,8 @@ int main() {
                             : "%d renders differ\n",
                 failed);
     return failed == 0 ? 0 : 1;
+}
+
+int main() {
+    return bambi::guarded("bambi-live-host-check", [&] { return run(); });
 }

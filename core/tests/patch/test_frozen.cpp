@@ -28,7 +28,7 @@ using namespace bambi;
  */
 namespace {
 
-const std::string kFile = std::string(BAMBI_CORE_DIR) + "/tests/patch/frozen-parameters.txt";
+std::string frozenFile() { return std::string(BAMBI_CORE_DIR) + "/tests/patch/frozen-parameters.txt"; }
 
 /// "<plugin> <key> <type> <min> <max> <skew centre> <choices>", per parameter.
 std::map<std::string, std::string> linesOf() {
@@ -65,18 +65,21 @@ TEST_CASE("every parameter's key, type, range, skew and choices are frozen") {
     //  point saved against it; a key removed or renamed; and a new key nobody froze.
     const auto now = linesOf();
     if (const char* write = std::getenv("BAMBI_FREEZE_WRITE"); write != nullptr && std::string(write) == "1") {
-        std::ofstream f(kFile);
+        std::ofstream f(frozenFile());
         for (const auto& [key, line] : now) f << line << "\n";
     }
-    std::ifstream f(kFile);
-    REQUIRE_MESSAGE(f.good(), "no " << kFile);
+    std::ifstream f(frozenFile());
+    REQUIRE_MESSAGE(f.good(), "no " << frozenFile());
     std::map<std::string, std::string> frozen;
     for (std::string line; std::getline(f, line);) {
         if (line.empty()) continue;
         std::istringstream words(line);
         std::string plugin, key;
         words >> plugin >> key;
-        frozen[plugin + " " + key] = line;
+        std::string id = plugin;
+        id += ' ';
+        id += key;
+        frozen[id] = line;
     }
     for (const auto& [key, line] : frozen) {
         const auto at = now.find(key);

@@ -16,9 +16,9 @@ Open an [issue](https://github.com/Looderso/bambi/issues) with:
 
 ## Before you write code
 
-**Open an issue first** for anything that changes the design, how something behaves for a musician, or a
-plugin's parameter keys. Hosts save sessions by those keys, so they are the one thing that cannot be taken
-back lightly. A bug fix, a test or a cleanup can go straight to a pull request.
+**Open an issue first** for anything beyond a typo or a one-line fix, above all for anything that changes the
+design, how something behaves for a musician, or a plugin's parameter keys. Hosts save sessions by those keys,
+so they are the one thing that cannot be taken back lightly.
 
 ## Building and checking
 
@@ -57,8 +57,8 @@ bambi is built to be worked on with coding agents, and everything they need is i
 - **`.claude/skills/`** holds the recurring procedures — adding a parameter or a plugin, writing a doc, a comment
   pass, a prototype, issues and pull requests. They are plain Markdown, usable with any tool. Testing in a real host
   is a person's checklist, `docs/HOST-CHECKS.md`.
-- **`.claude/agents/`** holds four reviewers to run over finished work: architecture, real-time safety, DSP cost
-  and UI uniformity.
+- **`.claude/agents/`** holds five reviewers to run over finished work: architecture, real-time safety, DSP cost,
+  UI uniformity and wording.
 
 Work made with an agent says so: its `Co-Authored-By` trailer on the commits and a line in the pull request. The
 rules are the same as for anyone — `tools/verify.sh` decides when a change is ready.

@@ -11,10 +11,10 @@ TEST_CASE("a lane's value runs straight between points, holds before the first a
     //  Catches: a step where a ramp belongs, a value before the first point taken as zero, the last not held.
     const std::vector<LanePoint> p{{4.0, -30.0}, {8.0, 30.0}, {12.0, 0.0}};
     CHECK_FALSE(valueAt({}, 1.0).has_value());
-    CHECK(*valueAt(p, 0.0) == -30.0);
-    CHECK(*valueAt(p, 6.0) == 0.0);
-    CHECK(*valueAt(p, 10.0) == 15.0);
-    CHECK(*valueAt(p, 99.0) == 0.0);
+    CHECK(valueAt(p, 0.0).value() == -30.0);
+    CHECK(valueAt(p, 6.0).value() == 0.0);
+    CHECK(valueAt(p, 10.0).value() == 15.0);
+    CHECK(valueAt(p, 99.0).value() == 0.0);
 }
 
 TEST_CASE("points stay in time order: put at their time, moved only between their neighbours, removed") {
@@ -42,8 +42,8 @@ TEST_CASE("a press finds the point near it in time and value, the nearest in tim
     Lane l;
     putPoint(l, {4.0, 0.0});
     putPoint(l, {5.0, 0.0});
-    CHECK(pointNear(l, 4.8, 0.1, 0.5, 0.2) == std::optional<std::size_t>{1});
-    CHECK_FALSE(pointNear(l, 4.5, 0.5, 0.2, 0.2).has_value());
+    CHECK(pointNear(l, 4.8, 0.1, 1.0, 0.2) == std::optional<std::size_t>{1});  // both in reach: the nearer
+    CHECK_FALSE(pointNear(l, 4.5, 0.1, 0.2, 0.2).has_value());
     CHECK_FALSE(pointNear(l, 4.0, 0.9, 0.5, 0.2).has_value());
 }
 
@@ -54,7 +54,8 @@ TEST_CASE("the lanes read back as written, and one the set cannot read is left o
                                   {3, Instance::Decoder, 1, "output.gain", {{4.0, -6.0}}, 0, -1, {}}};
     CHECK(lanesFrom(Json::parse(toJson(lanes).dump(0))) == lanes);
     const auto read = lanesFrom(Json::parse(R"([{"id": 4, "instance": "mixer", "owner": 1, "param": "x"},
-                                                {"id": 5, "instance": "encoder", "owner": 1, "param": ""}])"));
+                                                {"id": 5, "instance": "encoder", "owner": 1, "param": ""},
+                                                {"id": 0, "instance": "encoder", "owner": 1, "param": "x"}])"));
     CHECK(read.empty());
 }
 
@@ -66,6 +67,8 @@ TEST_CASE("a clip runs on from where Live said it was, looping in its loop, held
     CHECK(clipPosition(looping, 2.5) == 1.5);
     CHECK(clipPosition(looping, 10.0) == 1.0 + std::fmod(12.0, 4.0));
     CHECK(clipPosition(looping, -1.0) == 3.0);
+    const SlotPlay late{1, 0, 4.0, 3.0, 5.0, true};  // a loop that starts late in the clip
+    CHECK(clipPosition(late, 1.5) == 3.5);
     const SlotPlay once{1, 0, 3.0, 0.0, 5.0, false};
     CHECK(clipPosition(once, 4.0) == 5.0);
 }

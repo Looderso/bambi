@@ -51,7 +51,7 @@ target_link_libraries(BambiEncoder
         bambi-encoder-code
     PUBLIC
         juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
+        bambi-lto
         juce::juce_recommended_warning_flags)
 
 clap_juce_extensions_plugin(TARGET BambiEncoder

@@ -73,7 +73,7 @@ bool overlayHover(const OverlayMenuAreas& areas, std::span<const OverlayRow> row
  *  Called after the view's own areas, since later ones lie on top. `changed` repaints. */
 void addOverlayClicks(HitArea& on, const OverlayToggleAreas& toggle, const OverlayMenuAreas& menu,
                       std::span<const OverlayRow> rows, OverlaySelection& selection, OverlayMenuState& state,
-                      juce::Rectangle<float> whole, std::function<void()> changed);
+                      juce::Rectangle<float> whole, const std::function<void()>& changed);
 
 /*  One overlay's menu, whole: its choices, whether its list is open, the rows it names and where it was last drawn. A scene owns
  *  one per overlay and does four things with it, in its own paint and its own events -- nothing else, so no scene writes the
@@ -112,7 +112,7 @@ public:
     /// The list, below `top`; nothing while closed. Last in the view's paint.
     void paintList(juce::Graphics& g, float top);
     /// The presses. After the view's own areas, which the list must lie on top of. `whole` is the view's bounds.
-    void addClicks(HitArea& on, juce::Rectangle<float> whole, std::function<void()> changed);
+    void addClicks(HitArea& on, juce::Rectangle<float> whole, const std::function<void()>& changed);
 
     /// The pointer moved over the view, left it, or a key was pressed with the view focused. Each returns true when the view
     /// should repaint; `keyPressed` also when it took the key (Escape closes an open list).

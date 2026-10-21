@@ -93,6 +93,12 @@ const ParamManifest& echoParams() {
     return m;
 }
 
+PluginState freshEchoState() {
+    PluginState s{echoParams()};
+    s.regions[0].shape.kind = RegionKind::Everywhere;
+    return s;
+}
+
 const ModManifest& echoMod() {
     //  The row always shown: the one control heard whichever taps are on.
     static const char* const kBase[] = {"output.wet"};

@@ -7,7 +7,7 @@ using namespace bambi::live;
 
 namespace {
 //  An interface of 16 outputs, slow; a headphone box of 4, quicker; a Bluetooth pair; a microphone.
-std::vector<AudioDevice> system() {
+std::vector<AudioDevice> systemDevices() {
     return {{"i16", "Interface", 16, 16, 120, 100, false},
             {"box", "Headphone box", 4, 2, 80, 70, false},
             {"bt", "AirPods", 2, 1, 7000, 7000, true},
@@ -34,7 +34,7 @@ int delayTo(const OutputPlan& plan, OutputRoute::From from, int dest) {
 TEST_CASE("the row: the chosen devices that play, in order, each whole, a channel named by its device") {
     //  Catches: a Bluetooth device or one without outputs on the row, a device chosen twice counted twice, a
     //  device cut in half at the cap, a channel found by its place rather than its device.
-    const std::vector<AudioDevice> joined = aggregateOf({"box", "bt", "mic", "i16", "box", "gone"}, system());
+    const std::vector<AudioDevice> joined = aggregateOf({"box", "bt", "mic", "i16", "box", "gone"}, systemDevices());
     REQUIRE(joined.size() == 3);  // the microphone too: its inputs are on the input row
     CHECK(joined[0].uid == "box");
     const Row row = rowOf(joined);
@@ -48,7 +48,7 @@ TEST_CASE("the row: the chosen devices that play, in order, each whole, a channe
     CHECK(row.deviceOf(5) == 2);               // the interface, after the microphone
     CHECK(rowOf(joined, true).width() == 19);  // the box's 2 inputs, the microphone's 1, the interface's 16
 
-    std::vector<AudioDevice> wide = system();
+    std::vector<AudioDevice> wide = systemDevices();
     wide.push_back({"big", "Big", 48, 0, 100, 0, false});
     const auto capped = aggregateOf({"i16", "big", "box"}, wide);  // 16 + 48 > 61: the big one and after are left out
     CHECK(capped.size() == 1);
@@ -72,10 +72,12 @@ TEST_CASE("the settings read back as written, and an older file's missing fields
     CHECK(s.at(kLiveMain) == s.main);
     //  a file from when there was one Decoder
     const AudioSettings one = audioSettingsFrom(Json::parse(
-        R"({"headphones": {"device": "box", "number": 1}, "copies": [{"of": "headphones", "toLive": true}]})"));
+        R"({"headphones": {"device": "box", "number": 1},
+            "copies": [{"of": "headphones", "toLive": true}, {"of": "main", "at": {"device": "box", "number": 5}}]})"));
     CHECK(one.at({kFirstDecoder, Output::Headphones}) == DeviceChannel{"box", 1});
-    REQUIRE(one.copies.size() == 1);
+    REQUIRE(one.copies.size() == 2);
     CHECK(one.copies[0].of == Out{kFirstDecoder, Output::Headphones});
+    CHECK(one.copies[1].of.main());
     const AudioSettings old = audioSettingsFrom(Json::parse(R"({"devices": ["i16"]})"));
     CHECK(old.buffer == 64);
     CHECK(old.liveMidiMs == 0.0);
@@ -86,7 +88,7 @@ TEST_CASE("the settings read back as written, and an older file's missing fields
 TEST_CASE("an output takes its bus channels as a block from where it is placed, within the row") {
     //  Catches: a layout's gap closed up -- its LFE channel would land on a loudspeaker -- the block not moved to its
     //  place, an output that is off taking channels, a channel past the row kept.
-    const Row row = rowOf(aggregateOf({"i16", "box"}, system()));
+    const Row row = rowOf(aggregateOf({"i16", "box"}, systemDevices()));
     const std::vector<PlayingDecoder> decoders{{1, decoderWith(true, 1, true, 3, {3, 4, 5, 7, 8}), 64}};
     CHECK(takenBy({1, Output::Speakers}, {"i16", 9}, row, decoders) == std::vector<int>{9, 10, 11, 13, 14});
     CHECK(takenBy({1, Output::Headphones}, {"box", 3}, row, decoders) == std::vector<int>{19, 20});
@@ -100,7 +102,7 @@ TEST_CASE("the routes: two Decoders each where placed, every device with the slo
     //  Catches: the second Decoder's outputs routed from the first's bus, a quicker Decoder not held back to the
     //  slowest, the quicker device not held back, Main not late by the field, a copy at its source's channels, a
     //  copy back to Live on the row, Main sent back to Live, an output placed nowhere heard, a clash missed.
-    const Row row = rowOf(aggregateOf({"i16", "box"}, system()));
+    const Row row = rowOf(aggregateOf({"i16", "box"}, systemDevices()));
     AudioSettings s;
     s.main = {"i16", 1};
     s.placed = {{{1, Output::Headphones}, {"box", 1}}, {{2, Output::Headphones}, {"i16", 3}}};
@@ -136,7 +138,7 @@ TEST_CASE("the routes: two Decoders each where placed, every device with the slo
 TEST_CASE("an input arrives after the loop device's channels, on the channel this computer keeps for it") {
     //  Catches: the loop device's channels not counted before the inputs, an input on a device not chosen or kept
     //  nowhere arriving anyway, a stereo input across two devices, the input bindings not read back.
-    const Row row = rowOf(aggregateOf({"i16", "box", "mic"}, system()), true);  // 16 + 2 + 1 inputs
+    const Row row = rowOf(aggregateOf({"i16", "box", "mic"}, systemDevices()), true);  // 16 + 2 + 1 inputs
     CHECK(row.width() == 19);
     AudioSettings s;
     s.inputs = {{kFirstInput, {"mic", 1}},

@@ -9,6 +9,7 @@
 using namespace bambi;
 
 TEST_CASE("the queue hands items over in order, and refuses when full rather than overwriting") {
+    //  Catches: no fullness test, so a push into a full queue overwrites the oldest unread item.
     SpscQueue<int, 4> q;
     int out = 0;
     CHECK_FALSE(q.pop(out));
@@ -30,6 +31,8 @@ TEST_CASE("the queue hands items over in order, and refuses when full rather tha
 }
 
 TEST_CASE("one producer and one consumer on two threads lose nothing and duplicate nothing") {
+    //  Catches: a fullness test off by one, which overwrites an unread item, and the release and acquire on the head
+    //  relaxed, which on arm64 hands the consumer a slot before its value.
     SpscQueue<std::uint32_t, 16> q;  // small, so the producer meets a full queue again and again
     constexpr std::uint32_t kItems = 300'000;
     std::atomic<bool> producerDone{false};

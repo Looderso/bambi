@@ -90,7 +90,8 @@ outline page for each new part, is on the local branch `site-sections`, not comm
 - [ ] **Download** for four plugins and the host, the host's install steps, the names matching the release
   pipeline's (`bambi-macos.pkg` beside the zips); "alpha" becomes "beta" there and on the front page.
 - [ ] **A signed, notarised macOS download** with the installer package ([0261](DECISIONS.md)): one run of the build
-  workflow started by hand passes its `macos-package` job, and the package installs on a Mac that never had bambi.
+  workflow started by hand with `release` on passes its `macos-package` job, and the package installs on a Mac that
+  never had bambi.
 - [ ] **Status** with Live in its table: it has been tried there (see below).
 
 **May follow the beta** — an outline is never pushed; until it is written, its entry leaves the site:

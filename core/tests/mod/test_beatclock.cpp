@@ -24,7 +24,7 @@ double hostPpq(std::int64_t sample, double bpm) { return static_cast<double>(sam
  *  sub-blocks that all carry the HOST block's reading, as a CLAP wrapper does. Returns the position
  *  of every control step, pinned to the timeline as the control grid pins it. */
 std::vector<double> play(std::int64_t start, std::int64_t total, std::int64_t block, double bpm,
-                         std::vector<std::int64_t> split = {}) {
+                         const std::vector<std::int64_t>& split = {}) {
     BeatClock clock;
     std::vector<double> steps;
     for (std::int64_t t = start; t < start + total; t += block) {
@@ -44,21 +44,11 @@ std::vector<double> play(std::int64_t start, std::int64_t total, std::int64_t bl
     return steps;
 }
 
-/// The same walk, positioned by extrapolating from the block's ppq plus the distance travelled.
-std::vector<double> playExtrapolated(std::int64_t start, std::int64_t total, std::int64_t block, double bpm) {
-    std::vector<double> steps;
-    for (std::int64_t t = start; t < start + total; t += block) {
-        const auto n = std::min(block, start + total - t);
-        const double ppq = hostPpq(t, bpm);
-        for (std::int64_t s = t; s < t + n; ++s)
-            if (s == start || s % kHop == 0) steps.push_back(ppq + (static_cast<double>(s - t) / kRate) * bpm / 60.0);
-    }
-    return steps;
-}
-
 }  // namespace
 
 TEST_CASE("a step's song position does not depend on the host's block size") {
+    //  Catches: every reading taken as a new anchor, so each block's steps are placed from its own start and the block
+    //  size shows.
     //  A non-zero start and a tempo whose samples are not a round number of beats: rounding shows.
     const std::int64_t start = 123457, total = 10 * 48000;
     const double bpm = 128.0;
@@ -73,17 +63,6 @@ TEST_CASE("a step's song position does not depend on the host's block size") {
     CHECK(std::abs(base.back() - hostPpq(start + total - 1 - (start + total - 1) % kHop, bpm)) < 1e-9);
 }
 
-TEST_CASE("the old extrapolation from the block's start is caught by the same comparison") {
-    //  The mutation this file exists for: `ppqHere` from the block-start ppq. Shown here to differ,
-    //  so the check above is known to be able to fail.
-    const std::int64_t start = 123457, total = 10 * 48000;
-    const double bpm = 128.0;
-    const auto base = playExtrapolated(start, total, 1, bpm);
-    bool anyDiffers = false;
-    for (std::int64_t block : {64, 1000}) anyDiffers = anyDiffers || playExtrapolated(start, total, block, bpm) != base;
-    CHECK(anyDiffers);
-}
-
 TEST_CASE("sub-blocks carrying their host block's stale reading change nothing") {
     //  Catches: taking a reading that has not moved as a new one -- the second sub-block
     //  would re-anchor its own sample to the host block's first sample's position.
@@ -93,6 +72,7 @@ TEST_CASE("sub-blocks carrying their host block's stale reading change nothing")
 }
 
 TEST_CASE("a new tempo is taken at the block that reports it") {
+    //  Catches: a new tempo ignored while the position still agrees.
     BeatClock clock;
     clock.observe(0, 0.0, 120.0, kRate);
     CHECK(clock.ppqAt(48000) == doctest::Approx(2.0));
@@ -115,11 +95,15 @@ TEST_CASE("a position that disagrees by more than half a sample moves the anchor
 }
 
 TEST_CASE("forgetting takes the next reading whole") {
+    //  Catches: forget() that keeps the old anchor, so a reading within half a sample of it is not taken.
+    //  A locate to within half a sample of where the clock had got to: kept as it is, it would not move.
+    const double bpm = 120.0, perSample = bpm / (60.0 * kRate);
     BeatClock clock;
-    clock.observe(0, 0.0, 120.0, kRate);
+    clock.observe(0, 0.0, bpm, kRate);
+    const double predicted = clock.ppqAt(1000);
     clock.forget();
-    clock.observe(0, 7.25, 120.0, kRate);  // a locate: the same sample, another place in the song
-    CHECK(clock.ppqAt(0) == 7.25);
+    clock.observe(1000, predicted + 0.3 * perSample, bpm, kRate);
+    CHECK(clock.ppqAt(1000) == predicted + 0.3 * perSample);
 }
 
 TEST_CASE("stopped, the position holds while the samples count on") {

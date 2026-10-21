@@ -14,12 +14,14 @@ using namespace bambi;
 namespace {
 std::vector<float*> ptrsOf(std::vector<std::vector<float>>& v) {
     std::vector<float*> p;
+    p.reserve(v.size());
     for (auto& c : v) p.push_back(c.data());
     return p;
 }
 }  // namespace
 
 TEST_CASE("encoder channel counts follow the order") {
+    //  Catches: a channel count other than (order + 1) squared.
     CHECK(Encoder::numChannels(0) == 1);
     CHECK(Encoder::numChannels(1) == 4);
     CHECK(Encoder::numChannels(3) == 16);
@@ -27,6 +29,7 @@ TEST_CASE("encoder channel counts follow the order") {
 }
 
 TEST_CASE("a point source lands where the harmonics say it should") {
+    //  Catches: the direction's axes swapped before it is encoded.
     Encoder e;
     e.prepare(3);
     e.setTarget(fromAzEl(0, 0), 0.0);  // front
@@ -43,6 +46,7 @@ TEST_CASE("a point source lands where the harmonics say it should") {
 }
 
 TEST_CASE("full width collapses to omni") {
+    //  Catches: the width ignored.
     Encoder e;
     e.prepare(3);
     e.setTarget(fromAzEl(1.0, 0.3), kPi);
@@ -55,20 +59,25 @@ TEST_CASE("full width collapses to omni") {
 }
 
 TEST_CASE("zero width leaves the encoding untouched") {
-    Encoder a, b;
-    a.prepare(3);
-    b.prepare(3);
-    a.setTarget(fromAzEl(0.7, 0.2), 0.0);
-    b.setTarget(fromAzEl(0.7, 0.2), 1e-9);
-    a.snap();
-    b.snap();
-    for (int c = 0; c < 16; ++c) CHECK(a.gains()[c] == doctest::Approx(b.gains()[c]));
+    //  Catches: the limit at zero width other than 1, and zero width sent through the recurrence, which divides by
+    //  nothing.
+    //  A width of nothing, or as good as nothing, is the bare harmonics: the limit of the cap weights, not 0/0.
+    std::vector<double> y(16);
+    shSN3D(unit(fromAzEl(0.7, 0.2)), 3, y);
+    for (const double width : {0.0, 1e-9}) {
+        Encoder e;
+        e.prepare(3);
+        e.setTarget(fromAzEl(0.7, 0.2), width);
+        e.snap();
+        for (int c = 0; c < 16; ++c) CHECK(e.gains()[static_cast<std::size_t>(c)] == y[static_cast<std::size_t>(c)]);
+    }
 }
 
 /*  The reason gains ramp rather than step. A source moving fast enough to be interesting
  *  covers several degrees per block, and a stepped gain clicks at exactly the moment the
  *  plugin exists to create. */
 TEST_CASE("gains interpolate across a block instead of stepping") {
+    //  Catches: a gain stepped to its target at the block's start.
     Encoder e;
     e.prepare(1);
     e.setTarget(fromAzEl(0, 0), 0.0);
@@ -93,6 +102,7 @@ TEST_CASE("gains interpolate across a block instead of stepping") {
 }
 
 TEST_CASE("a stationary source takes the static path without changing the result") {
+    //  Catches: the flat path writing over the output instead of adding to it.
     /*  process() has two inner loops: a ramp, and a flat multiply for the (very common)
      *  case of a source that has not moved. They must be indistinguishable from outside,
      *  and the flat one skips silent channels entirely -- so it also has to leave whatever
@@ -119,12 +129,13 @@ TEST_CASE("a stationary source takes the static path without changing the result
     for (std::size_t c = 0; c < 4; ++c) {
         const float g = static_cast<float>(y[c] * w[acnOrder(static_cast<int>(c))]);
         for (int i = 0; i < n; ++i)
-            CHECK(out[c][static_cast<std::size_t>(i)] ==
-                  doctest::Approx(0.125f + in[static_cast<std::size_t>(i)] * g).epsilon(1e-6));
+            CHECK(std::abs(out[c][static_cast<std::size_t>(i)] - (0.125f + in[static_cast<std::size_t>(i)] * g)) <
+                  1e-6f);
     }
 }
 
 TEST_CASE("a silent channel is left untouched rather than zeroed") {
+    //  Catches: a silent channel zeroed.
     Encoder e;
     e.prepare(1);
     e.setTarget(fromAzEl(0, 0), 0.0);  // dead front: channels 1 (Y) and 2 (Z) are zero
@@ -140,6 +151,7 @@ TEST_CASE("a silent channel is left untouched rather than zeroed") {
 }
 
 TEST_CASE("process adds into the output rather than overwriting it") {
+    //  Catches: the output overwritten.
     Encoder e;
     e.prepare(0);
     e.setTarget(fromAzEl(0, 0), 0.0);
@@ -153,6 +165,7 @@ TEST_CASE("process adds into the output rather than overwriting it") {
 }
 
 TEST_CASE("rendering is deterministic — the property golden-file regression rests on") {
+    //  Catches: a gain that depends on how many times the encoder has run.
     auto render = [] {
         Encoder e;
         e.prepare(3);
@@ -165,6 +178,7 @@ TEST_CASE("rendering is deterministic — the property golden-file regression re
             e.setTarget(fromAzEl(phase, phase * 0.3), 0.2);
             if (b == 0) e.snap();
             std::vector<float*> block;
+            block.reserve(out.size());
             for (auto& c : out) block.push_back(c.data() + b * 128);
             e.process(in.data() + b * 128, block, 128);
             phase += 0.11;
@@ -178,6 +192,7 @@ TEST_CASE("rendering is deterministic — the property golden-file regression re
 }
 
 TEST_CASE("gain is part of the target: it scales every channel, and it is ramped, not stepped") {
+    //  Catches: the gain left out of the target, and a timed ramp that jumps to its end.
     Encoder unity, half;
     unity.prepare(3);
     half.prepare(3);
@@ -242,8 +257,7 @@ TEST_CASE("two halves of one point are that point") {
     pair.setTargetPair(d, 0.5, d, 0.5, 25.0 * kDeg2Rad, 0, 0.7);
     one.snap();
     pair.snap();
-    for (std::size_t c = 0; c < one.gains().size(); ++c)
-        CHECK(pair.gains()[c] == doctest::Approx(one.gains()[c]).epsilon(1e-12));
+    for (std::size_t c = 0; c < one.gains().size(); ++c) CHECK(std::abs(pair.gains()[c] - one.gains()[c]) < 2e-12);
 }
 
 /*  An offset in azimuth closes as the source climbs: 90 degrees of it is 14 at elevation 80. The
@@ -299,7 +313,7 @@ TEST_CASE("the overlap of two encodes is the cosine between their gain vectors, 
                 ab += (2.0 * n + 1.0) * ea.gains()[c] * eb.gains()[c];
                 aa += (2.0 * n + 1.0) * ea.gains()[c] * ea.gains()[c];
             }
-            CHECK(encodeOverlap(a, b, widthDeg * kDeg2Rad, order) == doctest::Approx(ab / aa).epsilon(1e-9));
+            CHECK(std::abs(encodeOverlap(a, b, widthDeg * kDeg2Rad, order) - ab / aa) < 1e-9);
         }
     }
     CHECK(encodeOverlap({1, 0, 0}, {1, 0, 0}, 0.3, 3) == doctest::Approx(1.0));

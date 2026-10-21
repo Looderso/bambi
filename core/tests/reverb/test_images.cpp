@@ -13,6 +13,7 @@ Room hall() { return deriveRoom({20.0, RoomShape::Hall, 1.9, 0.5, 0.6}); }
 }  // namespace
 
 TEST_CASE("a box has 6, 24 and 62 images by order 1, 2 and 3") {
+    //  Catches: the source itself counted as an image.
     std::array<ImageIndex, kMaxImages> index{};
     CHECK(imageIndices(1, index) == 6);
     CHECK(imageIndices(2, index) == 24);
@@ -62,6 +63,8 @@ TEST_CASE("the first reflection off the front wall is where a mirror puts it") {
 }
 
 TEST_CASE("what stops being a reflection is not lost: mirror and scattered are the image's whole energy") {
+    //  Catches: the scattered part not the energy the mirror lost, and the fade applied to the energy rather than the
+    //  pressure.
     const Room room = hall();
     auto taps = std::make_unique<std::array<Reflection, kMaxImages>>();
     reflectionsOf(room, unit(Vec3{0.6, 0.7, 0.2}), 6.0, *taps);
@@ -91,6 +94,7 @@ TEST_CASE("what stops being a reflection is not lost: mirror and scattered are t
 }
 
 TEST_CASE("every bounce and every metre dulls a reflection, between 800 Hz and 20 kHz") {
+    //  Catches: the walls' dulling left out, bounces that do not compound, and the air's dulling left out.
     const Room dark = deriveRoom({20.0, RoomShape::Hall, 1.9, 0.0, 0.6});
     auto taps = std::make_unique<std::array<Reflection, kMaxImages>>();
     reflectionsOf(dark, {1, 0, 0}, 6.0, *taps);
@@ -103,14 +107,23 @@ TEST_CASE("every bounce and every metre dulls a reflection, between 800 Hz and 2
     }
     CHECK(third < first);
     //  with walls that treat the highs like the mids, only the air is left: 16 kHz x sqrt(7.5 / path)
+    const auto darkTaps = std::make_unique<std::array<Reflection, kMaxImages>>(*taps);
     const Room even = deriveRoom({20.0, RoomShape::Hall, 1.9, 1.0, 0.6});
     reflectionsOf(even, {1, 0, 0}, 6.0, *taps);
     for (const Reflection& t : *taps)
         CHECK(t.cutoffHz ==
               doctest::Approx(std::clamp(16000.0 * std::sqrt(7.5 / std::max(t.distance, 7.5)), 800.0, 20000.0)));
+    //  so the dark walls are what dulls the rest: every reflection as dull or duller, and those that bounced
+    //  three times duller still
+    for (int i = 0; i < 62; ++i) {
+        const Reflection &d = (*darkTaps)[static_cast<std::size_t>(i)], &e = (*taps)[static_cast<std::size_t>(i)];
+        CHECK(d.cutoffHz <= e.cutoffHz);
+        if (d.order == 3) CHECK(d.cutoffHz < e.cutoffHz);
+    }
 }
 
 TEST_CASE("a source is kept inside the room, no nearer a wall than a tenth of the way") {
+    //  Catches: a source allowed up to the wall.
     const Room small = deriveRoom({4.0, RoomShape::Room, 0.35, 0.5, 0.8});  // 5 x 4 x 2.6 m
     CHECK(sourceRadius(small, {1, 0, 0}, 1.5) == 1.5);
     CHECK(sourceRadius(small, {1, 0, 0}, 9.0) == doctest::Approx(0.9 * 2.5));
@@ -119,6 +132,8 @@ TEST_CASE("a source is kept inside the room, no nearer a wall than a tenth of th
 }
 
 TEST_CASE("the beam is 1 along itself and what max-rE says elsewhere; the virtual sources are spread") {
+    //  Catches: the max-rE angle off, the weights' recurrence wrong from order 2, and the virtual sources laid on one
+    //  circle.
     CHECK(maxReBeam(3, 1.0) == doctest::Approx(1.0));
     CHECK(maxReBeam(1, 1.0) == doctest::Approx(1.0));
     CHECK(std::abs(maxReBeam(3, -1.0)) < 0.15);  // little behind
@@ -145,6 +160,8 @@ TEST_CASE("the beam is 1 along itself and what max-rE says elsewhere; the virtua
 }
 
 TEST_CASE("copies of one reflection land within 3 ms of each other's average, and keep their order") {
+    //  Catches: the copies collapsed onto their average, where they comb, and a near source's copies pushed apart
+    //  rather than left alone.
     const Room room = hall();
     auto bus = std::make_unique<BusReflections>();
     busReflections(room, 6.0, *bus);  // 2 x 6 / 343 = 35 ms apart before

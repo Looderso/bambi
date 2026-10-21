@@ -10,7 +10,7 @@ BambiEchoProcessor::BambiEchoProcessor()
                                          .controlHop = bambi::kEchoHop,
                                          .regionSlots = 1})  // one region slot: the send
 {
-    begin(bambi::PluginState{bambi::echoParams()});
+    begin(bambi::freshEchoState());
 }
 
 double BambiEchoProcessor::getTailLengthSeconds() const {

@@ -130,7 +130,7 @@ juce::String Header::getTooltip() {
 
 void Header::setStatus(Link status) {
     const bool same = status.open == status_.open;  // the session and its peers are shown in settings, not here
-    status_ = status;
+    status_ = std::move(status);
     if (!same) repaint();
 }
 

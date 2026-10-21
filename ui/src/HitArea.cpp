@@ -137,17 +137,17 @@ namespace bambi::ui {
 
 std::vector<juce::Rectangle<float>> HitArea::paintTabRow(juce::Graphics& g, float x,
                                                          std::span<const juce::String> names, int selected,
-                                                         std::function<void(int)> select,
-                                                         std::function<bool(int)> offered) {
+                                                         const std::function<void(int)>& select,
+                                                         const std::function<bool(int)>& offered) {
     namespace ctl = theme::controls;
-    return paintTabRowAt(g, x, ctl::matrixTabsTop, ctl::tabBarHeight - ctl::matrixTabsTop, names, selected,
-                         std::move(select), std::move(offered));
+    return paintTabRowAt(g, x, ctl::matrixTabsTop, ctl::tabBarHeight - ctl::matrixTabsTop, names, selected, select,
+                         offered);
 }
 
 std::vector<juce::Rectangle<float>> HitArea::paintTabRowAt(juce::Graphics& g, float x, float top, float height,
                                                            std::span<const juce::String> names, int selected,
-                                                           std::function<void(int)> select,
-                                                           std::function<bool(int)> offered) {
+                                                           const std::function<void(int)>& select,
+                                                           const std::function<bool(int)>& offered) {
     namespace ctl = theme::controls;
     const auto tabFont = font(theme::type::body, theme::type::trackingTab);
     std::vector<juce::Rectangle<float>> boxes;

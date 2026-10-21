@@ -26,7 +26,7 @@ struct DotSets {
     std::array<Vec3, 12> twelve{};
     std::array<Vec3, 20> twenty{};
 
-    DotSets() {
+    DotSets() noexcept {
         const double kPhi = (1.0 + std::sqrt(5.0)) * 0.5;
         two = {kUp, Vec3{0.0, 0.0, -1.0}};
         four = {unit(Vec3{1, 1, 1}), unit(Vec3{1, -1, -1}), unit(Vec3{-1, 1, -1}), unit(Vec3{-1, -1, 1})};

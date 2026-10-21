@@ -65,8 +65,8 @@ public:
         int inputChannels{16};  ///< the input row: the loop device's channels, then the devices' inputs
         int outputChannels{2};
         double rate{48000.0};
-        int mainInput{-1};       ///< the input row's channel Live's Main's left arrives on, its right after; -1 none
-        int maxMainDelay{0};     ///< samples Main may be delayed by
+        int mainInput{-1};    ///< the input row's channel Live's Main's left arrives on, its right after; -1 none
+        int maxMainDelay{0};  ///< samples Main may be delayed by
     };
     /// A channel played out after the decoders: one of a decoder's, or of Live's Main, onto an output channel.
     struct Route {
@@ -96,7 +96,8 @@ public:
     /// The first program, before any audio. False, with `error` set, when the plan names a slot it was given no
     /// instance for, or a buffer or pair it does not have.
     bool prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                 const Setup& setup, juce::String& error, Keep keep = {}, std::optional<std::vector<Route>> routes = std::nullopt);
+                 const Setup& setup, juce::String& error, Keep keep = {},
+                 const std::optional<std::vector<Route>>& routes = std::nullopt);
 
     /// An instance new to the runner, readied for it before it is in any program: the playhead it reads, and that
     /// it plays in real time. Message thread; prepare() readies the first program's itself.
@@ -105,7 +106,7 @@ public:
     /// A new program, while audio runs, at the setup prepare() was given; the same checks. Every instance it names
     /// not in a program before must have been readied.
     bool swap(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-              juce::String& error, Keep keep = {}, std::optional<std::vector<Route>> routes = std::nullopt);
+              juce::String& error, Keep keep = {}, const std::optional<std::vector<Route>>& routes = std::nullopt);
 
     /// The lanes to drive from the next piece, in place of those before; `keep` holds what their parameters
     /// belong to. Message thread.
@@ -189,7 +190,7 @@ private:
         int levelCount{0};
         int longest{0};  ///< samples: the longest delay line
         std::vector<Route> routes;
-        bool straight{false};  ///< given no routes: the first decoder straight out
+        bool straight{false};                  ///< given no routes: the first decoder straight out
         mutable std::vector<Line> routeLines;  // per route, one channel; Main's are the runner's
     };
 
@@ -202,26 +203,26 @@ private:
 
     std::unique_ptr<Program> build(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots,
                                    int levels, juce::String& error, Keep keep,
-                                   std::optional<std::vector<Route>> routes);
+                                   const std::optional<std::vector<Route>>& routes);
     static std::vector<Route> mainOf(const std::vector<Route>& routes);
     /// Main into its lines, and out along the program's routes, at a gain ramping from `g0` to `g1`.
-    void main(const Program& p, const Inputs& in, int inStart, juce::AudioBuffer<float>& output,
-              int outStart, int frames, float g0, float g1) noexcept;
+    void main(const Program& p, const Inputs& in, int inStart, juce::AudioBuffer<float>& output, int outStart,
+              int frames, float g0, float g1) noexcept;
     void run(const Program& p, int slot, juce::AudioBuffer<float>& scratch) noexcept;
     /// A send's gain at `offset` samples into the current grid interval.
     static float gainAt(const Program::Level& l, int offset) noexcept {
         return l.from + (l.to - l.from) * static_cast<float>(offset) / static_cast<float>(kLevelGrid);
     }
-    void piece(const Program& p, const Inputs& loop, int loopStart, juce::AudioBuffer<float>& output,
-               int outStart, int frames, float fade0, float fade1) noexcept;
+    void piece(const Program& p, const Inputs& loop, int loopStart, juce::AudioBuffer<float>& output, int outStart,
+               int frames, float fade0, float fade1) noexcept;
 
     Setup setup_;
     int field_{16};  // channels of the field at the plan's order
     Handoff<Program> handoff_;
     Handoff<Automation> automation_;
     Program* latest_{nullptr};  // the program last prepared or swapped: the message thread's
-    juce::MidiBuffer midi_;  // a plugin's, filled from `taken_` before each: a plugin may change what it is given
-    static constexpr int kMidiPerPiece = 256;  ///< events a piece takes; the rest wait for the next
+    juce::MidiBuffer midi_;     // a plugin's, filled from `taken_` before each: a plugin may change what it is given
+    static constexpr int kMidiPerPiece = 256;             ///< events a piece takes; the rest wait for the next
     std::array<live::MidiEvent, kMidiPerPiece> taken_{};  // the piece's, the audio thread's
     int takenCount_{0};
     live::MidiPending* midiFrom_{nullptr};
@@ -234,7 +235,7 @@ private:
     enum class Fade { None, Out, Hold, MainOut, In };
     Fade fade_{Fade::None};  // the audio thread's, with `faded_`: samples of the phase played
     int faded_{0};
-    int hold_{0};  // samples of silence held between the fade out and the swap
+    int hold_{0};                         // samples of silence held between the fade out and the swap
     juce::AudioBuffer<float> mainLines_;  // Main's left and right, `maxMainDelay + maxBlock` samples
     int mainAt_{0};                       // where Main's next sample goes
     std::atomic<bool> mainMoves_{false};  // the program posted last plays Main otherwise than the one before

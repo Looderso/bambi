@@ -324,6 +324,7 @@ bool designAllrad(const Layout& layout, int order, Weighting weighting, SpeakerD
         fanCoplanar(triangles, out.points, out.imaginary, polygons);
         out.triangles = triangles;
         std::vector<Face> faces;
+        faces.reserve(triangles.size());
         for (const std::array<int, 3>& t : triangles) faces.push_back(faceOf(t, out.points));
         const int total = static_cast<int>(out.points.size());
 

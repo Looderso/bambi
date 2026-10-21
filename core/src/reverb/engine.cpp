@@ -155,18 +155,16 @@ void ReverbEngine::setRegions(const ReverbFrame& s) noexcept {
             at the point: the value steps where an edge crosses a line, the matrix passes it gradually, as the
             reflections' half of the return already does. */
         const auto virtuals = virtualSourceDirections();
-        const bool sendProjected = sendOp_.set(s.send);
-        for (int v = 0; v < kVirtualSources; ++v) {
-            const Vec3 d = virtuals[static_cast<std::size_t>(v)];
+        sendOp_.set(s.send);
+        for (int v = 0; v < kVirtualSources; ++v)
             sendSourceRaw_[static_cast<std::size_t>(v)] =
-                static_cast<float>(sendProjected ? sendOp_.gainAt(d) : valueAt(s.send, d));
-        }
-        const bool returnProjected = returnOp_.set(s.returnRegion);
-        returnPlain_ = !returnProjected || returnOp_.passesEverything();
+                static_cast<float>(sendOp_.gainAt(virtuals[static_cast<std::size_t>(v)]));
+        returnOp_.set(s.returnRegion);
+        returnPlain_ = returnOp_.passesEverything();
         for (int k = 0; k < lines_; ++k) {
             const auto ki = static_cast<std::size_t>(k);
             const Vec3 d = lineDirection_[ki];
-            sendLineRaw_[ki] = static_cast<float>(sendProjected ? sendOp_.gainAt(d) : valueAt(s.send, d));
+            sendLineRaw_[ki] = static_cast<float>(sendOp_.gainAt(d));
             returnLineRaw_[ki] = returnPlain_ ? 1.0f : static_cast<float>(returnOp_.gainAt(d));
         }
         sendNow_ = s.send;

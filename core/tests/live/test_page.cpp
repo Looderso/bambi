@@ -33,21 +33,26 @@ TEST_CASE("the page lists Live's order, a group before what it holds, each a lin
     CHECK(linesOf(Tree{{node(2, Node::Kind::Track, TrackId{77})}}) == std::vector<Line>{{2, 0}});
 }
 
-TEST_CASE("an Encoder added in Live takes the node at the top, or splits every group down to one inside") {
-    //  Catches: a track inside a group taken on its own -- it is no node at the top, so nothing would play -- a group
-    //  between left whole, or a node already taken taken twice.
+TEST_CASE("an Encoder added takes that node alone, at any depth; inside a group encoded whole, the group opens") {
+    //  Catches: a track's siblings taken with it, its groups left out of the field, a node taken twice, or -- inside a
+    //  group encoded whole -- the group left whole, which plays the track twice, or what else it held dropped to Live.
     Shape s;
     addEncoder(s, set(), 5);
     CHECK(s.taken == std::vector<TrackId>{5});
-    addEncoder(s, set(), 4);
-    CHECK(s.taken == std::vector<TrackId>{5, 1});
-    CHECK(s.split == std::vector<TrackId>{3, 1});
+    addEncoder(s, set(), 4);  // inside group 3, inside group 1
+    CHECK(s.taken == std::vector<TrackId>{5, 4});
     const Field f = layOut(set(), s);
     CHECK(roleOf(set(), f, 4) == Role::Source);
-    CHECK(roleOf(set(), f, 2) == Role::Source);  // its siblings with it
+    CHECK(roleOf(set(), f, 2) == Role::Live);  // its group's other track stays in Live
     CHECK(roleOf(set(), f, 3) == Role::Bus);
+    CHECK(roleOf(set(), f, 1) == Role::Bus);
     addEncoder(s, set(), 5);
-    CHECK(s.taken == std::vector<TrackId>{5, 1});
+    CHECK(s.taken == std::vector<TrackId>{5, 4});
+
+    Shape whole;
+    whole.taken = {1};
+    addEncoder(whole, set(), 4);
+    CHECK(whole.taken == std::vector<TrackId>{2, 4});  // 1 opened, 2 taken in its place; 3 opened on the way
 }
 
 TEST_CASE("each node's role: in Live, a source, a bus, or inside a group encoded whole") {
@@ -59,23 +64,34 @@ TEST_CASE("each node's role: in Live, a source, a bus, or inside a group encoded
     CHECK(roleOf(set(), whole, 1) == Role::Source);
     CHECK(roleOf(set(), whole, 4) == Role::InGroup);
     CHECK(roleOf(set(), whole, 5) == Role::Live);
-    s.split = {1};
-    const Field split = layOut(set(), s);
-    CHECK(roleOf(set(), split, 1) == Role::Bus);
-    CHECK(roleOf(set(), split, 3) == Role::Source);
-    CHECK(roleOf(set(), split, 4) == Role::InGroup);
+    s.taken = {2, 3};
+    const Field bus = layOut(set(), s);
+    CHECK(roleOf(set(), bus, 1) == Role::Bus);
+    CHECK(roleOf(set(), bus, 3) == Role::Source);
+    CHECK(roleOf(set(), bus, 4) == Role::InGroup);
 }
 
-TEST_CASE("taking an Encoder away gives a node at the top back to Live, and encodes a bus whole again") {
-    //  Catches: a bus taken out of the field rather than encoded whole, or a source left in the field.
+TEST_CASE("taking an Encoder away gives that node alone back to Live; on a bus, the group is taken whole") {
+    //  Catches: a track's group or siblings given back with it, a bus taken out of the field rather than encoded
+    //  whole, or a mark left inside a group taken whole.
     Shape s;
-    s.taken = {1, 5};
-    s.split = {1};
+    s.taken = {2, 4, 5};
+    removeEncoder(s, set(), layOut(set(), s), 2);
+    CHECK(s.taken == std::vector<TrackId>{4, 5});  // 1 stays a bus, of 3's, of 4
+    CHECK(roleOf(set(), layOut(set(), s), 1) == Role::Bus);
+    removeEncoder(s, set(), layOut(set(), s), 1);  // "encode whole"
+    CHECK(s.taken == std::vector<TrackId>{5, 1});
     removeEncoder(s, set(), layOut(set(), s), 1);
-    CHECK(s.split.empty());
-    CHECK(s.taken == std::vector<TrackId>{1, 5});
-    removeEncoder(s, set(), layOut(set(), s), 5);
-    CHECK(s.taken == std::vector<TrackId>{1});
+    CHECK(s.taken == std::vector<TrackId>{5});
+}
+
+TEST_CASE("a group given back to Live takes nothing hidden inside it along") {
+    //  Catches: marks left under a group taken whole coming back as sources the moment the group is given back.
+    Shape s;
+    s.taken = {1, 4};  // 4 is inside 1, which is encoded whole: its mark means nothing
+    removeEncoder(s, set(), layOut(set(), s), 1);
+    CHECK(s.taken.empty());
+    CHECK(layOut(set(), s).parts.empty());
 }
 
 //  A group 1 holding track 2, which plays into it, and track 3, filed under it in Live and routed by hand to Main.
@@ -103,8 +119,9 @@ TEST_CASE("a member routed past its group is listed under it, as Live files it")
 
 TEST_CASE("what a member is follows where its audio goes: one routed past its group is its own path") {
     /*  Catches: a hand-routed member read as inside the group the group encodes -- it would never be heard in the field,
-        since its audio does not reach the group -- or an Encoder on it splitting the group it does not play into, or one
-        on a member that does play into it leaving the group whole, which plays that member twice. */
+        since its audio does not reach the group -- or an Encoder on it opening the group it does not play into, or one
+        on a member that does play into it leaving the group whole, which plays that member twice -- or a member
+        routed elsewhere from inside the group taken along when it opens. */
     const Tree t = handRouted();
     Shape s;
     s.taken = {1};
@@ -114,11 +131,19 @@ TEST_CASE("what a member is follows where its audio goes: one routed past its gr
 
     Shape own = s;
     addEncoder(own, t, 3);
-    CHECK(own.split.empty());
     CHECK(own.taken == std::vector<TrackId>{1, 3});
 
-    Shape split = s;
-    addEncoder(split, t, 2);
-    CHECK(split.split == std::vector<TrackId>{1});
-    CHECK(split.taken == std::vector<TrackId>{1});
+    Shape member = s;
+    addEncoder(member, t, 2);
+    CHECK(member.taken == std::vector<TrackId>{2});
+    CHECK(roleOf(t, layOut(t, member), 1) == Role::Bus);
+
+    //  and the group opened round a member leaves out one routed elsewhere from inside it
+    Tree away = t;
+    Node elsewhere = node(4, Node::Kind::Track, TrackId{1});
+    elsewhere.path = Node::Path::Elsewhere;
+    away.nodes.push_back(elsewhere);
+    Shape opened = s;
+    addEncoder(opened, away, 2);
+    CHECK(opened.taken == std::vector<TrackId>{2});
 }

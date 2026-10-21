@@ -18,6 +18,7 @@ constexpr double kFs = 48000.0;
 }  // namespace
 
 TEST_CASE("the lines are primes between 100 and 200 ms times the scale, no two alike, long and short interleaved") {
+    //  Catches: a line that is not prime, the lines left in rising order, and a range past 200 ms.
     for (const double scale : {0.55, 1.2, 2.0}) {
         const TailPlan p = planTail(16, kFs, scale, 0.06);
         std::set<int> seen;
@@ -38,6 +39,7 @@ TEST_CASE("the lines are primes between 100 and 200 ms times the scale, no two a
 }
 
 TEST_CASE("sixteen lines at the hall's scale are enough for the longest decay the presets ask") {
+    //  Catches: lines shorter than 100 ms at a scale of 1.
     //  Schroeder and Logan: a total delay of at least 0.15 x RT60 for a tail without colour. 16 lines of
     //  100 to 200 ms are 2.3 s at a scale of 1, which carries decays to 15 s.
     const TailPlan one = planTail(16, kFs, 1.0, 0.06);
@@ -48,6 +50,7 @@ TEST_CASE("sixteen lines at the hall's scale are enough for the longest decay th
 }
 
 TEST_CASE("the diffuser's four steps add up to the mixing time, each spread over its range") {
+    //  Catches: a step's range off, and delays bunched at the top of their range.
     for (const double mixing : {0.025, 0.08}) {
         const TailPlan p = planTail(16, kFs, 1.0, mixing);
         double longest = 0.0;
@@ -61,11 +64,13 @@ TEST_CASE("the diffuser's four steps add up to the mixing time, each spread over
             CHECK(least < 0.15 * range + 2);  // and the first
             longest += most;
         }
-        CHECK(longest / kFs == doctest::Approx(mixing).epsilon(0.08));
+        CHECK(std::abs(longest / kFs / mixing - 1.0) < 0.08);
     }
 }
 
 TEST_CASE("the shuffles are shuffles, the signs are signs, and the same room is always the same network") {
+    //  Catches: a shuffle that draws differently (the pinned numbers move), a sign that is not a sign, and another
+    //  seed.
     const TailPlan p = planTail(16, kFs, 1.2, 0.06);
     const auto permutation = [](const std::array<int, kMaxTailLines>& a) {
         std::set<int> s(a.begin(), a.begin() + 16);
@@ -102,6 +107,7 @@ TEST_CASE("the shuffles are shuffles, the signs are signs, and the same room is 
 }
 
 TEST_CASE("no two lines and no two allpasses are alike even where the primes are crowded") {
+    //  Catches: a prime handed out twice where the range is crowded.
     //  32 of them in the smallest room at the lowest rate: the allpasses run from 22 to 66 samples, where
     //  rounding alone would hand out the same prime several times. Two lines alike are one resonance
     //  twice as loud.
@@ -112,6 +118,7 @@ TEST_CASE("no two lines and no two allpasses are alike even where the primes are
 }
 
 TEST_CASE("the lines are a power of two, and nothing a plan asks for is longer than what is allocated") {
+    //  Catches: a line count that is not a power of two, and a scale past what is allocated.
     CHECK(planTail(16, kFs, 1.0, 0.05).lines == 16);
     CHECK(planTail(20, kFs, 1.0, 0.05).lines == 16);
     CHECK(planTail(100, kFs, 1.0, 0.05).lines == 32);

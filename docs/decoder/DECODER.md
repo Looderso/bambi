@@ -151,8 +151,8 @@ The shared shell, theme, controls and scene view with a different centre. Built 
   own controls), then *channels* (the headphones' pair; or the layout's first channel and the bus's channels with
   what plays on each, a key for the two outputs' inks), then *options* (listening situation and distance
   compensation, or the layout heard through on headphones). A two-loudspeaker layout gets *fold · slice* between
-  the layout and the channels. The loudspeaker table opens as a temporary tab from `loudspeakers…`; personalisation
-  and the tracker's setup do the same, each with a close cross.
+  the layout and the channels. The loudspeaker table opens as a temporary tab from `loudspeakers…`; the tracker's
+  setup does the same, each with a close cross. The head and ears sliders show their values without units.
 - **The orientation strip sits where the effects have their matrix**: tabs for the tracker (none · osc · airpods ·
   phone), the tracker's word at the right (whether it speaks and how often, or that the input has no direction);
   under them *head · scene*, recentre, setup and *static*, greyed under *none*; then the scene's yaw, pitch and
@@ -171,5 +171,13 @@ Parameters are few: yaw, pitch, roll and their rates (they turn the scene for ev
 render turns it by) and the output gain. Everything else is state, never automated, so a bounce hears it whole:
 what plays and where, the layout's contents, the head file's text, the sliders, weighting, the tracker's setup. A
 session reopened elsewhere renders as it did.
+
+**Rendered offline** (`tools/decode-render`, `bambi-decode-render`): the engine the plugin plays through
+(`core/include/bambi/decode/engine.hpp`), with no plugin and no host; the input generated from a seed, the heads read
+from `core/data/decode`. Six goldens in `tests/golden/scenarios.txt` hash the bus and the control trace: headphones at
+the default head and with the head turning, the scene turning at its rates through a locate, ten loudspeakers through
+their distance delays and gains, a filter matrix resampled and read as N3D, and a first-order field through a layout
+heard on headphones. The render is identical at block sizes 1, 64, 128, 333 and 1024 with the scene and the head
+turning, the level moving, the outputs rebuilt and a locate inside it.
 
 Background: decisions 0165, 0228.

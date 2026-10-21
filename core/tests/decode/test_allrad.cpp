@@ -241,6 +241,7 @@ TEST_CASE("a ring is designed on the ring") {
     CHECK(d.triangles.empty());
     CHECK(d.points.size() == 8);
     std::vector<Vec3> ring;
+    ring.reserve(720);
     for (int k = 0; k < 720; ++k) ring.push_back({std::cos(kPi * k / 360.0), std::sin(kPi * k / 360.0), 0.0});
     CHECK(meanEnergy(d, ring) == doctest::Approx(1.0).epsilon(1e-6));
     // Close to the sampling decoder on the same ring: each loudspeaker's row the harmonics at its direction.
@@ -293,9 +294,9 @@ TEST_CASE("distance: the farthest loudspeaker plays at one with no delay, the ot
     CHECK(d.channel[0] == 0);
     CHECK(d.gain[0] == doctest::Approx(1.0));  // channel 1, 1.65 m, the farthest
     CHECK(d.delaySeconds[0] == doctest::Approx(0.0));
-    CHECK(d.channel[5] == 6);  // channel 7 at 1.39 m
-    CHECK(d.gain[5] == doctest::Approx(1.39 / 1.65).epsilon(1e-6));
-    CHECK(d.delaySeconds[5] == doctest::Approx((1.65 - 1.39) / 343.0).epsilon(1e-6));
+    CHECK(d.channel[5] == 6);                                           // channel 7 at 1.39 m
+    CHECK(std::abs(d.gain[5] - 1.39 / 1.65) < 1e-7);                    // the file holds the radii as floats
+    CHECK(std::abs(d.delaySeconds[5] * 343.0 - (1.65 - 1.39)) < 1e-7);  // in metres
 }
 
 TEST_CASE("a coplanar group of loudspeakers pans evenly: 7.1.4 is left-right symmetric") {
@@ -331,20 +332,20 @@ TEST_CASE("two loudspeakers are a pair of virtual cardioids a quarter turn to ea
     const auto front = gainsAt(d, fromAzEl(0, 0)), left = gainsAt(d, fromAzEl(30 * kDeg2Rad, 0)),
                side = gainsAt(d, fromAzEl(kPi / 2, 0)), behind = gainsAt(d, fromAzEl(kPi, 0)),
                above = gainsAt(d, fromAzEl(0, kPi / 2));
-    CHECK(front[0] == doctest::Approx(front[1]).epsilon(1e-9));
-    CHECK(left[0] == doctest::Approx(3.0 * left[1]).epsilon(1e-6));   // 1 + cos 60 against 1 + cos 120
-    CHECK(side[0] == doctest::Approx(2.0 * front[0]).epsilon(1e-6));  // the left microphone's axis
+    CHECK(std::abs(front[0] - front[1]) < 1e-9);
+    CHECK(std::abs(left[0] / (3.0 * left[1]) - 1.0) < 1e-6);   // 1 + cos 60 against 1 + cos 120
+    CHECK(std::abs(side[0] / (2.0 * front[0]) - 1.0) < 1e-6);  // the left microphone's axis
     CHECK(side[1] < 1e-9);
-    CHECK(behind[0] == doctest::Approx(front[0]).epsilon(1e-9));  // behind folds in at the front's level
-    CHECK(behind[1] == doctest::Approx(front[1]).epsilon(1e-9));
-    CHECK(above[0] == doctest::Approx(above[1]).epsilon(1e-9));
+    CHECK(std::abs(behind[0] - front[0]) < 1e-9);  // behind folds in at the front's level
+    CHECK(std::abs(behind[1] - front[1]) < 1e-9);
+    CHECK(std::abs(above[0] - above[1]) < 1e-9);
     //  a tilted pair points its microphones in its own plane, not along the horizon
     Layout tilted;
     tilted.speakers = {at(45, 45, 1), at(-45, -45, 2)};
     const SpeakerDesign r = design(tilted, 3, Weighting::Basic);
     const Vec3 p1 = fromAzEl(45 * kDeg2Rad, 45 * kDeg2Rad), p2 = fromAzEl(-45 * kDeg2Rad, -45 * kDeg2Rad);
     const Vec3 b = unit(p1 + p2), axisLeft = unit(p1 - b * dot(p1, b));
-    CHECK(gainsAt(r, axisLeft)[0] == doctest::Approx(2.0 * gainsAt(r, b)[0]).epsilon(1e-6));
+    CHECK(std::abs(gainsAt(r, axisLeft)[0] / (2.0 * gainsAt(r, b)[0]) - 1.0) < 1e-6);
     CHECK(gainsAt(r, axisLeft)[1] < 1e-9);
     CHECK(gainsAt(r, Vec3{0, 1, 0})[0] < 0.95 * gainsAt(r, axisLeft)[0]);
     //  a plane wave from anywhere gives the omni's share at least: no direction is silent
@@ -359,7 +360,7 @@ TEST_CASE("two loudspeakers are a pair of virtual cardioids a quarter turn to ea
     one.speakers = {at(0, 0, 1)};
     const SpeakerDesign mono = design(one, 3, Weighting::MaxRe);
     REQUIRE(mono.outputs == 1);
-    CHECK(gainsAt(mono, fromAzEl(0, 0))[0] == doctest::Approx(gainsAt(mono, fromAzEl(2.0, -0.7))[0]).epsilon(1e-9));
+    CHECK(std::abs(gainsAt(mono, fromAzEl(0, 0))[0] - gainsAt(mono, fromAzEl(2.0, -0.7))[0]) < 1e-9);
     CHECK(gainsAt(mono, fromAzEl(0, 0))[0] == doctest::Approx(1.0).epsilon(1e-9));
 }
 
@@ -376,7 +377,7 @@ TEST_CASE("a narrow pair at the loudspeakers hears the slice between them and li
     const auto left = gainsAt(d, fromAzEl(30 * kDeg2Rad, 0)), front = gainsAt(d, fromAzEl(0, 0)),
                side = gainsAt(d, fromAzEl(kPi / 2, 0)), behind = gainsAt(d, fromAzEl(kPi, 0));
     CHECK(left[0] > 2.2 * left[1]);  // on the left loudspeaker's axis: 1 against (1 + cos 60)^3 / 8 = 0.42
-    CHECK(front[0] == doctest::Approx(front[1]).epsilon(1e-9));
+    CHECK(std::abs(front[0] - front[1]) < 1e-9);
     CHECK(20 * std::log10(side[0] / left[0]) < -7.0);     // a third of a turn off the axis
     CHECK(20 * std::log10(behind[0] / left[0]) < -30.0);  // behind: gone, and not of the other sign
     CHECK(behind[0] >= 0.0);
@@ -386,16 +387,14 @@ TEST_CASE("a narrow pair at the loudspeakers hears the slice between them and li
     SpeakerDesign w1, w0;
     REQUIRE(designAllrad(pair(), 3, Weighting::Basic, w1, &error, wide));
     REQUIRE(designAllrad(pair(), 3, Weighting::Basic, w0, &error));
-    for (std::size_t i = 0; i < w1.matrix.size(); ++i)
-        CHECK(w1.matrix[i] == doctest::Approx(w0.matrix[i]).epsilon(1e-9));
+    for (std::size_t i = 0; i < w1.matrix.size(); ++i) CHECK(std::abs(w1.matrix[i] - w0.matrix[i]) < 1e-9);
     //  a power past the field's order is held to it: at order 1 the narrow pair is the cardioid pair
     SpeakerDesign held, first;
     REQUIRE(designAllrad(pair(), 1, Weighting::Basic, held, &error, narrow));
     Microphones one = narrow;
     one.pattern = 1;
     REQUIRE(designAllrad(pair(), 1, Weighting::Basic, first, &error, one));
-    for (std::size_t i = 0; i < held.matrix.size(); ++i)
-        CHECK(held.matrix[i] == doctest::Approx(first.matrix[i]).epsilon(1e-9));
+    for (std::size_t i = 0; i < held.matrix.size(); ++i) CHECK(std::abs(held.matrix[i] - first.matrix[i]) < 1e-9);
     //  and it is energy-preserving like every decoder
     std::vector<Vec3> grid;
     fibonacciSphere(4000, grid);

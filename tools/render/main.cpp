@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -21,6 +22,7 @@
 #include "bambi/encode/encoder.hpp"
 #include "bambi/encode/params.hpp"
 #include "bambi/encode/pathparams.hpp"
+#include "bambi/io/guarded.hpp"
 #include "bambi/io/wav.hpp"
 #include "bambi/math/denormals.hpp"
 #include "bambi/mod/beatclock.hpp"
@@ -159,7 +161,7 @@ std::vector<float> pinkNoise(std::size_t n, double amp, std::uint32_t seed = 222
 
 }  // namespace
 
-int main(int argc, char** argv) {
+static int run(int argc, char** argv) {
     //  Denormals flushed, as the plugin processes: a feedback path decays to the same zeros here.
     ScopedFlushDenormals flushDenormals;
     if (argc < 3) {
@@ -405,7 +407,8 @@ int main(int argc, char** argv) {
         if (stereo) side = pinkNoise(mono.size(), 0.06, 77777);
     } else if (toneSeconds > 0.0) {
         in.sampleRate = 48000;
-        mono = chord(static_cast<std::size_t>(toneSeconds * in.sampleRate), in.sampleRate, 0.10);
+        const auto length = static_cast<std::size_t>(toneSeconds * in.sampleRate);
+        mono = chord(length, static_cast<double>(in.sampleRate), 0.10);
     } else {
         std::string err;
         if (!readWav(inPath, in, &err)) {
@@ -600,4 +603,8 @@ int main(int argc, char** argv) {
     }
     std::printf("wrote    %d channels, %.2f s\n", nch, static_cast<double>(frames) / sr);
     return 0;
+}
+
+int main(int argc, char** argv) {
+    return bambi::guarded("bambi-render", [&] { return run(argc, argv); });
 }

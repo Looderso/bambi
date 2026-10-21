@@ -21,7 +21,7 @@ constexpr int kNodes = 32;  // per smooth stretch of the region's profile
  *  every kind, count and softness at orders 1-7 is 4e-6 off. */
 constexpr int kStretchNodes = 12, kFadeNodes = 8;
 
-bool axial(RegionKind k) { return k == RegionKind::Everywhere || k == RegionKind::Spot || k == RegionKind::Band; }
+bool axial(RegionKind k) { return k == RegionKind::Spot || k == RegionKind::Band; }
 
 /*  The 2-D rule for a kind that is not axial: theta is Gauss-Legendre in z = cos(theta), in panels,
  *  so the polynomial half of the integrand is exact within a panel; phi is uniform, which is what a
@@ -70,7 +70,6 @@ void RegionOperator::prepare(int order, int maxFrames) {
     probeIn_.assign(C, 0.0f);
     probeOut_.assign(C, 0.0f);
     identity_ = true;
-    refused_ = false;
     prepareDense();
 }
 
@@ -481,15 +480,12 @@ void RegionOperator::dotHarmonics(const Region& own) noexcept {
     rotateSH(ds.rotationSum, L, own_, coef_);
 }
 
-bool RegionOperator::set(const Region& region) noexcept {
+void RegionOperator::set(const Region& region) noexcept {
     outside_ = region.side == RegionSide::Outside;
-    /*  A kind that cannot be projected is `refused`, and passes the field whichever side was asked
-     *  for -- silencing it would be an answer, and a wrong one. Everywhere is a real region: its
-     *  outside is nothing. */
-    refused_ = false;  //  every kind that exists is projected
+    //  Everywhere is a real region, its outside nothing: the field passes whole, or not at all.
     identity_ = region.kind == RegionKind::Everywhere;
     axialKind_ = axial(region.kind);
-    if (identity_) return true;
+    if (identity_) return;
 
     /*  A kind that is not axial: the dense matrix depends on the shape alone, so a region that is
      *  only turning -- which is what a modulated one does -- rebuilds nothing here and pays the
@@ -592,15 +588,13 @@ bool RegionOperator::set(const Region& region) noexcept {
         shRotation(r, order_, rotation_);
         fieldBlocks(rotation_, order_, toOwn_, fromOwn_);
     }
-    return true;
 }
 
 void RegionOperator::apply(const float* in, float* out, int frames) noexcept {
     const std::size_t count = static_cast<std::size_t>(numChannels(order_) * frames);
-    if (refused_ || identity_) {
-        //  everything passes; the outside of everything is nothing, but a refused kind is not a region
-        //  that was understood, so it passes whichever side was asked for
-        if (identity_ && outside_)
+    if (identity_) {
+        //  everything passes, and the outside of everything is nothing
+        if (outside_)
             std::fill(out, out + count, 0.0f);
         else
             std::copy(in, in + count, out);
@@ -636,7 +630,7 @@ void RegionOperator::apply(const float* in, float* out, int frames) noexcept {
 }
 
 double RegionOperator::gainAt(Vec3 direction) noexcept {
-    if (refused_ || identity_) return identity_ && outside_ ? 0.0 : 1.0;
+    if (identity_) return outside_ ? 0.0 : 1.0;
     shSN3D(direction, order_, probeY_);
     double energy = 0.0;
     for (std::size_t i = 0; i < probeY_.size(); ++i) {
@@ -646,7 +640,8 @@ double RegionOperator::gainAt(Vec3 direction) noexcept {
     apply(probeIn_.data(), probeOut_.data(), 1);
     double through = 0.0;
     for (std::size_t i = 0; i < probeY_.size(); ++i) through += static_cast<double>(probeOut_[i]) * probeY_[i];
-    //  the band-limited edge rings a little past 0 and 1; a gain does not
+    //  A Rayleigh quotient of a matrix whose eigenvalues lie in [0, 1], so in [0, 1] itself -- up to the float
+    //  rounding of apply(), which a gain must not carry past either end.
     return energy > 0.0 ? std::clamp(through / energy, 0.0, 1.0) : 0.0;
 }
 

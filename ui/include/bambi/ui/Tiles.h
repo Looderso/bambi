@@ -27,6 +27,7 @@ struct TileContent {
     bool tick{false};           ///< the value is signed: it fills from its zero
     double live{0.0};           ///< normalised; where the engine has it now
     bool hasLive{false};        ///< it differs from the set value: mark it
+    bool bar{true};             ///< false for a fact that has no range to fill: a name, a rate taken from elsewhere
 };
 
 float tileHeight(float valueSize);
@@ -39,10 +40,11 @@ juce::Rectangle<float> tileBar(juce::Rectangle<float> tile);
 /// Draws the tile and returns the region that moves on its own: the live mark's extent, past the tile's bottom edge.
 juce::Rectangle<float> drawTile(juce::Graphics& g, juce::Rectangle<float> tile, const TileContent& t);
 
-/// The `index`th tile of a two-column grid starting at `y`, and where a grid of `count` tiles ends.
+/// The `index`th tile of a grid of `columns` -- two on a parameter page -- starting at `y`, and where a grid of
+/// `count` tiles ends.
 juce::Rectangle<float> tileCell(juce::Rectangle<float> content, float y, int index,
-                                float valueSize = theme::type::value);
-float tilesBottom(float y, int count, float valueSize = theme::type::value);
+                                float valueSize = theme::type::value, int columns = 2);
+float tilesBottom(float y, int count, float valueSize = theme::type::value, int columns = 2);
 
 /// A parameter's value across its range, 0 to 1. `m` is the plugin's own manifest.
 double normalised(const ParamManifest& m, ParamId id, double value);

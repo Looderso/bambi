@@ -163,8 +163,8 @@ TEST_CASE("every plugin carries the matrix's amounts, one a source slot and one 
 }
 
 TEST_CASE("each list is what its page specifies, and fits the cap the bus shares") {
-    //  Catches: the cap lowered, or a list grown past it. The static_asserts in each params.cpp
-    //  catch it at compile time; this says what the three actually are, so a change is visible.
+    //  Catches: a list that grows or shrinks without its page being told. The cap lowered, or a list grown
+    //  past it, is a compile error from the static_asserts in each params.cpp.
     CHECK(encodeParams().size() == 117);  // level and sidechain release, clouds' four, the path's fifteen
     CHECK(kNumEchoParams == 151);         // + the same two; + clouds' four
     CHECK(kNumReverbParams == 114);       // + the same two; + clouds' four in each of two slots; - room.shape
@@ -258,6 +258,7 @@ TEST_CASE("every region setting is a modulation target, or is named as not one")
 }
 
 TEST_CASE("a choice parameter lists one choice for every value of its range") {
+    //  Catches: a choice list one short of its range.
     for (const ParamManifest* m : {&encodeParams(), &echoParams(), &reverbParams()})
         for (const ParamDesc& d : m->descs) {
             if (d.type != ParamType::Choice) continue;

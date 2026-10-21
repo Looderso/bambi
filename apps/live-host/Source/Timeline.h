@@ -2,8 +2,8 @@
 #pragma once
 
 #include <functional>
-#include <map>
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <map>
 #include <optional>
 #include <vector>
 
@@ -72,10 +72,10 @@ public:
         repaint();
     }
 
-    std::function<void(const live::Command&)> command;              ///< the transport, asked of Live
-    std::function<live::Playhead()> heard;                          ///< where Live is heard now
-    std::function<void(std::vector<live::Lane>)> lanesChanged;      ///< the lanes, as the user left them
-    std::function<bool(const live::Lane&)> plays;                   ///< whether a lane's instance plays now
+    std::function<void(const live::Command&)> command;          ///< the transport, asked of Live
+    std::function<live::Playhead()> heard;                      ///< where Live is heard now
+    std::function<void(std::vector<live::Lane>)> lanesChanged;  ///< the lanes, as the user left them
+    std::function<bool(const live::Lane&)> plays;               ///< whether a lane's instance plays now
     std::function<void()> refresh;  ///< Live's arrangement asked for again: shown, a view switched, every while
     void visibilityChanged() override;
 
@@ -119,11 +119,11 @@ private:
     void closeMenu();  ///< "+ lane" closed, from whatever level it had reached
 
     Shown s_;
-    double length_{64.0};  ///< quarter notes of song there are to show
+    double length_{64.0};              ///< quarter notes of song there are to show
     live::TimeView time_{0.0, 1.0e9};  ///< what of it the arrangement view shows: the whole song until zoomed
     float left_{0.0f}, width_{1.0f};
     bool wasPlaying_{false};
-    int sinceRefresh_{0};  ///< timer ticks since the arrangement was last asked for
+    int sinceRefresh_{0};         ///< timer ticks since the arrangement was last asked for
     float pressedAt_{0.0f};       ///< where the ruler was pressed: a click there locates
     juce::Point<float> pressed_;  ///< where a lane was last pressed: a click puts, a double click removes, there
     bool tookPoint_{false};       ///< the last press on a lane took a point under it
@@ -135,15 +135,15 @@ private:
         double atMs{0.0};  ///< when it came, on the high-resolution millisecond counter
     };
     std::map<live::TrackId, Seen> playing_;  ///< each track's session clip as last reported
-    float paneTop_{0.0f};    ///< the session view's pane, as last drawn: a wheel below it scrolls its lanes
-    int paneLanes_{0};       ///< the chosen clip's lanes
-    int paneScroll_{0};      ///< the first of them in view
-    float sideways_{0.0f};   ///< pixels the session grid is scrolled to the right
+    float paneTop_{0.0f};   ///< the session view's pane, as last drawn: a wheel below it scrolls its lanes
+    int paneLanes_{0};      ///< the chosen clip's lanes
+    int paneScroll_{0};     ///< the first of them in view
+    float sideways_{0.0f};  ///< pixels the session grid is scrolled to the right
     const live::SessionClip* chosenClip(live::TrackId track) const;
     void paintSession(juce::Graphics& g, float top, const live::Playhead& at, float right);
     void clipPane(juce::Graphics& g, juce::Rectangle<float> area, const live::Playhead& at,
                   const live::SessionClip* clip);
-    juce::Rectangle<float> addAt_;  ///< "+ lane", as last drawn: its menu drops from it
+    juce::Rectangle<float> addAt_;         ///< "+ lane", as last drawn: its menu drops from it
     std::optional<live::TrackId> chosen_;  ///< the row the panel shows
     //  "+ lane", as far as it has come: the instance, then the group
     bool adding_{false};

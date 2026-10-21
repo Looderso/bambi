@@ -5,6 +5,7 @@
 using namespace bambi;
 
 TEST_CASE("a synced tap lasts its steps, and swing rides the offset") {
+    //  Catches: swing that lengthens the loop instead of moving the tap, and swing dropped from the offset.
     TapTiming t;
     t.steps = 3;  // a dotted eighth
     t.offsetSteps = 2;
@@ -25,6 +26,8 @@ TEST_CASE("a synced tap lasts its steps, and swing rides the offset") {
 }
 
 TEST_CASE("the longest tap falls as the order rises, and a synced one too long is halved onto the grid") {
+    //  Catches: a synced tap too long or too short for its order clamped instead of halved or doubled onto the grid,
+    //  and a free time clamped to one cap for every order.
     CHECK(maxTapSeconds(1) == 2.4);
     CHECK(maxTapSeconds(3) == 2.4);
     CHECK(maxTapSeconds(4) == 1.6);
@@ -66,6 +69,8 @@ TEST_CASE("the longest tap falls as the order rises, and a synced one too long i
 }
 
 TEST_CASE("leaving sync moves nothing, and returning snaps to the nearest step") {
+    //  Catches: returning by floor instead of to the nearest step, the swing not held under a step, and swing dropped
+    //  from the offset when leaving sync.
     TapTiming t;
     t.steps = 6, t.offsetSteps = 3, t.swing = 0.25;
     const TapTimes before = tapTimes(t, 96.0, 3);
@@ -102,6 +107,7 @@ TEST_CASE("leaving sync moves nothing, and returning snaps to the nearest step")
 }
 
 TEST_CASE("steps are named as a musician would, and by the fraction otherwise") {
+    //  Catches: a dotted value named as a fraction, and a fraction given a dot.
     CHECK(stepName(1) == "1/16");
     CHECK(stepName(2) == "1/8");
     CHECK(stepName(3) == "1/8.");

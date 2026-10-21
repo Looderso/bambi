@@ -23,7 +23,8 @@ struct FactoryPreset {
 };
 
 /// What every plugin's list starts with: the patch a fresh instance has.
-inline const PresetRef kDefaultPreset{true, "", "default"};
+//  "default" fits the short-string buffer: building this allocates nothing, so it cannot throw.
+inline const PresetRef kDefaultPreset{true, "", "default"};  // NOLINT(bugprone-throwing-static-initialization)
 
 /// What a typed name means: "drums/tight room" is `tight room` in folder `drums`; a further slash
 /// joins the name. Characters a file name can't hold, and leading dots, are dropped. Always a user preset.

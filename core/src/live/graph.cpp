@@ -24,6 +24,7 @@ std::vector<PlanWire> wiresOfReturn(const Return& r) {
 std::vector<PlanWire> wiresOfMain(const Plan& p) {
     if (p.mainWires) return *p.mainWires;
     std::vector<PlanWire> all;
+    all.reserve(p.decoders.size());
     for (std::size_t k = 0; k < p.decoders.size(); ++k) all.push_back({PlanWire::To::Decoder, static_cast<int>(k)});
     return all;
 }

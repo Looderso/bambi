@@ -6,6 +6,7 @@
 #include "bambi/mod/manifest.hpp"
 #include "bambi/patch/blocks.hpp"
 #include "bambi/patch/parameters.hpp"
+#include "bambi/patch/state.hpp"
 
 /*  Echo's parameter list. Hosts save automation by key, so: never rename a key, never remove one,
  *  and append new parameters at the end.
@@ -61,6 +62,11 @@ inline constexpr int kNumEchoParams = EchoParam::kCount;
 BAMBI_DEFINE_PARAM_SPECS(echo, BAMBI_ECHO_PARAM_LIST)
 
 const ParamManifest& echoParams();
+
+/// What a new Echo is, and what its "default" preset loads: every parameter at its default and its region
+/// everywhere, so it echoes the whole field until a region is drawn. A saved state that names no region still
+/// reads as a spot, as it was written.
+PluginState freshEchoState();
 
 const ModManifest& echoMod();
 

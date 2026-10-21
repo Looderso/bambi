@@ -212,6 +212,87 @@ Channels renderField(const Layout& l, int block, double seconds, const std::func
     return captured;
 }
 
+/*  Every parameter's text, as a host shows it, reads back as the value it names: value to text to value to text
+    gives the same text, at several points of each range. Catches text written finer than the value a host stores,
+    which a host's text field, and the CLAP validator, see drift in its last digit. */
+template <class Processor>
+void checkParameterText() {
+    std::printf("\nevery parameter's text reads back as the value it names\n");
+    Processor proc;
+    int unstable = 0;
+    juce::String first;
+    for (auto* p : proc.getParameters()) {
+        for (const float at : {0.0f, 0.1f, 0.3461538f, 0.4242424f, 0.5f, 0.77f, 1.0f}) {
+            //  as bytes, the way a CLAP wrapper passes a host's text back: not read as UTF-8
+            const juce::String text = p->getText(at, 64);
+            const juce::String again = p->getText(p->getValueForText(juce::String(text.toRawUTF8())), 64);
+            if (text != again) {
+                if (unstable++ == 0) first = p->getName(64) + ": " + text + " -> " + again;
+            }
+        }
+    }
+    check(unstable == 0, unstable == 0 ? juce::String("every parameter, at seven points of its range")
+                                       : juce::String(unstable) + " unstable, first " + first);
+}
+
+/*  A host's save and reload gives back what it saved: every parameter set to a value of its range, as a host sets
+    one, a block processed, the state saved, and a fresh instance loaded from it reads every parameter as it was;
+    saving that instance again gives the same bytes, and the load tells the host every value may have moved.
+    Catches a parameter the state leaves out or reads back to another value, a load that applies its values late or
+    not to the host's parameters, a save that writes a reloaded value a rounding away, and a load the host is not
+    told of -- a CLAP host would keep showing the old values. */
+template <class Processor>
+void checkStateRoundTrip(const Layout& l) {
+    std::printf("\nthe state a host saves reloads every parameter as it was\n");
+    Processor a;
+    a.setBusesLayout(l);
+    a.setRateAndBufferSizeDetails(kCheckRate, 128);
+    a.prepareToPlay(kCheckRate, 128);
+    juce::Random random(7);
+    for (auto* p : a.getParameters()) {
+        if (p == a.getBypassParameter()) continue;
+        //  a stepped parameter at one of its steps, as a host sets it
+        const int steps = p->getNumSteps();
+        const float r = random.nextFloat();
+        const bool discrete = p->isDiscrete() && steps > 1 && steps < 0x7fffffff;
+        p->setValueNotifyingHost(
+            discrete ? std::round(r * static_cast<float>(steps - 1)) / static_cast<float>(steps - 1) : r);
+    }
+    juce::AudioBuffer<float> buffer(std::max(l.getMainInputChannelSet().size() + l.getChannelSet(true, 1).size(),
+                                             l.getMainOutputChannelSet().size()),
+                                    128);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    a.processBlock(buffer, midi);
+    juce::MemoryBlock saved;
+    a.getStateInformation(saved);
+    Processor b;
+    struct Told : juce::AudioProcessorListener {
+        int programs = 0;
+        void audioProcessorParameterChanged(juce::AudioProcessor*, int, float) override {}
+        void audioProcessorChanged(juce::AudioProcessor*, const ChangeDetails& d) override {
+            programs += d.programChanged ? 1 : 0;
+        }
+    } told;
+    b.addListener(&told);
+    b.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+    b.removeListener(&told);
+    check(told.programs > 0, "the host is told every value may have moved");
+    int moved = 0;
+    juce::String first;
+    const auto& pa = a.getParameters();
+    const auto& pb = b.getParameters();
+    for (int i = 0; i < std::min(pa.size(), pb.size()); ++i)
+        if (std::abs(pa[i]->getValue() - pb[i]->getValue()) > 1.0e-6f && moved++ == 0)
+            first = pa[i]->getName(64) + " " + pa[i]->getText(pa[i]->getValue(), 32) + " -> " +
+                    pb[i]->getText(pb[i]->getValue(), 32);
+    check(moved == 0,
+          moved == 0 ? juce::String("every parameter as it was") : juce::String(moved) + " moved, first " + first);
+    juce::MemoryBlock again;
+    b.getStateInformation(again);
+    check(again == saved, "and saved again, the same bytes");
+}
+
 /*  The host's bypass is the plugin's own parameter, keyed `bypass`: switched on a quarter-second in and
     off at three quarters, the output fades over `PluginProcessor::kBypassFade` to what `bypassed` says the
     plugin plays for the test field (main output channel, sample), and back to the engine. */

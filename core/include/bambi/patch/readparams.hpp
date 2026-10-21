@@ -22,10 +22,10 @@ inline constexpr std::size_t kMaxKeyChars = 64;
 /// the caller for the length of the call.
 inline std::string_view keyOf(std::array<char, kMaxKeyChars>& into, std::string_view prefix, std::string_view field) {
     const std::size_t n = std::min(prefix.size(), into.size() - 2);
-    std::copy_n(prefix.data(), n, into.data());
+    std::copy_n(prefix.begin(), n, into.begin());
     into[n] = '.';
     const std::size_t f = std::min(field.size(), into.size() - n - 1);
-    std::copy_n(field.data(), f, into.data() + n + 1);
+    std::copy_n(field.begin(), f, into.begin() + static_cast<std::ptrdiff_t>(n + 1));
     return {into.data(), n + 1 + f};
 }
 

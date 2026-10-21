@@ -127,7 +127,7 @@ private:
     juce::Rectangle<float> frame(juce::Graphics& g, juce::Rectangle<float> box, const juce::String& name,
                                  juce::Colour stripe, bool inField, live::TrackId id);
     float tag(juce::Graphics& g, float x, float cy, const juce::String& label, bool inField);
-    float encoderChip(juce::Graphics& g, live::TrackId id, float x, float y, bool removable);
+    float encoderChip(juce::Graphics& g, live::TrackId id, float x, float y);
     float sidechainSlot(juce::Graphics& g, live::TrackId heard, Waiting pick, float x, float y);
     float chain(juce::Graphics& g, live::TrackId owner, float x, float y);
     float plus(juce::Graphics& g, live::TrackId owner, float x, float y);
@@ -160,7 +160,7 @@ private:
     void addInsert(live::TrackId owner, live::Effect effect);
     void setSidechain(Waiting pick, live::TrackId from);
     void attachTo(live::TrackId orphan, live::TrackId target);
-    void removeInsert(live::TrackId owner, std::uint64_t id, juce::String name);
+    void removeInsert(live::TrackId owner, std::uint64_t id, const juce::String& name);
 
     live::Tree tree_;
     live::Shape shape_;
@@ -169,9 +169,9 @@ private:
     std::vector<live::PlayingDecoder> playing_;
     std::map<live::TrackId, Spot> spots_;                                 ///< every line, as last drawn
     std::map<std::uint64_t, juce::Rectangle<float>> decoderAt_;           ///< each Decoder's box, as last drawn
-    float gutter_{ui::theme::routing::wireGutter};  ///< between the columns, as last laid out
+    float gutter_{ui::theme::routing::wireGutter};                        ///< between the columns, as last laid out
     std::map<live::TrackId, std::vector<juce::Rectangle<float>>> chips_;  ///< each chain's insert chips, as drawn
-    std::optional<live::TrackId> chosen_;  ///< the node whose wires are open
+    std::optional<live::TrackId> chosen_;                                 ///< the node whose wires are open
     ui::Armed<Waiting> armed_;
     std::optional<Menu> menu_;
     std::optional<Moving> moving_;

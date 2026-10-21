@@ -61,7 +61,7 @@ TEST_CASE("a region copied from Echo's send lands on Reverb's return, without th
     CHECK(std::isnan(written(writes, reverbParams(), "region1.yaw")));
 }
 
-/*  Row by row: catches a row from an LFO set to continue travelling (it agrees with nothing), a
+/*  Row by row. Catches: a row from an LFO set to continue travelling (it agrees with nothing), a
  *  row from an envelope travelling (it fires from another track's notes), and the LFO arriving
  *  without its settings, its amount or its index, which is the sample-and-hold seed. */
 TEST_CASE("the rows that travel are those from LFOs set to restart, each with its LFO") {
@@ -144,9 +144,9 @@ TEST_CASE("what is on the clipboard is a current region descriptor, or it is not
         text.replace(where, from.size(), to);
         return readRegionClip(text).has_value();
     };
-    CHECK_FALSE(mangled("\"bambi.region\":1", "\"bambi.region\":1.9"));
+    CHECK_FALSE(mangled("\"bambi.region\":1.0", "\"bambi.region\":1.9"));
     CHECK_FALSE(mangled("\"yaw\":40", "\"yaws\":40"));
-    CHECK_FALSE(mangled("\"yaw\":40", "\"yaw\":\"north\""));
+    CHECK_FALSE(mangled("\"yaw\":40.0", "\"yaw\":\"north\""));
     CHECK_FALSE(readRegionClip(R"({"bambi.region":1,"kind":"band","fields":{}})").has_value());
     CHECK_FALSE(readRegionClip(good + std::string(20000, ' ')).has_value());  // not ours to parse
 
@@ -176,11 +176,11 @@ TEST_CASE("a clip survives the clipboard, and a side written into one by hand do
     const RegionClip out = copyRegion(echoMod(), s, 0, "region1");
     const auto back = readRegionClip(writeRegionClip(out));
     REQUIRE(back.has_value());
-    CHECK(back->shape == out.shape);
-    CHECK(back->fields == out.fields);
-    REQUIRE(back->rows.size() == 1);
-    CHECK(back->rows[0].depth == doctest::Approx(-0.25));
-    CHECK(describeRegionClip(*back) == "band, 78 % soft, sets lfo 1");
+    CHECK(back.value().shape == out.shape);
+    CHECK(back.value().fields == out.fields);
+    REQUIRE(back.value().rows.size() == 1);
+    CHECK(back.value().rows[0].depth == doctest::Approx(-0.25));
+    CHECK(describeRegionClip(back.value()) == "band, 78 % soft, sets lfo 1");
 
     //  text is text: a `side` written into a descriptor by hand makes it not a descriptor
     std::string smuggled = writeRegionClip(out);

@@ -61,6 +61,20 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/clap-juce-extensions
 # plugin -- so they are configured once, here, for all of them. No web view, no curl, no VST2.
 add_compile_definitions(JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
 
+# Link-time optimisation of the plugins and what they are built from, as a release is built. Off, a plugin links in
+# seconds instead of minutes, for a build that only checks the code. The flags are JUCE's recommended ones, except
+# that GCC is told at link time to use every core: given no number, it optimises on one. What it compiles and what
+# it links are the same either way.
+option(BAMBI_LTO "Link-time optimise the plugins, as a release is" ON)
+add_library(bambi-lto INTERFACE)
+if(BAMBI_LTO AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  target_compile_options(bambi-lto INTERFACE $<$<CONFIG:Release>:-flto>)
+  target_link_options(bambi-lto INTERFACE $<$<CONFIG:Release>:-flto=auto>)
+elseif(BAMBI_LTO)
+  target_link_libraries(bambi-lto INTERFACE juce::juce_recommended_lto_flags)
+endif()
+message(STATUS "link-time optimisation: ${BAMBI_LTO}")
+
 # JUCE, compiled once, for the tools. A module links its sources into every target that links it, so the
 # libraries below take only its headers and settings (bambi-juce-headers), and each binary gets exactly one
 # copy of JUCE: a plugin the one JUCE's plugin wrapper compiles into it, a tool this one. No library links a
@@ -97,7 +111,7 @@ function(bambi_plugin_code target)
   target_compile_definitions(${target} PRIVATE "JucePlugin_Name=\"${C_NAME}\"")
   target_link_libraries(${target}
       PUBLIC ${C_LIBRARIES} bambi-host bambi-ui bambi-editor clap_juce_extensions
-      PRIVATE juce::juce_recommended_config_flags juce::juce_recommended_lto_flags
+      PRIVATE juce::juce_recommended_config_flags bambi-lto
               juce::juce_recommended_warning_flags)
 endfunction()
 

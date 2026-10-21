@@ -72,43 +72,73 @@ FdnTail tailFor(double lineScale, double mixing, const TailSettings& s) {
 }  // namespace
 
 TEST_CASE("the decay that is set is the decay that comes out") {
-    //  Measured: room 0.50 set, 0.53 out; hall 1.90, 1.91. Here, flat
-    //  across the bands so the one number means the whole tail. Catches: a gain a pass worked out from
-    //  the line without its allpass, the -3 made a -6, and the three taps' decays left out.
+    //  Flat across the bands, so the one number means the whole tail. Catches: a gain a pass worked out from the
+    //  line without its allpass, the -3 made a -6, and a read between samples that takes a share of the highs
+    //  each pass and shortens the decay.
     for (const auto& [scale, mixing, rt] :
          {std::tuple{0.55, 0.025, 0.5}, std::tuple{1.2, 0.06, 1.9}, std::tuple{2.0, 0.08, 6.5}}) {
         FdnTail tail = tailFor(scale, mixing, flat(rt));
         const double measured =
             rt60(impulseResponse(tail, rt * 2.0 + 0.5));  // well past the fit: a short record bends the curve down
         INFO("set ", rt, " measured ", measured);
-        /*  Measured over the whole band it comes out 5 to 6 % short at every length -- 0.475, 1.795 and
-            6.08 s -- with the drift or without it. The allpass in each line is why: a trip's gain is
-            worked out for the line plus the allpass's length, which is the allpass's delay only on
-            average. Where its delay is a third of that the trip is shorter than its gain assumes and
-            decays faster, and a fit to the first 35 dB hears those modes first. It is accepted by ear
-            (its cathedral measures 6.18 for 6.50); what is asserted is that it stays that and no worse. */
-        CHECK(measured < rt);
-        CHECK(measured > 0.92 * rt);
+        CHECK(std::abs(measured / rt - 1.0) < 0.02);  // measured: 0.500, 1.902 and 6.50 s
     }
 }
 
 TEST_CASE("each band rings as long as it was asked to, and the tone does not follow the decay") {
+    //  Catches: a band's shelf in the loop left out, a sub-sonic blocker that reaches up into the lows and shortens
+    //  them, a read between samples that dulls the highs each pass, and the input's correction left out or worked
+    //  out from the decay times rather than from the energy the lines hold.
     TailSettings s = flat(2.0);
     s.rtLow = 2.8;
     s.rtHigh = 0.9;
     FdnTail tail = tailFor(1.2, 0.06, s);
-    //  read an octave below the low shelf's corner and an octave above the high one's, clear of both
-    //  transitions -- and clear of the 25 Hz blocker in the loop, which shortens what is near it
+    //  read an octave below the low shelf's corner and an octave above the high one's, clear of both transitions
     const auto h2 = impulseResponse(tail, 6.0);
     const BiquadCoeffs lows = lowPass(140.0, std::sqrt(0.5), kFs), highs = highPass(9000.0, std::sqrt(0.5), kFs);
     const double low = rt60(h2, &lows), high = rt60(h2, &highs);
     INFO("low ", low, " high ", high);
-    CHECK(low == doctest::Approx(2.8).epsilon(0.1));
-    CHECK(high == doctest::Approx(0.9).epsilon(0.1));
+    CHECK(std::abs(low / 2.8 - 1.0) < 0.03);  // measured 2.76 and 0.89 s
+    CHECK(std::abs(high / 0.9 - 1.0) < 0.03);
+
+    //  and each band is as loud as in a tail that rings evenly at the mid's decay: a band's energy grows with how
+    //  long it rings, and the input's correction takes that back out (measured -0.04 dB in the lows, +0.01 in the
+    //  highs; worked out from the decay times instead, -0.42 and +1.28)
+    FdnTail even = tailFor(1.2, 0.06, flat(2.0));
+    const auto e2 = impulseResponse(even, 6.0);
+    const auto bandDb = [&](const BiquadCoeffs& band) {
+        double shaped = 0.0, flatOnes = 0.0;
+        for (int k = 0; k < K; ++k) {
+            BiquadState a1, a2, b1, b2;
+            for (std::size_t f = 0; f < h2.size() / K; ++f) {
+                const double x = run(band, a2, run(band, a1, h2[f * K + static_cast<std::size_t>(k)]));
+                const double y = run(band, b2, run(band, b1, e2[f * K + static_cast<std::size_t>(k)]));
+                shaped += x * x;
+                flatOnes += y * y;
+            }
+        }
+        return 10.0 * std::log10(shaped / flatOnes);
+    };
+    INFO("low ", bandDb(lows), " dB, high ", bandDb(highs), " dB against an even tail");
+    CHECK(std::abs(bandDb(lows)) < 0.25);
+    CHECK(std::abs(bandDb(highs)) < 0.25);
 }
 
 TEST_CASE("its level is what the formula says, so the reflections can be balanced against it") {
-    //  Every pass keeps g^2 of the energy and three taps each carry a third.
+    //  Catches: the diffuser's share left out of the formula, the two taps along each line counted at the wrong
+    //  level, and a decay shorter than the gains a pass say. Every pass keeps g^2 of the energy and three taps each
+    //  carry a third; the formula is for what reaches the lines, so the input's cuts take their own share first.
+    const auto cutsEnergy = [](const TailSettings& s) {
+        const BiquadCoeffs low = highPass(s.lowCutHz, std::sqrt(0.5), kFs),
+                           high = lowPass(s.highCutHz, std::sqrt(0.5), kFs);
+        BiquadState a, b;
+        double e = 0.0;
+        for (int i = 0; i < static_cast<int>(kFs); ++i) {
+            const double v = run(high, b, run(low, a, i == 0 ? 1.0 : 0.0));
+            e += v * v;
+        }
+        return e;
+    };
     for (const double rt : {0.6, 1.9})
         for (const double diffusion : {0.0, 0.6, 1.0}) {
             TailSettings s = flat(rt);
@@ -118,11 +148,14 @@ TEST_CASE("its level is what the formula says, so the reflections can be balance
             double energy = 0.0;
             for (const float v : h) energy += static_cast<double>(v) * v;
             INFO("rt ", rt, " diffusion ", diffusion, " measured ", energy, " formula ", tail.energyForUnitImpulse());
-            CHECK(energy == doctest::Approx(tail.energyForUnitImpulse()).epsilon(0.1));
+            CHECK(std::abs(energy / (tail.energyForUnitImpulse() * cutsEnergy(s)) - 1.0) <
+                  0.02);  // measured within 0.7 %
         }
 }
 
 TEST_CASE("it is heard at once, not a line's length later, and the pre-delay delays the source alone") {
+    //  Catches: the pre-delay ignored, what was already scattered delayed by it too, and a line heard only from a third
+    //  of the way along.
     FdnTail tail = tailFor(1.2, 0.06, flat(1.9));
     auto h = impulseResponse(tail, 0.2);
     const auto firstSound = [&](const std::vector<float>& x) {
@@ -131,7 +164,7 @@ TEST_CASE("it is heard at once, not a line's length later, and the pre-delay del
         return -1;
     };
     CHECK(firstSound(h) >= 0);
-    CHECK(firstSound(h) < static_cast<int>(0.06 * kFs));  // within the diffuser, not after a 120 ms line
+    CHECK(firstSound(h) < static_cast<int>(0.005 * kFs));  // where a line starts, not a third of a line later
 
     TailSettings late = flat(1.9);
     late.preDelaySeconds = 0.04;
@@ -147,6 +180,7 @@ TEST_CASE("it is heard at once, not a line's length later, and the pre-delay del
 }
 
 TEST_CASE("the drift never bends pitch by more than four cents, and leaves the decay alone") {
+    //  Catches: a drift that changes the delay faster than four cents allow, and one that swings farther than 2 ms.
     FdnTail tail = tailFor(1.2, 0.06, flat(1.9));
     const double limit = std::pow(2.0, 4.0 / 1200.0) - 1.0;
     std::vector<float> in(static_cast<std::size_t>(K), 0.0f), out(in.size());
@@ -174,6 +208,7 @@ TEST_CASE("the drift never bends pitch by more than four cents, and leaves the d
 }
 
 TEST_CASE("a render repeats, a reset is a fresh start, and how it is cut up does not matter") {
+    //  Catches: the drift's random state not restarted by a reset.
     std::vector<float> in(static_cast<std::size_t>(K * 9000));
     unsigned seed = 5u;
     for (float& v : in) {
@@ -202,6 +237,7 @@ TEST_CASE("a render repeats, a reset is a fresh start, and how it is cut up does
 }
 
 TEST_CASE("the longest decay there is stays where it should for half a minute") {
+    //  Catches: an allpass in the loop that is not lossless, which shows only far down a long decay.
     FdnTail tail = tailFor(2.0, 0.08, flat(15.0));
     std::vector<float> in(static_cast<std::size_t>(K * 4800), 0.0f), out(in.size());
     for (int k = 0; k < K; ++k) in[static_cast<std::size_t>(k)] = 0.25f;
@@ -219,4 +255,39 @@ TEST_CASE("the longest decay there is stays where it should for half a minute") 
     }
     CHECK(last < first);  // 29 s later: about 115 dB down on 15 s
     CHECK(10.0 * std::log10(last / first) == doctest::Approx(-60.0 * 28.9 / 15.0).epsilon(0.05));
+}
+
+TEST_CASE("nothing in the loop gains: a tail asked to ring for ever still fades, in the highs too") {
+    //  Catches: a sub-sonic blocker not normalised, which lifts the highs a little every pass, so a decay long
+    //  enough grows there instead of falling.
+    TailSettings s = flat(1.0e6);  // past what the gains allow: each pass held to its most, 0.0004 dB down
+    s.drift = false;
+    FdnTail tail = tailFor(1.2, 0.06, s);
+    tail.reset();
+    const int frames = static_cast<int>(7 * kFs);
+    std::vector<float> in(static_cast<std::size_t>(frames * K), 0.0f), out(in.size());
+    unsigned seed = 9u;
+    for (int f = 0; f < static_cast<int>(0.2 * kFs); ++f)
+        for (int k = 0; k < K; ++k) {
+            seed = seed * 1664525u + 1013904223u;
+            in[static_cast<std::size_t>(f * K + k)] =
+                static_cast<float>(static_cast<int>(seed >> 8) % 2001 - 1000) / 4000.0f;
+        }
+    tail.process(in.data(), nullptr, out.data(), frames);
+    const BiquadCoeffs highs = highPass(12000.0, std::sqrt(0.5), kFs);
+    const auto highEnergy = [&](int fromSecond) {
+        double e = 0.0;
+        for (int k = 0; k < K; ++k) {
+            BiquadState a, b;
+            for (int f = 0; f < frames; ++f) {
+                const double v = run(highs, b, run(highs, a, out[static_cast<std::size_t>(f * K + k)]));
+                if (f >= fromSecond * static_cast<int>(kFs) && f < (fromSecond + 1) * static_cast<int>(kFs)) e += v * v;
+            }
+        }
+        return e;
+    };
+    const double early = highEnergy(1), late = highEnergy(6);
+    INFO("highs from the 2nd to the 7th second: ", 10.0 * std::log10(late / early), " dB");
+    CHECK(late < early);                            // about 0.01 dB over these five seconds
+    CHECK(10.0 * std::log10(late / early) > -0.1);  // and no more than that
 }

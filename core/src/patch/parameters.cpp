@@ -103,12 +103,20 @@ std::string formatParameter(const ParamDesc& d, double value) {
     if (d.type == ParamType::Bool) return value > 0.5 ? "on" : "off";
 
     const std::string_view unit = d.unit;
-    if (unit == "deg") return formatNumber(value, 0) + "\xc2\xb0";
-    if (unit == "deg/s") return formatNumber(value, 0) + " \xc2\xb0/s";
-    if (unit == "dB") return formatNumber(value, 1) + " dB";
-    if (unit == "Hz") return formatNumber(value, 2) + " hz";
-    if (unit == "ms") return formatNumber(value, 0) + " ms";
-    return formatNumber(value, 2);
+    std::string number = formatNumber(value, displayDecimals(d));
+    if (unit == "deg") return number + "\xc2\xb0";
+    if (unit == "deg/s") return number + " \xc2\xb0/s";
+    if (unit == "dB") return number + " dB";
+    if (unit == "Hz") return number + " hz";
+    if (unit == "ms") return number + " ms";
+    return number;
+}
+
+int displayDecimals(const ParamDesc& d) {
+    const std::string_view unit = d.unit;
+    if (unit == "deg" || unit == "deg/s" || unit == "ms") return 0;
+    if (unit == "dB") return 1;
+    return 2;
 }
 
 }  // namespace bambi

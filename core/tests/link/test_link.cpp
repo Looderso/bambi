@@ -128,6 +128,8 @@ bool consistent(const LinkStatic& st) {
 // ------------------------------------------------------------------------- observation
 
 TEST_CASE("two instances see each other's paths and positions") {
+    //  Catches: a peer that never published a position counted as having one, so a viewer draws a dot at join()'s
+    //  default.
     Session s;
     const Uuid idA = Uuid::generate(), idB = Uuid::generate();
     LinkBus a, b;
@@ -173,6 +175,7 @@ TEST_CASE("two instances see each other's paths and positions") {
  *  give this, because hosts sandbox plugins across several processes -- which is the whole
  *  reason identity carries a session uuid. */
 TEST_CASE("different sessions are invisible to each other") {
+    //  Catches: a segment name that does not depend on the session, so two open projects share one bus.
     Session s1, s2;
     LinkBus a, b;
     REQUIRE(a.open(s1.id, Uuid::generate(), Product::Encoder));
@@ -186,6 +189,8 @@ TEST_CASE("different sessions are invisible to each other") {
 }
 
 TEST_CASE("a reader never sees half of one position and half of another") {
+    //  Catches: a dynamic read that does not check its sequence again after the copy, and so hands back a torn
+    //  position.
     Session s;
     const Uuid writerId = Uuid::generate();
     LinkBus writer, reader;
@@ -282,6 +287,7 @@ TEST_CASE("a path and its generation always arrive together") {
 }
 
 TEST_CASE("the scene copies a path again only when its generation moves") {
+    //  Catches: the scene reading every peer's path every frame instead of only when its generation changed.
     Session s;
     const Uuid idA = Uuid::generate();
     LinkBus a, viewer;
@@ -304,6 +310,7 @@ TEST_CASE("the scene copies a path again only when its generation moves") {
 }
 
 TEST_CASE("a peer that leaves also leaves the scene") {
+    //  Catches: close() leaving the slot to lapse with the heartbeat, and the scene keeping an entry it no longer sees.
     Session s;
     LinkBus viewer;
     REQUIRE(viewer.open(s.id, Uuid::generate(), Product::Encoder));
@@ -326,6 +333,8 @@ TEST_CASE("a peer that leaves also leaves the scene") {
 }
 
 TEST_CASE("a path is never read back under the wrong instance's name") {
+    //  Catches: readStatic not checking that the slot still holds the instance asked for, so a newcomer's path arrives
+    //  under the old name.
     Session s;
     LinkBus viewer;
     REQUIRE(viewer.open(s.id, Uuid::generate(), Product::Encoder));
@@ -354,6 +363,8 @@ TEST_CASE("a path is never read back under the wrong instance's name") {
 }
 
 TEST_CASE("a path is sampled at equal steps of arc length, untransformed") {
+    //  Catches: a closed path sampled over [0, 1] like an open one, which repeats its first point and puts every other
+    //  off its step.
     for (GeneratorType g : {GeneratorType::Orbit, GeneratorType::Spiral}) {
         const Trajectory t = buildPath(g);
         LinkStatic st;
@@ -374,6 +385,7 @@ TEST_CASE("a path is sampled at equal steps of arc length, untransformed") {
 }
 
 TEST_CASE("the dynamic section carries a transform the receiver can apply") {
+    //  Catches: a rotation field crossed or dropped on its way into the transform.
     LinkDynamic d;
     d.yawRad = 0.5f;
     d.pitchRad = -0.25f;
@@ -389,6 +401,8 @@ TEST_CASE("the dynamic section carries a transform the receiver can apply") {
 // ----------------------------------------------------------------------------- publisher
 
 TEST_CASE("the publisher keeps an instance visible, and in place, when audio stops") {
+    //  Catches: a tick with nothing new submitted publishing a default instead of the last position, so the source
+    //  jumps when audio stops.
     Session s;
     const Uuid id = Uuid::generate();
     LinkBus bus, viewer;
@@ -426,6 +440,8 @@ TEST_CASE("the publisher keeps an instance visible, and in place, when audio sto
 }
 
 TEST_CASE("audio thread to scene, end to end, under contention") {
+    //  Catches: a triple buffer that lets the audio thread go on writing the slot it has just handed over, so a tick
+    //  publishes a half-written position.
     Session s;
     const Uuid id = Uuid::generate();
     LinkBus bus, viewer;
@@ -446,7 +462,7 @@ TEST_CASE("audio thread to scene, end to end, under contention") {
     std::thread timer([&] {
         while (!stop.load(std::memory_order_relaxed)) {
             pub.tick();
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::yield();  // ticks back to back, so every stage is under contention
         }
     });
 
@@ -477,6 +493,8 @@ TEST_CASE("audio thread to scene, end to end, under contention") {
 // ------------------------------------------------------------------------------ commands
 
 TEST_CASE("a command reaches its target, exactly once, stamped with the sender") {
+    //  Catches: the bus not stamping the sender, and a drain that does not move the tail, so commands are delivered
+    //  again.
     Session s;
     const Uuid idA = Uuid::generate(), idB = Uuid::generate();
     LinkBus a, b;
@@ -505,6 +523,7 @@ TEST_CASE("a command reaches its target, exactly once, stamped with the sender")
 }
 
 TEST_CASE("commands to a departed instance fail rather than vanish silently") {
+    //  Catches: a send to an id nobody holds reported as delivered.
     Session s;
     const Uuid idB = Uuid::generate();
     LinkBus a;
@@ -520,6 +539,8 @@ TEST_CASE("commands to a departed instance fail rather than vanish silently") {
 /*  A full inbox refuses. Whatever the sender then decides, the refusal must be clean: it may
  *  not overwrite unread commands or corrupt the ring. */
 TEST_CASE("a full inbox refuses without corrupting what is already queued") {
+    //  Catches: no fullness test, which overwrites unread commands, and an off-by-one that lets one value into the
+    //  reserve.
     Session s;
     const Uuid idB = Uuid::generate();
     LinkBus a, b;
@@ -570,6 +591,7 @@ TEST_CASE("many senders can command one receiver without losing or duplicating")
     std::atomic<int> sent{0};
     std::atomic<bool> go{false};
     std::vector<std::thread> threads;
+    threads.reserve(kSenders);
     for (int i = 0; i < kSenders; ++i) {
         threads.emplace_back([&, i] {
             while (!go.load()) {}
@@ -607,6 +629,7 @@ TEST_CASE("many senders can command one receiver without losing or duplicating")
 // --------------------------------------------------------------------------- boundaries
 
 TEST_CASE("the bus is bounded, and says so instead of failing obscurely") {
+    //  Catches: a full bus reported as joined, and a refusal that does not say why.
     Session s;
     std::vector<std::unique_ptr<LinkBus>> buses;
     for (int i = 0; i < kLinkMaxInstances; ++i) {
@@ -620,6 +643,7 @@ TEST_CASE("the bus is bounded, and says so instead of failing obscurely") {
 }
 
 TEST_CASE("a closed bus is safe to use — the plugin must survive shared memory being absent") {
+    //  Catches: a publish or a poll that touches the map without checking it is there.
     LinkBus dead;
     CHECK_FALSE(dead.isOpen());
     dead.publishStatic(LinkStatic{});
@@ -647,7 +671,8 @@ TEST_CASE("a closed bus is safe to use — the plugin must survive shared memory
     CHECK(scene.entries().empty());
 }
 
-TEST_CASE("a command naming a parameter this build lacks resolves to Count, not to garbage") {
+TEST_CASE("a command naming a parameter this build lacks resolves to no parameter, not to garbage") {
+    //  Catches: an index above 0xFFFF truncated into a parameter id instead of refused.
     LinkCommand c;
     c.param = 999999;
     CHECK(c.paramId() == kNoParamId);
@@ -657,6 +682,7 @@ TEST_CASE("a command naming a parameter this build lacks resolves to Count, not 
  *  ages old, and a live source vanishes from the scene for a frame, at random -- which looks like a race in the
  *  seqlock and is not one. */
 TEST_CASE("a heartbeat from the future is fresh, not 584000 years stale") {
+    //  Catches: the unsigned subtraction left unguarded, so a heartbeat ahead of the reader's clock reads as ages old.
     const std::uint64_t now = 1'000'000'000;
 
     CHECK(linkHeartbeatAlive(now, now));
@@ -705,6 +731,8 @@ std::string describe(const std::vector<LinkEditAction>& actions) {
 }  // namespace
 
 TEST_CASE("a gesture's endpoints still fit when values have filled the inbox") {
+    //  Catches: the endpoints held to the values' capacity, so a release is refused after a long drag; and a reserve
+    //  with no bound of its own.
     Session s;
     const Uuid idB = Uuid::generate();
     LinkBus a, b;
@@ -743,6 +771,7 @@ TEST_CASE("a gesture's endpoints still fit when values have filled the inbox") {
 }
 
 TEST_CASE("a remote gesture becomes one well-formed host gesture") {
+    //  Catches: the release value dropped, and a gesture left open after its end.
     const Uuid a = Uuid::generate();
     LinkEditReceiver rx;
     std::vector<LinkEditAction> out;
@@ -770,6 +799,7 @@ TEST_CASE("a command for a parameter past the cap is dropped, not indexed") {
 }
 
 TEST_CASE("the release value lands even when every value in between was lost") {
+    //  Catches: the release's own value dropped, so the host keeps the press value.
     const Uuid a = Uuid::generate();
     LinkEditReceiver rx;
     std::vector<LinkEditAction> out;
@@ -780,6 +810,7 @@ TEST_CASE("the release value lands even when every value in between was lost") {
 }
 
 TEST_CASE("a change outside any gesture is applied as a complete one") {
+    //  Catches: a lone value, or an end whose begin never arrived, applied without a begin and an end around it.
     const Uuid a = Uuid::generate();
     LinkEditReceiver rx;
     std::vector<LinkEditAction> out;
@@ -795,6 +826,7 @@ TEST_CASE("a change outside any gesture is applied as a complete one") {
 }
 
 TEST_CASE("last begin wins: a second window takes over and the first is ignored") {
+    //  Catches: a gesture's owner not checked, so a superseded window's values and release still apply.
     const Uuid a = Uuid::generate(), b = Uuid::generate();
     const ParamId w = EncoderParam::RenderWidth;
     LinkEditReceiver rx;
@@ -809,6 +841,7 @@ TEST_CASE("last begin wins: a second window takes over and the first is ignored"
 }
 
 TEST_CASE("gestures never nest, even when one sender begins twice") {
+    //  Catches: a second begin not ending the open gesture first.
     const Uuid a = Uuid::generate();
     LinkEditReceiver rx;
     std::vector<LinkEditAction> out;
@@ -820,6 +853,7 @@ TEST_CASE("gestures never nest, even when one sender begins twice") {
 }
 
 TEST_CASE("a sender that disappears mid-gesture has it closed for it") {
+    //  Catches: a live sender's gesture closed too, and an abandoned end not marked as abandoned.
     const Uuid a = Uuid::generate(), b = Uuid::generate();
     LinkEditReceiver rx;
     std::vector<LinkEditAction> out;
@@ -844,22 +878,12 @@ TEST_CASE("a sender that disappears mid-gesture has it closed for it") {
     CHECK(rx.openGestures() == 0);
 }
 
-TEST_CASE("a parameter this build lacks never reaches the host") {
-    LinkEditReceiver rx;
-    std::vector<LinkEditAction> out;
-    LinkCommand c;
-    c.param = 999999;
-    c.gesture = kLinkGestureBegin;
-    rx.apply(std::vector{c}, out);
-    CHECK(out.empty());
-    CHECK(rx.openGestures() == 0);
-}
-
 /*  The property the host actually depends on, over traffic nobody wrote by hand: three senders
  *  editing three parameters with random begins, values and ends, and senders leaving at random.
  *  Replayed through a host-side state machine, it must never see a value outside a gesture, a
  *  gesture nested inside another, or -- once everyone has gone -- a gesture left open. */
 TEST_CASE("whatever arrives, the host only ever sees well-formed gestures") {
+    //  Catches: a begin that nests inside an open gesture, and an abandoned gesture left open after its end is sent.
     std::mt19937 rng(20260911);
     const Uuid senders[3] = {Uuid::generate(), Uuid::generate(), Uuid::generate()};
     const ParamId params[3] = {EncoderParam::RenderWidth, EncoderParam::OutputGain, EncoderParam::MotionSpeed};
@@ -922,6 +946,7 @@ TEST_CASE("whatever arrives, the host only ever sees well-formed gestures") {
 // ------------------------------------------------------------------- duplicated instance ids
 
 TEST_CASE("a duplicated instance id is refused while the original lives, and says so") {
+    //  Catches: the check for a live duplicate dropped from join().
     //  A duplicated track carries its original's state, instance id included.
     Session s;
     const Uuid id = Uuid::generate();
@@ -946,28 +971,41 @@ TEST_CASE("a duplicated instance id is refused while the original lives, and say
 }
 
 TEST_CASE("an instance id is free again once its holder has gone") {
+    //  Catches: the duplicate check counting a slot whose holder has closed. The id comes back in another slot than its
+    //  old one, so the old slot really is looked at.
     Session s;
     const Uuid id = Uuid::generate();
-    LinkBus first, second;
+    LinkBus filler, first, second;
+    REQUIRE(filler.open(s.id, Uuid::generate(), Product::Encoder));
     REQUIRE(first.open(s.id, id, Product::Encoder));
+    const int oldSlot = first.selfSlot();
+    filler.close();
     first.close();
     CHECK(second.open(s.id, id, Product::Encoder));
+    CHECK(second.selfSlot() != oldSlot);
     CHECK_FALSE(second.instanceConflict());
 }
 
 TEST_CASE("two duplicates joining at the same moment never both keep the id") {
+    //  Catches: the duplicate check dropped, and a joiner whose heartbeat is not stamped before the check, so neither
+    //  sees the other. What it cannot see is the stamp moved to just after the check: that window is a few instructions
+    //  wide, and the comment in join() guards it.
     int bothKept = 0, rounds = 0;
     for (int round = 0; round < 200; ++round) {
         Session s;
         const Uuid id = Uuid::generate();
         LinkBus a, b;
         std::atomic<int> kept{0};
+        std::atomic<bool> go{false};
         std::thread ta([&] {
+            while (!go.load(std::memory_order_acquire)) std::this_thread::yield();
             if (a.open(s.id, id, Product::Encoder)) kept.fetch_add(1);
         });
         std::thread tb([&] {
+            while (!go.load(std::memory_order_acquire)) std::this_thread::yield();
             if (b.open(s.id, id, Product::Encoder)) kept.fetch_add(1);
         });
+        go.store(true, std::memory_order_release);
         ta.join();
         tb.join();
         if (kept.load() > 1) ++bothKept;
@@ -978,6 +1016,7 @@ TEST_CASE("two duplicates joining at the same moment never both keep the id") {
 }
 
 TEST_CASE("instances joining at once never share a slot, even while one of them is still claiming") {
+    //  Catches: the reaper freeing a slot that is claimed but not yet stamped, and handing it to a second joiner.
     //  join() claims a slot, then stamps its heartbeat. In between, the slot is occupied with a
     //  heartbeat that reads as dead, and a reaper running inside another joiner could free it and
     //  hand it to that second joiner -- two instances writing one slot. A fresh segment makes it
@@ -990,6 +1029,7 @@ TEST_CASE("instances joining at once never share a slot, even while one of them 
         std::array<LinkBus, kJoiners> buses;
         std::atomic<bool> go{false};
         std::vector<std::thread> threads;
+        threads.reserve(kJoiners);
         for (int k = 0; k < kJoiners; ++k)
             threads.emplace_back([&, k] {
                 while (!go.load(std::memory_order_acquire)) std::this_thread::yield();
@@ -1123,6 +1163,7 @@ bool consistent(const LinkPatchEdit& e) {
 }  // namespace
 
 TEST_CASE("the patch format holds the largest matrix the core can make") {
+    //  Catches: a modulation target added or removed without the cell count following it.
     int targets = 0;
     for (int id = 0; id < kNumEncoderParams; ++id)
         targets += isModulationTarget(encodeMod(), static_cast<ParamId>(id)) ? 1 : 0;
@@ -1132,6 +1173,7 @@ TEST_CASE("the patch format holds the largest matrix the core can make") {
 }
 
 TEST_CASE("a patch travels whole: every node and every cell, bit for bit") {
+    //  Catches: a node field packed from the wrong member, and the last cell of a full matrix cut off.
     const PluginState sent = fullPatch();
     REQUIRE(sent.matrix.size() == static_cast<std::size_t>(kLinkMaxCells));
     REQUIRE(sent.trajectory.nodes.size() == static_cast<std::size_t>(kMaxNodes));
@@ -1151,6 +1193,7 @@ TEST_CASE("a patch travels whole: every node and every cell, bit for bit") {
 }
 
 TEST_CASE("a patch from another process is validated before any of it is used") {
+    //  Catches: a non-finite number let through, and an out-of-range generator kept rather than clamped.
     auto p = std::make_unique<LinkPatch>();
     const auto refused = [&](void (*spoil)(LinkPatch&)) {
         packPatch(fullPatch(), *p);
@@ -1197,6 +1240,7 @@ TEST_CASE("a patch from another process is validated before any of it is used") 
 }
 
 TEST_CASE("a peer's controls and source values are there once published, and a new occupant starts without them") {
+    //  Catches: a slot's controls generation or edit count not cleared for its next occupant.
     Session s;
     const Uuid idA = Uuid::generate(), idViewer = Uuid::generate();
     LinkBus viewer;
@@ -1312,6 +1356,8 @@ TEST_CASE("controls and their generation always arrive together") {
 }
 
 TEST_CASE("a patch edit reaches its target once, stamped with its sender, and the newest wins") {
+    //  Catches: the sender taken from the edit rather than stamped by the bus, and an edit taken again because its
+    //  sequence was not kept.
     Session s;
     const Uuid targetId = Uuid::generate(), oneId = Uuid::generate(), twoId = Uuid::generate();
     LinkBus target, one, two;
@@ -1354,6 +1400,7 @@ TEST_CASE("a patch edit reaches its target once, stamped with its sender, and th
 }
 
 TEST_CASE("many windows editing one instance at once never tear an edit") {
+    //  Catches: senders that do not wait for the edit lock, so two write the cell at once.
     Session s;
     const Uuid targetId = Uuid::generate();
     LinkBus target;
@@ -1362,6 +1409,7 @@ TEST_CASE("many windows editing one instance at once never tear an edit") {
     std::atomic<bool> stop{false};
     std::atomic<int> refused{0}, sent{0}, taken{0};
     std::vector<std::thread> senders;
+    senders.reserve(3);
     for (int k = 0; k < 3; ++k) {
         senders.emplace_back([&, k] {
             LinkBus bus;
@@ -1417,6 +1465,8 @@ TEST_CASE("many windows editing one instance at once never tear an edit") {
 }
 
 TEST_CASE("undo, redo, learn and clearing a turn travel as commands, and never reach the host as a parameter") {
+    //  Catches: a command id above 0xFFFF truncated into a parameter, which turns undo into an edit of the first
+    //  parameter.
     for (const auto command : {kLinkCommandUndo, kLinkCommandRedo, kLinkCommandLearn, kLinkCommandZeroTurn}) {
         LinkCommand c;
         c.param = command;
@@ -1434,6 +1484,7 @@ TEST_CASE("undo, redo, learn and clearing a turn travel as commands, and never r
     trying, on the message thread, froze every plugin window in the host every two seconds while it
     retried. The name carries the layout version so the two never meet; this pins both halves. */
 TEST_CASE("a session's segment is named for the layout it holds, and a stale one is refused at once") {
+    //  Catches: the layout version left out of the segment name, so a build meets an older build's segment.
     const Uuid session = Uuid::generate();
     const std::string name = LinkBus::segmentNameFor(session);
     CHECK(name.find("." + std::to_string(kLinkVersion) + ".") != std::string::npos);
@@ -1460,6 +1511,7 @@ TEST_CASE("a session's segment is named for the layout it holds, and a stale one
 }
 
 TEST_CASE("a path is sent with a point every degree of its length, from 128 to 4096") {
+    //  Catches: fewer points than one a degree, which draws a long path as a polygon, and the floor of 128 dropped.
     CHECK(linkPathPointsFor(0.0) == kLinkMinPathPoints);
     CHECK(linkPathPointsFor(90.0 * kDeg2Rad) == kLinkMinPathPoints);  // a short arc still gets the floor
     CHECK(linkPathPointsFor(360.0 * kDeg2Rad) == 360);
@@ -1613,7 +1665,7 @@ TEST_CASE("a peer is called by its label, or by its id until it has one") {
     //  Every window's fallback. Catches: the label read before its static section has arrived, or
     //  the fallback lost.
     LinkScene::Entry e;
-    e.instance = *Uuid::parse("ab12cd34-0000-4000-8000-000000000000");
+    e.instance = Uuid::parse("ab12cd34-0000-4000-8000-000000000000").value();
     e.st.setLabel("kick");
     CHECK(e.label() == "instance ab12");  // generation 0: the static section is not in yet
     e.generation = 1;
