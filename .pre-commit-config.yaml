@@ -1,0 +1,34 @@
+# Hooks for C++ only: what a commit can break, checked in seconds; the headers guard (half a minute) runs before a
+# push. Install once with `pre-commit install --hook-type pre-commit --hook-type pre-push`
+# (pip, pipx or brew install pre-commit; prek reads the same file). CI runs the same checks and more.
+repos:
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v23.1.1
+    hooks:
+      - id: clang-format
+        types_or: [c++, c, objective-c++]
+        files: ^(core|host|editor|ui|plugins|tools|tests)/
+        exclude: ^core/tests/doctest\.h$
+  - repo: local
+    hooks:
+      - id: check-style
+        name: theme roles only (check-style)
+        entry: tools/check-style.sh
+        language: system
+        types_or: [c++, objective-c++]
+        pass_filenames: false
+      - id: check-layers
+        name: core's layers (check-layers)
+        entry: tools/check-layers.sh
+        language: system
+        files: ^core/
+        types_or: [c++]
+        pass_filenames: false
+      - id: check-portable-headers
+        name: public headers compile alone (check-portable --headers)
+        entry: tools/check-portable.sh --headers
+        language: system
+        files: ^core/include/
+        types_or: [c++]
+        pass_filenames: false
+        stages: [pre-push]

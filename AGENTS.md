@@ -23,6 +23,18 @@ tools/verify.sh                                                         # everyt
   `git add`ed before formatting, or it is skipped.
 - Release is the default build type on purpose.
 
+## Before a pull request
+
+- Once per checkout: `pre-commit install --hook-type pre-commit --hook-type pre-push` — formatting, theme roles and
+  layers on every commit, the public-headers guard before a push.
+- `tools/verify.sh` (or `--core` when no plugin code changed) must pass; `tools/check-docs.sh` needs lychee.
+- Then what your change reaches, each in a build tree of its own (`-DBAMBI_SANITIZE=…`, see `docs/BUILDING.md`):
+  core code → `address,undefined` over `bambi-tests`; the link bus → `thread` over `bambi-tests -sf='*link*'`;
+  anything on the audio path → `realtime` (Homebrew or upstream Clang 20+) over the plugin check suites; a plugin's
+  buses, state or parameters → `tools/validate-plugins.sh` (pluginval, clap-validator).
+- CI runs the same, gated by what changed; the exhaustive runs are nightly. A change to docs or `.claude/` alone
+  builds nothing.
+
 ## Where things live
 
 | path | what |

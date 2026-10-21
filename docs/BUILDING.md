@@ -13,6 +13,8 @@ seconds, and the plugins, which do.
   (`libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libxi-dev`) and
   Mesa's GL headers.
 - **clang-format 23**, to check formatting (`brew install llvm`, or `pipx install clang-format`).
+- **lychee**, to check the docs' links (`brew install lychee`), and **pre-commit** for the commit hooks
+  (`brew install pre-commit`, or `pipx install pre-commit`; `prek` reads the same file).
 
 Clone with the JUCE submodule: `git clone --recurse-submodules https://github.com/Looderso/bambi`.
 
@@ -63,7 +65,17 @@ needs no plugin build.
 | `tools/check-layers.sh` | an include that runs upward through `core/`'s layers |
 | `tools/format.sh --check` | a file not formatted with the repository's `.clang-format`; without `--check` it formats |
 | `tools/release/notices.py --check` | a third-party notice that no longer matches what the plugins contain; without `--check` it rewrites them |
+| `tools/check-docs.sh` | a dead link or anchor (lychee), a decision or repository path that no longer exists, a page past its size budget |
 | `tools/check-portable.sh` | macOS only: every public header compiles alone, and an x86-64 build renders what the native one does |
 | `tools/conformance.sh` | every installed plugin, in both formats, negotiating its buses as a host would |
+
+**Sanitizers** run in a build tree of their own: `cmake -B build-asan -G Ninja -DBAMBI_SANITIZE=address,undefined`
+(memory errors, undefined behaviour), `thread` (data races) or `realtime` (an allocation, lock or system call inside
+`processBlock`; needs Clang 20 or later, e.g. `brew install llvm` and `-DCMAKE_CXX_COMPILER=$(brew --prefix llvm)/bin/clang++`).
+`tools/validate-plugins.sh` runs pluginval over every built VST3 and clap-validator over every CLAP. clang-tidy
+reads `.clang-tidy` (`run-clang-tidy -p <build> 'core/src/.*'`).
+
+**Commit hooks** run the fast C++ checks — formatting, theme roles, layers — on what is staged, and the
+headers guard before a push: `pre-commit install --hook-type pre-commit --hook-type pre-push`, once per checkout.
 
 The golden audio hashes belong to one toolchain, Apple clang on arm64; other systems check the rest.

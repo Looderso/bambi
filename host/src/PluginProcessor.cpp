@@ -313,7 +313,7 @@ void PluginProcessor::renderBypassed(float* const* channels, int numChannels, in
     for (int c = std::max(0, mainInputs); c < numChannels; ++c) std::fill_n(channels[c], samples, 0.0f);
 }
 
-void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
+void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) BAMBI_REALTIME {
     load_.begin();
     const SnapshotCensus::InAudioBlock inBlock;
     const int n = buffer.getNumSamples();

@@ -8,7 +8,7 @@
 # and dying in the middle of an edit.
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 LINK=build/bambi-link
 [ -x "$LINK" ] || { echo "build/bambi-link not found — run: cmake --build build" >&2; exit 2; }
 
@@ -17,7 +17,7 @@ SESSION=$(uuid); OTHER=$(uuid); RESHAPE=$(uuid); IDLE=$(uuid); SLEEP=$(uuid); ED
 TMP=$(mktemp -d)
 cleanup() {
   # -9 so that a process left stopped by a failed test does not survive the run.
-  kill -9 $(jobs -p) 2>/dev/null
+  jobs -p | xargs kill -9 2>/dev/null
   for s in "$SESSION" "$OTHER" "$RESHAPE" "$IDLE" "$SLEEP" "$EDIT"; do
     $LINK unlink --session "$s" >/dev/null 2>&1
   done

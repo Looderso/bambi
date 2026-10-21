@@ -1,0 +1,23 @@
+# Bug and performance checks on bambi's own code. Each check switched off is listed with why it is noise here.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-macro-parentheses,
+  -bugprone-std-exception-baseclass,
+  -bugprone-signed-bitwise,
+  -bugprone-misplaced-widening-cast,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -performance-enum-size,
+  -performance-avoid-endl
+# easily-swappable-parameters: DSP signatures are runs of floats by nature.
+# narrowing-conversions, implicit-widening, misplaced-widening-cast: index and sample arithmetic in int, checked by
+#   the tests; over a hundred hits in core, none a bug.
+# macro-parentheses: the parameter lists are X-macro tables whose arguments are tokens, not expressions.
+# std-exception-baseclass: `throw "…"` in a constexpr table is how a malformed table fails to compile.
+# signed-bitwise: the link bus's sequence counters use bit operations on signed counters on purpose.
+# enum-size, avoid-endl: micro-optimisations with no measured cost.
+HeaderFilterRegex: '^.*/(core|host|ui|editor|plugins|apps|platform|tools)/.*'
+WarningsAsErrors: ''
