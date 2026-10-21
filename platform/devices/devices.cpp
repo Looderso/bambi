@@ -11,7 +11,8 @@ namespace bambi::devices {
 #ifdef __APPLE__
 namespace {
 
-AudioObjectPropertyAddress at(AudioObjectPropertySelector s, AudioObjectPropertyScope scope = kAudioObjectPropertyScopeGlobal) {
+AudioObjectPropertyAddress at(AudioObjectPropertySelector s,
+                              AudioObjectPropertyScope scope = kAudioObjectPropertyScopeGlobal) {
     return {s, scope, kAudioObjectPropertyElementMain};
 }
 
@@ -121,8 +122,8 @@ bool Aggregate::create(const std::vector<std::string>& devices, std::string* err
     std::vector<std::string> members{kLoopUid};
     members.insert(members.end(), devices.begin(), devices.end());
     for (const std::string& uid : members) {
-        CFMutableDictionaryRef sub = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks,
-                                                               &kCFTypeDictionaryValueCallBacks);
+        CFMutableDictionaryRef sub =
+            CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         CFStringRef u = cf(uid);
         CFDictionarySetValue(sub, CFSTR(kAudioSubDeviceUIDKey), u);
         const int drift = uid == clock ? 0 : 1;

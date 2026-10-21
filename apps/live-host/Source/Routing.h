@@ -166,7 +166,7 @@ private:
     std::map<live::TrackId, Spot> spots_;                                 ///< every line, as last drawn
     std::map<std::uint64_t, juce::Rectangle<float>> decoderAt_;           ///< each Decoder's box, as last drawn
     std::map<live::TrackId, std::vector<juce::Rectangle<float>>> chips_;  ///< each chain's insert chips, as drawn
-    std::optional<live::TrackId> chosen_;  ///< the node whose wires are open
+    std::optional<live::TrackId> chosen_;                                 ///< the node whose wires are open
     ui::Armed<Waiting> armed_;
     std::optional<Menu> menu_;
     std::optional<Moving> moving_;

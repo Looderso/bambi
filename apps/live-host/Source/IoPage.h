@@ -93,8 +93,8 @@ private:
     struct Block {
         std::vector<int> channels;  ///< row channels, from 1
         std::vector<juce::String> labels;
-        juce::String caption;  ///< under its first channel: what plays there
-        bool host{false};      ///< the host's own: dashed and empty
+        juce::String caption;                                             ///< under its first channel: what plays there
+        bool host{false};                                                 ///< the host's own: dashed and empty
         juce::Colour ink{ui::theme::colour::identity(Product::Decoder)};  ///< its frame: whose it is
     };
     /// Every device of `row` as a card, from `top`, its channels wrapping in `width`; a click on a channel calls

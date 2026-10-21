@@ -22,7 +22,7 @@ fi
 
 check=0
 if [ "${1:-}" = "--check" ]; then check=1; shift; fi
-[ $# -gt 0 ] || set -- core host editor ui plugins tools tests
+[ $# -gt 0 ] || set -- core host editor ui plugins apps platform tools tests
 
 files=$(git ls-files -- "$@" | grep -E '\.(cpp|hpp|h|mm)$' | grep -v -e '^third_party/' -e '/doctest\.h$')
 [ -n "$files" ] || { echo "format: no C++ sources under: $*" >&2; exit 2; }

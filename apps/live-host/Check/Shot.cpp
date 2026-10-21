@@ -26,11 +26,11 @@
 #include <vector>
 
 #include "../Source/IoPage.h"
-#include "bambi/ui/ProductName.h"
 #include "../Source/Rail.h"
 #include "../Source/Routing.h"
 #include "../Source/Timeline.h"
 #include "bambi/host/ShotScale.h"
+#include "bambi/ui/ProductName.h"
 #include "bambi/ui/Theme.h"
 
 using namespace bambi;
@@ -192,8 +192,8 @@ int main(int argc, char** argv) {
 
     //  the column as the host fills it with every kind of plugin playing: the plugins, then the host's own pages at
     //  its foot
-    const std::vector<juce::String> labels{ui::productName(Product::Encoder), "echo", "reverb", "decoder", {}, "I/O",
-                                           "routing", "timeline"};
+    const std::vector<juce::String> labels{
+        ui::productName(Product::Encoder), "echo", "reverb", "decoder", {}, "I/O", "routing", "timeline"};
     const juce::String open = tab ? "I/O" : timeline ? "timeline" : "routing";
     const auto at = std::find(labels.begin(), labels.end(), open) - labels.begin();
     jassert(at < static_cast<std::ptrdiff_t>(labels.size()));

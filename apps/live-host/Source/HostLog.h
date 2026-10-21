@@ -15,8 +15,8 @@ inline void hostLog(const std::string& line) {
     static std::mutex mutex;
     static bool started = false;
     const std::lock_guard<std::mutex> lock(mutex);
-    const auto file = juce::File::getSpecialLocation(juce::File::userHomeDirectory)
-                          .getChildFile("Library/Logs/bambi-live-host.log");
+    const auto file =
+        juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile("Library/Logs/bambi-live-host.log");
     if (!started) {
         started = true;
         if (file.getSize() > 256 * 1024) file.deleteFile();

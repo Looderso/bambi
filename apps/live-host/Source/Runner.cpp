@@ -21,10 +21,9 @@ void arrive(juce::AudioBuffer<float>& scratch, int first, const Runner::Inputs& 
 
 //  A slot's sidechain, the two channels after its main input's from `first`; silent, as the scratch was cleared,
 //  for a step that names none.
-void sidechain(const live::Op& op, juce::AudioBuffer<float>& scratch, int first, const Runner::Inputs& in,
-               int inStart, int frames, float fade0, float fade1) noexcept {
-    if (op.sidechain >= 0)
-        arrive(scratch, first, in, op.sidechain, op.sidechainWidth, inStart, frames, fade0, fade1);
+void sidechain(const live::Op& op, juce::AudioBuffer<float>& scratch, int first, const Runner::Inputs& in, int inStart,
+               int frames, float fade0, float fade1) noexcept {
+    if (op.sidechain >= 0) arrive(scratch, first, in, op.sidechain, op.sidechainWidth, inStart, frames, fade0, fade1);
 }
 
 }  // namespace
@@ -121,8 +120,7 @@ std::unique_ptr<Runner::Program> Runner::build(const live::Compiled& compiled,
 }
 
 bool Runner::prepare(const live::Compiled& compiled, const std::vector<juce::AudioProcessor*>& slots, int levels,
-                     const Setup& setup, juce::String& error, Keep keep,
-                     std::optional<std::vector<Route>> routes) {
+                     const Setup& setup, juce::String& error, Keep keep, std::optional<std::vector<Route>> routes) {
     setup_ = setup;
     field_ = (setup.order + 1) * (setup.order + 1);
     auto p = build(compiled, slots, levels, error, std::move(keep), std::move(routes));
@@ -277,8 +275,8 @@ void Runner::process(const Inputs& loop, juce::AudioBuffer<float>& output, int f
     }
 }
 
-void Runner::piece(const Program& p, const Inputs& loop, int loopStart,
-                   juce::AudioBuffer<float>& output, int outStart, int frames, float fade0, float fade1) noexcept {
+void Runner::piece(const Program& p, const Inputs& loop, int loopStart, juce::AudioBuffer<float>& output, int outStart,
+                   int frames, float fade0, float fade1) noexcept {
     if (clock_ != nullptr) {
         const live::Playhead reading = clock_->reading(sample_);
         playhead_.set(reading, setup_.rate);
@@ -365,8 +363,7 @@ void Runner::piece(const Program& p, const Inputs& loop, int loopStart,
                 run(p, op.slot, s);
                 if (p.straight) {
                     if (op.to != 0) break;  // the first decoder alone, straight out
-                    const int channels =
-                        std::min({output.getNumChannels(), setup_.outputChannels, s.getNumChannels()});
+                    const int channels = std::min({output.getNumChannels(), setup_.outputChannels, s.getNumChannels()});
                     for (int ch = 0; ch < channels; ++ch) output.copyFrom(ch, outStart, s, ch, 0, frames);
                     break;
                 }
@@ -396,8 +393,8 @@ void Runner::piece(const Program& p, const Inputs& loop, int loopStart,
     sample_ += frames;
 }
 
-void Runner::main(const Program& p, const Inputs& in, int inStart, juce::AudioBuffer<float>& output,
-                  int outStart, int frames, float g0, float g1) noexcept {
+void Runner::main(const Program& p, const Inputs& in, int inStart, juce::AudioBuffer<float>& output, int outStart,
+                  int frames, float g0, float g1) noexcept {
     const int capacity = mainLines_.getNumSamples();
     if (setup_.mainInput < 0 || setup_.mainInput + 1 >= in.count || capacity < frames) return;
     for (int ch = 0; ch < 2; ++ch) {

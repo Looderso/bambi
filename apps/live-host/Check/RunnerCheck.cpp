@@ -32,10 +32,10 @@
 #include <set>
 #include <vector>
 
-#include "../Source/IoPage.h"
-#include "../Source/Rail.h"
 #include "../Source/Engine.h"
+#include "../Source/IoPage.h"
 #include "../Source/Plugins.h"
+#include "../Source/Rail.h"
 #include "../Source/Routing.h"
 #include "../Source/Runner.h"
 #include "../Source/Timeline.h"
@@ -1531,7 +1531,7 @@ int railTransportHolds() {
     const bool other = rail.takeKey(juce::KeyPress('a'));
     const float mid = static_cast<float>(ui::theme::metrics::headerHeight) / 2.0f;
     const float glyph = ui::theme::rail::transport;
-    rail.pressAt({ui::theme::rail::padX + glyph / 2.0f, mid});                                        // play
+    rail.pressAt({ui::theme::rail::padX + glyph / 2.0f, mid});                                          // play
     rail.pressAt({ui::theme::rail::padX + glyph + ui::theme::rail::transportGap + glyph / 2.0f, mid});  // stop
     //  Catches: space always asking the same thing, another key taken from the plugins, and the two glyphs'
     //  presses swapped or lost.

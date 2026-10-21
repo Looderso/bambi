@@ -2,14 +2,14 @@
 #include "Plugins.h"
 
 #include <iterator>
+#include <pluginterfaces/vst/ivstcomponent.h>
 
 #include "bambi/decode/params.hpp"
-#include "bambi/link/link.hpp"
-#include "bambi/ui/Draw.h"
 #include "bambi/echo/params.hpp"
 #include "bambi/encode/params.hpp"
+#include "bambi/link/link.hpp"
 #include "bambi/reverb/params.hpp"
-#include <pluginterfaces/vst/ivstcomponent.h>
+#include "bambi/ui/Draw.h"
 
 namespace bambi::livehost {
 
@@ -26,18 +26,67 @@ juce::File installed(const juce::String& name) {
 juce::AudioChannelSet speakerChannels(int channels) {
     using T = juce::AudioChannelSet::ChannelType;
     //  every type JUCE maps to a VST3 speaker, in JUCE's own order, so a set's channel i is the i-th of these
-    static constexpr T kSpeakers[] = {
-        T::left, T::right, T::centre, T::LFE, T::leftSurround, T::rightSurround, T::leftCentre, T::rightCentre,
-        T::centreSurround, T::leftSurroundSide, T::rightSurroundSide, T::topMiddle, T::topFrontLeft,
-        T::topFrontCentre, T::topFrontRight, T::topRearLeft, T::topRearCentre, T::topRearRight, T::LFE2,
-        T::leftSurroundRear, T::rightSurroundRear, T::wideLeft, T::wideRight, T::ambisonicACN0, T::ambisonicACN1,
-        T::ambisonicACN2, T::ambisonicACN3, T::topSideLeft, T::topSideRight, T::ambisonicACN4, T::ambisonicACN5,
-        T::ambisonicACN6, T::ambisonicACN7, T::ambisonicACN8, T::ambisonicACN9, T::ambisonicACN10, T::ambisonicACN11,
-        T::ambisonicACN12, T::ambisonicACN13, T::ambisonicACN14, T::ambisonicACN15, T::ambisonicACN16,
-        T::ambisonicACN17, T::ambisonicACN18, T::ambisonicACN19, T::ambisonicACN20, T::ambisonicACN21,
-        T::ambisonicACN22, T::ambisonicACN23, T::ambisonicACN24, T::bottomFrontLeft, T::bottomFrontCentre,
-        T::bottomFrontRight, T::proximityLeft, T::proximityRight, T::bottomSideLeft, T::bottomSideRight,
-        T::bottomRearLeft, T::bottomRearCentre, T::bottomRearRight, T::discreteChannel0};
+    static constexpr T kSpeakers[] = {T::left,
+                                      T::right,
+                                      T::centre,
+                                      T::LFE,
+                                      T::leftSurround,
+                                      T::rightSurround,
+                                      T::leftCentre,
+                                      T::rightCentre,
+                                      T::centreSurround,
+                                      T::leftSurroundSide,
+                                      T::rightSurroundSide,
+                                      T::topMiddle,
+                                      T::topFrontLeft,
+                                      T::topFrontCentre,
+                                      T::topFrontRight,
+                                      T::topRearLeft,
+                                      T::topRearCentre,
+                                      T::topRearRight,
+                                      T::LFE2,
+                                      T::leftSurroundRear,
+                                      T::rightSurroundRear,
+                                      T::wideLeft,
+                                      T::wideRight,
+                                      T::ambisonicACN0,
+                                      T::ambisonicACN1,
+                                      T::ambisonicACN2,
+                                      T::ambisonicACN3,
+                                      T::topSideLeft,
+                                      T::topSideRight,
+                                      T::ambisonicACN4,
+                                      T::ambisonicACN5,
+                                      T::ambisonicACN6,
+                                      T::ambisonicACN7,
+                                      T::ambisonicACN8,
+                                      T::ambisonicACN9,
+                                      T::ambisonicACN10,
+                                      T::ambisonicACN11,
+                                      T::ambisonicACN12,
+                                      T::ambisonicACN13,
+                                      T::ambisonicACN14,
+                                      T::ambisonicACN15,
+                                      T::ambisonicACN16,
+                                      T::ambisonicACN17,
+                                      T::ambisonicACN18,
+                                      T::ambisonicACN19,
+                                      T::ambisonicACN20,
+                                      T::ambisonicACN21,
+                                      T::ambisonicACN22,
+                                      T::ambisonicACN23,
+                                      T::ambisonicACN24,
+                                      T::bottomFrontLeft,
+                                      T::bottomFrontCentre,
+                                      T::bottomFrontRight,
+                                      T::proximityLeft,
+                                      T::proximityRight,
+                                      T::bottomSideLeft,
+                                      T::bottomSideRight,
+                                      T::bottomRearLeft,
+                                      T::bottomRearCentre,
+                                      T::bottomRearRight,
+                                      T::discreteChannel0};
     static_assert(std::size(kSpeakers) == kMaxVst3BusChannels);
     if (channels < 1 || channels > kMaxVst3BusChannels) return {};
     juce::AudioChannelSet set;
@@ -118,7 +167,8 @@ Loaded loadInstalled(const juce::String& name, Role role, int order, double rate
 
     const bool took = out.plugin->setBusesLayout(layout);
     out.plugin->prepareToPlay(rate, maxBlock);
-    out.status = out.plugin->getName() + ui::kSeparator + "VST3" + ui::kSeparator + describe(out.plugin->getBusesLayout());
+    out.status =
+        out.plugin->getName() + ui::kSeparator + "VST3" + ui::kSeparator + describe(out.plugin->getBusesLayout());
     if (!took) {
         out.status += " -- refused " + describe(layout);
         out.plugin.reset();

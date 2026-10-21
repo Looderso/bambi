@@ -15,10 +15,10 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <string>
 
-#include "IoPage.h"
 #include "Device.h"
 #include "Engine.h"
 #include "HostLog.h"
+#include "IoPage.h"
 #include "Rail.h"
 #include "Routing.h"
 #include "Settings.h"
@@ -179,16 +179,7 @@ private:
         device_.command({play ? bambi::live::Command::Action::Continue : bambi::live::Command::Action::Stop, 0.0});
     }
 
-    enum class View {
-        Encoder,
-        Echo,
-        Reverb,
-        Decoder,
-        Routing,
-        Timeline,
-        Io,
-        Gap
-    };  ///< Gap: between the rail's groups
+    enum class View { Encoder, Echo, Reverb, Decoder, Routing, Timeline, Io, Gap };  ///< Gap: between the rail's groups
 
     //  The plugins' states, kept with the set when they changed. Only while bambi is on: a device sends what the set
     //  kept before it switches on, and the defaults must not be kept over it.
@@ -272,7 +263,8 @@ private:
                 named_.fill({});
                 device_.setLatency(engine_.latencyMs(), 48000.0);
                 //  a window on an Encoder let go of closes before that Encoder can be freed
-                if (view_ != View::Routing && view_ != View::Timeline && view_ != View::Io && !engine_.holds(shownPlugin_))
+                if (view_ != View::Routing && view_ != View::Timeline && view_ != View::Io &&
+                    !engine_.holds(shownPlugin_))
                     showView(view_);
             }
         }
