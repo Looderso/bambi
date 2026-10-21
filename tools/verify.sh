@@ -12,7 +12,7 @@
 # after audio had run -- so "it exits 0" is asserted of each of them, which costs nothing.
 # conformance.sh is not run: it loads the installed bundles as a host does and takes a minute. Run it before a release.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 fail=0
 step() {   # step "name" command...

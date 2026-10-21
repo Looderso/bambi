@@ -16,6 +16,7 @@ Json roundTrip(const Json& j) {
 }  // namespace
 
 TEST_CASE("scalars round-trip") {
+    //  Catches: a boolean read back inverted.
     CHECK(Json::parse("null").isNull());
     CHECK(Json::parse("true").boolOr(false) == true);
     CHECK(Json::parse("false").boolOr(true) == false);
@@ -25,6 +26,7 @@ TEST_CASE("scalars round-trip") {
 }
 
 TEST_CASE("numbers survive a round trip exactly") {
+    //  Catches: a number written at float precision, which moves a preset's values on every save.
     // Preset values must not drift on every save/load cycle.
     const double vals[] = {0.0,     1.0, -1.0, 0.1, 1.0 / 3.0, 1e-9, 1e9, 3.141592653589793, -0.30000000000000004,
                            96000.0, 0.5, 180.0};
@@ -36,6 +38,7 @@ TEST_CASE("numbers survive a round trip exactly") {
 }
 
 TEST_CASE("strings: escapes and unicode") {
+    //  Catches: a string's length taken one short, writing or reading, which cuts its last character.
     const std::string tricky = "quote\" back\\ slash/ \b\f\n\r\t end";
     CHECK(roundTrip(Json{tricky}).stringOr("") == tricky);
 
@@ -51,6 +54,7 @@ TEST_CASE("strings: escapes and unicode") {
 }
 
 TEST_CASE("objects and arrays") {
+    //  Catches: an array's items dropped on reading.
     Json o = Json::object();
     o.set("name", Json{"rhodes"});
     o.set("count", Json{3});
@@ -71,6 +75,7 @@ TEST_CASE("objects and arrays") {
 }
 
 TEST_CASE("objects keep insertion order so presets diff cleanly") {
+    //  Catches: a key set again appended rather than replaced, and a new key put first.
     Json o = Json::object();
     o.set("zebra", Json{1});
     o.set("apple", Json{2});
@@ -87,6 +92,7 @@ TEST_CASE("objects keep insertion order so presets diff cleanly") {
 }
 
 TEST_CASE("reads never throw and degrade to the fallback") {
+    //  Catches: a read of the wrong type returning the stored field rather than the fallback.
     // This is the property that makes loading an older or newer document a non-event.
     const Json s{"text"};
     CHECK(s.numberOr(7) == doctest::Approx(7));
@@ -97,6 +103,7 @@ TEST_CASE("reads never throw and degrade to the fallback") {
 }
 
 TEST_CASE("malformed input fails with a message rather than silently") {
+    //  Catches: a parse error with no message.
     const char* bad[] = {"",        "{",        "}",         "[1,2",           "[1,,2]",
                          "{\"a\"}", "{\"a\":}", "tru",       "\"unterminated", "{\"a\":1} trailing",
                          "[1] [2]", "\"\\q\"",  "\"\\u12\"", "01abc",          "--3"};
@@ -110,8 +117,9 @@ TEST_CASE("malformed input fails with a message rather than silently") {
 }
 
 TEST_CASE("deep nesting is refused rather than blowing the stack") {
+    //  Catches: the depth limit raised past what a document can nest.
     std::string deep(200, '[');
-    deep += "1";
+    deep += '1';
     deep.append(200, ']');
     std::string err;
     Json::parse(deep, &err);
@@ -119,6 +127,7 @@ TEST_CASE("deep nesting is refused rather than blowing the stack") {
 }
 
 TEST_CASE("dump(0) is single-line, dump(2) is indented, both re-parse") {
+    //  Catches: the indent ignored either way.
     Json o = Json::object();
     o.set("a", Json{1});
     Json inner = Json::object();
@@ -138,6 +147,7 @@ TEST_CASE("dump(0) is single-line, dump(2) is indented, both re-parse") {
 }
 
 TEST_CASE("empty containers") {
+    //  Catches: an empty array read back as null.
     CHECK(Json::array().dump(0) == "[]");
     CHECK(Json::object().dump(0) == "{}");
     CHECK(Json::parse("[]").isArray());

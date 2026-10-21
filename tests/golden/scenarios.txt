@@ -77,3 +77,23 @@ reverb-room-grows|--order 3 --seconds 3 --set dry=-60 --at 1.5 room.size=35|earl
 reverb-tail-order-1|--order 3 --seconds 2 --set dry=-60 --set tail_order=1|energy
 reverb-order7|--order 7 --seconds 2 --set dry=-60 --impulse -40,0|energy
 reverb-locate|--order 3 --seconds 3 --set dry=-60 --at 1.5 reset|energy
+#
+# The Decoder's, rendered by bambi-decode-render (a name beginning decode-). The input is a few voices of
+# noise round the listener, or one impulse 10 ms in; the output is the whole bus. `energy` is every output's
+# energy a control step, `headphones` and `speakers` each output's own, head_* the tracker's head the decode
+# undoes, scene_* the scene's turn. Angles in the arguments are degrees, distances metres.
+# Catches: a change to the binaural filters' design, their convolution, or which ear is which.
+decode-headphones|--order 3 --seconds 2|headphones
+# Catches: the head undone the wrong way round, or not at all, on the way to the binaural filters.
+decode-head-turning|--order 3 --seconds 2 --at 0.4 head.yaw=60 --at 1.0 head.yaw=-90 --at 1.0 head.pitch=30|head_yaw
+# Catches: the scene's rates not integrated, or their turn not taken back to zero at a start or a locate.
+decode-scene-turns|--order 3 --seconds 2 --set yaw_rate=90 --set pitch=20 --at 1.2 reset|scene_yaw
+# Ten loudspeakers at ten distances, 1.2 to 2.8 m: each is delayed and attenuated toward the farthest.
+# Catches: a loudspeaker's distance delay or gain dropped, or put on another output.
+decode-speaker-distances|--order 3 --seconds 1 --impulse 40,10 --set headphones=0 --set speakers=1 --set speaker=30,0,2.5 --set speaker=-30,0,2.2 --set speaker=0,0,2.8 --set speaker=110,0,1.6 --set speaker=-110,0,1.4 --set speaker=180,0,1.9 --set speaker=45,40,1.5 --set speaker=-45,40,1.7 --set speaker=135,40,1.2 --set speaker=-135,40,1.3|speakers
+# A layout file's filter matrix: first order, N3D, 44.1 kHz, three outputs, played on a third-order field at 48 kHz.
+# Catches: its N3D inputs read as SN3D, or its filters not resampled to the rate.
+decode-matrix-file|--order 3 --seconds 1 --set headphones=0 --set speakers=1 --set matrix=core/tests/decode/made-matrix.sofa|speakers
+# A first-order field on 7.1.4, and heard through that layout on headphones, which decode the loudspeakers at
+# seventh order. Catches: the loudspeakers encoded at the field's order rather than the decode's.
+decode-narrow-field|--order 1 --seconds 1 --set speakers=1 --set layout=4+7+0 --set through_layout=1 --set headphone_channel=13|energy

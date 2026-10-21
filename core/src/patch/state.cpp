@@ -173,7 +173,7 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         Json js = Json::object();
         js.set("input", Json{name(sl.input)});
         if (sl.input == SourceInput::Link) js.set("link", Json{sl.link.toString()});
-        srcs.set(std::string(sourceName(static_cast<int>(i))), js);
+        srcs.set(sourceName(static_cast<int>(i)), js);
     }
     root.set("sources", srcs);
 

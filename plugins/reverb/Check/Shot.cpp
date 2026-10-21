@@ -7,10 +7,11 @@
 #include "PluginProcessor.h"
 #include "bambi/host/ShotScale.h"
 #include "bambi/host/TestPlayHead.h"
+#include "bambi/io/guarded.hpp"
 #include "bambi/math/sh.hpp"
 #include "bambi/ui/RegionClipboard.h"
 
-int main(int argc, char** argv) {
+static int run(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/reverb.png";
     const float scale = bambi::host::takeShotScale(argc, argv);
@@ -128,4 +129,8 @@ int main(int argc, char** argv) {
     png.writeImageToStream(shot, stream);
     std::printf("%s  %d x %d\n", out.toRawUTF8(), shot.getWidth(), shot.getHeight());
     return 0;
+}
+
+int main(int argc, char** argv) {
+    return bambi::guarded("bambi-reverb-shot", [&] { return run(argc, argv); });
 }

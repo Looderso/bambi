@@ -148,11 +148,16 @@ TEST_CASE("a region's side and shape reach the frame, and the amounts are the sl
 }
 
 TEST_CASE("a frame the engine can play: the default settings drive it without any other help") {
-    //  Catches: a field left unset in resolveReverb, which shows here as a room that makes no sound.
+    //  Catches: a field left unset in resolveReverb, which shows here as a room other than the one set.
+    //  The cathedral, whose every room setting is far from a default frame's.
     ReverbEngine engine;
     engine.prepare(3, 48000.0);
-    engine.set(resolveReverb(ReverbSettings::preset(ReverbPreset::Hall), false));
-    CHECK(engine.room().rtMid == doctest::Approx(1.9));
+    engine.set(resolveReverb(ReverbSettings::preset(ReverbPreset::Cathedral), false));
+    const Room want = deriveRoom({38.0, RoomShape::Tall, 6.5, 0.35, 0.5});
+    CHECK(engine.room().rtMid == doctest::Approx(6.5));
+    CHECK(engine.room().volume == doctest::Approx(want.volume));
+    CHECK(engine.room().rtHigh == doctest::Approx(want.rtHigh));
+    CHECK(engine.room().diffusion == doctest::Approx(want.diffusion));
     CHECK(engine.lines() == 16);
     CHECK(engine.balance().roomEnergy > 0.0);
 }
@@ -196,13 +201,13 @@ TEST_CASE("two levels, not a mix: the dry is an output stage and the room does n
         it really is, so the dry lands at 1/sqrt(K) -- at the hall's 6 m, K is about 1.70, so 0.77 of
         the input rather than all of it. */
     const auto [dryUp, roomUp] = render(0.0, 0.0);
-    CHECK(dryUp == doctest::Approx(1.0 / 1.695).epsilon(0.05));
-    CHECK(roomUp == doctest::Approx(roomOff).epsilon(1e-9));
+    CHECK(std::abs(dryUp * 1.695 - 1.0) < 0.05);
+    CHECK(std::abs(roomUp / roomOff - 1.0) < 1e-9);
 
     //  and the wet moves on its own: -6 dB is a quarter of the energy, with the dry unchanged
     const auto [dryHalf, roomHalf] = render(0.0, -6.0);
-    CHECK(dryHalf == doctest::Approx(dryUp).epsilon(1e-9));
-    CHECK(roomHalf == doctest::Approx(roomUp * 0.25).epsilon(0.05));
+    CHECK(std::abs(dryHalf / dryUp - 1.0) < 1e-9);
+    CHECK(std::abs(roomHalf / (roomUp * 0.25) - 1.0) < 0.05);
 
     //  -60 dB is silence exactly, not "very quiet"
     CHECK(resolveReverb(
@@ -275,8 +280,8 @@ TEST_CASE("a preset reaches the host's own parameters") {
     const auto wanted = ReverbSettings::preset(ReverbPreset::Cathedral);
     CHECK(got.sizeMetres == doctest::Approx(wanted.sizeMetres).epsilon(0.01));
     CHECK(got.decaySeconds == doctest::Approx(wanted.decaySeconds).epsilon(0.01));
-    CHECK(got.tone == doctest::Approx(wanted.tone).epsilon(0.01));
-    CHECK(got.roughness == doctest::Approx(wanted.roughness).epsilon(0.01));
+    CHECK(std::abs(got.tone - wanted.tone) < 0.01);
+    CHECK(std::abs(got.roughness - wanted.roughness) < 0.01);
     CHECK(got.distanceMetres == doctest::Approx(wanted.distanceMetres).epsilon(0.01));
     CHECK(got.lowCutHz == doctest::Approx(wanted.lowCutHz).epsilon(0.02));
     CHECK(got.highCutHz == doctest::Approx(wanted.highCutHz).epsilon(0.02));
@@ -289,7 +294,7 @@ TEST_CASE("a preset reaches the host's own parameters") {
     }
 }
 
-/*  As Echo's, for both slots: catches the hold being dropped, `continue` not running while stopped,
+/*  As Echo's, for both slots. Catches: the hold being dropped, `continue` not running while stopped,
  *  and a restart that clears a turn the user asked to keep -- or keeps one a render needs cleared. */
 TEST_CASE("both regions' turns are held, restarted or left running as rates.retrigger says") {
     ReverbSettings s;

@@ -59,7 +59,7 @@ TEST_CASE("the field turns against the head: a source stays put in the room whil
 }
 
 TEST_CASE("an identity orientation passes the field through unchanged, bit for bit") {
-    //  Catches: blocks built from the wrong matrix, or a glide that never settles.
+    //  Catches: no blocks built before the first turn, so the field is silent until the head moves.
     const int order = 2, C = 9, frames = 1000;
     const std::vector<float> in = noise(C, frames, 4);
     HeadRotation r;
@@ -71,7 +71,7 @@ TEST_CASE("an identity orientation passes the field through unchanged, bit for b
 
 TEST_CASE("a jump in orientation glides, never steps, and gives the same bits however the frames are cut") {
     //  Catches: a turn switched at once, a glide stepping per call instead of per hop along the stream.
-    const int order = 3, C = 16, frames = 6000;
+    const int order = 3, C = 16, frames = 12000;
     const std::vector<float> in = planeWave(direction(0, 0), order, frames, 2);
     // A steady source: the omni channel is the signal, the others follow the direction. Use a constant signal to
     // watch the gains move.
@@ -84,6 +84,13 @@ TEST_CASE("a jump in orientation glides, never steps, and gives the same bits ho
     HeadRotation a, b;
     REQUIRE(a.prepare(order, 48000.0));
     REQUIRE(b.prepare(order, 48000.0));
+    //  played at rest first -- the first orientation is taken at once -- so the turn below is a jump in mid-stream
+    //  for the glide to take
+    a.setOrientation(kIdentity3);
+    b.setOrientation(kIdentity3);
+    std::vector<float> rest(static_cast<std::size_t>(256 * C));
+    a.process(steady.data(), rest.data(), 256);
+    b.process(steady.data(), rest.data(), 256);
     const Mat3 head = rotationAbout({0, 0, 1}, 90.0 * kDeg2Rad);
     a.setOrientation(head);
     b.setOrientation(head);
@@ -95,6 +102,6 @@ TEST_CASE("a jump in orientation glides, never steps, and gives the same bits ho
     for (int f = 1; f < frames; ++f)
         biggest = std::max(biggest, std::abs(outA[static_cast<std::size_t>(f * C + 1)] -
                                              outA[static_cast<std::size_t>((f - 1) * C + 1)]));
-    CHECK(biggest < 0.02f);  // 1.0 spread over hundreds of frames
+    CHECK(biggest < 0.005f);  // a glide: four degrees in its steepest hop, where a jump is the whole turn in one
     CHECK(outA[static_cast<std::size_t>((frames - 1) * C + 1)] == doctest::Approx(-1.0).epsilon(1e-4));
 }

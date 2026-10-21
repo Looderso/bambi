@@ -1,0 +1,32 @@
+# Bug and performance checks on bambi's own code. Each check switched off is listed with why it is noise here.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-macro-parentheses,
+  -bugprone-std-exception-baseclass,
+  -bugprone-signed-bitwise,
+  -bugprone-misplaced-widening-cast,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -performance-enum-size,
+  -performance-avoid-endl,
+  -bugprone-random-generator-seed,
+  -bugprone-throwing-static-initialization
+# easily-swappable-parameters: DSP signatures are runs of floats by nature.
+# narrowing-conversions, implicit-widening, misplaced-widening-cast: index and sample arithmetic in int, checked by
+#   the tests; over a hundred hits in core, none a bug.
+# macro-parentheses: the parameter lists are X-macro tables whose arguments are tokens, not expressions.
+# std-exception-baseclass: `throw "…"` in a constexpr table is how a malformed table fails to compile.
+# signed-bitwise: the link bus's sequence counters use bit operations on signed counters on purpose.
+# enum-size, avoid-endl: micro-optimisations with no measured cost.
+# random-generator-seed: checks, benches and goldens seed with a constant on purpose, so a run repeats.
+# throwing-static-initialization: a constant juce::String or table at namespace scope can only throw out of memory
+#   at start-up, which nothing could recover from.
+# exception-escape ignores what only the allocator throws -- out of memory, a vector asked past its maximum size: a
+#   callback or a tool's main cannot recover from either, and catching them everywhere would hide the rest.
+CheckOptions:
+  bugprone-exception-escape.IgnoredExceptions: 'bad_alloc,bad_array_new_length,length_error'
+HeaderFilterRegex: '^.*/(core|host|ui|editor|plugins|apps|platform|tools)/.*'
+WarningsAsErrors: ''

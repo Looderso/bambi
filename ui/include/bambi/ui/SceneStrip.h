@@ -77,6 +77,6 @@ bool sceneStripKey(SceneViewState& view, const SceneStripAreas& areas, const juc
 /// The strip's controls take their clicks. Called last in a view's paint so they lie on top and a
 /// press on one never orbits the globe. `relayout` runs when `full` flips, before `changed`.
 void addSceneStripClicks(HitArea& on, const SceneStripAreas& areas, SceneViewState& view,
-                         std::function<void()> relayout, std::function<void()> changed);
+                         const std::function<void()>& relayout, const std::function<void()>& changed);
 
 }  // namespace bambi::ui

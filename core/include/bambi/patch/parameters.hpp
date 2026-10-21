@@ -151,4 +151,8 @@ std::string formatParameter(const ParamDesc& d, double value);
 /// A number rounded to `decimals`, with a real minus sign and no "-0".
 std::string formatNumber(double value, int decimals);
 
+/// How many decimals a value of `d` is written with, the interface's and the host's: none for degrees, degrees per
+/// second and milliseconds, one for decibels, two otherwise.
+int displayDecimals(const ParamDesc& d);
+
 }  // namespace bambi

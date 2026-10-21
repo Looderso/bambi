@@ -95,6 +95,8 @@ TEST_CASE("a pass is its stages in order, as the double reference computes them"
 }
 
 TEST_CASE("any rotation that carries the axis to the pole gives the same pass") {
+    //  Catches: a skew that treats the +m and -m channels of an order differently, which a turn about the pole would
+    //  show.
     /*  axisToPole is one of many: any turn about the pole may follow it. The pass is turned there and
         back on the strength of the skew and the spin both commuting with such a turn, and this is
         that, tested -- with it, a different but equally valid construction changes nothing. */
@@ -115,6 +117,7 @@ TEST_CASE("any rotation that carries the axis to the pole gives the same pass") 
 }
 
 TEST_CASE("an axis that is the pole needs no turns, and says so rather than being found out") {
+    //  Catches: a pole axis turned anyway, and the skipped turns leaving the result in the scratch buffer.
     const int order = 5, frames = 2;
     TapSettings s = tilted();
     s.axis = {0, 0, 1};
@@ -134,6 +137,7 @@ TEST_CASE("an axis that is the pole needs no turns, and says so rather than bein
 }
 
 TEST_CASE("the band never raises a level, passes nothing at DC, and compounds with each pass") {
+    //  Catches: the high-pass dropped, so DC goes round, and the low and high cuts swapped.
     Rig rig(0);
     TapSettings s;
     s.lowCutHz = 200.0;
@@ -159,7 +163,7 @@ TEST_CASE("the band never raises a level, passes nothing at DC, and compounds wi
     rig.band.clear();
     float hit = 1.0f;
     onePass(rig.tap, rig.band, rig.work, &hit, 1);
-    CHECK(static_cast<double>(hit) == doctest::Approx(rig.tap.lowpass * (1.0 - rig.tap.highpass)).epsilon(1e-6));
+    CHECK(std::abs(static_cast<double>(hit) - rig.tap.lowpass * (1.0 - rig.tap.highpass)) < 1e-6);
 
     rig.band.clear();
     float dc = 1.0f;
@@ -171,6 +175,8 @@ TEST_CASE("the band never raises a level, passes nothing at DC, and compounds wi
 }
 
 TEST_CASE("blur compounds as the root of the passes") {
+    //  Catches: the quarter-degree threshold dropped, so every tap is a little dull, and cap weights normalised wrongly, so
+    //  a blur no longer compounds as the ping draws it.
     /*  A loop applies the same gain per order every pass, so after j passes a blur of a is the cap
         weights to the j, which is approximately a blur of a * sqrt(j). The ping draws blur with
         that law, so this checks the drawing against the audio. */
@@ -190,6 +196,7 @@ TEST_CASE("blur compounds as the root of the passes") {
 }
 
 TEST_CASE("a pass gives the same bits for one call of many frames as for many calls of one, band included") {
+    //  Catches: the band's state not carried from one call to the next.
     const int order = 7, frames = 97, ch = numChannels(order);
     TapSettings s = tilted();
     s.lowCutHz = 120.0;

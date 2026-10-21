@@ -16,9 +16,13 @@
 using namespace bambi;
 
 TEST_CASE("the slots are six features of each input, three LFOs, three envelopes and the region") {
+    //  Catches: a boundary between kinds off by one: the region read as an envelope, or the first sidechain feature as
+    //  the encoder's own.
     CHECK(sourceAt(0).kind == SourceKind::Feature);
     CHECK(sourceAt(0).index == static_cast<int>(Feature::Level));
     CHECK_FALSE(sourceAt(0).sidechain);
+    CHECK_FALSE(sourceAt(5).sidechain);
+    CHECK(sourceAt(6).sidechain);
     CHECK(sourceAt(7).kind == SourceKind::Feature);
     CHECK(sourceAt(7).index == static_cast<int>(Feature::Attack));
     CHECK(sourceAt(7).sidechain);
@@ -37,6 +41,7 @@ TEST_CASE("the slots are six features of each input, three LFOs, three envelopes
 }
 
 TEST_CASE("an LFO's drawn shape is the shape the engine plays") {
+    //  Catches: the phase offset left out of what plays, and a saw drawn the other way up.
     for (const auto shape : {LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw}) {
         Lfo lfo;
         lfo.prepare(48000.0);
@@ -57,6 +62,7 @@ TEST_CASE("an LFO's drawn shape is the shape the engine plays") {
 }
 
 TEST_CASE("an LFO outline spans the width from its phase offset, and sample-and-hold draws as steps") {
+    //  Catches: the outline ignoring the phase offset, and sample-and-hold drawn as points instead of steps.
     const auto sine = lfoOutline(LfoShape::Sine, 90.0, 2, 32);
     REQUIRE(sine.size() == 65);
     CHECK(sine.front().x == 0.0);
@@ -74,6 +80,8 @@ TEST_CASE("an LFO outline spans the width from its phase offset, and sample-and-
 }
 
 TEST_CASE("an envelope outline keeps every stage visible and in order, at the sustain the engine holds") {
+    //  Catches: a one-shot drawn with a plateau, stages on linear time (a short attack is a sliver), and a sustain
+    //  drawn unclamped.
     const auto held = envelopeOutline(10.0, 200.0, 0.5, 400.0, TriggerGate::Held);
     CHECK(held[0].x == 0.0);
     CHECK(held[0].y == 0.0);
@@ -95,6 +103,7 @@ TEST_CASE("an envelope outline keeps every stage visible and in order, at the su
 }
 
 TEST_CASE("notes are named as the General MIDI drum defaults are: C1 is 36, middle C is C3") {
+    //  Catches: the octave off by one (middle C as C4), and a default trigger note that is not on the drum map.
     CHECK(noteName(36) == "C1");
     CHECK(noteName(38) == "D1");
     CHECK(noteName(42) == "F#1");
@@ -114,6 +123,8 @@ TEST_CASE("notes are named as the General MIDI drum defaults are: C1 is 36, midd
 }
 
 TEST_CASE("a trigger's note range never inverts, and its other settings stay in range") {
+    //  Catches: a low end that does not carry the high end with it, a source not held to what a trigger can fire from,
+    //  and learning a note that leaves an audio trigger on audio.
     EnvTrigger t = EnvTrigger::defaults(0);
     setTriggerHigh(t, 40);
     CHECK(t.noteLow == 36);
@@ -147,6 +158,7 @@ TEST_CASE("a trigger's note range never inverts, and its other settings stay in 
 }
 
 TEST_CASE("hysteresis never exceeds the threshold, or a fired envelope would never let go") {
+    //  Catches: a lowered threshold that leaves the hysteresis above it, and a hysteresis set past the threshold.
     PluginState st{encodeParams()};
     auto& t = st.envTriggers[0];
     t.input = TriggerInput::Audio;
@@ -174,12 +186,19 @@ TEST_CASE("hysteresis never exceeds the threshold, or a fired envelope would nev
 }
 
 TEST_CASE("a feature's calibration is read from the detector's configuration, so the text cannot drift") {
+    //  Catches: Level given a gate it does not have, a whole kilohertz written with a decimal, and a band edge written
+    //  as a fixed number rather than read from the configuration.
     const auto has = [](const std::vector<SourceFact>& facts, const std::string& label, const std::string& value) {
         return std::any_of(facts.begin(), facts.end(),
                            [&](const SourceFact& f) { return f.label == label && f.value == value; });
     };
-    const std::string minus = "\xe2\x88\x92";
-    CHECK(has(featureCalibration(Feature::Level), "range", minus + "55 to " + minus + "6 dB"));
+    const auto range = [](const char* top) {  // "-55 to <top>", with the typographic minus
+        std::string r = "\xe2\x88\x92";
+        r += "55 to \xe2\x88\x92";
+        r += top;
+        return r;
+    };
+    CHECK(has(featureCalibration(Feature::Level), "range", range("6 dB")));
     CHECK(has(featureCalibration(Feature::Attack), "ratio", "1.0 to 2.2"));
     CHECK(has(featureCalibration(Feature::Tonal), "band", "100 hz to 8 khz"));
     CHECK(has(featureCalibration(Feature::Mid), "band", "250 hz to 2 khz"));
@@ -187,13 +206,14 @@ TEST_CASE("a feature's calibration is read from the detector's configuration, so
     FeatureConfig cfg;
     cfg.levelHiDb = -3.0;
     cfg.bandSplitHiHz = 2500.0;
-    CHECK(has(featureCalibration(Feature::Level, cfg), "range", minus + "55 to " + minus + "3 dB"));
+    CHECK(has(featureCalibration(Feature::Level, cfg), "range", range("3 dB")));
     CHECK(has(featureCalibration(Feature::High, cfg), "band", "above 2.5 khz"));
 
     for (int f = 0; f < kNumFeatures; ++f) {
         //  every feature is gated but Level, whose own range ends where the gate opens
-        CHECK(has(featureCalibration(static_cast<Feature>(f)), "gate", minus + "55 dB") ==
-              (static_cast<Feature>(f) != Feature::Level));
+        CHECK(has(featureCalibration(static_cast<Feature>(f)), "gate",
+                  "\xe2\x88\x92"
+                  "55 dB") == (static_cast<Feature>(f) != Feature::Level));
     }
 }
 
@@ -255,6 +275,7 @@ TEST_CASE("a stage's x is its own time and nothing else's, so a drag inverts exa
 }
 
 TEST_CASE("the plot keeps one scale for ordinary values and only grows for an extreme one") {
+    //  Catches: the plot's span following every value, so the scale moves while a stage is dragged.
     EnvelopeShape env{};
     const double span = envelopeSpan(env);
     env.attackMs = 300.0;
@@ -266,6 +287,7 @@ TEST_CASE("the plot keeps one scale for ordinary values and only grows for an ex
 }
 
 TEST_CASE("a point is grabbed at its end, a curve at its body, and nothing from empty space") {
+    //  Catches: a stage's body reaching into its ends, and a body grabbed wherever the pointer is.
     const EnvelopeShape env{};
     const auto stops = envelopeStops(env);
     const double xSlop = 1.0, ySlop = 0.06;
@@ -316,6 +338,8 @@ TEST_CASE("an upward drag raises a stage, whether it rises or falls") {
 }
 
 TEST_CASE("the axis is nice values placed by polarity, not fixed rows relabelled") {
+    //  Catches: ticks placed from the first nice value rather than from the floor, and a label keeping its trailing
+    //  zeros.
     const auto unipolar = polarityAxis(0.0, 5);
     REQUIRE(!unipolar.empty());
     CHECK(unipolar.front().at == doctest::Approx(0.0));
@@ -345,7 +369,7 @@ TEST_CASE("the axis is nice values placed by polarity, not fixed rows relabelled
         is not a multiple of the step, zero lands where the map puts it and nowhere else. */
     const auto odd = polarityAxis(0.7, 5);
     for (const auto& tick : odd)
-        if (tick.zero) CHECK(tick.at == doctest::Approx(0.7 / 1.7).epsilon(0.001));
+        if (tick.zero) CHECK(std::abs(tick.at - 0.7 / 1.7) < 1e-9);
     CHECK(odd.back().value == doctest::Approx(1.0));
     CHECK(odd.back().at == doctest::Approx(1.0));
     CHECK(odd.front().value >= -0.7);  // a nice value below the floor is not a line on this plot

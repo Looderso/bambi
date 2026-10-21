@@ -10,7 +10,7 @@
 #   tools/check-layers.sh
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 #  Lowest first. A group may include its own layer and anything below it.
 #  Derived from the real include graph, not from taste.

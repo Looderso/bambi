@@ -27,18 +27,16 @@
 
 autowatch = 1;
 inlets = 1;
-outlets = 4;  // 0: "send", "status", "detail", "meta", "saved", "notice" with their text; 1: the list's rows;
-              //    2: the restore button's label; 3: the connection light
+outlets = 3;  // 0: "send", "status", "detail", "meta", "notice" with their text; 1: the tracks, for the view;
+              //    2: the link's state, for the view
 
-//  The connection light, a square as Live draws its own: green connected (the suite's green), yellow waiting --
-//  for a host that is starting, or one that went away -- red when it failed, grey when another device has it.
-const LIGHT = {connected: [0.494, 0.643, 0.494, 1], waiting: [0.98, 0.69, 0.23, 1],
-               failed: [0.86, 0.27, 0.23, 1], busy: [0.45, 0.45, 0.45, 1]};
 let protocolNote = "";  // the host speaks another protocol: what the device says until it is replaced
 let failed = false;  // the host did not come back, or has no loop device: red until it connects again
 
+//  The link's state, as the view draws its square: connected; waiting for a host that is starting, or one that went
+//  away; failed; busy, when another device has the host.
 function light(state) {
-    outlet(3, "bgfillcolor", LIGHT[state]);
+    outlet(2, "light", state);
 }
 
 const PROTOCOL = 4;  // with the host's (core/live/protocol.hpp): bumped when a message or its meaning changes
@@ -62,11 +60,6 @@ let routing = false;   // the device is changing a routing: half of a change is 
 let keyOfLive = {};    // Live id -> key, learned in this session only
 let liveOfKey = {};    // key -> Live id, likewise
 let info = {};         // what the host last said about the mix: latency, rate, a warning per track key
-let confirming = false;  // restore pressed once, waiting for the second press
-const unconfirm = new Task(() => {
-    confirming = false;
-    outlet(2, "text", "restore saved");
-});
 const grace = new Task(() => {
     if (!on || linked) return;
     stop();
@@ -1025,30 +1018,23 @@ function groupOf(n) {
     return new LiveAPI("id " + n.api.get("group_track")[1]);
 }
 
-//  Every track and return, with what bambi does with it, to the list.
+//  Every track, with whether bambi plays it, to the view: on bambi's pair, on the loop device's channels without this
+//  device having put it there, or in Live. Returns stay out: they are the host's to show.
 function showList() {
-    const all = identify();
+    const all = identify().filter(n => !n.ret);
     const kept_ = remembered();
     const stray = strays(all).map(n => n.key);  // the same picture: identify() hands out what it built
-    const rows = all.map(n => {
-        const group = n.ret ? null : groupOf(n);
-        const output = outputOf(n);
-        const intoGroup = group !== null && (output === text(group, "name") || output === "Group");
-        let to = n.ret ? "return" : intoGroup ? "into " + text(group, "name") : "in Live", kind = "";
-        if (on && kept_.some(e => e.key === n.key)) {
-            to = read(n.api, "output_routing_channel").display_name;
-            kind = "pair";
-        } else if (stray.indexOf(n.key) >= 0) {
-            to = "on " + read(n.api, "output_routing_channel").display_name + " · not by this device";
-            kind = "stray";
-        }
-        return {name: n.name, colour: hex(n.api.get("color")), child: intoGroup, to: to, kind: kind,
-                warn: info.warnings && info.warnings[n.key] ? info.warnings[n.key] : ""};
-    });
-    const count = on ? kept_.length : stray.length;
-    const head = count === 0 ? "no tracks on bambi"
-               : count + " track" + (count === 1 ? "" : "s") + (on ? " on bambi" : " on bambi's channels");
-    outlet(1, "rows", JSON.stringify({head: head, sub: all.filter(n => !n.ret).length + " in the set", rows: rows}));
+    const rows = all.map(n => ({
+        name: n.name,
+        colour: hex(n.api.get("color")),
+        kind: on && kept_.some(e => e.key === n.key) ? "pair" : stray.indexOf(n.key) >= 0 ? "stray" : "",
+        warn: info.warnings && info.warnings[n.key] ? info.warnings[n.key] : ""
+    }));
+    const plays = rows.filter(r => r.kind === "pair").length, astray = rows.filter(r => r.kind === "stray").length;
+    const head = plays > 0     ? plays + " of " + all.length + " tracks through bambi"
+               : astray > 0    ? astray + " on bambi's channels, not by this device"
+               : all.length + " track" + (all.length === 1 ? "" : "s") + ", all in Live";
+    outlet(1, "rows", JSON.stringify({head: head, rows: rows}));
 }
 
 // ---- the routing snapshot ----------------------------------------------------------------------------------
@@ -1073,59 +1059,5 @@ function takeSnapshot(auto) {
                        channel: read(n.api, "output_routing_channel").display_name});
     }
     keep("snapshot", {at: clock(), auto: auto, list: list});
-    showSnapshot();
 }
 
-function showSnapshot() {
-    const s = kept("snapshot", null);
-    outlet(0, "saved", s === null ? "nothing saved yet" : "saved " + s.at + (s.auto ? ", when the set opened" : ""));
-}
-
-function save() {
-    if (!ready) return;
-    takeSnapshot(false);
-    notice(on ? "saved each track's routing from before bambi, not bambi's channels" : "saved every track's routing");
-}
-
-//  Every track back as saved; a track on the loop device's channels with nothing saved goes to its group, or Main.
-//  Two presses: the first asks, the second does it.
-function restoreSaved() {
-    if (!ready) return;
-    if (on && routedCount() > 0) {
-        notice("take every track out of bambi in the host first: all to Live");
-        return;
-    }
-    if (!confirming) {
-        confirming = true;
-        outlet(2, "text", "restore? press again");
-        unconfirm.schedule(4000);
-        return;
-    }
-    unconfirm.cancel();
-    confirming = false;
-    outlet(2, "text", "restore saved");
-    const s = kept("snapshot", null);
-    const all = identify();
-    const stray = strays(all).map(n => n.key);
-    let moved = 0;
-    routing = true;
-    for (const n of all) {
-        const saved = s === null ? null : s.list.find(e => e.key === n.key);
-        if (saved) {
-            if (routingOf(n.api) === saved.type + " " + saved.channel) continue;
-            if (chooseNamed(n.api, "output_routing_type", saved.type)) {
-                chooseNamed(n.api, "output_routing_channel", saved.channel);
-                ++moved;
-            }
-        } else if (stray.indexOf(n.key) >= 0) {
-            const group = groupOf(n);
-            if (chooseNamed(n.api, "output_routing_type", group !== null ? [text(group, "name"), "Group"] : MAIN))
-                ++moved;
-        }
-        set_[n.key] = routingOf(n.api);
-    }
-    routing = false;
-    notice(moved + " track" + (moved === 1 ? "" : "s") + " back as saved" + (s === null ? "" : " at " + s.at));
-    idle();
-    showList();
-}

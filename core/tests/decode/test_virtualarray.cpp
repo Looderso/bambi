@@ -37,7 +37,7 @@ TEST_CASE("the field design encodes each loudspeaker's row at its direction, at 
     double omni = 0, sum = 0;
     for (int c = 0; c < C; ++c) omni += field.matrix[static_cast<std::size_t>(c)] * y[static_cast<std::size_t>(c)];
     for (double g : gain) sum += g;
-    CHECK(omni == doctest::Approx(sum).epsilon(1e-9));
+    CHECK(std::abs(omni - sum) < 1e-9);
     CHECK(gain[2] > 0.4 * sum);  // the centre loudspeaker, channel 3 in the recommendation's order
     for (int o = 0; o < array.outputs; ++o) CHECK(gain[2] >= gain[static_cast<std::size_t>(o)]);
     // The field's x-dipole (ACN 3) is the sum weighted by each loudspeaker's x: all front-heavy here.
@@ -92,7 +92,8 @@ TEST_CASE("the virtual array is the field renderer and the order-7 binaural path
 }
 
 TEST_CASE("a source in front of a symmetric array reaches both ears alike") {
-    //  Catches: a loudspeaker encoded at a mirrored direction, or the ears swapped between the stages.
+    //  Catches: a loudspeaker's row encoded at another loudspeaker's direction, which leaves a source in front louder
+    //  in one ear.
     const SpeakerDesign array = design(*bs2051Layout("4+7+0"), 3);
     VirtualArray va;
     REQUIRE(va.prepare(shipped(), 3, 48000.0, 64));

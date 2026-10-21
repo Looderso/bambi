@@ -40,6 +40,7 @@ std::vector<double> blocksFor(const Mat3& r, int order) {
 }  // namespace
 
 TEST_CASE("the blocks do to a field what the rotation does to space") {
+    //  Catches: a block transposed, and the first order's axes taken as x, y, z instead of the channel order y, z, x.
     /*  The definition, and the oracle: a source at d, turned, is a source at R*d -- so the blocks
         applied to the encoding of d must be the encoding of R*d, in every channel, to order 10. This
         is what pins the convention: a transposed block, or the first order's axes taken as x, y, z
@@ -77,6 +78,7 @@ TEST_CASE("a source at 35 degrees, turned 90 about up, is at 125 -- not at -55")
 }
 
 TEST_CASE("each block is orthogonal, and two turns are the blocks of their product") {
+    //  Catches: a coefficient of the recurrence off, which leaves the blocks above the first not rotations.
     const auto all = rotations();
     for (const Mat3& r : all) {
         const auto b = blocksFor(r, kTop);
@@ -103,6 +105,7 @@ TEST_CASE("each block is orthogonal, and two turns are the blocks of their produ
 }
 
 TEST_CASE("no turn is the identity, and a block does not depend on how many orders were asked for") {
+    //  Catches: a block that changes with the order asked for.
     const auto none = blocksFor(kIdentity3, 5);
     for (int n = 0; n <= 5; ++n) {
         const int w = 2 * n + 1;
@@ -121,6 +124,7 @@ TEST_CASE("no turn is the identity, and a block does not depend on how many orde
 }
 
 TEST_CASE("axisToPole carries its axis to the pole, from anywhere, and is a rotation") {
+    //  Catches: straight down carried to the pole by the point inversion, which is no rotation.
     for (const Vec3& a : directions(40)) {
         const Mat3 r = axisToPole(a);
         CHECK(arc(apply(r, a), {0, 0, 1}) < 1e-7);

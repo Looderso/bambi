@@ -472,10 +472,6 @@ namespace sheet
     inline constexpr float pad       = 20.0f;    ///< above and below the I/O page's content
     inline constexpr float line      = 24.0f;    ///< a row of a list
     inline constexpr float gap       = 16.0f;    ///< between blocks
-    inline constexpr float cell      = 22.0f;    ///< a channel of the map
-    inline constexpr float cellGap   = 2.0f;
-    inline constexpr float groupGap  = 10.0f;    ///< between two devices on the map
-    inline constexpr float barWidth  = 180.0f;   ///< the level, the load
     inline constexpr float menuWidth = 300.0f;
     inline constexpr float menuLine  = 22.0f;
     inline constexpr float menuPad   = 6.0f;
@@ -486,21 +482,18 @@ namespace sheet
     inline constexpr float overlayMinWidth    = 150.0f;
     inline constexpr int   overlayMaxRows     = 10;     ///< lines shown at once, the head included; more scroll
     inline constexpr float control   = 20.0f;    ///< every button, chip and segment on a sheet
-    inline constexpr float noteLine  = 18.0f;    ///< a line of small text: a note, a device's name over the map
-    //  the columns of a row, from its left
-    inline constexpr float nameColumn   = 260.0f;  ///< a device's name
-    inline constexpr float ioColumn     = 120.0f;  ///< its channels
-    inline constexpr float roleColumn   = 110.0f;  ///< the clock, or drift corrected
-    inline constexpr float latencyColumn = 70.0f;
-    inline constexpr float labelColumn  = 120.0f;  ///< a setting's name, before its control
-    inline constexpr float wideLabel    = 200.0f;  ///< a longer one: the load
-    inline constexpr float valueColumn  = 120.0f;  ///< a value after its bar
-    inline constexpr float outputName   = 90.0f;
-    inline constexpr float outputWhere  = 130.0f;
-    inline constexpr float inputName    = 120.0f;
-    inline constexpr float inputWhere   = 150.0f;
-    inline constexpr float layoutsWidth = 520.0f;
-    inline constexpr int   layoutColumns = 5;
+    inline constexpr float noteLine  = 18.0f;    ///< a line of small text: a note, a card's head
+    //  the I/O page: what a tab places, listed left of the devices' cards
+    inline constexpr float listWidth  = 240.0f;
+    inline constexpr float itemGap    = 6.0f;    ///< between two things in the list, and two cards
+    inline constexpr float itemPad    = 8.0f;    ///< inside a thing in the list, and inside a card
+    inline constexpr float itemHeight = 54.0f;   ///< a thing: its name line and its controls' line, padded
+    inline constexpr float copyHeight = 52.0f;   ///< a copy: its name line and where it plays, padded
+    inline constexpr float swatch     = 8.0f;    ///< a thing's colour, before its name
+    inline constexpr float stripLabel = 28.0f;   ///< "out" or "in", before a card's channels
+    inline constexpr float caption    = 12.0f;   ///< under a run of channels: what plays there
+    inline constexpr int   deviceColumns  = 3;   ///< the devices' tiles, and the MIDI inputs', to a row
+    inline constexpr int   settingColumns = 4;   ///< the timing and order tiles to a row
 } // namespace sheet
 
 // ---- the live host's column, left of the plugin it shows ---------------------------------------
@@ -515,7 +508,16 @@ namespace rail
                                                   ///< than the header's outlined glyphs' box to read as large
 } // namespace rail
 
-// ---- a run of channels in one row: the live host's channel map, the decoder's bus ------------------
+// ---- a ruler of beats and bars: Echo's taps, the live host's timeline ---------------------------
+namespace beatRuler
+{
+    inline constexpr float barTick   = 0.5f;    ///< a numbered bar's tick, as a share of the ruler's height
+    inline constexpr float beatTick  = 0.25f;   ///< every other tick
+    inline constexpr float labelGap  = 3.0f;    ///< from a bar's tick to its number
+    inline constexpr float label     = 40.0f;   ///< room for a bar's number, and so the least between two numbered
+}
+
+// ---- a run of channels: the decoder's bus in a row, the live host's device cards wrapped -----------
 namespace channelStrip
 {
     inline constexpr float cell     = 22.0f;   ///< a channel, whatever the run's length
@@ -538,7 +540,7 @@ namespace timeline
     inline constexpr float locator   = 5.0f;    ///< a locator's mark
     inline constexpr float loopBrace = 4.0f;    ///< the loop's band at the ruler's top
     inline constexpr float reach     = 6.0f;    ///< pixels within which a click finds a locator
-    inline constexpr float barLabel  = 40.0f;   ///< the least room between two numbered bars
+    inline constexpr float barLabel  = 40.0f;   ///< the least room a clip's name is drawn in
     inline constexpr float pad       = 14.0f;   ///< the tree's inset
     inline constexpr float gap       = 3.0f;    ///< from a mark to its label: a bar's number, a locator's name
     inline constexpr int   frameMs   = 33;      ///< the playhead redrawn this often while Live plays
@@ -580,7 +582,7 @@ namespace routing
     inline constexpr float hearsLine  = 14.0f;   ///< a line of what a Decoder hears
     inline constexpr float headingGap = 18.0f;   ///< before a group's heading
     inline constexpr float ringGap    = 2.0f;    ///< from a box to the ring round it
-    inline constexpr float levelDrag  = 0.25f;   ///< dB per pixel a wire's level moves; a tenth of it with shift
+    inline constexpr float levelDrag  = 0.25f;   ///< dB per pixel a wire's level moves, across or up; finer with shift
     inline constexpr float menuWidth  = 150.0f;
     inline constexpr float labelPad   = 4.0f;    ///< round a level on a wire, over what it crosses
     inline constexpr float sendRoom   = 48.0f;   ///< kept at a line's right end for "send"

@@ -49,6 +49,7 @@ void ReverbPanel::paint(juce::Graphics& g) {
     while its values are edited; a double-click brings its values back. */
 float ReverbPanel::paintRooms(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     std::vector<juce::String> names;  // no title: the tab is the room's already
+    names.reserve(bambi::kRoomNames.size());
     for (const auto n : bambi::kRoomNames) names.push_back(fromCore(n));
     const auto apply = [this](int which) {
         /*  Only the keys the room touches, through the host's own parameters and inside gestures,

@@ -44,6 +44,7 @@ PluginState populated() {
 }  // namespace
 
 TEST_CASE("a fresh state carries the manifest defaults") {
+    //  Catches: a fresh state's parameters left at zero.
     const PluginState s{encodeParams()};
     for (const auto& p : parameters()) {
         INFO(std::string(p.key));
@@ -52,6 +53,7 @@ TEST_CASE("a fresh state carries the manifest defaults") {
 }
 
 TEST_CASE("round trip preserves everything") {
+    //  Catches: a field left out of the document (the label), or written from the wrong member (a node's in-handle).
     const PluginState a = populated();
     PluginState b{encodeParams()};
     const LoadResult r = loadState(Product::Encoder, encodeParams(), saveState(Product::Encoder, encodeParams(), a), b);
@@ -94,6 +96,7 @@ TEST_CASE("round trip preserves everything") {
 }
 
 TEST_CASE("round trip is stable — saving a loaded state reproduces the text exactly") {
+    //  Catches: a load that reorders what it reads, here the matrix's cells.
     const std::string first = saveState(Product::Encoder, encodeParams(), populated());
     PluginState b{encodeParams()};
     REQUIRE(loadState(Product::Encoder, encodeParams(), first, b).ok);
@@ -103,6 +106,8 @@ TEST_CASE("round trip is stable — saving a loaded state reproduces the text ex
 /*  These four are the reason parameters serialise by key. Together they mean that adding or
  *  removing a parameter is not a schema change and needs no migration code. */
 TEST_CASE("tolerant by construction: read by name, so growth needs no code") {
+    //  Catches: an unknown key written somewhere, a load that starts from the state it loads into, a cell for an
+    //  unknown parameter kept, and an unknown generator read as anything but the default.
     SUBCASE("an unknown parameter key is ignored, not fatal") {
         PluginState s{encodeParams()};
         std::string text = saveState(Product::Encoder, encodeParams(), s);
@@ -126,6 +131,7 @@ TEST_CASE("tolerant by construction: read by name, so growth needs no code") {
         text.erase(at, end - at + 1);
 
         PluginState out{encodeParams()};
+        out.params[static_cast<std::size_t>(EncoderParam::RenderWidth)] = 33.0f;  // not what a load starts from
         REQUIRE(loadState(Product::Encoder, encodeParams(), text, out).ok);
         CHECK(out.params[static_cast<std::size_t>(EncoderParam::RenderWidth)] ==
               doctest::Approx(parameter(EncoderParam::RenderWidth).def));
@@ -160,6 +166,7 @@ TEST_CASE("tolerant by construction: read by name, so growth needs no code") {
 }
 
 TEST_CASE("out-of-range values are clamped on load, never propagated") {
+    //  Catches: a loaded value not clamped to its range.
     PluginState s{encodeParams()};
     std::string text = saveState(Product::Encoder, encodeParams(), s);
     const auto at = text.find("\"render.width\": 0");
@@ -173,6 +180,8 @@ TEST_CASE("out-of-range values are clamped on load, never propagated") {
 }
 
 TEST_CASE("version handling") {
+    //  Catches: a newer document not flagged as one, version 0 accepted, and a parse failure reported without saying it
+    //  is malformed.
     SUBCASE("a document from the future loads best-effort and says so") {
         PluginState s{encodeParams()};
         s.params[static_cast<std::size_t>(EncoderParam::RenderWidth)] = 42.0f;
@@ -194,8 +203,9 @@ TEST_CASE("version handling") {
     SUBCASE("a missing or nonsensical version is refused") {
         PluginState out{encodeParams()};
         CHECK_FALSE(loadState(Product::Encoder, encodeParams(), "{}", out).ok);
-        CHECK_FALSE(loadState(Product::Encoder, encodeParams(), R"({"version": 0})", out).ok);
-        CHECK_FALSE(loadState(Product::Encoder, encodeParams(), R"({"version": "one"})", out).ok);
+        //  with the product named, so that the version is what refuses them
+        CHECK_FALSE(loadState(Product::Encoder, encodeParams(), R"({"version": 0, "product": "encoder"})", out).ok);
+        CHECK_FALSE(loadState(Product::Encoder, encodeParams(), R"({"version": "one", "product": "encoder"})", out).ok);
     }
 
     SUBCASE("malformed text is refused with a message") {
@@ -207,6 +217,7 @@ TEST_CASE("version handling") {
 }
 
 TEST_CASE("generator parameters serialise by name, so array order cannot silently shift") {
+    //  Catches: a generator's settings written by position rather than by name.
     PluginState s{encodeParams()};
     s.trajectory.generator = GeneratorType::Polygon;
     s.trajectory.genParams = {4, 20, 30, 0, 0, 0};
@@ -221,6 +232,7 @@ TEST_CASE("generator parameters serialise by name, so array order cannot silentl
 }
 
 TEST_CASE("every generator declares no more names than the array can hold") {
+    //  Catches: a shape given more settings than the state's array holds.
     for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                    GeneratorType::Spiral}) {
         INFO(std::string(name(g)));
@@ -230,6 +242,7 @@ TEST_CASE("every generator declares no more names than the array can hold") {
 }
 
 TEST_CASE("sources serialise sparsely — defaults do not appear") {
+    //  Catches: every source written, defaults included.
     PluginState s{encodeParams()};
     const std::string plain = saveState(Product::Encoder, encodeParams(), s);
     CHECK(plain.find("\"sources\": {}") != std::string::npos);
@@ -248,6 +261,7 @@ TEST_CASE("sources serialise sparsely — defaults do not appear") {
 }
 
 TEST_CASE("a source index this build does not have is ignored") {
+    //  Catches: a number past the last slot folded into one that exists.
     PluginState s{encodeParams()};
     s.sources[2].input = SourceInput::Sidechain;
     std::string text = saveState(Product::Encoder, encodeParams(), s);
@@ -258,9 +272,12 @@ TEST_CASE("a source index this build does not have is ignored") {
     PluginState out{encodeParams()};
     REQUIRE(loadState(Product::Encoder, encodeParams(), text, out).ok);
     CHECK(out.sources[2].input == SourceInput::Sidechain);
+    for (int slot = 0; slot < kNumSources; ++slot)
+        if (slot != 2) CHECK(out.sources[static_cast<std::size_t>(slot)].input == SourceInput::Self);
 }
 
 TEST_CASE("envelope triggers round trip, and sparsely") {
+    //  Catches: a trigger at its default written anyway, and the velocity not written.
     PluginState a{encodeParams()};
     a.envTriggers[1].noteLow = 48;
     a.envTriggers[1].noteHigh = 60;
@@ -286,6 +303,7 @@ TEST_CASE("envelope triggers round trip, and sparsely") {
 }
 
 TEST_CASE("a fresh instance's envelopes fire from MIDI, on the General MIDI drum map") {
+    //  Catches: a default note off the drum map.
     PluginState s{encodeParams()};
     CHECK(s.envTriggers[0].input == TriggerInput::Midi);
     CHECK(s.envTriggers[0].noteLow == 36);  // C1, kick
@@ -299,6 +317,7 @@ TEST_CASE("a fresh instance's envelopes fire from MIDI, on the General MIDI drum
 }
 
 TEST_CASE("an envelope trigger out of range is clamped on load, and a reversed range put in order") {
+    //  Catches: a reversed note range left reversed, and a channel not clamped.
     const std::string text = R"({"version":1,"product":"encoder", "env_triggers": { "0": {
       "input": "midi", "note_low": 140, "note_high": -3, "channel": 40, "velocity": 7 } } })";
     PluginState s{encodeParams()};
@@ -313,6 +332,7 @@ TEST_CASE("an envelope trigger out of range is clamped on load, and a reversed r
 /*  A document with more nodes than the cap loads, refit rather than cut: truncating a loop keeps
  *  its first 24 nodes and closes it with one long segment across the rest of its shape. */
 TEST_CASE("loading more nodes than the cap refits the curve instead of cutting it") {
+    //  Catches: the chain truncated to the cap instead of refitted.
     PluginState a{encodeParams()};
     a.trajectory.kind = TrajectoryKind::Custom;
     a.trajectory.closed = true;
@@ -360,6 +380,7 @@ TEST_CASE("loading more nodes than the cap refits the curve instead of cutting i
 }
 
 TEST_CASE("a region's shape is saved by name; its side is a parameter and is not in the definition") {
+    //  Catches: a region's kind written as a number.
     PluginState a{encodeParams()};
     a.regions[0].shape = {RegionKind::Sectors, 5, 12};
     a.params[static_cast<std::size_t>(EncoderParam::Region1Side)] = 1.0f;  // outside
@@ -387,6 +408,7 @@ TEST_CASE("a region's shape is saved by name; its side is a parameter and is not
 }
 
 TEST_CASE("a document without regions, or with one that cannot be, loads with a region that can") {
+    //  Catches: a loaded shape not sanitised, so no sectors or a dot count that is no solid gets through.
     //  an older document: no sections at all
     PluginState old{encodeParams()};
     old.regions[0].shape.kind = RegionKind::Dots;  // what was there before the load
@@ -408,6 +430,8 @@ TEST_CASE("a document without regions, or with one that cannot be, loads with a 
 }
 
 TEST_CASE("a cell on the region's tab is saved by its source's name; one on a tab this build lacks is dropped") {
+    //  Catches: a cell saved by tab and column instead of its source's name, and a cell from an unknown tab read as the
+    //  first tab's.
     PluginState a{encodeParams()};
     a.matrix.push_back(MatrixCell{MatrixTab::Region, 0, EncoderParam::MotionSpeed, 0.4});
     const std::string text = saveState(Product::Encoder, encodeParams(), a);

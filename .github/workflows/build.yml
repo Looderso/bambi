@@ -1,5 +1,6 @@
-#  Every push and pull request: the repository's checks, core's tests on three systems, and the plugins built
-#  and checked on three systems. A tag `v*` also publishes the plugins as a release.
+#  Every push and pull request: the repository's checks, core's tests on three systems, the plugins built and
+#  checked on three systems, and the sanitizers and clang-tidy where the change reaches them. A tag `v*` also
+#  publishes the plugins as a release. The slow, exhaustive runs are nightly.yml's.
 #
 #  Link-time optimisation makes a JUCE link need a lot of memory, so links run two at a time, and ccache keeps
 #  what did not change from being compiled again.
@@ -30,8 +31,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  #  What the change touched, so each job below runs only where it can find something.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      link: ${{ steps.filter.outputs.link }}
+      audio: ${{ steps.filter.outputs.audio }}
+      tidy: ${{ steps.filter.outputs.tidy }}
+      tidy_files: ${{ steps.filter.outputs.tidy_files }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: filter
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          list-files: shell
+          filters: |
+            core:
+              - 'core/**'
+              - 'tools/**'
+              - 'CMakeLists.txt'
+              - '.github/workflows/build.yml'
+            link:
+              - 'core/include/bambi/link/**'
+              - 'core/src/link/**'
+              - 'core/tests/link/**'
+              - 'tools/link/**'
+              - '.github/workflows/build.yml'
+            audio:
+              - 'core/**'
+              - 'host/**'
+              - 'plugins/**'
+              - 'editor/**'
+              - 'ui/**'
+              - 'CMakeLists.txt'
+              - '.github/workflows/build.yml'
+            tidy:
+              - added|modified: 'core/src/**/*.cpp'
+              - added|modified: 'core/tests/**/*.cpp'
+              - added|modified: 'tools/**/*.cpp'
+
   checks:
-    name: style, layers, format, notices
+    name: style, layers, docs, format, notices, scripts, workflows, spelling
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -40,8 +81,18 @@ jobs:
       - run: pipx install clang-format==23.1.1
       - run: tools/check-style.sh
       - run: tools/check-layers.sh
+      - uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --config lychee.toml 'docs/**/*.md' '*.md' '**/AGENTS.md' '.claude/**/*.md'
+      - run: tools/check-docs.sh --skip-links
       - run: tools/format.sh --check
       - run: tools/release/notices.py --check
+      - run: shellcheck -S warning tools/*.sh driver/build.sh
+      - name: actionlint
+        run: |
+          bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color
+      - uses: crate-ci/typos@v1.51.1
 
   core:
     name: core · ${{ matrix.os }}
@@ -71,6 +122,94 @@ jobs:
       #  The audio hashes are one toolchain's (Apple clang, arm64); the other systems have no manifest.
       - if: runner.os == 'macOS'
         run: tools/golden.sh
+      #  Two guards that need a native build: every public header alone, and the link bus across real processes.
+      - if: runner.os == 'macOS'
+        run: tools/check-portable.sh --headers
+      - if: runner.os != 'Windows'
+        run: tools/link-test.sh
+
+  #  Memory errors and undefined behaviour in core, its tests and tools. Built with Clang and its own standard
+  #  library: GCC's null checks make a constexpr lookup in a global table no longer a constant expression, and
+  #  Clang 18 with GCC 14's library frees std::stable_sort's buffer a way ASan reports as a mismatch.
+  asan:
+    name: core · address + undefined
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libc++-dev libc++abi-dev
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: asan
+      - run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBAMBI_SANITIZE=address,undefined \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS=-stdlib=libc++
+      - run: cmake --build build --target bambi-tests
+      - run: ./build/bambi-tests
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+
+  #  Data races where threads meet: the link bus. The whole suite under TSan is nightly.
+  tsan:
+    name: link · thread
+    needs: changes
+    if: needs.changes.outputs.link == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: tsan
+      - run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBAMBI_SANITIZE=thread
+      - run: cmake --build build --target bambi-tests
+      - run: ./build/bambi-tests -sf='*link*'
+        env:
+          TSAN_OPTIONS: halt_on_error=1
+
+  #  Every plugin's check suite with processBlock marked real-time: an allocation, a lock or a system call inside
+  #  it stops the run. macOS, where an audio thread's first touch of thread-local storage allocates.
+  rtsan:
+    name: plugins · realtime
+    needs: changes
+    if: needs.changes.outputs.audio == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - run: brew install ninja llvm
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: rtsan
+          max-size: 2G
+      - name: configure
+        run: >
+          cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBAMBI_BUILD_PLUGIN=ON
+          -DBAMBI_COPY_PLUGIN=OFF -DBAMBI_SANITIZE=realtime
+          -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++"
+      - run: cmake --build build-rtsan --target bambi-plugin-check bambi-echo-check bambi-reverb-check bambi-decoder-check
+      - name: check suites under RTSan
+        run: |
+          for p in encoder:bambi-plugin-check echo:bambi-echo-check reverb:bambi-reverb-check decoder:bambi-decoder-check; do
+            "build-rtsan/plugins/${p%%:*}/${p#*:}_artefacts/RelWithDebInfo/${p#*:}"
+          done
+
+  #  Bug and performance checks on the C++ this change added or modified in core, its tests and the tools: no JUCE
+  #  needed to parse. The nightly run checks all of it.
+  tidy:
+    name: clang-tidy
+    needs: changes
+    if: needs.changes.outputs.tidy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: pipx install clang-tidy==23.1.3
+      - run: cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - run: clang-tidy -p build --warnings-as-errors='*' ${{ needs.changes.outputs.tidy_files }}
 
   #  A tag, or a manual run asked to, builds the plugins as a release: link-time optimised, universal on macOS.
   #  Everything else only checks them, and builds them without link-time optimisation and for arm64 only on
@@ -133,6 +272,23 @@ jobs:
           run "$(suite echo bambi-echo-check)"
           run "$(suite reverb bambi-reverb-check)"
           run "$(suite decoder bambi-decoder-check)"
+      #  The plugin world's own validators, beside the conformance suite: pluginval for VST3, clap-validator for CLAP.
+      #  macOS and Linux; nightly.yml runs pluginval at its strictest.
+      - name: validators
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then pv=macOS; cv='*macos-15-aarch64.zip'; else pv=Linux; cv='*ubuntu-22.04.zip'; fi
+          gh release download v1.0.4 --repo Tracktion/pluginval -p "pluginval_$pv.zip" -D tools-dl
+          gh release download 0.4.1 --repo free-audio/clap-validator -p "$cv" -D tools-dl
+          cd tools-dl && unzip -q "pluginval_$pv.zip" && unzip -q ./clap-validator-*.zip && tar -xzf ./clap-validator-*.tar.gz && cd ..
+          if [ "$RUNNER_OS" = macOS ]; then
+            tools/validate-plugins.sh build-plugin tools-dl/pluginval.app/Contents/MacOS/pluginval tools-dl/clap-validator 5
+          else
+            xvfb-run -a tools/validate-plugins.sh build-plugin tools-dl/pluginval tools-dl/clap-validator 5
+          fi
       - name: collect
         shell: bash
         run: |

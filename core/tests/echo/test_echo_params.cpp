@@ -4,9 +4,25 @@
 
 #include "../patch/targets.hpp"
 #include "bambi/echo/params.hpp"
+#include "bambi/patch/state.hpp"
 #include "doctest.h"
 
 using namespace bambi;
+
+TEST_CASE("a new Echo's region is everywhere, and a saved one keeps its own") {
+    //  Catches: a new Echo starting with a spot, a fresh Echo's region dropped when saved, and the loader starting
+    //  from the state it loads into, so a state saved with a spot (which is not written) loads into a fresh Echo
+    //  as everywhere.
+    const PluginState fresh = freshEchoState();
+    CHECK(fresh.regions[0].shape.kind == RegionKind::Everywhere);
+    PluginState back{echoParams()};
+    REQUIRE(loadState(Product::Echo, echoParams(), saveState(Product::Echo, echoParams(), fresh), back).ok);
+    CHECK(back.regions[0].shape.kind == RegionKind::Everywhere);
+    const PluginState spot{echoParams()};
+    PluginState old = freshEchoState();
+    REQUIRE(loadState(Product::Echo, echoParams(), saveState(Product::Echo, echoParams(), spot), old).ok);
+    CHECK(old.regions[0].shape.kind == RegionKind::Spot);
+}
 
 TEST_CASE("Echo's modulation manifest names a real parameter for every role") {
     //  Catches: a misspelled generator key, a missing source amount, or a base target that is not
@@ -29,15 +45,15 @@ TEST_CASE("every parameter Echo can modulate is named, and no other") {
     };
     for (const char* tap : {"tap1", "tap2", "tap3", "tap4"}) {
         const std::string t = tap;
-        for (auto target : std::vector<test::Target>{{t + ".spin", DestKind::Rate},
-                                                     {t + ".axis_az", DestKind::DirectAngle},
-                                                     {t + ".axis_el", DestKind::DirectAngle},
-                                                     {t + ".level", DestKind::DirectScalar},
-                                                     {t + ".feedback", DestKind::DirectScalar},
-                                                     {t + ".skew", DestKind::DirectScalar},
-                                                     {t + ".blur", DestKind::DirectScalar},
-                                                     {t + ".low_cut", DestKind::DirectScalar},
-                                                     {t + ".high_cut", DestKind::DirectScalar}})
+        for (const auto& target : std::vector<test::Target>{{t + ".spin", DestKind::Rate},
+                                                            {t + ".axis_az", DestKind::DirectAngle},
+                                                            {t + ".axis_el", DestKind::DirectAngle},
+                                                            {t + ".level", DestKind::DirectScalar},
+                                                            {t + ".feedback", DestKind::DirectScalar},
+                                                            {t + ".skew", DestKind::DirectScalar},
+                                                            {t + ".blur", DestKind::DirectScalar},
+                                                            {t + ".low_cut", DestKind::DirectScalar},
+                                                            {t + ".high_cut", DestKind::DirectScalar}})
             expected.push_back(target);
     }
     for (auto& t : test::regionTargets("region1")) expected.push_back(t);

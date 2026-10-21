@@ -48,6 +48,24 @@ endif()
 
 message(STATUS "build type: ${CMAKE_BUILD_TYPE}")
 
+# A sanitizer build, in a tree of its own: -DBAMBI_SANITIZE=address,undefined (memory errors, undefined behaviour),
+# thread (data races) or realtime (an allocation, lock or system call inside a real-time scope; Clang 20 or later).
+# Applies to everything built here, JUCE included. Debug symbols, so a report names the line.
+set(BAMBI_SANITIZE "" CACHE STRING "Comma-separated sanitizers: address,undefined | thread | realtime")
+if(BAMBI_SANITIZE)
+  add_compile_options(-fsanitize=${BAMBI_SANITIZE} -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=${BAMBI_SANITIZE})
+  #  The real-time marker's compile-time effect analysis would flag every call into code not marked: the runtime
+  #  check is the one wanted here.
+  if(BAMBI_SANITIZE MATCHES "realtime")
+    add_compile_options(-Wno-function-effects)
+  endif()
+  if(BAMBI_SANITIZE MATCHES "undefined")
+    add_compile_options(-fno-sanitize-recover=undefined)
+  endif()
+  message(STATUS "sanitizers: ${BAMBI_SANITIZE}")
+endif()
+
 # Test binaries land in the build root so the documented run command stays short.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 

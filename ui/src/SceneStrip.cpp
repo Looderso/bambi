@@ -83,7 +83,7 @@ SceneStripAreas paintSceneStrip(juce::Graphics& g, int width, Projection project
 }
 
 void addSceneStripClicks(HitArea& on, const SceneStripAreas& areas, SceneViewState& view,
-                         std::function<void()> relayout, std::function<void()> changed) {
+                         const std::function<void()>& relayout, const std::function<void()>& changed) {
     const auto notify = [changed] {
         if (changed) changed();
     };

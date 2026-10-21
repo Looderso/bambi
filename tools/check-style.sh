@@ -11,7 +11,7 @@
 #   tools/check-style.sh
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 THEME=ui/include/bambi/ui/Theme.h
 

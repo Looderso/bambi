@@ -67,7 +67,7 @@ bambi::ui::EncoderWindowParts::EncoderWindowParts(BambiEncoderProcessor& p)
     //  Node edits from the scene go the same way every other edit does: through the undo stack of whichever
     //  instance the controls are on, which is what makes editing another instance's path work.
     state.editNodes = [this](const juce::String& name, const juce::String& key,
-                             std::function<void(bambi::TrajectoryState&)> change) {
+                             const std::function<void(bambi::TrajectoryState&)>& change) {
         const auto apply = [change](bambi::PluginState& s) { change(s.trajectory); };
         if (key.isEmpty())
             controls.edit(name.toStdString(), apply);

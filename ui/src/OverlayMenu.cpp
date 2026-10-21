@@ -79,13 +79,7 @@ OverlayMenuAreas paintOverlayMenu(juce::Graphics& g, float rightEdge, float top,
         }
         float x = box.getX() + sh::overlayRowPad + (row.part ? sh::overlayPartIndent - sc::toggleBox : 0.0f);
         const juce::Rectangle<float> tick{x, box.getCentreY() - sc::toggleBox / 2.0f, sc::toggleBox, sc::toggleBox};
-        if (selection.chosen(row.key)) {
-            g.setColour(dim ? colour::inactive : colour::chosen);
-            g.fillRect(tick);
-        } else {
-            g.setColour(dim ? colour::inactive : colour::text);
-            g.drawRect(tick, theme::stroke::toggle);
-        }
+        drawToggleBox(g, tick, selection.chosen(row.key), !dim);
         x = tick.getRight() + sh::overlayRowGap;
         if (!row.part) {
             const float r = theme::shape::otherSourceDot;
@@ -131,7 +125,7 @@ std::optional<OverlayKey> overlayRowAt(const OverlayMenuAreas& areas, std::span<
 
 void addOverlayClicks(HitArea& on, const OverlayToggleAreas& toggle, const OverlayMenuAreas& menu,
                       std::span<const OverlayRow> rows, OverlaySelection& selection, OverlayMenuState& state,
-                      juce::Rectangle<float> whole, std::function<void()> changed) {
+                      juce::Rectangle<float> whole, const std::function<void()>& changed) {
     const bool listed = !rows.empty();
     if (state.open && !listed) state.open = false;  // everything left the bus under an open list
 
@@ -206,7 +200,7 @@ void OverlayMenu::paintList(juce::Graphics& g, float top) {
     list_ = paintOverlayMenu(g, right_, top, rows_, selection_, state_);
 }
 
-void OverlayMenu::addClicks(HitArea& on, juce::Rectangle<float> whole, std::function<void()> changed) {
+void OverlayMenu::addClicks(HitArea& on, juce::Rectangle<float> whole, const std::function<void()>& changed) {
     //  Escape reaches the view only while it has the keyboard: opening the list takes it
     on.setWantsKeyboardFocus(true);
     addOverlayClicks(on, toggle_, list_, rows_, selection_, state_, whole, [&on, this, changed] {

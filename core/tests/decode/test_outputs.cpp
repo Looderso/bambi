@@ -60,7 +60,7 @@ TEST_CASE(
     CHECK((p.stops && !p.moves));
     //  an eleven-channel layout: the pair after it is 13-14, not 12-13
     DecoderState eleven = d;
-    eleven.layout.resize(11);
+    eleven.layout.resize(10);  // its last loudspeaker on channel 11
     p = placeOutput(eleven, Output::Headphones, 18);
     CHECK(p.movedTo == 13);
     //  a layout the bus does not reach does not fit, whatever else is true

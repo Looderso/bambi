@@ -57,7 +57,7 @@ TEST_CASE("the bus's reflections are as loud as one exact source's would be") {
     /*  The level is matched, not assumed: copies of an image a few milliseconds apart add
         their energies and copies together their amplitudes. On average over directions, what comes out
         in the omni channel for a unit impulse has the energy of the exact model's mirror images -- less
-        what their low-passes take, which is why it is a little under. Catches: the matching left out,
+        what their low-passes take, which is why it is a little under. Catches: the matching left out, the beams left unscaled,
         and the scattered part heard as reflections too. */
     EarlyReflections early;
     early.prepare(3, kFs);
@@ -79,11 +79,14 @@ TEST_CASE("the bus's reflections are as loud as one exact source's would be") {
     //  where copies land together; it is asserted as what it is.
     CHECK(early.level() > 0.9);
     CHECK(early.level() < 1.1);
-    CHECK(heard < 1.15 * early.mirrorEnergy());
-    CHECK(heard > 0.55 * early.mirrorEnergy());
+    //  measured 0.75 of the model: the low-passes take a quarter. Without the matching it is 0.81, and with the
+    //  beams left unscaled 0.65.
+    CHECK(heard < 0.8 * early.mirrorEnergy());
+    CHECK(heard > 0.7 * early.mirrorEnergy());
 }
 
 TEST_CASE("nothing is heard before the first reflection, and silence in is silence out") {
+    //  Catches: a tap read a sample early, and an output not cleared before the reflections are added to it.
     EarlyReflections early;
     early.prepare(3, kFs);
     early.setRoom(hall(), 6.0);
@@ -118,6 +121,7 @@ TEST_CASE("the reflections of a source in front lean front, and of one behind, b
 }
 
 TEST_CASE("each reflection arrives from where its image is, not from where its virtual source is") {
+    //  Catches: reflections encoded at their virtual source's direction instead of their image's.
     /*  A source a metre in front of a listener in the middle of a hall: the virtual sources that hear it
         are all in front, but its images are all round -- the back wall's is as near as the front wall's.
         So the reflections lean forward hardly at all. How far they should lean is worked out from the
@@ -153,6 +157,7 @@ TEST_CASE("each reflection arrives from where its image is, not from where its v
 }
 
 TEST_CASE("what the walls scattered and the mixing time took goes to the tail, not into the field") {
+    //  Catches: the scattered part sent to the tail as the mirror part instead.
     EarlyReflections early;
     early.prepare(3, kFs);
     const Room smooth = deriveRoom({20.0, RoomShape::Hall, 1.9, 0.5, 0.0}),
@@ -173,6 +178,8 @@ TEST_CASE("what the walls scattered and the mixing time took goes to the tail, n
 }
 
 TEST_CASE("a bus of any order is served, from its first sixteen channels") {
+    //  Catches: the reflections written with the stride of the channels they use rather than the bus's, which puts them
+    //  in a higher-order bus's upper channels.
     for (const int order : {1, 2, 3, 5}) {
         EarlyReflections early;
         early.prepare(order, kFs);
@@ -186,6 +193,8 @@ TEST_CASE("a bus of any order is served, from its first sixteen channels") {
 }
 
 TEST_CASE("the reflections do not care how the audio is cut up, and a reset is a fresh start") {
+    //  Catches: a low-pass state not carried from one chunk to the next, and a reset that leaves the low-passes
+    //  ringing.
     const int C = 16, frames = 6000;
     std::vector<float> in(static_cast<std::size_t>(C * frames));
     unsigned seed = 8u;

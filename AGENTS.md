@@ -23,6 +23,18 @@ tools/verify.sh                                                         # everyt
   `git add`ed before formatting, or it is skipped.
 - Release is the default build type on purpose.
 
+## Before a pull request
+
+- Once per checkout: `pre-commit install --hook-type pre-commit --hook-type pre-push` — formatting, theme roles and
+  layers on every commit, the public-headers guard before a push.
+- `tools/verify.sh` (or `--core` when no plugin code changed) must pass; `tools/check-docs.sh` needs lychee.
+- Then what your change reaches, each in a build tree of its own (`-DBAMBI_SANITIZE=…`, see `docs/BUILDING.md`):
+  core code → `address,undefined` over `bambi-tests`; the link bus → `thread` over `bambi-tests -sf='*link*'`;
+  anything on the audio path → `realtime` (Homebrew or upstream Clang 20+) over the plugin check suites; a plugin's
+  buses, state or parameters → `tools/validate-plugins.sh` (pluginval, clap-validator).
+- CI runs the same, gated by what changed; the exhaustive runs are nightly. A change to docs or `.claude/` alone
+  builds nothing.
+
 ## Where things live
 
 | path | what |
@@ -59,6 +71,10 @@ boundary, radians everywhere inside.**
 8. **The look comes from `Theme.h` only**; `tools/check-style.sh` fails on a literal colour, size or radius.
 9. **An include never runs upward** through `core/`'s layers (`tools/check-layers.sh`); move the type instead.
 10. **The built UI is the reference** for how things look, not a draft or a canvas.
+11. **Say it the way the audio world says it.** Text a musician or contributor reads uses the terms they would
+    search for — ambisonics, automation lane, send, delay tap, HRTF, head tracking — never a word of bambi's own
+    for something with a common name ("the field", "lanes", "wires"). A control keeps its name in the plugin; a
+    parameter key never changes for a word.
 
 ## Don't
 
@@ -77,8 +93,9 @@ a new number; the old one is never rewritten.
 
 ## Working on bambi
 
-- Every change starts from a GitHub issue and lands as one pull request into `main`, from a branch named for the
-  issue. Pull requests merge with a merge commit.
+- Every change starts from a GitHub issue — a typo or a one-line obvious fix may go straight to a pull request —
+  and lands as one pull request into `main`, from a branch named for the issue. Pull requests merge with a merge
+  commit.
 - **Work in a worktree of your own** (`git worktree add ../bambi-<issue> -b <branch> origin/main`) when another
   agent or person may be working in the same checkout, or when `git status` shows changes you did not make. Never
   build, stash, commit or switch branches over someone else's work. A new worktree needs its submodules
@@ -90,4 +107,5 @@ a new number; the old one is never rewritten.
   decision numbers (the docs link decisions freely).
 - Procedures for recurring tasks are in `.claude/skills/*/SKILL.md` — readable as plain instructions with any
   tool: adding a parameter, adding a plugin, writing a doc, a comment pass, a prototype, issues and pull requests.
-  Four reviewers in `.claude/agents/` check finished work: architecture, real-time safety, DSP cost, UI uniformity.
+  Five reviewers in `.claude/agents/` check finished work: architecture, real-time safety, DSP cost, UI uniformity,
+  wording.

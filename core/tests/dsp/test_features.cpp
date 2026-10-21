@@ -51,6 +51,7 @@ double meanGated(const std::vector<float>& x, Feature f, double sr = kSr) {
 }  // namespace
 
 TEST_CASE("silence produces no features and never opens the gate") {
+    //  Catches: a gate that opens whatever the level.
     std::vector<float> quiet(static_cast<std::size_t>(kSr), 0.0f);
     const auto rows = FeatureBank::analyseOffline(quiet, kSr);
     REQUIRE(rows.size() > 8);
@@ -63,6 +64,8 @@ TEST_CASE("silence produces no features and never opens the gate") {
 /*  The orthogonality the feature set was chosen for. If these two ever converge, the set
  *  has lost the property that made it worth six features instead of one. */
 TEST_CASE("Tonal separates a held note from noise, and Attack does not fire on either") {
+    //  Catches: flatness read the wrong way round, and an Attack whose range starts at zero, so a steady ratio of 1
+    //  reads as a transient.
     const double tonalSine = meanGated(sine(440.0, 2.0), Feature::Tonal);
     const double tonalNoise = meanGated(noise(2.0), Feature::Tonal);
     INFO("sine ", tonalSine, "  noise ", tonalNoise);
@@ -79,6 +82,7 @@ TEST_CASE("Tonal separates a held note from noise, and Attack does not fire on e
 }
 
 TEST_CASE("Attack fires on transients and is level-independent") {
+    //  Catches: the fast envelope read on its own rather than as a ratio of the slow one.
     auto clicks = [](float amp) {
         std::vector<float> x(static_cast<std::size_t>(kSr * 2.0), 0.0f);
         for (std::size_t start = 0; start + 400 < x.size(); start += 9600) {  // 5 Hz
@@ -122,8 +126,9 @@ TEST_CASE("Attack opens continuously, so one ULP cannot move a whole hop of gain
     };
 
     std::vector<double> swept;
-    for (double amp = 1e-3; amp <= 1e-1; amp *= 1.0116)  // 0.1 dB steps
-        swept.push_back(attackAt(static_cast<float>(amp)));
+    swept.reserve(400);
+    for (int step = 0; step < 400; ++step)  // 0.1 dB steps from 1e-3 to 1e-1
+        swept.push_back(attackAt(static_cast<float>(1e-3 * std::pow(1.0116, step))));
 
     double worstStep = 0.0;
     for (std::size_t i = 1; i < swept.size(); ++i) worstStep = std::max(worstStep, std::abs(swept[i] - swept[i - 1]));
@@ -139,6 +144,7 @@ TEST_CASE("Attack opens continuously, so one ULP cannot move a whole hop of gain
 }
 
 TEST_CASE("the bands follow the frequency they are named after") {
+    //  Catches: the low band given the high band's power.
     const double lowInLow = meanGated(sine(80.0, 1.5), Feature::Low);
     const double lowInHigh = meanGated(sine(80.0, 1.5), Feature::High);
     CHECK(lowInLow > lowInHigh);
@@ -153,6 +159,7 @@ TEST_CASE("the bands follow the frequency they are named after") {
 }
 
 TEST_CASE("Level rises with amplitude") {
+    //  Catches: the level envelope saturating, so loud and quiet read the same.
     const double a = meanGated(sine(440.0, 1.0, 0.05f), Feature::Level);
     const double b = meanGated(sine(440.0, 1.0, 0.5f), Feature::Level);
     INFO("quiet ", a, "  loud ", b);
@@ -163,6 +170,7 @@ TEST_CASE("Level rises with amplitude") {
  *  bit-identical features to the same source fed 777 samples at a time, or the hop alignment is wrong and every
  *  calibrated constant is read at the wrong moment. 777 is deliberately not a divisor of the hop. */
 TEST_CASE("results do not depend on the block size the host happens to use") {
+    //  Catches: a hop counted from each call's start rather than across calls.
     const auto x = sine(300.0, 1.0, 0.4f);
     auto runWithBlocks = [&](int block) {
         FeatureBank fb;
@@ -184,8 +192,8 @@ TEST_CASE("results do not depend on the block size the host happens to use") {
     const auto c = runWithBlocks(1);
     for (int f = 0; f < kNumFeatures; ++f) {
         INFO("feature ", f);
-        CHECK(a[static_cast<std::size_t>(f)] == doctest::Approx(b[static_cast<std::size_t>(f)]).epsilon(1e-12));
-        CHECK(a[static_cast<std::size_t>(f)] == doctest::Approx(c[static_cast<std::size_t>(f)]).epsilon(1e-12));
+        CHECK(std::abs(a[static_cast<std::size_t>(f)] - b[static_cast<std::size_t>(f)]) < 1e-12);
+        CHECK(std::abs(a[static_cast<std::size_t>(f)] - c[static_cast<std::size_t>(f)]) < 1e-12);
     }
 }
 
@@ -205,7 +213,8 @@ TEST_CASE("the gate opens over a band, so a level rounded differently cannot mov
     };
     const FeatureConfig cfg;
     std::vector<double> swept;
-    for (double db = cfg.gateDb - 5.0; db <= cfg.gateDb + 5.0; db += 0.1) swept.push_back(gateAt(db));
+    swept.reserve(101);
+    for (int step = 0; step <= 100; ++step) swept.push_back(gateAt(cfg.gateDb - 5.0 + 0.1 * step));
     double worstStep = 0.0;
     for (std::size_t i = 1; i < swept.size(); ++i) worstStep = std::max(worstStep, std::abs(swept[i] - swept[i - 1]));
     INFO("worst adjacent step ", worstStep);
@@ -218,6 +227,7 @@ TEST_CASE("the gate opens over a band, so a level rounded differently cannot mov
 }
 
 TEST_CASE("reset returns the bank to its initial state") {
+    //  Catches: the features left at their last values by a reset.
     FeatureBank fb;
     fb.prepare(kSr);
     const auto loud = sine(440.0, 0.5);
@@ -229,6 +239,7 @@ TEST_CASE("reset returns the bank to its initial state") {
 }
 
 TEST_CASE("disabling the spectral path zeroes only the features that need the FFT") {
+    //  Catches: the switch ignored, so the spectral features are worked out anyway.
     FeatureBank fb;
     fb.prepare(kSr);
     fb.setSpectralEnabled(false);
@@ -241,11 +252,11 @@ TEST_CASE("disabling the spectral path zeroes only the features that need the FF
     CHECK(fb.gate() > 0.5);
 }
 
-/*  The two numerical shortcuts the spectral path takes, each checked against the honest
- *  form it replaced. Both are invisible from the feature values, which is exactly why they
- *  need their own tests -- a mistake here would show up as a slow drift in calibration
- *  rather than as anything obviously broken. */
+/*  The spectral path's shortcut, checked against the honest form it replaced: invisible from the
+ *  feature values, where a mistake would show as a slow drift in calibration rather than as anything
+ *  obviously broken. */
 TEST_CASE("power() agrees with magnitude() squared") {
+    //  Catches: the imaginary part left out of the power.
     RealFft fft;
     fft.prepare(1024);
     std::vector<double> in(1024), mag(fft.bins()), pw(fft.bins());
@@ -255,34 +266,8 @@ TEST_CASE("power() agrees with magnitude() squared") {
     fft.power(in, pw);
     for (std::size_t k = 0; k < fft.bins(); ++k) {
         INFO("bin ", k);
-        CHECK(pw[k] == doctest::Approx(mag[k] * mag[k]).epsilon(1e-9));
+        CHECK(std::abs(pw[k] - mag[k] * mag[k]) <= 1e-9 * std::max(1.0, mag[k] * mag[k]));
     }
-}
-
-TEST_CASE("log of a running product equals the per-bin sum of logs") {
-    //  The identity the flatness loop relies on, over a deliberately hostile spread of
-    //  magnitudes: 1e-10 to 1e3, which underflows a naive product long before the end.
-    std::mt19937 rng(3);
-    std::uniform_real_distribution<double> ex(-10.0, 3.0);
-    std::vector<double> v(1000);
-    for (auto& p : v) p = std::pow(10.0, ex(rng));
-
-    double sumOfLogs = 0.0;
-    for (double p : v) sumOfLogs += std::log(p);
-
-    double prod = 1.0;
-    int prodExp = 0;
-    for (double p : v) {
-        prod *= p;
-        if (prod < 1e-100) {
-            int e = 0;
-            prod = std::frexp(prod, &e);
-            prodExp += e;
-        }
-    }
-    const double logOfProduct = std::log(prod) + prodExp * 0.6931471805599453;
-    INFO("sum ", sumOfLogs, "  product ", logOfProduct);
-    CHECK(logOfProduct == doctest::Approx(sumOfLogs).epsilon(1e-12));
 }
 
 // ---- a field's detector --------------------------------------------------------------------------
@@ -302,6 +287,7 @@ std::vector<std::vector<float>> encoded(const std::vector<float>& mono, Vec3 fro
 /// Level at the end of a field, heard through W with the field's power beside it, or through W alone.
 double levelOf(const std::vector<std::vector<float>>& field, bool withPower) {
     std::vector<const float*> channels;
+    channels.reserve(field.size());
     for (const auto& c : field) channels.push_back(c.data());
     const int n = static_cast<int>(field[0].size());
     std::vector<float> power(static_cast<std::size_t>(n));
@@ -323,7 +309,7 @@ TEST_CASE("one source in a field reads the level W alone reads, at every order a
         for (const Vec3 from : {Vec3{1, 0, 0}, Vec3{0, 0, 1}, unit(Vec3{-0.3, 0.8, -0.5})}) {
             const auto field = encoded(mono, from, order);
             CAPTURE(order);
-            CHECK(levelOf(field, true) == doctest::Approx(levelOf(field, false)).epsilon(1e-4));
+            CHECK(std::abs(levelOf(field, true) - levelOf(field, false)) < 1e-4);
         }
 }
 

@@ -94,6 +94,7 @@ std::vector<float> noise(int order, int frames, unsigned seed = 3u) {
 }  // namespace
 
 TEST_CASE("repeat j lands at offset + j periods, at level times feedback to the j-1, turned j times") {
+    //  Catches: feedback applied twice a pass, the offset not read from the line, and the spin turning the wrong way.
     const int order = 3, C = 16, period = 1000, offset = 300;
     Host host(order);
     host.frame.taps[0] = tap(period, offset, 0.5, 0.8, 30.0 * kDeg2Rad);
@@ -114,13 +115,14 @@ TEST_CASE("repeat j lands at offset + j periods, at level times feedback to the 
             for (int k = 0; k < 60; ++k) sum += host.out[static_cast<std::size_t>((at + k) * C + c)];
             CHECK(std::abs(sum - gain * want[static_cast<std::size_t>(c)]) < 1e-5);
             //  and it starts there, not a sample sooner
-            CHECK(host.out[static_cast<std::size_t>((at - 1) * C + c)] == doctest::Approx(0.0).epsilon(1e-9));
+            CHECK(std::abs(host.out[static_cast<std::size_t>((at - 1) * C + c)]) < 1e-9);
         }
         CHECK(std::abs(host.out[static_cast<std::size_t>(at * C)]) > 0.1 * gain);
     }
 }
 
 TEST_CASE("the first frame after a reset is taken at once, not faded in") {
+    //  Catches: the first frame's level glided in from nothing.
     //  A repeat inside the first control hop is already at its level: a fade there would attenuate the
     //  first repeat of every short tap, at every play, locate and loop.
     const int order = 0;
@@ -131,10 +133,11 @@ TEST_CASE("the first frame after a reset is taken at once, not faded in") {
     host.run(in, {128});
     double sum = 0.0;
     for (int k = 100; k < 160; ++k) sum += host.out[static_cast<std::size_t>(k)];
-    CHECK(sum == doctest::Approx(0.5).epsilon(1e-5));
+    CHECK(std::abs(sum - 0.5) < 1e-5);
 }
 
 TEST_CASE("the taps add up, do not feed each other, and level leaves the tail alone") {
+    //  Catches: one tap overwriting another's output, and the level inside the loop, where it would shorten the tail.
     const int order = 1, frames = 8000;
     const auto in = noise(order, frames);
     Host a(order), b(order), both(order);
@@ -202,18 +205,23 @@ TEST_CASE("after a reset the engine is the one that was never played") {
         h.frame.taps[0] = tap(900, 400, 0.7, 0.9, 0.3);
         h.frame.taps[0].pass.lowCutHz = 150.0;
         h.frame.taps[0].pass.highCutHz = 4000.0;
+        h.frame.taps[1] = tap(100, 0, 0.6, 0.3);  // a repeat inside the first hop, where a fade would show
     };
     Host played(order), fresh(order);
     setUp(played);
     setUp(fresh);
+    played.frame.taps[0].level = played.frame.taps[1].level = 0.2;  // another level before the reset
     played.run(before, {128});
     played.engine.reset();
+    setUp(played);
     played.run(after, {128});
     fresh.run(after, {128});
     CHECK(std::memcmp(played.out.data(), fresh.out.data(), fresh.out.size() * sizeof(float)) == 0);
 }
 
 TEST_CASE("what is not a number does not go round, and a loop that grows is held and counted") {
+    //  Catches: the input not cleaned before it reaches the line, a loop that grows not held at the limit, and one held
+    //  without being counted.
     const int order = 1, C = 4, frames = 3000;
     auto poisoned = noise(order, frames), cleaned = poisoned;
     for (const int at : {100, 101}) {
@@ -232,15 +240,16 @@ TEST_CASE("what is not a number does not go round, and a loop that grows is held
     Host loud(order);
     loud.frame.taps[0] = tap(20, 0, 1.0, 1.0);
     loud.frame.taps[0].pass.skew = 0.0;
-    std::vector<float> drive(static_cast<std::size_t>(C * 48000),
-                             10.0f);  // +1 a pass at unity feedback: past the limit in a second
+    std::vector<float> drive(static_cast<std::size_t>(C * 96000),
+                             10.0f);  // +10 a pass at unity feedback: past the limit in half a second
     loud.run(drive, {512});
-    for (const float v : loud.out) REQUIRE(std::isfinite(v));
+    for (const float v : loud.out) REQUIRE(std::abs(v) < 1.5e4f);  // finite, and held near the limit
     CHECK(loud.engine.clamped() > 0);
     CHECK(a.engine.clamped() == 0);
 }
 
 TEST_CASE("a tap switched off fades out and sleeps, and wakes with nothing in it") {
+    //  Catches: a tap switched off that never fades to sleep, and a ring that keeps its tail while asleep.
     const int order = 1, C = 4;
     Host host(order);
     host.frame.taps[0] = tap(600, 0, 1.0, 0.9);
@@ -263,6 +272,7 @@ TEST_CASE("a tap switched off fades out and sleeps, and wakes with nothing in it
 }
 
 TEST_CASE("a period that changes while the tap plays keeps its tail and does not click") {
+    //  Catches: the read jumping to the new period at once instead of crossfading over the hop.
     /*  A steady tone goes round a loop; the period changes; the output is crossfaded from the old
         read to the new over one hop. Measured as the largest step between neighbouring
         samples: no larger across the change than the signal's own, where a read that jumped at once
@@ -322,7 +332,7 @@ TEST_CASE("the send decides what is echoed at all, once for every tap") {
     CHECK(energyOf(back, RegionSide::Outside, 1.0) > 0.1);
     CHECK(energyOf(front, RegionSide::Outside, 1.0) < 0.05 * inFront);
     //  the slot's amount is a gain on what is sent
-    CHECK(energyOf(front, RegionSide::Inside, 0.5) == doctest::Approx(0.25 * inFront).epsilon(1e-4));
+    CHECK(std::abs(energyOf(front, RegionSide::Inside, 0.5) / (0.25 * inFront) - 1.0) < 1e-4);
 
     //  and a send whose only change is its SIDE is a changed send: a source behind, sent from the
     //  inside and barely heard, is heard once the slot is flipped while it plays
@@ -345,6 +355,7 @@ TEST_CASE("the send decides what is echoed at all, once for every tap") {
 }
 
 TEST_CASE("a frame handed over only when something changed renders as one handed over every hop would cut") {
+    //  Catches: a chunk that runs across the end of the hop a change is ramped over.
     /*  A caller may skip setFrame when nothing moved -- at order 7 a frame costs 1 % of a core. Then
         the hop a change is ramped over can begin anywhere in the caller's pieces, and a chunk that
         straddled its end would take one decision for both sides of it. Pieces of 100, 256 and 1
@@ -397,12 +408,13 @@ TEST_CASE("a frame that comes early carries on from where the last one had got t
     frame.taps[0].level = 1.0;
     engine.setFrame(frame);
     engine.process(ones.data() + 1124, out.data() + 1124, 400);
-    CHECK(out[1123] == doctest::Approx(1.0 - 100.0 / 256.0).epsilon(0.02));
+    CHECK(std::abs(out[1123] - (1.0 - 100.0 / 256.0)) < 0.02);
     CHECK(std::abs(out[1124] - out[1123]) < 0.02);  // no jump at the early frame
     CHECK(out[1124 + 300] == doctest::Approx(1.0).epsilon(0.02));
 }
 
 TEST_CASE("settings that are not numbers do nothing, and leave nothing behind") {
+    //  Catches: a feedback that is not a number taken into its ramp, where it silences the tap from then on.
     //  Every pass setting, the level and the feedback are NaN for one hop mid-render. Unguarded, a NaN
     //  would stay in the band's state for as long as the tap lives.
     const int order = 3;
@@ -431,6 +443,7 @@ TEST_CASE("settings that are not numbers do nothing, and leave nothing behind") 
 }
 
 TEST_CASE("a spin that is not a number is no spin, not silence") {
+    //  Catches: the spin's NaN guard removed, so the pass turns the tap to silence.
     //  Unguarded, the band would turn a NaN spin into silence. The tap should play on, unturned.
     const int order = 1, C = 4;
     Host host(order);
@@ -447,6 +460,7 @@ TEST_CASE("a spin that is not a number is no spin, not silence") {
 }
 
 TEST_CASE("the send's amount is brought in over the hop, not switched") {
+    //  Catches: the send's amount switched at the frame rather than ramped.
     //  Steady input, a short tap with no feedback and no low cut: the output is what was sent a period
     //  ago. Dropped from 1 to 0.2, it falls over 256 samples -- 0.003 a sample -- where a switch is one
     //  step of 0.8.
@@ -466,7 +480,7 @@ TEST_CASE("the send's amount is brought in over the hop, not switched") {
     double step = 0.0;
     for (int i = 1025; i < 2048; ++i) step = std::max(step, static_cast<double>(std::abs(out[i] - out[i - 1])));
     CHECK(out[1000] == doctest::Approx(1.0).epsilon(0.01));
-    CHECK(out[2000] == doctest::Approx(0.2).epsilon(0.01));
+    CHECK(std::abs(out[2000] - 0.2) < 0.01);
     CHECK(step < 0.02);
 }
 
@@ -480,7 +494,7 @@ TEST_CASE("Echo's output stage: the taps are trimmed and the input put back, and
         feedback control), and -60 dB treated as a gain rather than silence. */
     EchoEngine engine;
     engine.prepare(3, 48000.0);
-    const int C = numChannels(3), frames = 24000;
+    const int C = numChannels(3), frames = 60000;  // four repeats of an eighth at 120 bpm
     std::vector<float> in(static_cast<std::size_t>(frames) * C, 0.0f), out(in.size());
     in[0] = 1.0f;  // one impulse on the omni channel
 
@@ -514,10 +528,10 @@ TEST_CASE("Echo's output stage: the taps are trimmed and the input put back, and
     //  the dry appears and the repeats do not move: it is an output stage, not a path
     const auto [withDry, tapsAgain] = render(0.0, 0.0);
     CHECK(withDry == doctest::Approx(1.0).epsilon(0.02));
-    CHECK(tapsAgain == doctest::Approx(tapsAlone).epsilon(1e-9));
+    CHECK(std::abs(tapsAgain / tapsAlone - 1.0) < 1e-9);
 
     //  and the wet trims the taps without touching the dry
     const auto [dryStill, tapsHalf] = render(0.0, -6.0);
     CHECK(dryStill == doctest::Approx(withDry).epsilon(1e-9));
-    CHECK(tapsHalf == doctest::Approx(tapsAlone * 0.25).epsilon(0.02));
+    CHECK(std::abs(tapsHalf / (tapsAlone * 0.25) - 1.0) < 0.02);
 }

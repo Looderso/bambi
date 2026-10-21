@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bambi/live/protocol.hpp"
 
+#include <charconv>
 #include <cmath>
 #include <cstdlib>
 
@@ -345,8 +346,9 @@ std::optional<Message> parse(std::string_view line, std::string* error) {
         Info i{number(o, "latency"), number(o, "rate"), {}};
         if (const Json* w = member(o, "warnings"); w != nullptr && w->isObject())
             for (const auto& [key, text] : w->members()) {
-                const long long track = std::atoll(key.c_str());
-                if (track > 0 && text.isString())
+                long long track = 0;
+                const auto read = std::from_chars(key.data(), key.data() + key.size(), track);
+                if (read.ec == std::errc{} && track > 0 && text.isString())
                     i.warnings[static_cast<TrackId>(track)] = std::string(text.stringOr(""));
             }
         return i;

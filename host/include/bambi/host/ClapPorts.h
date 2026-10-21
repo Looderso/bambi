@@ -69,6 +69,8 @@ public:
     }
 
 private:
+    FieldEffectClapPorts() = default;  // only `Base` derives from it, so `self()` is always that
+    friend Base;
     Base& self() { return static_cast<Base&>(*this); }
     const Base& self() const { return static_cast<const Base&>(*this); }
 };

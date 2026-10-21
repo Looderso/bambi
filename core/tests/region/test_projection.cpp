@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include <algorithm>#include <cmath>
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -76,7 +77,7 @@ TEST_CASE("a region on the bus is the integral of what it is worth in every dire
     for (const Region& r : {softSpot(), band}) {
         RegionOperator op;
         op.prepare(order, 8);
-        REQUIRE(op.set(r));
+        op.set(r);
         const auto got = matrixOf(op, order), want = reference(r, order);
         double worst = 0.0;
         for (int k = 0; k < C * C; ++k)
@@ -87,6 +88,7 @@ TEST_CASE("a region on the bus is the integral of what it is worth in every dire
 }
 
 TEST_CASE("a hard cap's omni entry is the share of the sphere it covers, and the bus rings outside 0..1") {
+    //  Catches: the integral not cut at a hard edge, which leaves the share off by a thousandth.
     //  Closed forms. The first entry of M is the region's average, which for a cap is (1 - cos)/2.
     const int order = 3;
     Region cap;
@@ -96,7 +98,7 @@ TEST_CASE("a hard cap's omni entry is the share of the sphere it covers, and the
     op.prepare(order, 8);
     for (const double deg : {30.0, 90.0, 140.0}) {
         cap.size = deg * kDeg2Rad;
-        REQUIRE(op.set(cap));
+        op.set(cap);
         CHECK(std::abs(op.blocks()[0] - (1.0 - std::cos(cap.size)) / 2.0) < 1e-12);
     }
 
@@ -107,13 +109,13 @@ TEST_CASE("a hard cap's omni entry is the share of the sphere it covers, and the
     band.softness = 0.0;
     band.bandElevation = 25.0 * kDeg2Rad;
     band.thickness = 50.0 * kDeg2Rad;
-    REQUIRE(op.set(band));
+    op.set(band);
     CHECK(std::abs(op.blocks()[0] - (std::sin(50.0 * kDeg2Rad) - std::sin(0.0)) / 2.0) < 1e-12);
 
     //  "front" at order 3 -- a half -- reads about -0.2 to 1.2 on the bus: the first row of M is the
     //  region itself, band-limited. Its truncation, not a defect.
     cap.size = kPi / 2;
-    REQUIRE(op.set(cap));
+    op.set(cap);
     const auto m = matrixOf(op, order);
     std::vector<double> y(16);
     double lo = 1e9, hi = -1e9;
@@ -124,11 +126,14 @@ TEST_CASE("a hard cap's omni entry is the share of the sphere it covers, and the
         lo = std::min(lo, g);
         hi = std::max(hi, g);
     }
-    CHECK(lo == doctest::Approx(-0.2).epsilon(0.1));  // values near 1: Approx's tolerance is what it says
+    INFO("rings from ", lo, " to ", hi);
+    CHECK(lo < -0.08);
+    CHECK(lo > -0.32);
     CHECK(hi == doctest::Approx(1.2).epsilon(0.05));
 }
 
 TEST_CASE("inside and outside add up to the field, exactly as far as floats go, and everywhere passes it all") {
+    //  Catches: the outside not taken as what the inside left, and the outside of everywhere passing the field.
     const int order = 5, C = numChannels(order), frames = 6;
     std::vector<float> in(static_cast<std::size_t>(C * frames)), a(in.size()), b(in.size());
     unsigned s = 9u;
@@ -141,9 +146,9 @@ TEST_CASE("inside and outside add up to the field, exactly as far as floats go, 
     RegionOperator inside, outside;
     inside.prepare(order, frames);
     outside.prepare(order, frames);
-    REQUIRE(inside.set(r));
+    inside.set(r);
     r.side = RegionSide::Outside;
-    REQUIRE(outside.set(r));
+    outside.set(r);
     inside.apply(in.data(), a.data(), frames);
     outside.apply(in.data(), b.data(), frames);
     double moved = 0.0;
@@ -154,11 +159,11 @@ TEST_CASE("inside and outside add up to the field, exactly as far as floats go, 
     CHECK(moved > 0.1);
 
     Region all;  // Everywhere
-    REQUIRE(inside.set(all));
+    inside.set(all);
     inside.apply(in.data(), a.data(), frames);
     CHECK(std::memcmp(a.data(), in.data(), in.size() * sizeof(float)) == 0);
     all.side = RegionSide::Outside;
-    REQUIRE(inside.set(all));
+    inside.set(all);
     inside.apply(in.data(), a.data(), frames);
     for (const float v : a) CHECK(v == 0.0f);
 }
@@ -201,7 +206,7 @@ TEST_CASE("sectors and dots are projected too, and agree with the definition") {
         for (const Region& r : {sectors, dots, tetra, twenty, wide, one}) {
             RegionOperator op;
             op.prepare(order, 4);
-            REQUIRE(op.set(r));  // built in the step itself
+            op.set(r);  // built in the step itself
             CHECK_FALSE(op.isAxial());
             const std::vector<double> got = matrixOf(op, order), want = reference(r, order);
             double worst = 0.0;
@@ -215,8 +220,8 @@ TEST_CASE("sectors and dots are projected too, and agree with the definition") {
 TEST_CASE("turning a sector rebuilds nothing; resizing it rebuilds the matrix") {
     /*  What makes a dense kind affordable: the matrix depends on the shape alone, and orientation --
         which is what a modulated region moves -- costs only the rotation an axial region also pays.
-        Catches: caching on the whole region (every turn rebuilds) and caching on nothing (the first
-        check would pass for the wrong reason, which is why the second is here). */
+        Catches: a cache not keyed on the shape, so a resized sector keeps its old matrix. A turn that
+        rebuilds anyway builds the same bits, so this cannot see a cache keyed on the whole region. */
     Region r;
     r.kind = RegionKind::Sectors;
     r.sectors = 4;
@@ -225,26 +230,26 @@ TEST_CASE("turning a sector rebuilds nothing; resizing it rebuilds the matrix") 
 
     RegionOperator op;
     op.prepare(3, 4);
-    REQUIRE(op.set(r));
+    op.set(r);
     const std::vector<double> first(op.dense().begin(), op.dense().end());
 
     //  turned: the own-frame matrix is the same to the bit, and the rotation carries the change
     r.yaw = 40.0 * kDeg2Rad;
     r.pitch = 15.0 * kDeg2Rad;
-    REQUIRE(op.set(r));
+    op.set(r);
     const std::vector<double> turned(op.dense().begin(), op.dense().end());
     REQUIRE(turned.size() == first.size());
     for (std::size_t i = 0; i < first.size(); ++i) REQUIRE(turned[i] == first[i]);
 
     //  and the side is not a shape either: outside is I - M, never a second matrix
     r.side = RegionSide::Outside;
-    REQUIRE(op.set(r));
+    op.set(r);
     for (std::size_t i = 0; i < first.size(); ++i) REQUIRE(op.dense()[i] == first[i]);
 
     //  resized: it is a different matrix
     r.side = RegionSide::Inside;
     r.fill = 0.25;
-    REQUIRE(op.set(r));
+    op.set(r);
     bool moved = false;
     for (std::size_t i = 0; i < first.size(); ++i) moved = moved || op.dense()[i] != first[i];
     CHECK(moved);
@@ -258,11 +263,11 @@ TEST_CASE("the outside of everywhere passes nothing, and says so") {
     all.kind = RegionKind::Everywhere;
     RegionOperator op;
     op.prepare(order, 4);
-    REQUIRE(op.set(all));
+    op.set(all);
     CHECK(op.passesEverything());
 
     all.side = RegionSide::Outside;
-    REQUIRE(op.set(all));
+    op.set(all);
     CHECK_FALSE(op.passesEverything());
     std::vector<float> in(static_cast<std::size_t>(C), 0.5f), out(in.size(), 1.0f);
     op.apply(in.data(), out.data(), 1);
@@ -270,6 +275,7 @@ TEST_CASE("the outside of everywhere passes nothing, and says so") {
 }
 
 TEST_CASE("a region gives the same bits for one call of many frames as for many calls of one") {
+    //  Catches: a block whose last frame is left unprocessed.
     const int order = 7, C = numChannels(order), frames = 40;
     std::vector<float> in(static_cast<std::size_t>(C * frames));
     unsigned s = 2u;
@@ -279,7 +285,7 @@ TEST_CASE("a region gives the same bits for one call of many frames as for many 
     }
     RegionOperator op;
     op.prepare(order, frames);
-    REQUIRE(op.set(softSpot()));
+    op.set(softSpot());
     std::vector<float> whole(in.size()), ones(in.size());
     op.apply(in.data(), whole.data(), frames);
     for (int f = 0; f < frames; ++f) op.apply(in.data() + f * C, ones.data() + f * C, 1);
@@ -303,7 +309,7 @@ TEST_CASE(
         all.yaw = 0.4, all.pitch = -0.3;
         RegionOperator op;
         op.prepare(order, 4);
-        REQUIRE(op.set(all));
+        op.set(all);
         const auto m = matrixOf(op, order);
         double worst = 0.0;
         for (int i = 0; i < C; ++i)
@@ -318,26 +324,25 @@ TEST_CASE(
             dots.dots = count;
             dots.dotSize = maxDotSize(count);  // as large as they go: the caps just touch
             dots.softness = 0.0;
-            REQUIRE(op.set(dots));
+            op.set(dots);
             //  W in, W out: the share of the sphere the caps cover
             const double share = count * (1.0 - std::cos(dots.dotSize)) * 0.5;
             INFO(count, " dots");
-            CHECK(op.dense()[0] == doctest::Approx(share).epsilon(1e-4));
+            CHECK(std::abs(op.dense()[0] / share - 1.0) < 1e-4);
             //  and a set is the same from every one of its dots: its matrix has the set's symmetry, so the
             //  first-order block is a multiple of the identity for every set but four's, which is too
             if (count != 2) {
                 for (int i = 1; i < 4; ++i)
                     for (int j = 1; j < 4; ++j)
-                        CHECK(op.dense()[static_cast<std::size_t>(i * C + j)] ==
-                              doctest::Approx(i == j ? op.dense()[static_cast<std::size_t>(C + 1)] : 0.0)
-                                  .epsilon(1e-6)
-                                  .scale(1.0));
+                        CHECK(std::abs(op.dense()[static_cast<std::size_t>(i * C + j)] -
+                                       (i == j ? op.dense()[static_cast<std::size_t>(C + 1)] : 0.0)) < 2e-6);
             }
         }
     }
 }
 
 TEST_CASE("half the sphere as one sector and the half opposite add up to everything, however wide the fade") {
+    //  Catches: a fade integrated in one panel, which a fade across half the circle needs more than.
     /*  One sector at fill 0.5 fades symmetrically about its edge, and a profile and its mirror add to one,
      *  so it and itself turned half round are the whole sphere: M + M' = I, exactly, at any softness. At
      *  order 7 with a fade across half the circle, a fade rule of one panel is visibly short of it. */
@@ -353,8 +358,8 @@ TEST_CASE("half the sphere as one sector and the half opposite add up to everyth
         RegionOperator a, b;
         a.prepare(order, 4);
         b.prepare(order, 4);
-        REQUIRE(a.set(half));
-        REQUIRE(b.set(opposite));
+        a.set(half);
+        b.set(opposite);
         const auto ma = matrixOf(a, order), mb = matrixOf(b, order);
         double worst = 0.0;
         for (int i = 0; i < C; ++i)
@@ -390,7 +395,7 @@ TEST_CASE("a gain at a direction is the matrix's gain on a wave from there, and 
                 through += y[static_cast<std::size_t>(i)] * row;
                 energy += y[static_cast<std::size_t>(i)] * y[static_cast<std::size_t>(i)];
             }
-            CHECK(op.gainAt(d) == doctest::Approx(std::clamp(through / energy, 0.0, 1.0)).epsilon(1e-4));
+            CHECK(std::abs(op.gainAt(d) - std::clamp(through / energy, 0.0, 1.0)) < 1e-4);
         }
     }
 
@@ -398,7 +403,8 @@ TEST_CASE("a gain at a direction is the matrix's gain on a wave from there, and 
         /*  Catches: gainAt reading the region at the point, which jumps from 0 to 1 when the edge passes. */
         const Vec3 d = unit({std::cos(70.0 * kDeg2Rad), std::sin(70.0 * kDeg2Rad), 0.0});
         double last = -1.0, biggest = 0.0;
-        for (double size = 5.0; size <= 175.0; size += 1.0) {
+        for (int deg = 5; deg <= 175; ++deg) {
+            const double size = deg;
             Region r;
             r.kind = RegionKind::Spot;
             r.size = size * kDeg2Rad;
@@ -412,7 +418,7 @@ TEST_CASE("a gain at a direction is the matrix's gain on a wave from there, and 
     }
 
     SUBCASE("inside and outside add up to one, a gain stays in 0..1, and everywhere passes everything") {
-        //  Catches: the outside's gain not being the inside's complement, or an unclamped ring.
+        //  Catches: the outside of everywhere given the gain of everything.
         Region r = softSpot();
         for (const Vec3 d : {unit({1.0, 0.0, 0.0}), unit({-1.0, 0.2, 0.1}), unit({0.0, 0.0, 1.0})}) {
             r.side = RegionSide::Inside;

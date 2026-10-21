@@ -64,8 +64,8 @@ void Rail::paint(juce::Graphics& g) {
 
     //  the views: up to the first empty label from the top, the rest standing on the status
     areas_.assign(labels_.size(), {});
-    const auto split = static_cast<std::size_t>(
-        std::find(labels_.begin(), labels_.end(), juce::String()) - labels_.begin());
+    const auto split =
+        static_cast<std::size_t>(std::find(labels_.begin(), labels_.end(), juce::String()) - labels_.begin());
     const auto view = [&](std::size_t i, float y) {
         const juce::Rectangle<float> row{0.0f, y, w - ui::theme::stroke::rule, rail::row};
         ui::switchLabel(g, labels_[i], row.withTrimmedLeft(rail::padX), row, static_cast<int>(i) == open_);

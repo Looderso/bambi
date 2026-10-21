@@ -11,7 +11,8 @@ namespace bambi::devices {
 #ifdef __APPLE__
 namespace {
 
-AudioObjectPropertyAddress at(AudioObjectPropertySelector s, AudioObjectPropertyScope scope = kAudioObjectPropertyScopeGlobal) {
+AudioObjectPropertyAddress at(AudioObjectPropertySelector s,
+                              AudioObjectPropertyScope scope = kAudioObjectPropertyScopeGlobal) {
     return {s, scope, kAudioObjectPropertyElementMain};
 }
 
@@ -24,9 +25,10 @@ std::string text(CFStringRef s) {
 
 std::string stringOf(AudioObjectID d, AudioObjectPropertySelector s) {
     CFStringRef value = nullptr;
-    UInt32 size = sizeof value;
+    UInt32 size = sizeof(CFStringRef);
     const auto a = at(s);
-    if (AudioObjectGetPropertyData(d, &a, 0, nullptr, &size, &value) != noErr || value == nullptr) return {};
+    if (AudioObjectGetPropertyData(d, &a, 0, nullptr, &size, static_cast<void*>(&value)) != noErr || value == nullptr)
+        return {};
     std::string out = text(value);
     CFRelease(value);
     return out;
@@ -121,8 +123,8 @@ bool Aggregate::create(const std::vector<std::string>& devices, std::string* err
     std::vector<std::string> members{kLoopUid};
     members.insert(members.end(), devices.begin(), devices.end());
     for (const std::string& uid : members) {
-        CFMutableDictionaryRef sub = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks,
-                                                               &kCFTypeDictionaryValueCallBacks);
+        CFMutableDictionaryRef sub =
+            CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         CFStringRef u = cf(uid);
         CFDictionarySetValue(sub, CFSTR(kAudioSubDeviceUIDKey), u);
         const int drift = uid == clock ? 0 : 1;

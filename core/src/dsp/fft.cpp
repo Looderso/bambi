@@ -41,6 +41,9 @@ void RealFft::release() {
 
 bool RealFft::prepare(std::size_t size) {
     release();
+    //  pffft's own check of this is an assert, which a release build does without: it would set up any size whose
+    //  quarter factors into 2s, 3s and 5s, and transform it wrongly.
+    if (size == 0 || size % 32 != 0) return false;
     n_ = size;
     setup_ = pffft_new_setup(static_cast<int>(n_), PFFFT_REAL);
     if (!setup_) {

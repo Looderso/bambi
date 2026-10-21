@@ -95,9 +95,11 @@ names); on reopening the most alike pairs match first, a tie or weak likeness is
    restoring every routing. Live quits: the host quits a minute after its last device has gone. No loop device: `welcome` says so and nothing is routed. A second device: it is told
    the line is busy.
 
-**The device in Live** shows *route* and *open host* with a connection light, the list of every track and return with
-its pair, group or "in Live" and warnings, and a routing snapshot (*save routing*, *restore saved* on a confirming
-press). A track on the loop device that this device did not route is shown, never moved. While route is on it keeps a
+**The device in Live** is one view on the suite's paper: the link's state in a word beside a square (filled while
+linked) and why, *show host* (or *open host* while there is none) over the latency and rate, and the set's tracks in
+two columns, in their colours while bambi plays them and greyed while they stay in Live; a warning marks a track with
+"!", and a click on it says why. When the set opens it notes every track's routing, so a track found on the loop
+device's channels can go back to where it was. A track on the loop device that this device did not route is shown, never moved. While route is on it keeps a
 *bambi track* (listening to Ext. In 1/2, monitoring In, −12 dB, never sent to the host) for recording the binaural mix.
 Moving tracks while bambi is on stalls Live 90 to 160 ms per move.
 
@@ -109,8 +111,12 @@ the shape and the lanes in the device's dict, so in the Live set; audio settings
 
 - **Sources.** A track bambi plays arrives on its own stereo pair and gets an Encoder; an input of the chosen
   interface (a microphone) is also a source, heard as soon as it arrives. A source past the loop device's pairs is left out.
-- **Wires.** Every node plays along wires into a bus, a return, Main or one Decoder's own mix. A group is a bus (the field is a tree) or is left whole in Live; a group is taken whole or split,
-  never both with its tracks. A split group's fader is its bus level.
+- **Wires.** Every node plays along wires into a bus, a return, Main or one Decoder's own mix. Any track or group is taken on its own, at any depth,
+  and what is not taken plays on in Live where it is. A group taken is encoded whole, with all it holds; a group
+  not taken that holds something taken is a bus of the field (the field is a tree) holding just that, while the rest
+  of it plays through the same group in Live. Its fader is the bus's level and its mute and sends reach both halves;
+  its Live effects only the half in Live ([0260](../decisions/0260-any-track-or-group-is-taken-on-its-own-a-group.md)). A shape that marks a group split, as an older set's does, is read as
+  all its tracks taken.
 - **Inserts.** Any part of the field, and Main, can carry a chain of Echo and Reverb, each with an id and state of its
   own. A chain whose track Live no longer has is shown as orphaned, removable, and attachable whole to another part.
 - **Returns.** Each return has a mode: *live* (it stays in Live, a stereo return with Live's effect playing to Main
@@ -151,7 +157,9 @@ name (the one Live's aggregate holds, else *bambi*, else BlackHole 16ch), never 
 field leave on the same devices, differing only by the plugins' latency, which the host knows. Without the host, Live
 is silent; the device says "no host: no sound".
 
-The **I/O page** has four tabs:
+The **I/O page** has four tabs. The interface and MIDI tabs are tiles; outputs and inputs list what they place on
+the left, and every device as a card of its channels on the right: a click on a channel puts the chosen thing there,
+on whichever device that is.
 
 | tab | holds |
 |---|---|

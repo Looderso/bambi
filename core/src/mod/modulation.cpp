@@ -237,11 +237,11 @@ void ModulationEngine::note(const NoteEvent& e) noexcept {
         if (t.channel != 0 && e.channel != t.channel) continue;
         MidiGate& g = midi_[k];
         if (on) {
-            g.held.set(static_cast<std::size_t>(e.note));
+            g.held[static_cast<std::size_t>(e.note)] = true;  // in range, checked above; operator[] never throws
             g.struck = true;
             g.velocity = std::clamp(static_cast<double>(e.velocity), 0.0, 1.0);
         } else {
-            g.held.reset(static_cast<std::size_t>(e.note));
+            g.held[static_cast<std::size_t>(e.note)] = false;
         }
     }
 }

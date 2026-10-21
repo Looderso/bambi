@@ -27,8 +27,9 @@ void LevelColumn::Meter::feed(float peakLinear, double dtSeconds) {
     if (db >= holdDb) {
         holdDb = db;
         holdLeft = mtr::holdSeconds;
-    } else if ((holdLeft -= dtSeconds) <= 0.0) {
-        holdDb -= mtr::fallDbPerSec * dtSeconds;
+    } else {
+        holdLeft -= dtSeconds;
+        if (holdLeft <= 0.0) holdDb -= mtr::fallDbPerSec * dtSeconds;
     }
 }
 

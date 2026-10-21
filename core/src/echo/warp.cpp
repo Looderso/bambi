@@ -30,13 +30,12 @@ void WarpBuilder::prepare(int order, int nodes) {
 }
 
 void WarpBuilder::build(double skew, std::span<double> blocks) noexcept {
-    const double a = clampd(skew, -kMaxSkew, kMaxSkew);
     const int N = order_;
     const auto channels = static_cast<std::size_t>(numChannels(N));
     std::fill(blocks.begin(), blocks.begin() + warpSize(N), 0.0);
 
     for (std::size_t k = 0; k < z_.size(); ++k) {
-        termsAt(slideZ(z_[k], a), N, atImage_);
+        termsAt(slideZ(z_[k], skew), N, atImage_);
         const double* node = atNode_.data() + k * channels;
         int at = 0;
         for (int m = 0; m <= N; ++m) {

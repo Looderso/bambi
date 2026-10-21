@@ -149,13 +149,13 @@ protected:
      *  a block, a click choosing. `offered`, when given, says which tabs can be chosen: the others are greyed and
      *  take no press. Returns each tab's box, in order. */
     std::vector<juce::Rectangle<float>> paintTabRow(juce::Graphics& g, float x, std::span<const juce::String> names,
-                                                    int selected, std::function<void(int)> select,
-                                                    std::function<bool(int)> offered = {});
+                                                    int selected, const std::function<void(int)>& select,
+                                                    const std::function<bool(int)>& offered = {});
     /// The same row with its tabs from `top`, `height` tall: a tab row not in a panel's slot -- a sheet's head.
     std::vector<juce::Rectangle<float>> paintTabRowAt(juce::Graphics& g, float x, float top, float height,
                                                       std::span<const juce::String> names, int selected,
-                                                      std::function<void(int)> select,
-                                                      std::function<bool(int)> offered = {});
+                                                      const std::function<void(int)>& select,
+                                                      const std::function<bool(int)>& offered = {});
     void addRegion(Region region) {
         //  what the viewport hides takes no press: a tile scrolled under the tab bar is not there
         if (hitClip_.has_value()) region.area = region.area.getIntersection(*hitClip_);

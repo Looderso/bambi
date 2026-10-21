@@ -34,6 +34,7 @@
 #include "bambi/host/BlockBench.h"
 #include "bambi/host/LinkNode.h"
 #include "bambi/host/TestPlayHead.h"
+#include "bambi/io/guarded.hpp"
 #include "bambi/math/sh.hpp"
 #include "bambi/mod/matrix.hpp"
 #include "bambi/patch/state.hpp"
@@ -120,7 +121,7 @@ bambi::editor::EffectCheckSpec<Processor> effectSpec() {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+static int run(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     /*  `--bench`: what a whole processBlock costs, as a host drives it. The engine alone is
@@ -149,6 +150,9 @@ int main(int argc, char** argv) {
 
     bambi::editor::checkHeaderHoldsStill<Processor>(bambi::Product::Echo);
 
+    bambi::editor::checkParameterText<Processor>();
+    bambi::editor::checkStateRoundTrip<Processor>(
+        bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)));
     bambi::editor::checkBypass<Processor>(bambi::editor::layout(amb(3), juce::AudioChannelSet::stereo(), amb(3)),
                                           "the field as it arrived",
                                           [](int c, juce::int64 at) { return bambi::editor::fieldSample(c, at); });
@@ -934,6 +938,10 @@ int main(int argc, char** argv) {
         const int joinTicks = 8;  // a few ticks is enough for a join to be seen
         auto first = std::make_unique<BambiEchoProcessor>();
         auto second = std::make_unique<BambiEchoProcessor>();
+        //  a spot, for the angle reset below: a new Echo's region is everywhere, which has no yaw to reset
+        for (auto* p : {first.get(), second.get()})
+            p->document().edit("spot",
+                               [](bambi::PluginState& st) { st.regions[0].shape.kind = bambi::RegionKind::Spot; });
         for (int i = 0; i < joinTicks; ++i) {
             first->linkTick();
             second->linkTick();
@@ -1459,4 +1467,8 @@ int main(int argc, char** argv) {
                                                     [](bool ok, const juce::String& what) { check(ok, what); });
 
     return checkVerdict();
+}
+
+int main(int argc, char** argv) {
+    return bambi::guarded("bambi-echo-check", [&] { return run(argc, argv); });
 }

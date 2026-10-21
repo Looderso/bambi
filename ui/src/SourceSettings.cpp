@@ -173,8 +173,9 @@ float paintEnvelopeShape(ParameterPage& page, juce::Graphics& g, juce::Rectangle
     const auto line = theme::type::label * ctl::valueLineHeight;
     const auto pitch = tileHeight(theme::type::value) + line + ctl::tileRowGap;
     for (int i = 0; i < 4; ++i) {
+        const int gridRow = i / 2;
         const juce::Rectangle<float> cell{content.getX() + static_cast<float>(i % 2) * (column + ctl::tileColumnGap),
-                                          y + static_cast<float>(i / 2) * pitch, column,
+                                          y + static_cast<float>(gridRow) * pitch, column,
                                           tileHeight(theme::type::value)};
         page.addParameterTile(g, cell, key(names[static_cast<std::size_t>(i)]), names[static_cast<std::size_t>(i)]);
         const auto* c = curves[static_cast<std::size_t>(i)];

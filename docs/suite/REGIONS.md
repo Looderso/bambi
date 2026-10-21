@@ -88,7 +88,7 @@ naturally used:**
 
 | what | where it lives |
 |---|---|
-| what the region **is**: kind, sector count, dot count, seed, custom flag, weights, gains | state, sparse and by name: `"regions": {"region1": {...}}`; a default region writes no entry |
+| what the region **is**: kind, sector count, dot count, seed, custom flag, weights, gains | state, sparse and by name: `"regions": {"region1": {...}}`; a spot, the default shape, writes no entry (a new Echo starts everywhere, which it writes) |
 | what it is **set to**, and its side | host parameters `region1.*` (key block below) |
 | **amount** | `mod.amount.regionN`, one per slot |
 

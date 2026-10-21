@@ -13,11 +13,11 @@
  *  its audio goes: a member routed past its group by hand is its own path, encoded on its own and never with the group. Returns are not among them: they are listed apart, beside Main. A node whose group the tree does not have
  *  counts as at the top.
  *
- *  Each is, as the field has it now: in Live; a source of its own, encoded; a bus, a group split into its sources;
- *  or inside a group the field encodes whole. An Encoder added to a node in Live takes it into the field: one at the
- *  top is taken; one inside a group splits every group from the top down to it, the top taken, so it is encoded on
- *  its own -- its siblings with it, as a split group's children all are. Taking a node's Encoder away gives a node at
- *  the top back to Live, and encodes a bus whole again.
+ *  Each is, as the field has it now: in Live; a source of its own, encoded; a bus, a group holding something taken;
+ *  or inside a group the field encodes whole. An Encoder added to a node takes it alone, at any depth; its siblings
+ *  stay where they are. Inside a group encoded whole, that group opens on the way down: what else it held is taken
+ *  in its place, so nothing that was heard in the field goes back to Live. Taking a node's Encoder away gives it
+ *  back to Live, alone; "encode whole" on a bus takes the group whole, and what it held with it.
  *
  *  Allocates; for the message thread.
  */

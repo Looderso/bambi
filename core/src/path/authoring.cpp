@@ -93,6 +93,7 @@ std::vector<std::size_t> featureIndices(const std::vector<Vec3>& pts, int target
     const int keep = targetN - (closed ? 0 : 2);
     if (keep > 0 && static_cast<int>(cand.size()) > keep) {
         std::vector<std::size_t> thinned;
+        thinned.reserve(static_cast<std::size_t>(keep));
         const double step = static_cast<double>(cand.size()) / keep;
         for (int i = 0; i < keep; ++i) thinned.push_back(cand[static_cast<std::size_t>(static_cast<double>(i) * step)]);
         cand = thinned;

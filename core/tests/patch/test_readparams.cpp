@@ -125,6 +125,7 @@ std::array<float, kMaxParams> defaults(const ParamManifest& m) {
 }  // namespace
 
 TEST_CASE("every key Echo declares reaches its settings") {
+    //  Catches: a line dropped from echoSettingsFrom, so that key stops moving the frame.
     /*  Moved one at a time, away from its default, and the resolved frame must differ. A key that
         changes nothing is a control that does nothing -- the one fault a key list cannot show on its
         own, since the list is only names.

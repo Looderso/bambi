@@ -92,7 +92,16 @@ PluginState PluginProcessor::documentState() const {
     st.identity = identity();
     st.windowScale = windowScale();
     st.bypassed = bypass_->get();
-    for (int i = 0; i < spec_.params.size(); ++i) st.params[static_cast<std::size_t>(i)] = params_.live(i);
+    /*  The host's value, unless its parameter still stands where the document's value put it: a host keeps a
+        parameter as a float share of its range, and its value read back through that share is a rounding away, so
+        a reload and a second save would write another number each time. */
+    for (int i = 0; i < spec_.params.size(); ++i) {
+        const auto at = static_cast<std::size_t>(i);
+        const auto* param = params_.object(i);
+        const bool stands =
+            param != nullptr && std::abs(param->getValue() - param->convertTo0to1(st.params[at])) <= kParamStands;
+        st.params[at] = stands ? st.params[at] : params_.live(i);
+    }
     return st;
 }
 
@@ -123,6 +132,9 @@ void PluginProcessor::setStateInformation(const void* data, int sizeInBytes) {
     //  reads them. No callback lock: the audio thread adopts the patch at its next block.
     setHostParameters(st.params);
     commitDocument(std::move(st), true);
+    //  every value may have moved: the host reads them all again, as after a preset (a CLAP host's rescan, a
+    //  VST3 host's parameter values changed)
+    updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
 }
 
 void PluginProcessor::setHostParameters(const std::array<float, kMaxParams>& values) {
@@ -313,7 +325,7 @@ void PluginProcessor::renderBypassed(float* const* channels, int numChannels, in
     for (int c = std::max(0, mainInputs); c < numChannels; ++c) std::fill_n(channels[c], samples, 0.0f);
 }
 
-void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
+void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) BAMBI_REALTIME {
     load_.begin();
     const SnapshotCensus::InAudioBlock inBlock;
     const int n = buffer.getNumSamples();

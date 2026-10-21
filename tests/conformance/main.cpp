@@ -14,8 +14,9 @@
 #include "../../plugins/encoder/Source/PluginProcessor.h"
 #include "../../plugins/reverb/Source/PluginProcessor.h"
 #include "Conformance.h"
+#include "bambi/io/guarded.hpp"
 
-int main() {
+static int run() {
     juce::ScopedJuceInitialiser_GUI juceInit;
     std::printf("bambi-conformance\n");
 
@@ -59,4 +60,8 @@ int main() {
     std::printf("\n%d checks, %s\n", total.checks,
                 total.failures == 0 ? "all pass" : (juce::String(total.failures) + " FAILED").toRawUTF8());
     return total.failures == 0 ? 0 : 1;
+}
+
+int main() {
+    return bambi::guarded("bambi-conformance", [&] { return run(); });
 }

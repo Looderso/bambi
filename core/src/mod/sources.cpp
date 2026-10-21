@@ -98,7 +98,7 @@ std::vector<OutlinePoint> envelopeCurve(double attackMs, double decayMs, double 
 
 namespace {
 
-double stageWidth(double ms) { return std::sqrt(std::max(ms, 0.01)); }
+double stageWidth(double ms) noexcept { return std::sqrt(std::max(ms, 0.01)); }
 
 // A little above the defaults, not near the maxima: near-maximum values would leave the default
 // envelope using about half the plot and looking lost in it.
@@ -235,7 +235,10 @@ std::vector<AxisTick> polarityAxis(double polarity, int maxTicks) {
     std::vector<AxisTick> out;
     if (step <= 0.0 || amplitude <= 1e-9) return out;
     const double first = std::floor(offset / step) * step;
-    for (double v = first; v <= 1.0 + step * 0.5; v += step) {
+    //  by an integer count, so the lines do not drift as a sum of steps would
+    for (int k = 0;; ++k) {
+        const double v = first + static_cast<double>(k) * step;
+        if (v > 1.0 + step * 0.5) break;
         const double value = std::abs(v) < step * 1e-6 ? 0.0 : v;
         const double at = (value - offset) / amplitude;
         if (at < -0.001 || at > 1.001) continue;  // off the visible curve: not a line on this plot

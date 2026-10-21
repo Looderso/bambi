@@ -1022,9 +1022,17 @@ class ClapJuceWrapper : public clap::helpers::Plugin<
             info->flags |= CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE;
         }
 
-        if (processor->getBus(!isInput, (int)index) != nullptr)
+        // bambi patch: a pair only when the bus on the other side carries the same layout and the
+        // same main flag. CLAP forbids an in-place pair whose ports differ, and an encoder takes
+        // stereo in and puts an ambisonic field out.
+        const auto other = processor->getBus(!isInput, (int)index);
+        bool otherMain = index == 0;
+        if (!isInput && processorAsClapExtensions)
+            otherMain = otherMain && processorAsClapExtensions->isInputMain((int)index);
+        if (other != nullptr && other->getCurrentLayout() == busLayout &&
+            otherMain == ((info->flags & CLAP_AUDIO_PORT_IS_MAIN) != 0))
         {
-            // this bus has a corresponding bus on the other side, so it can do in-place processing
+            // the same layout on both sides: it can do in-place processing
             info->in_place_pair = getPortID(!isInput, index);
         }
         else

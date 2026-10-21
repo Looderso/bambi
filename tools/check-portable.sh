@@ -17,10 +17,10 @@
 #      audible, and tight enough that a real determinism bug cannot hide under it.
 #
 #   tools/check-portable.sh              both guards
-#   tools/check-portable.sh --headers    guard 1 only (under a second)
+#   tools/check-portable.sh --headers    guard 1 only (about half a minute)
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 CXX=${CXX:-c++}
 fail=0
@@ -65,13 +65,14 @@ echo "portable: nulling the golden scenarios across the two architectures"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 worst=""
-while IFS='|' read -r name args column; do
+while IFS='|' read -r name args _; do
     [ -z "$name" ] && continue
     # shellcheck disable=SC2086
     tool=bambi-render
     case "$name" in
       echo-*) tool=bambi-echo-render ;;
       reverb-*) tool=bambi-reverb-render ;;
+      decode-*) tool=bambi-decode-render ;;
     esac
     build/$tool $args "$TMP/$name.arm.wav" --trace "$TMP/$name.arm.csv" >/dev/null 2>&1
     # shellcheck disable=SC2086

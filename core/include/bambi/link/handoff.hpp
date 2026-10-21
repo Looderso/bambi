@@ -32,10 +32,16 @@ struct SnapshotCensus {
     static int live() noexcept;
     static int freedOnAudioThread() noexcept;
 
-    /// processBlock declares itself, so a free inside one is observed rather than argued about.
+    /// processBlock declares itself, so a free inside one is observed rather than argued about. Allocates nothing:
+    /// the thread takes a slot in a fixed table for the block's length.
     struct InAudioBlock {
         InAudioBlock() noexcept;
         ~InAudioBlock();
+        InAudioBlock(const InAudioBlock&) = delete;
+        InAudioBlock& operator=(const InAudioBlock&) = delete;
+
+    private:
+        int slot_{-1};  ///< its place in the table; -1 when every place was taken
     };
 };
 

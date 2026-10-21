@@ -98,8 +98,8 @@ TEST_CASE("the filters equal the reference design tap for tap") {
                                                                        << " off, peak " << peak);
         }
         const std::vector<Json>& bands = c.find("magnitudeError")->items();
-        CHECK(builder.magnitudeError(200, 1000) == doctest::Approx(bands[0].numberOr(0)).epsilon(1e-3));
-        CHECK(builder.magnitudeError(8000, 16000) == doctest::Approx(bands[3].numberOr(0)).epsilon(1e-3));
+        CHECK(std::abs(builder.magnitudeError(200, 1000) / bands[0].numberOr(0) - 1.0) < 1e-3);
+        CHECK(std::abs(builder.magnitudeError(8000, 16000) / bands[3].numberOr(0) - 1.0) < 1e-3);
     }
 }
 
@@ -134,14 +134,16 @@ TEST_CASE("the decode keeps the diffuse field, hears a front source in both ears
     }
 }
 
-TEST_CASE("a design that does not hold together is refused, and builds nothing") {
-    //  Catches: an FFT size pffft refuses passing silently, so that the filters keep a previous build's values.
+TEST_CASE("a design that does not hold together is refused, and a good one after it is taken") {
+    //  Catches: an FFT size pffft cannot transform let through, and taps longer than the FFT, where the transform
+    //  would cut every filter.
     std::vector<Vec3> dirs;
     std::vector<double> w;
     quadratureGrid(4, 7, dirs, w);
+    BinauralFilterBuilder builder;
     FilterDesign bad = designOf(1);
     bad.fftSize = 100;  // not a multiple of 32
-    BinauralFilterBuilder builder;
+    bad.taps = 64;      // with taps that fit it, so that the size alone is wrong
     CHECK_FALSE(builder.prepare(shipped(), bad, dirs, w));
     bad = designOf(1);
     bad.taps = bad.fftSize + 1;

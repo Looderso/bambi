@@ -49,3 +49,4 @@ that were removed because they no longer said anything the code doesn't — git 
 | 0242 | rejected | “Hysteresis is the fix for a thresholded feature decision.” |
 | 0243 | rejected | “The goldens can be made architecture-independent by hashing at 24-bit.” |
 | 0249 | rejected | “A plugin can read AirPods through CoreMotion, from an Objective-C++ file.” |
+| 0260 | accepted | Any track or group is taken into the field on its own; a group holding something taken is a bus of just that |

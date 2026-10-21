@@ -21,6 +21,7 @@ void setParam(PluginState& s, ParamId id, double v) { s.params[static_cast<std::
 }  // namespace
 
 TEST_CASE("each tab has six columns, each with its own amount parameter; only the LFOs are bipolar") {
+    //  Catches: an envelope column marked bipolar, and two feature columns named in each other's place.
     CHECK(sourceColumn(encodeMod(), MatrixTab::Features, 0).name == "level");
     CHECK(sourceColumn(encodeMod(), MatrixTab::Features, 0).amount == EncoderParam::ModAmountLevel);
     CHECK(sourceColumn(encodeMod(), MatrixTab::Sidechain, 5).name == "high");
@@ -68,6 +69,7 @@ TEST_CASE("a region's orientation, its rates and every setting of its shape are 
 }
 
 TEST_CASE("only a parameter that takes modulation can be a target") {
+    //  Catches: a key matched by prefix, which makes render.width_max a target with render.width.
     CHECK(isModulationTarget(encodeMod(), EncoderParam::MotionSpeed));
     CHECK(isModulationTarget(encodeMod(), EncoderParam::RenderWidth));
     CHECK_FALSE(isModulationTarget(encodeMod(), EncoderParam::MotionDirection));
@@ -77,6 +79,8 @@ TEST_CASE("only a parameter that takes modulation can be a target") {
 }
 
 TEST_CASE("setting a cell adds, updates, clamps and -- at zero -- removes it") {
+    //  Catches: a depth not clamped, a zero depth kept as a cell, a duplicate left in, and a column past the tab's end
+    //  accepted.
     PluginState s{encodeParams()};
     REQUIRE(setCellDepth(encodeMod(), s, MatrixTab::Features, 1, EncoderParam::MotionDisplace, 0.35));
     CHECK(s.matrix.size() == 1);
@@ -136,6 +140,7 @@ TEST_CASE("one row is always shown in each plugin, and what used to be shown is 
 }
 
 TEST_CASE("anything else earns its row with depth, in the order it first got some") {
+    //  Catches: a target listed once per cell, and depth in the same tab counted as depth elsewhere.
     PluginState s{encodeParams()};
     setCellDepth(encodeMod(), s, MatrixTab::Generators, 0, EncoderParam::TransformYaw, 0.45);
     setCellDepth(encodeMod(), s, MatrixTab::Features, 1, EncoderParam::OutputGain, 0.2);
@@ -156,6 +161,7 @@ TEST_CASE("anything else earns its row with depth, in the order it first got som
 }
 
 TEST_CASE("modulation reach is the range the engine will actually cover") {
+    //  Catches: an LFO's reach downward left out, and the global amount left out of the reach.
     PluginState s{encodeParams()};
     setParam(s, EncoderParam::RenderWidth, 60.0);
     setParam(s, EncoderParam::ModAmountLevel, 0.5);
@@ -188,6 +194,7 @@ TEST_CASE("modulation reach is the range the engine will actually cover") {
 }
 
 TEST_CASE("values are written the way the canvas writes them") {
+    //  Catches: a value that rounds to zero written as -0, and a rate written without its unit.
     CHECK(formatParameter(EncoderParam::TransformYaw, 97.0) == "97\xc2\xb0");
     CHECK(formatParameter(EncoderParam::TransformYaw, -42.4) ==
           "\xe2\x88\x92"
@@ -206,7 +213,8 @@ TEST_CASE("values are written the way the canvas writes them") {
     CHECK(formatParameter(EncoderParam::Env1Attack, 12.0) == "12 ms");
 }
 
-TEST_CASE("every trajectory shape describes its parameters, under the names its state is saved with") {
+TEST_CASE("every trajectory shape names its settings, each with a default inside its range") {
+    //  Catches: a default outside its setting's range.
     for (auto g : {GeneratorType::Orbit, GeneratorType::Lissajous, GeneratorType::Wave, GeneratorType::Polygon,
                    GeneratorType::Spiral}) {
         INFO(std::string(name(g)));

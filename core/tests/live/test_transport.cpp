@@ -80,15 +80,17 @@ TEST_CASE("readings do not depend on how often they are asked for") {
 
 TEST_CASE("a late message inside the slack moves neither the timeline nor the position back") {
     //  Catches: re-anchoring on every message, which turns each bit of network jitter into a locate the
-    //  engines reset on, or a position that steps backwards.
+    //  engines reset on, a position that steps backwards, or a message stamped before the last reading taking
+    //  effect from before it.
     TransportProjector p(settings());
     p.receive({true, 0.0, 120.0}, 0);
     const Playhead before = p.reading(48000);
-    p.receive({true, 1.99, 120.0}, 48000);  // says Live is 10 ms behind: late, not a locate
+    p.receive({true, 1.97, 120.0}, 47520);  // 10 ms behind, stamped before the read at 48000: late, not a locate
     const Playhead after = p.reading(48000 + 64);
     CHECK(after.timeline == before.timeline + 64);
     CHECK(after.ppq >= before.ppq);
     CHECK(after.ppq < before.ppq + 64 * 120.0 / (60.0 * kRate));  // and runs a little slow to close it
+    CHECK(p.reading(48000).ppq == before.ppq);                    // from what was read, not back before it
 }
 
 TEST_CASE("past the slack it is a locate: the timeline jumps once and runs on from there") {

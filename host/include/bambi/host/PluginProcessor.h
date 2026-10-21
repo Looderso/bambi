@@ -18,6 +18,7 @@
 #include "bambi/host/LoadMeter.h"
 #include "bambi/host/Parameters.h"
 #include "bambi/link/handoff.hpp"
+#include "bambi/math/realtime.hpp"
 #include "bambi/mod/modulation.hpp"
 #include "bambi/patch/presets.hpp"
 #include "bambi/patch/state.hpp"
@@ -67,7 +68,7 @@ public:
     bool hasEditor() const override { return true; }
 
     /// The plugin's own DSP load is measured around `renderBlock`, where it runs.
-    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) final;
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) BAMBI_REALTIME final;
     using AudioProcessor::processBlock;
     /*  The host's bypass is this plugin's own parameter, so a block arriving here is the same block:
         processBlock reads the parameter and fades. The engine keeps running underneath, so the
@@ -93,6 +94,9 @@ public:
     void commitDocument(PluginState next, bool snap);
     /// What a save writes: the committed state, this instance's identity, the host's parameters live.
     PluginState documentState() const;
+    /// How far a host's parameter may stand from the document's value, as a share of its range, and still be that
+    /// value: a float's rounding, far finer than any move a host or a person makes.
+    static constexpr float kParamStands = 1.0e-6f;
 
     //  ---- the patch, its history, and this instance on the bus -----------------------------
     Document& document() override { return document_; }

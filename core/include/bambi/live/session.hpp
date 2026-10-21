@@ -19,9 +19,11 @@
  *  keeping the pair it had; then the session's state to keep with the set, and what the host says about the mix.
  *  A new shape is laid over the last tree, and answered the same way.
  *
- *  Grouping tracks never changes what is heard: a group in a new tree that holds, anywhere below it, a track the
- *  field played as a source is split, so its tracks stay sources with their Encoders and inserts, and the group
- *  becomes their bus, the group at the top taken as they were. Only a tree from Live does this, never the user's own shape. A restore
+ *  Grouping tracks never changes what is heard: a node is taken at any depth, so a track the field plays stays a
+ *  source with its Encoder and inserts wherever Live files it, and a group it lands in becomes its bus -- one the
+ *  field encoded whole opens, as an Encoder added there opens it. Only a tree from Live does this, never the user's
+ *  own shape. A shape an
+ *  older set kept with split groups is adopted at the first tree laid under it (`adoptSplit`). A restore
  *  gives back the state an earlier session kept. A change of a value is taken into the tree.
  *
  *  What the set keeps for the host is the pairs, the shape and the parts the host gives the session by name -- its plugins'
@@ -96,7 +98,7 @@ public:
     void disconnected();
 
 private:
-    std::vector<Message> onTree(const Tree& t, bool adopt);
+    std::vector<Message> onTree(const Tree& t, bool fromLive);
     Json state() const;
 
     SessionSettings s_;
