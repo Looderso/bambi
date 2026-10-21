@@ -123,7 +123,8 @@ jobs:
       - if: runner.os != 'Windows'
         run: tools/link-test.sh
 
-  #  Memory errors and undefined behaviour in core, its tests and tools.
+  #  Memory errors and undefined behaviour in core, its tests and tools. Built with Clang: GCC's null checks make a
+  #  constexpr lookup in a global table no longer a constant expression, which Clang's do not.
   asan:
     name: core · address + undefined
     needs: changes
@@ -135,7 +136,9 @@ jobs:
       - uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: asan
-      - run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBAMBI_SANITIZE=address,undefined
+      - run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBAMBI_SANITIZE=address,undefined \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
       - run: cmake --build build --target bambi-tests
       - run: ./build/bambi-tests
         env:
@@ -197,7 +200,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build clang-tidy
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: pipx install clang-tidy==23.1.3
       - run: cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
       - run: clang-tidy -p build --warnings-as-errors='*' ${{ needs.changes.outputs.tidy_files }}
 
