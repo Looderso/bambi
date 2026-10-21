@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <array>
+#include <cmath>
+#include <vector>
 
 #include "bambi/math/legendre.hpp"
 #include "bambi/math/vec3.hpp"
@@ -8,6 +10,7 @@
 using namespace bambi;
 
 TEST_CASE("legendreP: known values") {
+    //  Catches: a factor of the recurrence off.
     for (int n = 0; n <= 7; ++n) {
         CHECK(legendreP(n, 1.0) == doctest::Approx(1.0));
         CHECK(legendreP(n, -1.0) == doctest::Approx(n % 2 == 0 ? 1.0 : -1.0));
@@ -20,12 +23,23 @@ TEST_CASE("legendreP: known values") {
     CHECK(legendreP(2, 0.5) == doctest::Approx(-0.125));
 }
 
-TEST_CASE("legendreAssoc: agrees with legendreP at m = 0") {
+TEST_CASE("legendreAssoc: legendreP at m = 0, and the closed forms above it, without the Condon-Shortley phase") {
+    //  Catches: a factor of the recurrence off, and the (-1)^m phase put back.
     for (int n = 0; n <= 7; ++n)
         for (double x = -0.9; x <= 0.9; x += 0.3) CHECK(legendreAssoc(n, 0, x) == doctest::Approx(legendreP(n, x)));
+    for (double x = -0.9; x <= 0.9; x += 0.3) {
+        const double s = std::sqrt(1.0 - x * x);
+        CHECK(legendreAssoc(1, 1, x) == doctest::Approx(s));
+        CHECK(legendreAssoc(2, 1, x) == doctest::Approx(3.0 * x * s));
+        CHECK(legendreAssoc(2, 2, x) == doctest::Approx(3.0 * s * s));
+        CHECK(legendreAssoc(3, 1, x) == doctest::Approx(1.5 * (5.0 * x * x - 1.0) * s));
+        CHECK(legendreAssoc(4, 2, x) == doctest::Approx(7.5 * (7.0 * x * x - 1.0) * s * s));
+    }
+    CHECK(legendreAssoc(2, 3, 0.5) == 0.0);  // m past n
 }
 
 TEST_CASE("capWeights: correct at both limits") {
+    //  Catches: the limit at zero width other than 1, and the (2n + 1) of the weights off.
     std::array<double, 8> w{};
 
     SUBCASE("alpha 0 leaves the encoding untouched") {
@@ -41,14 +55,14 @@ TEST_CASE("capWeights: correct at both limits") {
     SUBCASE("alpha pi is pure omni") {
         capWeights(kPi, 7, w);
         CHECK(w[0] == doctest::Approx(1.0));
-        for (int n = 1; n <= 7; ++n) CHECK(w[n] == doctest::Approx(0.0).epsilon(1e-9));
+        for (int n = 1; n <= 7; ++n) CHECK(std::abs(w[n]) < 1e-9);
     }
 
     SUBCASE("hemisphere") {
         capWeights(kPi / 2, 3, w);
         CHECK(w[0] == doctest::Approx(1.0));
         CHECK(w[1] == doctest::Approx(0.5));
-        CHECK(w[2] == doctest::Approx(0.0).epsilon(1e-9));
+        CHECK(std::abs(w[2]) < 1e-9);
         CHECK(w[3] == doctest::Approx(-0.125));
     }
 
@@ -63,15 +77,17 @@ TEST_CASE("capWeights: correct at both limits") {
 }
 
 TEST_CASE("maxRE: matches the standard order-3 weighting") {
+    //  Catches: the angle's constant off.
     std::array<double, 8> w{};
     maxRE(3, w);
     CHECK(w[0] == doctest::Approx(1.0));
-    CHECK(w[1] == doctest::Approx(0.861).epsilon(2e-3));
-    CHECK(w[2] == doctest::Approx(0.612).epsilon(2e-3));
-    CHECK(w[3] == doctest::Approx(0.304).epsilon(2e-3));
+    CHECK(std::abs(w[1] - 0.861) < 2e-3);
+    CHECK(std::abs(w[2] - 0.612) < 2e-3);
+    CHECK(std::abs(w[3] - 0.304) < 2e-3);
 }
 
 TEST_CASE("Gauss-Legendre integrates polynomials exactly to degree 2n-1") {
+    //  Catches: the weights' constant off, so the rule no longer integrates even a constant.
     for (int n : {1, 4, 11, 36}) {
         std::vector<double> x, w;
         gaussLegendre(n, x, w);
