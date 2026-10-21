@@ -123,8 +123,9 @@ jobs:
       - if: runner.os != 'Windows'
         run: tools/link-test.sh
 
-  #  Memory errors and undefined behaviour in core, its tests and tools. Built with Clang: GCC's null checks make a
-  #  constexpr lookup in a global table no longer a constant expression, which Clang's do not.
+  #  Memory errors and undefined behaviour in core, its tests and tools. Built with Clang and its own standard
+  #  library: GCC's null checks make a constexpr lookup in a global table no longer a constant expression, and
+  #  Clang 18 with GCC 14's library frees std::stable_sort's buffer a way ASan reports as a mismatch.
   asan:
     name: core · address + undefined
     needs: changes
@@ -132,13 +133,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libc++-dev libc++abi-dev
       - uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: asan
       - run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBAMBI_SANITIZE=address,undefined \
-            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS=-stdlib=libc++
       - run: cmake --build build --target bambi-tests
       - run: ./build/bambi-tests
         env:

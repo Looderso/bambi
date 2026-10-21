@@ -27,11 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build
-      #  Clang, as on pull requests: GCC's null checks reject a constexpr lookup in a global table
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libc++-dev libc++abi-dev
+      #  Clang and its own standard library, as on pull requests, for the reasons build.yml gives
       - run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBAMBI_SANITIZE=${{ matrix.sanitize }} \
-            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS=-stdlib=libc++
       - run: cmake --build build
       - run: ./build/bambi-tests
         env:
