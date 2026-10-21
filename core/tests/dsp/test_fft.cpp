@@ -11,6 +11,7 @@ using namespace bambi;
 /*  A tone placed exactly on a bin is the check that catches a subtly wrong FFT instantly: the
  *  peak must be on that bin and nowhere else, at exactly N/2. */
 TEST_CASE("a tone on an exact bin lands on that bin at the right magnitude") {
+    //  Catches: the bins read one slot out of place.
     for (std::size_t n : {64u, 256u, 2048u}) {
         RealFft f;
         f.prepare(n);
@@ -38,6 +39,7 @@ TEST_CASE("a tone on an exact bin lands on that bin at the right magnitude") {
 }
 
 TEST_CASE("relative amplitudes are preserved") {
+    //  Catches: power returned where magnitude is asked for.
     RealFft f;
     f.prepare(2048);
     std::vector<double> x(2048), mag(1025);
@@ -45,10 +47,11 @@ TEST_CASE("relative amplitudes are preserved") {
         x[i] = std::cos(2.0 * kPi * 5.0 * static_cast<double>(i) / 2048.0) +
                0.3 * std::cos(2.0 * kPi * 69.0 * static_cast<double>(i) / 2048.0);
     f.magnitude(x, mag);
-    CHECK(mag[69] / mag[5] == doctest::Approx(0.3).epsilon(1e-3));
+    CHECK(std::abs(mag[69] / mag[5] - 0.3) < 1e-3);
 }
 
 TEST_CASE("dc and nyquist are not lost") {
+    //  Catches: the Nyquist bin read from the DC slot.
     RealFft f;
     f.prepare(64);
     std::vector<double> x(64, 1.0), mag(33);
@@ -62,6 +65,7 @@ TEST_CASE("dc and nyquist are not lost") {
 }
 
 TEST_CASE("silence in, silence out") {
+    //  Catches: anything added to the input on its way into the transform.
     RealFft f;
     f.prepare(256);
     std::vector<double> x(256, 0.0), mag(129, 999.0);
@@ -70,6 +74,7 @@ TEST_CASE("silence in, silence out") {
 }
 
 TEST_CASE("undersized buffers are refused rather than read past") {
+    //  Catches: the sizes not checked, so a short buffer is read and written past its end.
     RealFft f;
     f.prepare(64);
     std::vector<double> tooShort(32, 1.0), mag(33, -1.0);
@@ -82,6 +87,7 @@ TEST_CASE("undersized buffers are refused rather than read past") {
 }
 
 TEST_CASE("an unprepared instance is inert") {
+    //  Catches: an instance with no setup run anyway.
     RealFft f;
     std::vector<double> x(64, 1.0), mag(33, -1.0);
     f.magnitude(x, mag);
@@ -90,6 +96,7 @@ TEST_CASE("an unprepared instance is inert") {
 }
 
 TEST_CASE("hann window is periodic and sums as expected") {
+    //  Catches: the symmetric Hann window in place of the periodic one.
     std::vector<double> w(64);
     hannWindow(w);
     CHECK(w[0] == doctest::Approx(0.0));
@@ -108,7 +115,7 @@ TEST_CASE("the inverse undoes the forward transform, and a linear phase is a del
     for (std::size_t i = 0; i < 64; ++i) x[i] = std::sin(0.37 * static_cast<double>(i)) + (i == 5 ? 1.0 : 0.0);
     fft.forward(x, re, im);
     fft.inverse(re, im, back);
-    for (std::size_t i = 0; i < 64; ++i) CHECK(back[i] == doctest::Approx(x[i]).epsilon(1e-5));
+    for (std::size_t i = 0; i < 64; ++i) CHECK(std::abs(back[i] - x[i]) < 1e-5);
 
     for (std::size_t k = 0; k < 33; ++k) {  // e^{-j 2 pi k 7 / 64}: an impulse seven samples late
         re[k] = std::cos(2.0 * kPi * static_cast<double>(k) * 7.0 / 64.0);
@@ -130,7 +137,7 @@ TEST_CASE("the FFT's own layout: a round trip scales by N, and convolve-accumula
     }
     fft.spectrum(a.data(), sa.data());
     fft.signal(sa.data(), y.data());
-    for (std::size_t i = 0; i < 64; ++i) CHECK(y.data()[i] == doctest::Approx(64.0f * a.data()[i]).epsilon(1e-4));
+    for (std::size_t i = 0; i < 64; ++i) CHECK(std::abs(y.data()[i] - 64.0f * a.data()[i]) < 64.0f * 1e-4f);
 
     fft.spectrum(b.data(), sb.data());
     fft.convolveAccumulate(sa.data(), sb.data(), ab.data(), 1.0f / 64.0f);

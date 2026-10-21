@@ -25,6 +25,7 @@ double measured(const BiquadCoeffs& c, double hz) {
 }  // namespace
 
 TEST_CASE("a shelf has its gain on its own side and none on the other, and never overshoots") {
+    //  Catches: the gain's exponent off, which doubles the shelf, and a slope other than 1, which bumps past the gain.
     for (const double gain : {-9.0, -2.5, 4.0}) {
         const BiquadCoeffs low = lowShelf(250.0, gain, kFs), high = highShelf(4000.0, gain, kFs);
         CHECK(dB(magnitudeAt(low, 5.0, kFs)) == doctest::Approx(gain).epsilon(0.01));
@@ -44,6 +45,7 @@ TEST_CASE("a shelf has its gain on its own side and none on the other, and never
 }
 
 TEST_CASE("a low-pass and a high-pass are 3 dB down at their corner and fall at 12 dB an octave") {
+    //  Catches: the low-pass's alpha off by its factor of two, which moves the corner off -3 dB.
     const double q = std::sqrt(0.5);
     const BiquadCoeffs lp = lowPass(1000.0, q, kFs), hp = highPass(1000.0, q, kFs);
     CHECK(dB(magnitudeAt(lp, 1000.0, kFs)) == doctest::Approx(-3.01).epsilon(0.01));
@@ -55,9 +57,10 @@ TEST_CASE("a low-pass and a high-pass are 3 dB down at their corner and fall at 
 }
 
 TEST_CASE("what magnitudeAt says is what the section does to a sine") {
+    //  Catches: magnitudeAt evaluating the second delay at z^-1.
     const BiquadCoeffs c = highShelf(4000.0, -6.0, kFs);
     for (const double hz : {300.0, 4001.0, 11003.0})
-        CHECK(measured(c, hz) == doctest::Approx(magnitudeAt(c, hz, kFs)).epsilon(0.002));
+        CHECK(std::abs(measured(c, hz) / magnitudeAt(c, hz, kFs) - 1.0) < 0.002);
     const BiquadCoeffs l = lowShelf(250.0, 3.0, kFs);
-    CHECK(measured(l, 60.0) == doctest::Approx(magnitudeAt(l, 60.0, kFs)).epsilon(0.002));
+    CHECK(std::abs(measured(l, 60.0) / magnitudeAt(l, 60.0, kFs) - 1.0) < 0.002);
 }

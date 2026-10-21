@@ -23,6 +23,7 @@ void writeFrames(FieldDelayLine& line, std::int64_t first, int frames) {
 }  // namespace
 
 TEST_CASE("what was written comes back a delay later, across the wrap and however it was handed over") {
+    //  Catches: a read that runs one frame past the ring's end instead of wrapping.
     FieldDelayLine line;
     line.prepare(3, 50);
     std::int64_t total = 0;
@@ -43,6 +44,7 @@ TEST_CASE("what was written comes back a delay later, across the wrap and howeve
 }
 
 TEST_CASE("a restart costs nothing and leaves silence, up to the frame it happened on") {
+    //  Catches: frames from before the restart read back, and a delay longer than the ring read from it.
     FieldDelayLine line;
     line.prepare(2, 64);
     writeFrames(line, 0, 200);  // the ring is full of old frames, and stays so
