@@ -4,7 +4,8 @@
 # Stale text in what agents and contributors read: the docs, every AGENTS.md, the skills and reviewers, README and
 # CONTRIBUTING. Text goes stale when the code moves under it, so this checks what a move breaks:
 #
-#   1. a markdown link to a file that is not there, or to a heading anchor no heading makes
+#   1. a markdown link to a file that is not there, or to an anchor no heading makes -- lychee checks these
+#      (lychee.toml; brew install lychee), offline
 #   2. a decision reference -- (0018), [0018], DECISIONS.md#0018 -- with no such entry
 #   3. a repository path in `backticks` that names nothing in the tree (a renamed file, a moved header)
 #   4. a file past its size budget: everything here is read whole, so it must stay cheap to read
@@ -12,12 +13,21 @@
 # Decisions are exempt from 3: each records what was true when it was written. Paths under prototypes/ are not
 # published and are not checked. It reads the tree and never the network.
 #
-#   tools/check-docs.sh
+#   tools/check-docs.sh                links, then bambi's own rules
+#   tools/check-docs.sh --skip-links   bambi's own rules only (CI runs lychee as its own step)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-python3 - "$@" <<'PY'
-import os, re, sys, urllib.parse
+links=0
+if [ "${1:-}" != "--skip-links" ]; then
+    if ! command -v lychee >/dev/null; then
+        echo "docs: lychee is not installed (brew install lychee, or cargo install lychee)"; exit 1
+    fi
+    lychee --config lychee.toml --no-progress 'docs/**/*.md' '*.md' '**/AGENTS.md' '.claude/**/*.md' || links=1
+fi
+
+python3 - <<'PY' || exit 1
+import os, re, sys
 
 SKIP_DIRS = {"third_party", ".git", "prototypes", "node_modules"}
 def walk_md(top):
@@ -35,15 +45,6 @@ files = list(dict.fromkeys(files))
 text = {f: open(f, encoding="utf-8").read() for f in files}
 
 decisions = {n[:4] for n in os.listdir("docs/decisions") if re.match(r"0\d{3}-.*\.md$", n)}
-
-def anchors(md):
-    out = set()
-    for line in re.findall(r"^#{1,6} +(.*)$", md, re.M):
-        a = line.strip().lower()
-        a = re.sub(r"`|\*|~", "", a)
-        a = re.sub(r"[^\w \-]", "", a)
-        out.add(a.replace(" ", "-"))
-    return out
 
 #  A code span is checked as a path when it starts in one of the repository's own top-level folders and holds
 #  nothing a path cannot (a space, a placeholder, a glob).
@@ -74,29 +75,11 @@ def exists(p, here):
             return True
     return os.system(f"git check-ignore -q {p!r} 2>/dev/null") == 0
 
-anchor_cache, problems, warnings = {}, [], []
+problems, warnings = [], []
 
 for f in files:
     here = os.path.dirname(f)
     body = text[f]
-    for target in re.findall(r"\]\(([^)]+)\)", body):
-        target = target.strip()
-        if target.startswith(("http://", "https://", "mailto:")) or not target or target == "…":
-            continue
-        path, _, frag = target.partition("#")
-        path, frag = urllib.parse.unquote(path), urllib.parse.unquote(frag)
-        resolved = os.path.normpath(os.path.join(here, path)) if path else f
-        if resolved.startswith("prototypes/"):
-            continue
-        if path and not os.path.exists(resolved):
-            problems.append(f"  BROKEN     {f} -> {target}")
-            continue
-        if frag and resolved.endswith(".md") and os.path.exists(resolved):
-            if resolved not in anchor_cache:
-                anchor_cache[resolved] = anchors(open(resolved, encoding="utf-8").read())
-            if frag not in anchor_cache[resolved] and not re.fullmatch(r"0\d{3}", frag):
-                problems.append(f"  NO ANCHOR  {f} -> {target}")
-
     seen = set()
     for m in re.finditer(r"DECISIONS\.md#(0\d{3})|\((?:DECISIONS )?(0\d{3})\)|\[(0\d{3})\]", body):
         n = m.group(1) or m.group(2) or m.group(3)
@@ -138,5 +121,6 @@ for w in warnings:
     print(w)
 if problems:
     sys.exit(1)
-print(f"docs: every link, decision and path resolves ({len(files)} files, {len(decisions)} decisions)")
+print(f"docs: every decision and path resolves ({len(files)} files, {len(decisions)} decisions)")
 PY
+exit $links

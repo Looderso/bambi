@@ -17,7 +17,7 @@
 #      audible, and tight enough that a real determinism bug cannot hide under it.
 #
 #   tools/check-portable.sh              both guards
-#   tools/check-portable.sh --headers    guard 1 only (under a second)
+#   tools/check-portable.sh --headers    guard 1 only (about half a minute)
 
 set -uo pipefail
 cd "$(dirname "$0")/.."

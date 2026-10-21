@@ -23,6 +23,13 @@ tools/verify.sh                                                         # everyt
   `git add`ed before formatting, or it is skipped.
 - Release is the default build type on purpose.
 
+## Before a pull request
+
+- Once per checkout: `pre-commit install --hook-type pre-commit --hook-type pre-push` — formatting, theme roles and
+  layers on every commit, the public-headers guard before a push.
+- `tools/verify.sh` (or `--core` when no plugin code changed) must pass; `tools/check-docs.sh` needs lychee.
+- CI runs the same and more; a change to docs or `.claude/` alone builds nothing.
+
 ## Where things live
 
 | path | what |

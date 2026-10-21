@@ -35,7 +35,10 @@ jobs:
       - run: pipx install clang-format==23.1.1
       - run: tools/check-style.sh
       - run: tools/check-layers.sh
-      - run: tools/check-docs.sh
+      - uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --config lychee.toml 'docs/**/*.md' '*.md' '**/AGENTS.md' '.claude/**/*.md'
+      - run: tools/check-docs.sh --skip-links
       - run: tools/format.sh --check
       - run: tools/release/notices.py --check
 
