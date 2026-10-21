@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Stale and broken links in the documentation.
+# Stale text in what agents and contributors read: the docs, every AGENTS.md, the skills and reviewers, README and
+# CONTRIBUTING. Text goes stale when the code moves under it, so this checks what a move breaks:
 #
-# Docs are kept tidy by discipline, and that discipline leans on links: a link that does not exist
-# yet signals something needs writing. It only works if a wrong link is caught, so this checks the
-# three kinds that actually turn up:
+#   1. a markdown link to a file that is not there, or to a heading anchor no heading makes
+#   2. a decision reference -- (0018), [0018], DECISIONS.md#0018 -- with no such entry
+#   3. a repository path in `backticks` that names nothing in the tree (a renamed file, a moved header)
+#   4. a file past its size budget: everything here is read whole, so it must stay cheap to read
 #
-#   1. a markdown link to a file that is not there
-#   2. a link to a heading anchor no heading makes
-#   3. a decision reference --, [0018](DECISIONS.md), DECISIONS.md#0018 -- with no such entry
-#   4. a document over its size budget
-#
-# It reads the tree and never the network: an http link is not this script's business.
+# Decisions are exempt from 3: each records what was true when it was written. Paths under prototypes/ are not
+# published and are not checked. It reads the tree and never the network.
 #
 #   tools/check-docs.sh
 set -uo pipefail
@@ -21,14 +19,21 @@ cd "$(dirname "$0")/.."
 python3 - "$@" <<'PY'
 import os, re, sys, urllib.parse
 
-root = os.getcwd()
-files = ["CLAUDE.md"]
-for base, _, names in os.walk("docs"):
-    files += [os.path.join(base, n) for n in sorted(names) if n.endswith(".md")]
+SKIP_DIRS = {"third_party", ".git", "prototypes", "node_modules"}
+def walk_md(top):
+    for base, dirs, names in os.walk(top):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("build") and d != "worktrees")
+        for n in sorted(names):
+            if n.endswith(".md"):
+                yield os.path.normpath(os.path.join(base, n))
 
+files = [f for f in ["CLAUDE.md", "README.md", "CONTRIBUTING.md"] if os.path.exists(f)]
+files += list(walk_md("docs"))
+files += [f for f in walk_md(".") if os.path.basename(f) == "AGENTS.md"]
+files += [f for f in walk_md(".claude") if f.startswith((".claude/agents/", ".claude/skills/"))]
+files = list(dict.fromkeys(files))
 text = {f: open(f, encoding="utf-8").read() for f in files}
 
-#  Every decision number that exists, from its own file docs/decisions/NNNN-*.md.
 decisions = {n[:4] for n in os.listdir("docs/decisions") if re.match(r"0\d{3}-.*\.md$", n)}
 
 def anchors(md):
@@ -40,63 +45,98 @@ def anchors(md):
         out.add(a.replace(" ", "-"))
     return out
 
-anchor_cache = {}
-problems = []
+#  A code span is checked as a path when it starts in one of the repository's own top-level folders and holds
+#  nothing a path cannot (a space, a placeholder, a glob).
+TOP = {d for d in os.listdir(".") if os.path.isdir(d) and not d.startswith(".")} | {".claude", ".github"}
+TOP -= {d for d in TOP if d.startswith("build")} | {"prototypes"}
+def path_candidate(span):
+    s = span.strip().rstrip(".,;:")
+    if not s or re.search(r"[\s<>*{}|$…~`'\"=()\[\]]", s) or s.startswith(("-", "http", "/")) or "NNNN" in s:
+        return None
+    if s.startswith("third_party/"):             # vendored, and a submodule may not be checked out
+        return None
+    s = re.sub(r":\d+(-\d+)?$", "", s)          # file.cpp:42
+    if s.split("/", 1)[0] in TOP and "/" in s:
+        return s
+    return None
+
+#  `ui/ChannelStrip` or `core/patch/presets` name a module by its folder: the header under include/bambi/, or its
+#  source. A path git ignores (a local setting) is not the tree's to check.
+def exists(p, here):
+    if os.path.exists(p) or os.path.exists(os.path.join(here, p)):
+        return True
+    top, _, rest = p.partition("/")
+    stem = os.path.splitext(rest)[0]
+    lib = top if top != "core" else ""
+    for cand in (f"{top}/include/bambi/{lib + '/' if lib else ''}{stem}", f"{top}/src/{stem}",
+                 f"{top}/include/bambi/{stem}"):
+        if any(os.path.exists(cand + ext) for ext in ("", ".h", ".hpp", ".cpp")):
+            return True
+    return os.system(f"git check-ignore -q {p!r} 2>/dev/null") == 0
+
+anchor_cache, problems, warnings = {}, [], []
 
 for f in files:
     here = os.path.dirname(f)
-    for target in re.findall(r"\]\(([^)]+)\)", text[f]):
+    body = text[f]
+    for target in re.findall(r"\]\(([^)]+)\)", body):
         target = target.strip()
-        if target.startswith(("http://", "https://", "mailto:")) or not target:
+        if target.startswith(("http://", "https://", "mailto:")) or not target or target == "…":
             continue
         path, _, frag = target.partition("#")
-        path = urllib.parse.unquote(path)
-        frag = urllib.parse.unquote(frag)
-
+        path, frag = urllib.parse.unquote(path), urllib.parse.unquote(frag)
         resolved = os.path.normpath(os.path.join(here, path)) if path else f
+        if resolved.startswith("prototypes/"):
+            continue
         if path and not os.path.exists(resolved):
             problems.append(f"  BROKEN     {f} -> {target}")
             continue
-        #  an anchor, in a markdown file we can read
         if frag and resolved.endswith(".md") and os.path.exists(resolved):
             if resolved not in anchor_cache:
                 anchor_cache[resolved] = anchors(open(resolved, encoding="utf-8").read())
-            #  a decision anchor is its number, which the headings do not spell that way
             if frag not in anchor_cache[resolved] and not re.fullmatch(r"0\d{3}", frag):
                 problems.append(f"  NO ANCHOR  {f} -> {target}")
 
-    #  decision references, in every form the docs use
     seen = set()
-    for m in re.finditer(r"DECISIONS\.md#(0\d{3})|\((?:DECISIONS )?(0\d{3})\)|\[(0\d{3})\]", text[f]):
+    for m in re.finditer(r"DECISIONS\.md#(0\d{3})|\((?:DECISIONS )?(0\d{3})\)|\[(0\d{3})\]", body):
         n = m.group(1) or m.group(2) or m.group(3)
-        if n in seen:
-            continue
-        seen.add(n)
-        if n not in decisions:
-            problems.append(f"  NO SUCH DECISION {f} -> {n}")
+        if n not in seen:
+            seen.add(n)
+            if n not in decisions:
+                problems.append(f"  NO SUCH DECISION {f} -> {n}")
 
-#  4. a document past its size budget: a page that is read whole must stay cheap to read.
-#     decisions/ is one decision per file and status/ is read by section, so they are held to the entry cap only.
-WARN, FAIL, ENTRY = 25_000, 40_000, 15_000
-#  Pages already past the cap when the budget arrived; each is to be split or tightened, then removed here.
-LEGACY = set()
-oversize = []
+    if f.startswith("docs/decisions/"):
+        continue
+    for span in sorted(set(re.findall(r"`([^`\n]+)`", re.sub(r"```.*?```", "", body, flags=re.S)))):
+        p = path_candidate(span)
+        if p and not exists(p, here):
+            problems.append(f"  NO PATH    {f} -> `{p}`")
+
+#  Budgets in bytes, (warn, fail): a decision, the root AGENTS.md, a module's, a skill or reviewer, any other page.
+def budget(f):
+    if f.startswith("docs/decisions/"):
+        return (15_000, 15_000)
+    if f == "AGENTS.md":
+        return (7_000, 9_000)
+    if f.endswith("AGENTS.md"):
+        return (3_000, 4_500)
+    if f.startswith(".claude/"):
+        return (5_000, 7_000)
+    return (16_000, 25_000)
+
 for f in files:
     n = len(text[f].encode("utf-8"))
-    entry = f.startswith(("docs/decisions/", "docs/status/"))
-    if f in LEGACY and n > FAIL:
-        oversize.append(f"  LEGACY     {f} is {n // 1000} KB, past the {FAIL // 1000} KB cap: split or tighten it")
-    elif n > (ENTRY if entry else FAIL):
-        problems.append(f"  TOO LONG   {f} is {n // 1000} KB; split it or tighten it (cap {(ENTRY if entry else FAIL) // 1000} KB)")
-    elif not entry and n > WARN:
-        oversize.append(f"  long       {f} is {n // 1000} KB (warns at {WARN // 1000} KB, fails at {FAIL // 1000} KB)")
+    warn, fail = budget(f)
+    if n > fail:
+        problems.append(f"  TOO LONG   {f} is {n // 1000} KB; split it or tighten it (cap {fail // 1000} KB)")
+    elif n > warn:
+        warnings.append(f"  long       {f} is {n // 1000} KB (warns at {warn // 1000} KB, fails at {fail // 1000} KB)")
 
 for p in problems:
     print(p)
-for w in oversize:
+for w in warnings:
     print(w)
 if problems:
     sys.exit(1)
-print(f"docs: every link resolves and every decision referenced exists "
-      f"({len(files)} files, {len(decisions)} decisions)")
+print(f"docs: every link, decision and path resolves ({len(files)} files, {len(decisions)} decisions)")
 PY

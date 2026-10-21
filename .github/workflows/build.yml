@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   checks:
-    name: style, layers, format, notices
+    name: style, layers, docs, format, notices
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -35,6 +35,7 @@ jobs:
       - run: pipx install clang-format==23.1.1
       - run: tools/check-style.sh
       - run: tools/check-layers.sh
+      - run: tools/check-docs.sh
       - run: tools/format.sh --check
       - run: tools/release/notices.py --check
 
