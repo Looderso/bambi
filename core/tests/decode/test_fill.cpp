@@ -299,3 +299,42 @@ TEST_CASE("what a layout covers: a dome's coplanar square, a ring's arcs, not it
     CHECK(angleToRegion(ring, direction(180, 0)) == doctest::Approx(70.0 * kDeg2Rad));
     CHECK(angleToRegion(ring, direction(70, 0)) < 1e-9);
 }
+
+TEST_CASE("outside the band each ear's channel plays on the one loudspeaker nearest 30 degrees to its side") {
+    //  Catches: the uncancelled feed spread over every loudspeaker on a side, a pair chosen by channel order or by
+    //  side alone.
+    const FillSettings s;
+    //  The channels in an order where the first loudspeaker on each side is not the one that should play.
+    const Layout irregular = layoutOf({{100, 0}, {-150, 20}, {60, 50}, {25, -5}, {-40, 10}});
+    struct Want {
+        const Layout* layout;
+        double left, right;  // the azimuths that should carry the left and the right ear
+    };
+    for (const Want& w :
+         {Want{bs2051Layout("0+5+0"), 30, -30}, Want{bs2051Layout("4+7+0"), 30, -30}, Want{&irregular, 25, -40}}) {
+        Cancellation c;
+        std::string error;
+        REQUIRE_MESSAGE(designCancellation(design(*w.layout, 3), ku100(48000.0), s, 48000.0, c, &error), error);
+        RealFft fft;
+        REQUIRE(fft.prepare(4096));
+        for (int e = 0; e < 2; ++e) {
+            std::vector<double> energy;
+            double total = 0.0;
+            for (std::size_t i = 0; i < c.outputs.size(); ++i) {
+                const std::vector<Cx> g = filterSpectrum(fft, c, e, static_cast<int>(i));
+                double sum = 0.0;
+                for (std::size_t k = 0; k < fft.bins(); ++k) {
+                    const double hz = static_cast<double>(k) * 48000.0 / 4096.0;
+                    if (hz > 1.4 * s.bandHiHz && hz < 18000.0) sum += std::norm(g[k]);
+                }
+                energy.push_back(sum);
+                total += sum;
+            }
+            const std::size_t loudest =
+                static_cast<std::size_t>(std::max_element(energy.begin(), energy.end()) - energy.begin());
+            const Vec3 at = placeOf(*w.layout, c.outputs[loudest]);
+            CHECK(azimuth(at) * kRad2Deg == doctest::Approx(e == 0 ? w.left : w.right));
+            CHECK(10.0 * std::log10((total - energy[loudest]) / energy[loudest]) < -40.0);
+        }
+    }
+}

@@ -29,7 +29,8 @@ struct FillSettings {
     bool equalPower{true};           ///< the dry and binaural gains' squares sum to one; false: the gains do
     double regularisationDb{-30.0};  ///< of the cancellation's inversion, against the head's mean response
     double bandLoHz{300.0};          ///< the cancellation fades in over [lo / 2, lo]
-    double bandHiHz{7000.0};  ///< and out over [hi, 1.4 hi]; outside the band the ears' channels play uncancelled
+    double bandHiHz{7000.0};  ///< and out over [hi, 1.4 hi]; outside the band the ears' channels play uncancelled,
+                              ///< each on the loudspeaker nearest 30 degrees to its side
 };
 
 /// The binaural part's order, whatever the field's.

@@ -238,15 +238,19 @@ bool designCancellation(const SpeakerDesign& design, const BinauralFilterBuilder
     }
     const auto c = [&](int e, int i, int k) { return C[(sz(e) * sz(L) + sz(i)) * sz(bins) + sz(k)]; };
 
-    //  Outside the band each ear's channel plays, at equal power, on the loudspeakers on its side of the listener
-    //  (on all of them when its side has none).
+    //  Outside the band each ear's channel plays uncancelled on one loudspeaker: of those on its side of the listener
+    //  (of all, when its side has none), the nearest to 30 degrees to that side at ear level -- for a pair, its own
+    //  side's loudspeaker, as a stereo pair plays it.
     std::vector<double> plain(sz(L) * 2, 0.0);  // [loudspeaker][ear]
     for (int e = 0; e < 2; ++e) {
+        const Vec3 aim = fromAzEl((e == 0 ? 30.0 : -30.0) * kDeg2Rad, 0.0);
         const auto onSide = [&](int i) { return e == 0 ? at[sz(i)].y > 1e-6 : at[sz(i)].y < -1e-6; };
-        int count = 0;
-        for (int i = 0; i < L; ++i) count += onSide(i) ? 1 : 0;
+        bool any = false;
+        for (int i = 0; i < L; ++i) any = any || onSide(i);
+        int best = -1;
         for (int i = 0; i < L; ++i)
-            if (count == 0 || onSide(i)) plain[sz(i) * 2 + sz(e)] = 1.0 / std::sqrt(count == 0 ? L : count);
+            if ((!any || onSide(i)) && (best < 0 || dot(at[sz(i)], aim) > dot(at[sz(best)], aim))) best = i;
+        plain[sz(best) * 2 + sz(e)] = 1.0;
     }
 
     //  Per bin, the least-energy loudspeaker signals that give each ear its own channel D samples late:
