@@ -151,6 +151,7 @@ constexpr std::array kFrozenKeys{
 };
 
 TEST_CASE("parameter keys are frozen") {
+    //  Catches: a key renamed.
     REQUIRE(parameters().size() == kFrozenKeys.size());
     for (std::size_t i = 0; i < kFrozenKeys.size(); ++i) {
         INFO("index ", i);
@@ -159,6 +160,7 @@ TEST_CASE("parameter keys are frozen") {
 }
 
 TEST_CASE("manifest is internally consistent") {
+    //  Catches: a choice list one short of its range, and two parameters given one display name.
     const auto all = parameters();
 
     SUBCASE("id matches table position") {
@@ -216,12 +218,14 @@ TEST_CASE("manifest is internally consistent") {
 }
 
 TEST_CASE("lookup by key round-trips") {
+    //  Catches: a lookup that stops short of the last key.
     for (const auto& p : parameters()) CHECK(parameterByKey(p.key) == p.id);
     CHECK(parameterByKey("nope.not.here") == kNoParamId);
     CHECK(parameterByKey("") == kNoParamId);
 }
 
 TEST_CASE("clampToRange") {
+    //  Catches: a choice not snapped to a whole value, and a NaN passed through rather than replaced by the default.
     CHECK(clampToRange(EncoderParam::TransformYaw, 500.0f) == doctest::Approx(180.0f));
     CHECK(clampToRange(EncoderParam::TransformYaw, -500.0f) == doctest::Approx(-180.0f));
     CHECK(clampToRange(EncoderParam::TransformExtent, 0.35f) == doctest::Approx(0.35f));
@@ -242,6 +246,7 @@ TEST_CASE("clampToRange") {
 }
 
 TEST_CASE("trajectory shapes are state, and each modulation source has one amount") {
+    //  Catches: a source's amount renamed out of the mod.amount family.
     SUBCASE("no trajectory shape parameter is automatable — shape is state") {
         for (const auto& p : parameters()) {
             INFO(std::string(p.key));
@@ -258,6 +263,7 @@ TEST_CASE("trajectory shapes are state, and each modulation source has one amoun
 }
 
 TEST_CASE("an LFO's rate gives its travel to the slow end, and every other range stays linear") {
+    //  Catches: the skew not applied, so the rate is linear and its default is not at mid-travel.
     using bambi::ParamId;
     CHECK(bambi::toNormalised(EncoderParam::Lfo1Rate, 0.25f) == doctest::Approx(0.5));  // the default, at mid-travel
     CHECK(bambi::toNormalised(EncoderParam::Lfo2Rate, 0.01f) == doctest::Approx(0.0));
@@ -265,8 +271,8 @@ TEST_CASE("an LFO's rate gives its travel to the slow end, and every other range
     CHECK(bambi::toNormalised(EncoderParam::Lfo1Rate, 1.0f) > 0.75f);  // the fast end is squeezed, not the slow one
     for (int i = 0; i <= 8; ++i) {
         const float t = static_cast<float>(i) / 8.0f;
-        CHECK(bambi::toNormalised(EncoderParam::Lfo1Rate, bambi::fromNormalised(EncoderParam::Lfo1Rate, t)) ==
-              doctest::Approx(t).epsilon(1e-4));
+        CHECK(std::abs(bambi::toNormalised(EncoderParam::Lfo1Rate, bambi::fromNormalised(EncoderParam::Lfo1Rate, t)) -
+                       t) < 1e-4f);
     }
     CHECK(bambi::toNormalised(EncoderParam::TransformYaw, 0.0f) == doctest::Approx(0.5));
     CHECK(bambi::fromNormalised(EncoderParam::RenderWidth, 0.25f) == doctest::Approx(45.0));
@@ -275,6 +281,7 @@ TEST_CASE("an LFO's rate gives its travel to the slow end, and every other range
 }
 
 TEST_CASE("a region's settings default to what the manifest says") {
+    //  Catches: a default in RegionSettingsDeg that differs from the region block's.
     //  RegionSettingsDeg cannot read the manifest -- region/ sits below patch/ -- so its defaults are
     //  a second copy of these numbers. This is what keeps the two from drifting.
     const bambi::RegionSettingsDeg def;
@@ -376,7 +383,7 @@ TEST_CASE(
             if (at == kNoParam) continue;
             ++found;
             CAPTURE(c.key);
-            CHECK(toNormalised(*m, at, c.value) == doctest::Approx(0.5).epsilon(1e-4));
+            CHECK(std::abs(toNormalised(*m, at, c.value) - 0.5f) < 1e-4f);
         }
     CHECK(found == 3 * 7 + 8);  // seven shared keys in all three; eight of one plugin's own
 

@@ -38,6 +38,8 @@ std::vector<std::string> paths(const std::vector<PresetRef>& refs) {
 }  // namespace
 
 TEST_CASE("a typed name: a slash makes the folder, one level deep") {
+    //  Catches: what follows a second slash dropped instead of joined to the name, and a character a file name cannot
+    //  hold kept.
     CHECK(parsePresetPath("tight room") == PresetRef{false, "", "tight room"});
     CHECK(parsePresetPath("drums/tight room") == PresetRef{false, "drums", "tight room"});
     CHECK(parsePresetPath("  drums /  tight room ") == PresetRef{false, "drums", "tight room"});
@@ -51,6 +53,7 @@ TEST_CASE("a typed name: a slash makes the folder, one level deep") {
 }
 
 TEST_CASE("a typed name cannot leave the preset directory") {
+    //  Catches: a segment's leading dots kept, so .. climbs out of the directory.
     //  ".." loses its dots, so no segment can climb
     const auto ref = parsePresetPath("../../etc/passwd");
     REQUIRE(ref.has_value());
@@ -63,6 +66,8 @@ TEST_CASE("a typed name cannot leave the preset directory") {
 }
 
 TEST_CASE("a preset's document has no identity, no preset name and none of the kept keys") {
+    //  Catches: the identity written into a preset, a kept key written into it, and a session document's identity kept
+    //  when loaded as a preset.
     const auto& m = encodeParams();
     PluginState s{m};
     s.identity.label = "lead vocal";
@@ -81,6 +86,7 @@ TEST_CASE("a preset's document has no identity, no preset name and none of the k
 }
 
 TEST_CASE("a session's document carries the preset it came from; a patch from none says nothing") {
+    //  Catches: the preset not written, and written when there is none.
     const auto& m = echoParams();
     PluginState s{m};
     CHECK(saveState(Product::Echo, m, s).find("\"preset\"") == std::string::npos);
@@ -94,6 +100,7 @@ TEST_CASE("a session's document carries the preset it came from; a patch from no
 }
 
 TEST_CASE("adopting a preset keeps who the instance is and what is plugged in") {
+    //  Catches: the instance's identity, or its input mode, taken from the preset.
     const auto& m = encodeParams();
     PluginState preset{m};
     preset.params[at(m, "render.width")] = 77.0f;
@@ -113,6 +120,7 @@ TEST_CASE("adopting a preset keeps who the instance is and what is plugged in") 
 }
 
 TEST_CASE("the same sound: everything a preset carries, within what a host parameter's round trip costs") {
+    //  Catches: a tolerance wider than a host's round trip, and the regions left out of the comparison.
     const auto& m = encodeParams();
     PluginState a{m}, b{m};
     CHECK(sameSound(Product::Encoder, m, a, b));
@@ -152,6 +160,7 @@ TEST_CASE("the same sound: everything a preset carries, within what a host param
 }
 
 TEST_CASE("a library: save, list, load, in list order") {
+    //  Catches: names sorted by case, and loose presets not listed before the folders.
     Scratch scratch("library");
     auto lib = echoLibrary(scratch.dir);
     CHECK(paths(lib.all()) == std::vector<std::string>{"f:default"});  // and the directory need not exist
@@ -185,6 +194,7 @@ TEST_CASE("a library: save, list, load, in list order") {
 }
 
 TEST_CASE("a library refuses what is not a user preset's, and another plugin's file") {
+    //  Catches: a factory preset given a file, and a hidden file listed.
     Scratch scratch("refuse");
     auto lib = echoLibrary(scratch.dir);
     PluginState s{echoParams()};
@@ -207,6 +217,7 @@ TEST_CASE("a library refuses what is not a user preset's, and another plugin's f
 }
 
 TEST_CASE("rename moves, refuses a name that is taken, and a folder left empty goes") {
+    //  Catches: a rename onto a name that is taken, and a folder kept for the Finder's own dotfiles.
     Scratch scratch("rename");
     auto lib = echoLibrary(scratch.dir);
     PluginState s{echoParams()};
@@ -228,6 +239,7 @@ TEST_CASE("rename moves, refuses a name that is taken, and a folder left empty g
 }
 
 TEST_CASE("remove disposes of the file the way the library was told to, and keeps the preset when that fails") {
+    //  Catches: the disposal the library was given ignored, and a failed disposal reported as removed.
     Scratch scratch("remove");
     fs::path asked;
     bool let = false;
@@ -249,6 +261,7 @@ TEST_CASE("remove disposes of the file the way the library was told to, and keep
 }
 
 TEST_CASE("modified: against the preset's file, read once; a file gone counts as moved; no preset never does") {
+    //  Catches: a rescan that keeps the old reference, and a preset whose file is gone counted as unmodified.
     Scratch scratch("modified");
     auto lib = echoLibrary(scratch.dir);
     const auto& m = echoParams();
@@ -281,6 +294,7 @@ TEST_CASE("modified: against the preset's file, read once; a file gone counts as
 }
 
 TEST_CASE("search is over the whole path and ignores case; a step wraps and ignores the search") {
+    //  Catches: a search that minds case, and a step that stops at the ends instead of wrapping.
     Scratch scratch("search");
     auto lib = echoLibrary(scratch.dir);
     PluginState s{echoParams()};
@@ -301,6 +315,7 @@ TEST_CASE("search is over the whole path and ignores case; a step wraps and igno
 }
 
 TEST_CASE("which headings are folded is the user's: a second library finds it") {
+    //  Catches: a fold not written to the library's file.
     Scratch scratch("folded");
     {
         auto lib = echoLibrary(scratch.dir);
@@ -317,6 +332,8 @@ TEST_CASE("which headings are folded is the user's: a second library finds it") 
 }
 
 TEST_CASE("default is the fresh patch the plugin hands over, not the manifest's") {
+    //  Catches: the default built from the manifest instead of the plugin's fresh patch, and the fresh patch's identity
+    //  kept.
     Scratch scratch("default");
     const auto& m = encodeParams();
     PluginState fresh{m};
@@ -330,6 +347,7 @@ TEST_CASE("default is the fresh patch the plugin hands over, not the manifest's"
 }
 
 TEST_CASE("Reverb's factory rooms are built from the room table, not from a copy of it") {
+    //  Catches: a factory preset built from another room's entry.
     Scratch scratch("rooms");
     const auto& m = reverbParams();
     PresetLibrary lib(Product::Reverb, m, PluginState{m}, reverbFactoryPresets(), scratch.dir);
@@ -384,6 +402,8 @@ std::vector<std::string> shown(const std::vector<PresetRow>& rows) {
 
 TEST_CASE(
     "the browser's rows: a tree unsearched, folded where it is folded; flat hits with their folder when searched") {
+    //  Catches: a group with no hit kept while searching, a folded group's rows listed, and a hit listed without
+    //  its folder.
     const std::vector<PresetRef> all{kDefaultPreset,       {true, "rooms", "hall"},    {true, "rooms", "room"},
                                      {false, "", "verse"}, {false, "songs", "bridge"}, {false, "songs", "outro"}};
     const auto none = [](std::string_view) { return false; };

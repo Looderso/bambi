@@ -8,6 +8,7 @@
 using namespace bambi;
 
 TEST_CASE("uuid: format and round trip") {
+    //  Catches: the version nibble not set to 4.
     const Uuid u = Uuid::generate();
     const std::string s = u.toString();
 
@@ -26,6 +27,7 @@ TEST_CASE("uuid: format and round trip") {
 }
 
 TEST_CASE("uuid: parse rejects malformed input rather than guessing") {
+    //  Catches: a separator not checked, so any character between the groups is accepted.
     CHECK_FALSE(Uuid::parse("").has_value());
     CHECK_FALSE(Uuid::parse("not-a-uuid").has_value());
     CHECK_FALSE(Uuid::parse("00000000000000000000000000000000").has_value());      // no dashes
@@ -36,12 +38,14 @@ TEST_CASE("uuid: parse rejects malformed input rather than guessing") {
 }
 
 TEST_CASE("uuid: nil is distinguishable and never generated") {
+    //  Catches: isNil true for any zero byte rather than for all of them.
     CHECK(Uuid::nil().isNil());
     CHECK(Uuid::nil().toString() == "00000000-0000-0000-0000-000000000000");
     for (int i = 0; i < 200; ++i) CHECK_FALSE(Uuid::generate().isNil());
 }
 
 TEST_CASE("uuid: generation is unique across many instances in one process") {
+    //  Catches: a generator reseeded on every call, which hands out one id over and over.
     // A plugin gets instantiated dozens of times per session; collisions here would make
     // two sources indistinguishable on the link bus.
     std::set<std::string> seen;
@@ -49,6 +53,7 @@ TEST_CASE("uuid: generation is unique across many instances in one process") {
 }
 
 TEST_CASE("identity: a fresh one has distinct session and instance") {
+    //  Catches: an instance id left nil.
     const Identity a = Identity::create();
     CHECK_FALSE(a.session.isNil());
     CHECK_FALSE(a.instance.isNil());
