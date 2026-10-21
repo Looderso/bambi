@@ -50,6 +50,7 @@ TEST_CASE("no skew is no change, at every order") {
 }
 
 TEST_CASE("a source at d becomes a source at T(d), at unit gain") {
+    //  Catches: the (2n+1) on the row rather than the column.
     /*  The definition: the matrix applied to the encoding of d is the encoding of T(d). It
         holds exactly only with every order present, so it is built at order 30 and read in its first
         16 channels, where what truncation leaves is below 1e-9 at a skew of 0.6. This is the test
@@ -75,6 +76,8 @@ TEST_CASE("a source at d becomes a source at T(d), at unit gain") {
 }
 
 TEST_CASE("the omni row is untouched: what comes out has the same total as what went in") {
+    //  Catches: the matrix built the other way round, images in the columns, which keeps the omni column and not the
+    //  row.
     //  Exact at any order, and the mark of the matrix WITHOUT the Jacobian; with it, it is the omni
     //  column that is untouched instead.
     for (const int order : {3, 7})
@@ -86,6 +89,7 @@ TEST_CASE("the omni row is untouched: what comes out has the same total as what 
 }
 
 TEST_CASE("a negative skew is the positive one seen in a mirror, and one undoes the other") {
+    //  Catches: a negative skew clamped or handled apart from the positive one, so it does not mirror or undo it.
     const int order = 7;
     const auto plus = warp(order, 0.4), minus = warp(order, -0.4);
     for (int m = 0; m <= order; ++m)

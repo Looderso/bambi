@@ -27,9 +27,9 @@ TEST_CASE("the ping carries a direction the way a pass does") {
         const Vec3 front{1.0, 0.0, 0.0};
         const Vec3 after = pingStep(t, front);
         //  counter-clockwise seen from the tip of +z: front goes to LEFT, which is +y (x front, y left)
-        CHECK(after.x == doctest::Approx(0.0).epsilon(1e-9));
+        CHECK(std::abs(after.x) < 1e-9);
         CHECK(after.y == doctest::Approx(1.0).epsilon(1e-9));
-        CHECK(after.z == doctest::Approx(0.0).epsilon(1e-9));
+        CHECK(std::abs(after.z) < 1e-9);
 
         //  and four of them come back to where they started
         Vec3 at = front;
@@ -63,14 +63,14 @@ TEST_CASE("the ping carries a direction the way a pass does") {
         for (const double z : {-0.8, -0.2, 0.0, 0.3, 0.9}) {
             const double r = std::sqrt(1.0 - z * z);
             const Vec3 after = pingStep(t, {r, 0.0, z});
-            CHECK(after.z == doctest::Approx(slideZ(z, skew)).epsilon(1e-9));
+            CHECK(std::abs(after.z - slideZ(z, skew)) < 1e-9);
         }
     }
 
     SUBCASE("a positive skew gathers toward the axis's tip") {
         const TapSettings t = plainTap({0.0, 0.0, 1.0}, 0.0, 0.5);
-        CHECK(pingStep(t, {1.0, 0.0, 0.0}).z > 0.0);                                  // the equator lands above it
-        CHECK(pingStep(t, {1.0, 0.0, 0.0}).y == doctest::Approx(0.0).epsilon(1e-9));  // azimuth untouched
+        CHECK(pingStep(t, {1.0, 0.0, 0.0}).z > 0.0);             // the equator lands above it
+        CHECK(std::abs(pingStep(t, {1.0, 0.0, 0.0}).y) < 1e-9);  // azimuth untouched
     }
 
     SUBCASE("an axis that is not the pole turns about ITSELF") {
@@ -78,8 +78,8 @@ TEST_CASE("the ping carries a direction the way a pass does") {
         const Vec3 axis = unit({0.0, 1.0, 0.0});  // left
         const TapSettings t = plainTap(axis, 37.0 * kDeg2Rad);
         const Vec3 after = pingStep(t, {1.0, 0.0, 0.0});
-        CHECK(dot(after, axis) == doctest::Approx(0.0).epsilon(1e-9));  // stays on its great circle
-        CHECK(dot(after, Vec3{1.0, 0.0, 0.0}) == doctest::Approx(std::cos(37.0 * kDeg2Rad)).epsilon(1e-9));
+        CHECK(std::abs(dot(after, axis)) < 1e-9);  // stays on its great circle
+        CHECK(std::abs(dot(after, Vec3{1.0, 0.0, 0.0}) - std::cos(37.0 * kDeg2Rad)) < 1e-9);
     }
 }
 
@@ -167,6 +167,7 @@ TEST_CASE("a spiral is a curve, not a chain of chords") {
 }
 
 TEST_CASE("the flow is seeded on the axis's own equator") {
+    //  Catches: seeds lifted off the equator, and seeds spread over half the circle.
     //  Where the field stands before any pass has touched it -- not at the first pass's skew,
     //  which would leave a gap between the axis ring and the flow lines.
     TapSettings t;
@@ -175,7 +176,7 @@ TEST_CASE("the flow is seeded on the axis's own equator") {
     flowSeeds(t, seeds);
     for (const auto& seed : seeds) {
         CHECK(std::sqrt(dot(seed, seed)) == doctest::Approx(1.0).epsilon(1e-9));
-        CHECK(dot(seed, unit(t.axis)) == doctest::Approx(0.0).epsilon(1e-9));  // on its equator
+        CHECK(std::abs(dot(seed, unit(t.axis))) < 1e-9);  // on its equator
     }
     //  and evenly spaced around it
     CHECK(dot(seeds[0], seeds[kFlowSpokes / 2]) == doctest::Approx(-1.0).epsilon(1e-9));
@@ -196,5 +197,5 @@ TEST_CASE("a traced pass has no corner at a whole pass, however high the skew") 
         CHECK(std::abs(after - before) < 1e-2 * std::max(std::abs(before), 1e-3));
     }
     //  and it is the composed skew at a whole pass, as the spiral's beads are
-    CHECK(loopAt(t, 2.0).skew == doctest::Approx(composeSkew(0.5, 0.5)).epsilon(1e-12));
+    CHECK(std::abs(loopAt(t, 2.0).skew - composeSkew(0.5, 0.5)) < 1e-12);
 }

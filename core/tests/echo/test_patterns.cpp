@@ -46,6 +46,8 @@ TEST_CASE("a pattern writes the four taps' pattern keys and nothing else") {
 }
 
 TEST_CASE("cascade is two taps a step apart turning opposite ways, skewed") {
+    //  Catches: the second tap turning the same way as the first, starting on the same step, or the first left
+    //  unskewed.
     const auto e = settingsOf(applied(EchoPattern::Cascade));
     CHECK(e.taps[0].on);
     CHECK(e.taps[1].on);
@@ -56,6 +58,7 @@ TEST_CASE("cascade is two taps a step apart turning opposite ways, skewed") {
 }
 
 TEST_CASE("single is one tap that does not turn, at the least feedback there is") {
+    //  Catches: the single tap given a spin, or a feedback above the bottom of the range.
     const auto e = settingsOf(applied(EchoPattern::Single));
     CHECK(e.taps[0].spinDeg == doctest::Approx(0.0));
     CHECK(e.taps[0].feedbackDb == doctest::Approx(echoParams()[echoParams().byKey("tap1.feedback")].min));
