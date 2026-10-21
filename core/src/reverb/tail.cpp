@@ -230,8 +230,9 @@ void FdnTail::process(const float* in, const float* scattered, float* out, int f
                 return static_cast<double>(L.data[static_cast<std::size_t>((L.write - back + L.size) % L.size)]);
             };
             std::array<double, 3>& past = readOut_[i];
-            const double y0 = a3 * sample(whole) + a2 * sample(whole + 1) + a1 * sample(whole + 2) + sample(whole + 3) -
-                              a1 * past[0] - a2 * past[1] - a3 * past[2];
+            double y0 = a3 * sample(whole) + a2 * sample(whole + 1) + a1 * sample(whole + 2) + sample(whole + 3) -
+                        a1 * past[0] - a2 * past[1] - a3 * past[2];
+            y0 = std::abs(y0) < 1e-20 ? 0.0 : y0;  // silence, exactly, by a compare, as the blocker below
             past = {y0, past[0], past[1]};
 
             //  Lossless, so the decay is untouched, but it smears each round trip: without it the energy
