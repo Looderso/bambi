@@ -249,6 +249,11 @@ TEST_CASE("the decoder's listening situation saves and loads whole, and is left 
     s.decoder.oscForm = 2;
     s.decoder.airpodsAxes = {0, 1, 0, -1, 0, 0, 0, 0, 1};
     s.decoder.airpodsCalibrated = true;
+    s.decoder.fill = true;
+    s.decoder.fillHoldDeg = 12.0f;
+    s.decoder.fillFadeDeg = 75.0f;
+    s.decoder.fillStrengthDb = -22.0f;
+    s.decoder.fillUpToHz = 8500.0f;
     s.decoder.matrixFile = "/arrays/iko.sofa";
     s.decoder.matrixOutputs = 20;
     s.decoder.matrixNormalization = 2;
@@ -265,11 +270,13 @@ TEST_CASE("the decoder's listening situation saves and loads whole, and is left 
 
 TEST_CASE("a decoder state loads sanitised: every value held to the range the window gives it") {
     //  Catches: the sanitiser not called on load, or a clamp missing -- a head of size 0, a loudspeaker at no
-    //  distance, a port of 0, a head choice past the last.
+    //  distance, a port of 0, a head choice past the last, a fill that fades over nothing.
     PluginState s{decodeParams()};
     s.decoder.headSize = 0.0f;
     s.decoder.hrtf = 7;
     s.decoder.oscPort = 0;
+    s.decoder.fillFadeDeg = 0.0f;  // a fade of nothing divides by zero
+    s.decoder.fillStrengthDb = 0.0f;
     Loudspeaker l;
     l.radiusM = 0.0;
     l.channel = 0;
@@ -280,6 +287,8 @@ TEST_CASE("a decoder state loads sanitised: every value held to the range the wi
     CHECK(back.decoder.headSize == doctest::Approx(0.75));
     CHECK(back.decoder.hrtf == 2);
     CHECK(back.decoder.oscPort == 1);
+    CHECK(back.decoder.fillFadeDeg == doctest::Approx(5.0));
+    CHECK(back.decoder.fillStrengthDb == doctest::Approx(-10.0));
     REQUIRE(back.decoder.layout.size() == 1);
     CHECK(back.decoder.layout[0].radiusM == doctest::Approx(0.1));
     CHECK(back.decoder.layout[0].channel == 1);

@@ -51,3 +51,4 @@ that were removed because they no longer said anything the code doesn't — git 
 | 0249 | rejected | “A plugin can read AirPods through CoreMotion, from an Objective-C++ file.” |
 | 0260 | accepted | Any track or group is taken into the field on its own; a group holding something taken is a bus of just that |
 | 0261 | accepted | The macOS release is signed, notarised and installed by a package; Windows and Linux ship unsigned |
+| 0262 | accepted | A layout's gaps play binaurally through crosstalk cancellation, as settled by ear on a pair |

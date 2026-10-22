@@ -28,6 +28,20 @@ set, blind where feasible. Write findings in the room; record the decode if the 
   room (the empty lower half, the rear at ±145°)?
 - **The Decoder's colour correction of an array** ([#7](https://github.com/Looderso/bambi/issues/7)) — the fit can be
   built blind; whether a shelf and a peak make a 7.1.4 array sound like one loudspeaker is for the room.
+- **Filling a layout's gaps: what plays outside the cancellation band**
+  ([#95](https://github.com/Looderso/bambi/issues/95)). Crosstalk cancellation works over 300 Hz – 7 kHz; below and
+  above, the two ear signals of what lies in the gaps play uncancelled, each on the one loudspeaker nearest 30° to
+  its side. For a pair that is its own two loudspeakers, as heard and chosen on a laptop; for 5.0, 7.1.4 or a dome
+  nobody has listened to it yet. The highs above 7 kHz carry much of what makes a source sound above or behind, so the choice is
+  audible. The alternatives, to compare one variable at a time:
+  - *each ear's side*: every loudspeaker on that side at equal power — spreads the highs over the side;
+  - *the layout's own decoder* for those frequencies — a dome drops what it pans into a gap, so a source below
+    would lose its lows and highs;
+  - *cancel the whole range* — only if a layout of more loudspeakers holds the inversion there better than a pair;
+  - *the pair nearest each gap* — the rear pair for what is behind, the front pair for what is above.
+
+  The headphone rendering of the layout with the fill on simulates the sweet spot, with one HRTF both
+  for designing the cancellation and for playback; a prototype can narrow the choice there before the array decides it.
 
 ## Needs ears, array or not
 

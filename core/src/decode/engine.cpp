@@ -9,6 +9,7 @@
 
 #include "bambi/decode/headmodelfile.hpp"
 #include "bambi/decode/orientation.hpp"
+#include "bambi/math/legendre.hpp"
 #include "bambi/math/sh.hpp"
 
 namespace bambi {
@@ -16,6 +17,11 @@ namespace bambi {
 namespace {
 
 std::size_t sz(int n) { return static_cast<std::size_t>(n); }
+
+/// The most the fill makes every output wait, its cancellation's delay and one partition, with a sample to spare.
+double fillWaitSeconds(double sampleRate) {
+    return (fillCancellationDelay(sampleRate) + DecoderEngine::kPartition + 1) / sampleRate;
+}
 
 /// The layout as the design should see it: with the distances levelled when compensation is off.
 Layout layoutFor(const DecoderState& d) {
@@ -54,7 +60,15 @@ bool DecoderEngine::prepare(const DecoderState& d, int order, double sampleRate,
     design.sampleRate = sampleRate_;
     chosenHead_ = headIndex(d);
     binaural_.prepare(headModel(), design, kPartition);
-    speakers_.prepare(order_, kMaxDecoderOutputs, sampleRate_, 0.1, kPartition);
+    //  room in the delay lines for the loudspeakers' distances and for the fill's wait on top
+    speakers_.prepare(order_, kMaxDecoderOutputs, sampleRate_, 0.1 + fillWaitSeconds(sampleRate_), kPartition);
+    {
+        std::vector<Vec3> directions;
+        std::vector<double> weights;
+        quadratureGrid(12, 20, directions, weights);
+        fillHead_.prepare(headModel(), fillFilterDesign(sampleRate_), directions, weights);
+    }
+    fillBinaural_.prepare(kFillOrder, fillFilterDesign(sampleRate_).taps, kPartition);
     virtual_.prepare(headModel(), order_, sampleRate_, kPartition);
     sceneStage_.prepare(order_, sampleRate_);
     headStage_.prepare(order_, sampleRate_);
@@ -69,6 +83,17 @@ bool DecoderEngine::prepare(const DecoderState& d, int order, double sampleRate,
     stereo_.assign(sz(maxBlock_) * 2, 0.0f);
     speakersOut_.assign(sz(maxBlock_) * sz(kMaxDecoderOutputs), 0.0f);
     gainRamp_.assign(sz(maxBlock_), 1.0f);
+    fillField_.assign(sz(maxBlock_) * sz(numChannels(kFillOrder)), 0.0f);
+    fillEars_.assign(sz(maxBlock_) * 2, 0.0f);
+    fillOut_.assign(sz(maxBlock_) * sz(kMaxDecoderOutputs), 0.0f);
+    headLength_ = maxBlock_ + static_cast<int>(std::ceil(fillWaitSeconds(sampleRate_) * sampleRate_)) + 1;
+    headLine_.assign(sz(headLength_) * 2, 0.0f);
+    headWrite_ = 0;
+    headWait_ = headWaitFrom_ = 0;
+    headFade_ = -1;
+    headFadeLength_ = std::max(1, static_cast<int>(std::lround(0.01 * sampleRate_)));
+    headphonesWere_ = false;
+    fillWeight_.assign(sz(maxBlock_), 0.0f);
     gainCoefficient_ = 1.0f - std::exp(-1.0f / (0.01f * static_cast<float>(sampleRate_)));  // 10 ms
     gainNow_ = levelGain(levelDb);
 
@@ -79,7 +104,15 @@ bool DecoderEngine::prepare(const DecoderState& d, int order, double sampleRate,
     matrixPlays_.store(false, std::memory_order_relaxed);
     preparedInputs_ = preparedOutputs_ = preparedTaps_ = 0;
     speakerOutputs_.store(0, std::memory_order_relaxed);
+    fillPlays_.store(false, std::memory_order_relaxed);
+    fillExtra_.store(0, std::memory_order_relaxed);
+    fillBuilt_ = fillHeadBuilt_ = false;
+    preparedFillRows_ = preparedFillTaps_ = 0;
+    fillLive_ = nullptr;
+    fillNote_.clear();
     build(d);
+    //  the headphones' wait starts where the build put it, so a render with the fill opens without a crossfade
+    headWait_ = headWaitFrom_ = std::clamp(fillExtra_.load(std::memory_order_relaxed), 0, headLength_ - 1);
     return true;
 }
 
@@ -100,8 +133,11 @@ void DecoderEngine::build(const DecoderState& d) {
         chosenHead_ = headIndex(d);
         binaural_.setModel(headModel());
         virtual_.setModel(headModel());
+        fillHead_.setModel(headModel());
         headBuilt_ = false;
+        fillHeadBuilt_ = false;
     }
+    bool headChanged = false, designChanged = false;
     //  The listener's two sliders: the binaural filters, and the layout's array heard on headphones.
     const auto differs = [](double a, double b) { return std::abs(a - b) > 1e-9; };
     if (!headBuilt_ || differs(builtShift_, d.earShift) || differs(builtSize_, d.headSize)) {
@@ -111,6 +147,7 @@ void DecoderEngine::build(const DecoderState& d) {
         builtShift_ = d.earShift;
         builtSize_ = d.headSize;
         headBuilt_ = true;
+        headChanged = true;
     }
     //  A decoder as filters, when the state names one: it replaces the layout's design below.
     if (d.matrixFile != builtMatrixFile_ || d.matrixNormalization != builtMatrixNormalization_ ||
@@ -123,8 +160,10 @@ void DecoderEngine::build(const DecoderState& d) {
         if (leaving) builtOrder_ = -1;  // the layout's design decides the outputs again
     }
     //  The layout's decoder, and the same layout heard on headphones. A pair's slice is narrow microphones at the
-    //  loudspeakers, as narrow as the field's order allows, and follows the head.
-    const Microphones microphones{d.pairSlice, d.pairSlice ? std::max(1, order_) : 1};
+    //  loudspeakers, as narrow as the field's order allows, and follows the head; while the gaps are filled the
+    //  pair plays its fold, the combination the fill was tuned with.
+    const bool slice = d.pairSlice && !d.fill;
+    const Microphones microphones{slice, slice ? std::max(1, order_) : 1};
     if (d.matrixFile.empty() &&
         (builtOrder_ != order_ || builtLayout_ != d.layout || builtWeighting_ != d.weighting ||
          builtDistance_ != d.distanceCompensation || builtMicrophones_.atLoudspeakers != microphones.atLoudspeakers ||
@@ -134,6 +173,7 @@ void DecoderEngine::build(const DecoderState& d) {
         builtWeighting_ = d.weighting;
         builtDistance_ = d.distanceCompensation;
         builtMicrophones_ = microphones;
+        designChanged = true;
         if (d.layout.empty()) {
             speakerOutputs_.store(0, std::memory_order_release);
         } else {
@@ -146,8 +186,98 @@ void DecoderEngine::build(const DecoderState& d) {
         }
     }
     //  after the design, so a block never turns the field for a slice the array does not play yet
-    pairFollows_.store(d.matrixFile.empty() && realLoudspeakers(d.layout) == 2 && d.pairSlice,
-                       std::memory_order_release);
+    pairFollows_.store(d.matrixFile.empty() && realLoudspeakers(d.layout) == 2 && slice, std::memory_order_release);
+    buildFill(d, designChanged, headChanged);
+}
+
+bool DecoderEngine::stopFill() noexcept {
+    //  As stopMatrix: nothing new enters the fill's convolvers once the flag is down, and a block inside them is
+    //  waited out. False when it is still inside after 200 ms: the caller then leaves them as they are.
+    fillPlays_.store(false, std::memory_order_seq_cst);
+    for (int i = 0; i < 200 && inFill_.load(std::memory_order_seq_cst); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return !inFill_.load(std::memory_order_seq_cst);
+}
+
+void DecoderEngine::buildFill(const DecoderState& d, bool designChanged, bool headChanged) {
+    //  Off: the layout's own design again, without the fill's wait and with nothing added alongside. The fill's
+    //  convolvers keep running until the renderer has faded the fill out with that design, then fall silent.
+    const auto off = [&](std::string why) {
+        if (fillExtra_.load(std::memory_order_acquire) > 0 && d.matrixFile.empty() &&
+            speakerOutputs_.load(std::memory_order_acquire) > 0)
+            speakers_.publishDesign(speakers_.design(), 0.0f);
+        fillExtra_.store(0, std::memory_order_release);
+        fillBuilt_ = false;
+        fillNote_ = std::move(why);
+    };
+    if (!d.fill) return off("");
+    if (!d.matrixFile.empty())
+        return off("a filter matrix is loaded: the fill needs a loudspeaker layout with positions");
+    if (d.layout.empty() || speakerOutputs_.load(std::memory_order_acquire) == 0)
+        return off("no loudspeaker layout loaded");
+    FillSettings settings;
+    settings.holdDeg = d.fillHoldDeg;
+    settings.fadeDeg = d.fillFadeDeg;
+    settings.regularisationDb = d.fillStrengthDb;
+    settings.bandHiHz = d.fillUpToHz;
+    if (fillBuilt_ && !designChanged && !headChanged && settings == builtFill_) return;
+    if (headChanged || !fillHeadBuilt_) {
+        fillHead_.build(d.earShift, d.headSize);
+        fillHeadBuilt_ = true;
+    }
+
+    const SpeakerDesign& design = speakers_.design();
+    const CoveredRegion region = coveredRegion(design);
+    if (region.sphere) return off("this layout covers the sphere: it has no gaps to fill");
+    FillWindows windows;
+    fillWindows(region, settings, order_, windows);
+    Cancellation cancel;
+    std::string error;
+    if (!designCancellation(design, fillHead_, settings, sampleRate_, cancel, &error)) return off(error);
+
+    //  The HRTF window transposed, an ambisonic channel's row over the binaural part's channels, for the audio thread.
+    const int C = numChannels(order_), H = numChannels(kFillOrder), rows = static_cast<int>(cancel.outputs.size());
+    FillSet& set = fillSets_.staging();
+    set.window.assign(sz(C) * sz(H), 0.0f);
+    for (int r = 0; r < H; ++r)
+        for (int k = 0; k < C; ++k)
+            set.window[sz(k) * sz(H) + sz(r)] = static_cast<float>(windows.hrtf[sz(r) * sz(C) + sz(k)]);
+    set.outputs = cancel.outputs;
+    //  The convolver is reallocated only for another number of loudspeakers or longer filters, with room for the
+    //  distances to grow by a little more than a metre, so moving a loudspeaker only publishes.
+    const bool reshape =
+        !fillPlays_.load(std::memory_order_acquire) || rows != preparedFillRows_ || cancel.taps > preparedFillTaps_;
+    if (reshape) {
+        if (!stopFill()) {
+            fillBuilt_ = false;  // tried again at the next build
+            return;
+        }
+        const int room = cancel.taps + fillCancellationDelay(sampleRate_);
+        if (!fillCancel_.prepareMatrix(2, rows, room, kPartition)) {
+            preparedFillRows_ = preparedFillTaps_ = 0;
+            return off("the cancellation could not be built");
+        }
+        preparedFillRows_ = rows;
+        preparedFillTaps_ = room;
+        fillCancel_.reset();
+        fillBinaural_.reset();
+    }
+    fillCancel_.publish(cancel.filters, 2, rows, cancel.taps);
+    if (reshape || headChanged || !fillBuilt_) fillBinaural_.publish(fillHead_);
+    fillSets_.publish();
+
+    //  The dry part: the layout's decoder after the dry window, waiting for the binaural part's two convolvers, and
+    //  the fill alongside it at full gain -- the renderer fades both in together.
+    const int extra = cancel.delay + kPartition;
+    SpeakerDesign dry = windowedDecoder(design, windows);
+    for (double& t : dry.delaySeconds) t += extra / sampleRate_;
+    fillPlays_.store(true, std::memory_order_seq_cst);
+    if (!speakers_.publishDesign(dry, 1.0f))
+        return off("the loudspeakers' distances leave no room for the fill's wait");
+    builtFill_ = settings;
+    fillBuilt_ = true;
+    fillNote_ = "channel separation " + decimal(-cancel.separationDb) + " dB";
+    fillExtra_.store(extra, std::memory_order_release);
 }
 
 void DecoderEngine::holdMatrix(std::string path, FirMatrix matrix) {
@@ -298,6 +428,38 @@ void DecoderEngine::process(const DecoderState& d, const DecoderFrame& c, const 
             turnOnce();
             binaural_.process(turned_.data(), stereo_.data(), n);
         }
+        //  Through a ring always, read as late as the fill makes every output wait: none without it. A new wait is
+        //  crossfaded in from the old over the renderer's fade; the ring starts empty when the headphones come back.
+        if (!headphonesWere_) {
+            std::fill(headLine_.begin(), headLine_.end(), 0.0f);
+            headFade_ = -1;
+        }
+        const int target = std::clamp(fillExtra_.load(std::memory_order_acquire), 0, headLength_ - 1);
+        if (headFade_ < 0 && target != headWait_) {
+            headWaitFrom_ = headWait_;
+            headWait_ = target;
+            headFade_ = 0;
+        }
+        const auto at = [this](int wait) {
+            return headLine_.data() + sz((headWrite_ - wait + headLength_) % headLength_) * 2;
+        };
+        for (int i = 0; i < n; ++i) {
+            float* w = headLine_.data() + sz(headWrite_) * 2;
+            w[0] = stereo_[sz(i) * 2];
+            w[1] = stereo_[sz(i) * 2 + 1];
+            const float* now = at(headWait_);
+            float l = now[0], rt = now[1];
+            if (headFade_ >= 0) {
+                const float t = static_cast<float>(headFade_ + 1) / static_cast<float>(headFadeLength_);
+                const float* was = at(headWaitFrom_);
+                l = was[0] * (1.0f - t) + l * t;
+                rt = was[1] * (1.0f - t) + rt * t;
+                if (++headFade_ >= headFadeLength_) headFade_ = -1;
+            }
+            stereo_[sz(i) * 2] = l;
+            stereo_[sz(i) * 2 + 1] = rt;
+            headWrite_ = (headWrite_ + 1) % headLength_;
+        }
         float* left = out[d.headphoneChannel - 1];
         float* right = out[d.headphoneChannel];
         for (int i = 0; i < n; ++i) {
@@ -307,6 +469,7 @@ void DecoderEngine::process(const DecoderState& d, const DecoderFrame& c, const 
         }
         headphonesHeard_ = true;
     }
+    headphonesWere_ = headphonesHeard_;
     const int firstOut = std::max(1, d.speakerFirstChannel) - 1;  // the layout's channel 1 counted from 0 on the bus
     if (d.speakersPlay && speakerOutputs > 0 && firstOut + speakerOutputs <= outChannels && !c.speakersHeld) {
         int feeds = speakerOutputs;
@@ -320,11 +483,47 @@ void DecoderEngine::process(const DecoderState& d, const DecoderFrame& c, const 
                 matrix_.process(sceneField_.data(), speakersOut_.data(), n);
             }
             inConvolver_.store(false, std::memory_order_seq_cst);
-        } else if (pairFollows_.load(std::memory_order_acquire)) {
-            turnOnce();
-            speakers_.process(turned_.data(), C, speakersOut_.data(), speakerOutputs, n);
         } else {
-            speakers_.process(sceneField_.data(), C, speakersOut_.data(), speakerOutputs, n);
+            //  A slice that follows the head plays the turned field, unless the gaps are filled: the fill and its
+            //  dry part are the room's.
+            if (pairFollows_.load(std::memory_order_acquire) && fillExtra_.load(std::memory_order_acquire) == 0) {
+                turnOnce();
+                speakers_.process(turned_.data(), C, speakersOut_.data(), speakerOutputs, n, fillWeight_.data());
+            } else {
+                speakers_.process(sceneField_.data(), C, speakersOut_.data(), speakerOutputs, n, fillWeight_.data());
+            }
+            //  The gaps: the HRTF window, the order-3 binaural decode, the cancellation, added to the loudspeakers'
+            //  feeds at the gain the renderer fades with the design that waits for them -- run while a fade can
+            //  bring them in, silent otherwise. Raised before the flag is read again, as for the matrix.
+            bool heard = speakers_.fading();
+            for (int i = 0; i < n && !heard; ++i) heard = fillWeight_[sz(i)] > 0.0f;
+            inFill_.store(true, std::memory_order_seq_cst);
+            if (heard && fillPlays_.load(std::memory_order_seq_cst)) {
+                if (const FillSet* s = fillSets_.latest()) fillLive_ = s;
+                const int rows = fillCancel_.outputs();
+                if (fillLive_ != nullptr && static_cast<int>(fillLive_->outputs.size()) == rows) {
+                    const int H = numChannels(kFillOrder);
+                    std::fill_n(fillField_.data(), sz(n) * sz(H), 0.0f);
+                    for (int i = 0; i < n; ++i) {
+                        float* o = fillField_.data() + sz(i) * sz(H);
+                        const float* x = sceneField_.data() + sz(i) * sz(C);
+                        for (int k = 0; k < C; ++k) {
+                            const float* w = fillLive_->window.data() + sz(k) * sz(H);
+                            for (int r = 0; r < H; ++r) o[r] += x[k] * w[r];
+                        }
+                    }
+                    fillBinaural_.process(fillField_.data(), fillEars_.data(), n);
+                    fillCancel_.process(fillEars_.data(), fillOut_.data(), n);
+                    for (int i = 0; i < n; ++i)
+                        for (int row = 0; row < rows; ++row) {
+                            const int o = fillLive_->outputs[sz(row)];
+                            if (o < speakerOutputs)
+                                speakersOut_[sz(i) * sz(speakerOutputs) + sz(o)] +=
+                                    fillOut_[sz(i) * sz(rows) + sz(row)] * fillWeight_[sz(i)];
+                        }
+                }
+            }
+            inFill_.store(false, std::memory_order_seq_cst);
         }
         for (int o = 0; o < feeds; ++o) {
             float* y = out[firstOut + o];

@@ -10,10 +10,16 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "bambi/decode/allrad.hpp"
+#include "bambi/decode/convolver.hpp"
+#include "bambi/decode/fill.hpp"
+#include "bambi/decode/headmodelfile.hpp"
+#include "bambi/decode/layouts.hpp"
 #include "bambi/dsp/features.hpp"
 #include "bambi/dsp/fft.hpp"
 #include "bambi/dsp/field.hpp"
@@ -26,6 +32,7 @@
 #include "bambi/io/guarded.hpp"
 #include "bambi/link/latest.hpp"
 #include "bambi/link/link.hpp"
+#include "bambi/math/legendre.hpp"
 #include "bambi/math/sh.hpp"
 #include "bambi/math/shrotation.hpp"
 #include "bambi/mod/modulation.hpp"
@@ -622,6 +629,136 @@ static int run() {
             char note[96];
             std::snprintf(note, sizeof note, "%.2f %% of a core", 100.0 * us / (kBlockMs * 1000.0));
             row(c.name, us, note);
+            if (sink == 0.0) std::printf("  (checksum zero)\n");
+        }
+    }
+
+    /*  The decoder's fill: a layout's gaps played binaurally through crosstalk cancellation. On the audio thread, on
+     *  top of the layout's own decode, which it does not change: the HRTF window (16 x (N+1)^2 gains a frame), the
+     *  order-3 binaural decode (16 x 2 filters of 256 taps) and the cancellation (2 x L filters of 384 taps). On the
+     *  worker: the design, and the second binaural build a slider move costs. */
+    std::printf("\nDecoder: filling a layout's gaps (KU100, order 3 binaural)\n");
+    {
+        HeadModel ku100;
+        {
+            std::ifstream in(std::string(BAMBI_CORE_DIR) + "/data/decode/ku100.json", std::ios::binary);
+            const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            if (!parseHeadModel(text, ku100)) std::printf("  (no head: core/data/decode/ku100.json unread)\n");
+        }
+        std::vector<Vec3> qd;
+        std::vector<double> qw;
+        quadratureGrid(12, 20, qd, qw);
+        BinauralFilterBuilder head;
+        head.prepare(ku100, fillFilterDesign(48000.0), qd, qw);
+        const double buildUs = medianMicros(5, 4, [&] { head.build(0.0, 1.0); });
+        char note[128];
+        std::snprintf(note, sizeof note, "the fill's own order-3 build, on the worker");
+        row("binaural build", buildUs, note);
+
+        const auto layoutOf = [](const std::vector<Vec3>& at) {
+            Layout l;
+            for (std::size_t i = 0; i < at.size(); ++i) {
+                Loudspeaker s;
+                s.azimuthDeg = azimuth(at[i]) * kRad2Deg;
+                s.elevationDeg = std::asin(at[i].z) * kRad2Deg;
+                s.radiusM = 2.0;
+                s.channel = static_cast<int>(i) + 1;
+                l.speakers.push_back(s);
+            }
+            return l;
+        };
+        std::vector<Vec3>
+            dome;  // 64 loudspeakers on the upper half, nothing below: a gap the decoder closes with a point
+        for (int i = 0; i < 128 && static_cast<int>(dome.size()) < 64; ++i) {
+            const double z = 1.0 - 2.0 * (i + 0.5) / 128.0, r = std::sqrt(1.0 - z * z),
+                         a = i * kPi * (3.0 - std::sqrt(5.0));
+            if (z > 0.0) dome.push_back({r * std::cos(a), r * std::sin(a), z});
+        }
+        struct Case {
+            const char* name;
+            Layout layout;
+            int order;
+        };
+        const Case cases[] = {
+            {"a pair",
+             layoutOf({fromAzEl(16.7 * kDeg2Rad, -30.4 * kDeg2Rad), fromAzEl(-17.8 * kDeg2Rad, -31.0 * kDeg2Rad)}), 3},
+            {"7.1.4", *bs2051Layout("4+7+0"), 3},
+            {"64, a dome", layoutOf(dome), 7}};
+        for (const Case& c : cases) {
+            SpeakerDesign d;
+            std::string why;
+            if (!designAllrad(c.layout, c.order, Weighting::Basic, d, &why)) {
+                std::printf("  (%s: no design: %s)\n", c.name, why.c_str());
+                continue;
+            }
+            const FillSettings settings;
+            Cancellation cancel;
+            FillWindows windows;
+            const double designUs = medianMicros(3, 2, [&] {
+                fillWindows(coveredRegion(d), settings, c.order, windows);
+                const SpeakerDesign m = windowedDecoder(d, windows);
+                if (!designCancellation(d, head, settings, 48000.0, cancel, &why))
+                    std::printf("  (%s: %s)\n", c.name, why.c_str());
+                if (m.matrix.empty()) std::printf("  (no decoder)\n");
+            });
+            const int L = static_cast<int>(cancel.outputs.size()), C = numChannels(c.order),
+                      H = numChannels(kFillOrder);
+            MatrixConvolver binaural, ctc;
+            binaural.prepare(kFillOrder, head.taps());
+            binaural.publish(head);
+            ctc.prepareMatrix(2, L, cancel.taps);
+            ctc.publish(cancel.filters, 2, L, cancel.taps);
+            //  The window transposed, (N+1)^2 x 16: each input channel added into the 16 outputs, which vectorises.
+            std::vector<float> hrtfWindow(static_cast<std::size_t>(C * H));
+            for (int r = 0; r < H; ++r)
+                for (int k = 0; k < C; ++k)
+                    hrtfWindow[static_cast<std::size_t>(k * H + r)] =
+                        static_cast<float>(windows.hrtf[static_cast<std::size_t>(r * C + k)]);
+            std::vector<float> field(static_cast<std::size_t>(C * kBlock)), h(static_cast<std::size_t>(H * kBlock));
+            std::vector<float> ears(static_cast<std::size_t>(2 * kBlock)), out(static_cast<std::size_t>(L * kBlock));
+            unsigned seed = 7u;
+            for (float& v : field) {
+                seed = seed * 1664525u + 1013904223u;
+                v = static_cast<float>(static_cast<int>(seed >> 8) % 2001 - 1000) / 8000.0f;
+            }
+            const auto window = [&] {
+                std::fill(h.begin(), h.end(), 0.0f);
+                for (int f = 0; f < kBlock; ++f) {
+                    float* o = h.data() + static_cast<std::size_t>(f * H);
+                    const float* x = field.data() + static_cast<std::size_t>(f * C);
+                    for (int k = 0; k < C; ++k) {
+                        const float* w = hrtfWindow.data() + static_cast<std::size_t>(k * H);
+                        for (int r = 0; r < H; ++r) o[r] += x[k] * w[r];
+                    }
+                }
+            };
+            double sink = 0.0;
+            const double windowUs = medianMicros(9, 300, [&] {
+                window();
+                sink += h[h.size() / 2];
+            });
+            const double binauralUs = medianMicros(9, 300, [&] {
+                binaural.process(h.data(), ears.data(), kBlock);
+                sink += ears[ears.size() / 2];
+            });
+            const double ctcUs = medianMicros(9, 300, [&] {
+                ctc.process(ears.data(), out.data(), kBlock);
+                sink += out[out.size() / 2];
+            });
+            const double us = medianMicros(9, 300, [&] {
+                window();
+                binaural.process(h.data(), ears.data(), kBlock);
+                ctc.process(ears.data(), out.data(), kBlock);
+                sink += out[out.size() / 2];
+            });
+            const auto share = [&](double t) { return 100.0 * t / (kBlockMs * 1000.0); };
+            char name[48];
+            std::snprintf(name, sizeof name, "%s, order %d", c.name, c.order);
+            std::snprintf(note, sizeof note, "%.2f %% of a core: window %.2f, binaural %.2f, cancellation %.2f",
+                          share(us), share(windowUs), share(binauralUs), share(ctcUs));
+            row(name, us, note);
+            std::printf("  %-24s %d loudspeakers, %.0f dB apart; the design %.1f ms on the worker\n", "", L,
+                        cancel.separationDb, designUs / 1000.0);
             if (sink == 0.0) std::printf("  (checksum zero)\n");
         }
     }

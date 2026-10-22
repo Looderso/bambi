@@ -23,6 +23,15 @@ private:
     float paintChannels(juce::Graphics& g, juce::Rectangle<float> content, float y, OutputPage output);
     void paintHeadphones(juce::Graphics& g, juce::Rectangle<float> content);
     void paintSpeakers(juce::Graphics& g, juce::Rectangle<float> content);
+    /// The speakers page's gaps sub-tab: filling what the layout does not cover, the head it uses, the tuning.
+    void paintGaps(juce::Graphics& g, juce::Rectangle<float> content, float y);
+    /// The listener's head -- the model, the KU100 or a SOFA file, and its two sliders -- from `y`; the y below it.
+    /// One state, on the headphones page and on the speakers page's gaps.
+    float paintHead(juce::Graphics& g, juce::Rectangle<float> content, float y);
+    /// A labelled toggle on a flag of the state, at the row's left, its flip one undoable edit when enabled; the
+    /// toggle's hit area.
+    juce::Rectangle<float> paintStateToggle(juce::Graphics& g, juce::Rectangle<float> row, const juce::String& label,
+                                            bool on, bool enabled, const char* edit, void (*flip)(DecoderState&));
     void paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> content);  ///< the table, a temporary tab
     void paintTracking(juce::Graphics& g, juce::Rectangle<float> content);
     float paintPhone(juce::Graphics& g, juce::Rectangle<float> content, float y);  ///< the QR code and the steps

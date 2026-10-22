@@ -254,6 +254,11 @@ Json toJson(Product p, const ParamManifest& m, const PluginState& s) {
         jd.set("weighting", Json{d.weighting});
         jd.set("pair_slice", Json{d.pairSlice});
         jd.set("distance_compensation", Json{d.distanceCompensation});
+        jd.set("fill", Json{d.fill});
+        jd.set("fill_hold", Json{static_cast<double>(d.fillHoldDeg)});
+        jd.set("fill_fade", Json{static_cast<double>(d.fillFadeDeg)});
+        jd.set("fill_strength", Json{static_cast<double>(d.fillStrengthDb)});
+        jd.set("fill_up_to", Json{static_cast<double>(d.fillUpToHz)});
         jd.set("layout_name", Json{d.layoutName});
         if (!d.matrixFile.empty()) {
             jd.set("matrix_file", Json{d.matrixFile});
@@ -322,6 +327,10 @@ void sanitiseDecoder(DecoderState& d) {
     d.headSize = std::clamp(d.headSize, 0.75f, 1.3f);
     d.earShift = std::clamp(d.earShift, -2.0f, 2.0f);
     d.weighting = std::clamp(d.weighting, 0, 1);
+    d.fillHoldDeg = std::clamp(d.fillHoldDeg, 0.0f, 60.0f);
+    d.fillFadeDeg = std::clamp(d.fillFadeDeg, 5.0f, 120.0f);
+    d.fillStrengthDb = std::clamp(d.fillStrengthDb, -40.0f, -10.0f);
+    d.fillUpToHz = std::clamp(d.fillUpToHz, 3000.0f, 12000.0f);
     d.headphoneChannel = std::max(1, d.headphoneChannel);
     d.speakerFirstChannel = std::max(1, d.speakerFirstChannel);
     d.matrixOutputs = std::clamp(d.matrixOutputs, 0, kMaxDecoderOutputs);
@@ -570,6 +579,11 @@ LoadResult fromJson(Product p, const ParamManifest& m, const Json& j, PluginStat
         d.weighting = intOf("weighting", d.weighting);
         d.pairSlice = boolOf("pair_slice", d.pairSlice);
         d.distanceCompensation = boolOf("distance_compensation", d.distanceCompensation);
+        d.fill = boolOf("fill", d.fill);
+        d.fillHoldDeg = static_cast<float>(numOf("fill_hold", d.fillHoldDeg));
+        d.fillFadeDeg = static_cast<float>(numOf("fill_fade", d.fillFadeDeg));
+        d.fillStrengthDb = static_cast<float>(numOf("fill_strength", d.fillStrengthDb));
+        d.fillUpToHz = static_cast<float>(numOf("fill_up_to", d.fillUpToHz));
         if (const Json* v = dec->find("layout_name")) d.layoutName = std::string(v->stringOr(""));
         if (const Json* v = dec->find("matrix_file")) d.matrixFile = std::string(v->stringOr(""));
         d.matrixOutputs = intOf("matrix_outputs", d.matrixOutputs);

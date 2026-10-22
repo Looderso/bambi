@@ -32,14 +32,18 @@ public:
     /// process() may run.
     bool prepare(int maxOrder, int maxOutputs, double sampleRate, double maxDelaySeconds = 0.1, int latencyFrames = 0);
 
-    /// Worker thread, one at a time: publishes a design. False, and nothing published, when it exceeds what prepare()
-    /// made room for. Allocates nothing.
-    bool publish(const SpeakerDesign& design) noexcept;
+    /// Worker thread, one at a time: publishes a design, and the gain of what the owner adds to its outputs
+    /// alongside it. False, and nothing published, when it exceeds what prepare() made room for. Allocates nothing.
+    bool publish(const SpeakerDesign& design, float alongside = 0.0f) noexcept;
 
     /// Audio thread. `in`: frames x inChannels interleaved, AmbiX; `out`: frames x outChannels interleaved, output
     /// o on channel o; channels the design has no row for, and rows the output has no channel for, are silent.
-    /// May not alias.
-    void process(const float* in, int inChannels, float* out, int outChannels, int frames) noexcept;
+    /// May not alias. `alongside`, when given, gets each frame's gain for what the owner adds: the designs'
+    /// own, faded as they are, so an addition changes over with the design it belongs to.
+    void process(const float* in, int inChannels, float* out, int outChannels, int frames,
+                 float* alongside = nullptr) noexcept;
+    /// Audio thread: one design is fading into another, or waiting for its lines to fill before it does.
+    bool fading() const noexcept { return fading_; }
     /// Empties the delay lines, keeps the design.
     void reset() noexcept;
 
@@ -55,6 +59,7 @@ private:
         std::vector<float> matrix;
         std::vector<int> delay;  ///< maxOutputs, in samples, the renderer's latency included
         int longestDelay{0};     ///< the largest of them, in samples
+        float alongside{0.0f};   ///< the gain of what the owner adds to these outputs
     };
     void mix(const Set& set, const float* x, int inChannels, float* y) const noexcept;
 
@@ -91,12 +96,20 @@ public:
     bool work();
     /// The reason the last request was refused, empty when it was not. Read it when the worker is idle.
     std::string lastError() const;
-    /// The design playing, as last published. Read it when the worker is idle.
+    /// The layout's own design, as work() last made it. Read it when the worker is idle.
     const SpeakerDesign& design() const { return design_; }
-
-    void process(const float* in, int inChannels, float* out, int outChannels, int frames) noexcept {
-        renderer_.process(in, inChannels, out, outChannels, frames);
+    /// Worker thread, one at a time: plays another design in its place -- the layout's own changed, as the fill of
+    /// its gaps changes it -- with the gain of what the owner adds alongside, until work() publishes the next. False
+    /// when it exceeds what prepare() made room for.
+    bool publishDesign(const SpeakerDesign& design, float alongside) noexcept {
+        return renderer_.publish(design, alongside);
     }
+
+    void process(const float* in, int inChannels, float* out, int outChannels, int frames,
+                 float* alongside = nullptr) noexcept {
+        renderer_.process(in, inChannels, out, outChannels, frames, alongside);
+    }
+    bool fading() const noexcept { return renderer_.fading(); }
     void reset() noexcept { renderer_.reset(); }
 
 private:

@@ -38,6 +38,7 @@ struct SpeakerDesign {
     bool ring{false};                           ///< designed on the ring: every point within 10 degrees of the horizon
     std::vector<Vec3> points;                   ///< every point the panning used, real and imaginary, unit vectors
     std::vector<bool> imaginary;                ///< per point
+    std::vector<bool> centre;                   ///< per point: a coplanar group's centre, imaginary yet no gap
     std::vector<std::array<int, 3>> triangles;  ///< the hull's faces as point indices (3D only)
 };
 

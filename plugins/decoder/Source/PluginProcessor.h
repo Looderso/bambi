@@ -133,6 +133,9 @@ public:
     const bambi::HeadModel& headModel() const noexcept { return engine_.headModel(); }
     /// Why the layout could not be designed, or empty. Message thread.
     juce::String designError() const;
+    /// The fill of the layout's gaps in a line: why it does not play, or how far it keeps the ears apart. Message
+    /// thread.
+    juce::String fillNote() const;
     /// The layout's design as last built, for the page and the scene. Message thread.
     bambi::SpeakerDesign speakerDesign() const;
     /// What the last `playOutput` had to say, or empty.
@@ -186,6 +189,8 @@ private:
     void committing(const EngineSnapshot& next) override;
     void snapshotAdopted(const EngineSnapshot& next) noexcept override;
     void describe(bambi::LinkStatic& st) const override;
+    /// The host told the latency the engine now has: filling the layout's gaps makes every output wait.
+    void onLinkTick() override;
     int order() const override { return engineOrder_ < 0 ? 1 : engineOrder_; }
 
     /// Builds what `d` asks for that is not built yet, and says how many loudspeaker outputs play. Message thread,
