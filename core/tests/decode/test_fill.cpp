@@ -157,7 +157,8 @@ TEST_CASE("through the HRTF and the cancellation, a loudspeaker's own direction 
         CAPTURE(rate);
         const Layout l = laptop();
         const SpeakerDesign d = design(l, 3);
-        const FillSettings s;
+        FillSettings s;
+        s.regularisationDb = -30.0;  // deep enough to ask 0.5 dB of it; the default is tuned by ear
         Cancellation c;
         std::string error;
         REQUIRE_MESSAGE(designCancellation(d, ku100(rate), s, rate, c, &error), error);
@@ -337,4 +338,33 @@ TEST_CASE("outside the band each ear's channel plays on the one loudspeaker near
             CHECK(10.0 * std::log10((total - energy[loudest]) / energy[loudest]) < -40.0);
         }
     }
+}
+
+TEST_CASE("the cancellation's feeds carry each loudspeaker's distance gain and delay") {
+    //  Catches: the feeds left aligned while the renderer delays and scales the dry part of a room that is not a
+    //  sphere, a delay applied to the wrong loudspeaker.
+    Layout near = laptop(), far = laptop();
+    near.speakers[0].radiusM = near.speakers[1].radiusM = 2.0;
+    far.speakers[0].radiusM = 2.0;
+    far.speakers[1].radiusM = 1.0;  // the right one a metre nearer: delayed and quietened to meet the left
+    const SpeakerDesign a = design(near, 3), b = design(far, 3);
+    Cancellation ca, cb;
+    REQUIRE(designCancellation(a, ku100(48000.0), FillSettings{}, 48000.0, ca));
+    REQUIRE(designCancellation(b, ku100(48000.0), FillSettings{}, 48000.0, cb));
+    const int late = static_cast<int>(std::lround(b.delaySeconds[1] * 48000.0));
+    REQUIRE(late > 100);
+    CHECK(cb.taps == ca.taps + late);
+    for (int e = 0; e < 2; ++e)
+        for (int i = 0; i < 2; ++i) {
+            const float g = static_cast<float>(b.gain[static_cast<std::size_t>(i)]);
+            const int shift = i == 1 ? late : 0;
+            double worst = 0.0, peak = 0.0;
+            for (int t = 0; t < ca.taps; ++t) {
+                const float want = g * ca.filters[static_cast<std::size_t>((e * 2 + i) * ca.taps + t)];
+                const float got = cb.filters[static_cast<std::size_t>((e * 2 + i) * cb.taps + t + shift)];
+                worst = std::max(worst, static_cast<double>(std::abs(got - want)));
+                peak = std::max(peak, static_cast<double>(std::abs(want)));
+            }
+            CHECK(worst <= 1e-6 * peak);
+        }
 }

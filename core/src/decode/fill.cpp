@@ -53,6 +53,8 @@ double smoothStep(double a, double b, double x) {
 
 }  // namespace
 
+int fillCancellationDelay(double sampleRate) { return atRate(kDelay48k, sampleRate); }
+
 FilterDesign fillFilterDesign(double sampleRate) {
     FilterDesign d;
     d.order = kFillOrder;
@@ -209,7 +211,7 @@ bool designCancellation(const SpeakerDesign& design, const BinauralFilterBuilder
     if (L < 2) return fail("crosstalk cancellation needs two loudspeakers or more");
     if (head.channels() != numChannels(kFillOrder)) return fail("the binaural filters are not of the fill's order");
 
-    const int taps = atRate(kTaps48k, sampleRate), D = atRate(kDelay48k, sampleRate);
+    const int taps = atRate(kTaps48k, sampleRate), D = fillCancellationDelay(sampleRate);
     const int bulk = fillFilterDesign(sampleRate).delay, fade = atRate(kFade48k, sampleRate);
     int n = kFft48k;
     while (n < kFft48k * sampleRate / 48000.0) n *= 2;
@@ -331,8 +333,36 @@ bool designCancellation(const SpeakerDesign& design, const BinauralFilterBuilder
         }
         out.separationDb = 10.0 * std::log10(std::max(ratio / std::max(counted, 1), 1e-30));
     }
-    if (out.separationDb > kFillSeparationNeededDb)
-        return fail("these loudspeakers cannot give each ear its own channel: they reach both ears too alike");
+    //  Each loudspeaker's distance gain and delay, as the speaker renderer gives the dry part, folded into its
+    //  feeds: designed for loudspeakers that arrive together, they reach a room that is not a sphere the same way.
+    int longest = 0;
+    std::vector<int> late(sz(L), 0);
+    for (int i = 0; i < L; ++i) {
+        late[sz(i)] = sz(i) < design.delaySeconds.size()
+                          ? static_cast<int>(std::lround(design.delaySeconds[sz(i)] * sampleRate))
+                          : 0;
+        longest = std::max(longest, late[sz(i)]);
+    }
+    if (longest > 0 || !design.gain.empty()) {
+        std::vector<float> placed(sz(2) * sz(L) * sz(taps + longest), 0.0f);
+        for (int m = 0; m < 2; ++m)
+            for (int i = 0; i < L; ++i) {
+                const float g = sz(i) < design.gain.size() ? static_cast<float>(design.gain[sz(i)]) : 1.0f;
+                const float* from = out.filters.data() + (sz(m) * sz(L) + sz(i)) * sz(taps);
+                float* to = placed.data() + (sz(m) * sz(L) + sz(i)) * sz(taps + longest) + sz(late[sz(i)]);
+                for (int t = 0; t < taps; ++t) to[t] = g * from[t];
+            }
+        out.filters.swap(placed);
+        out.taps = taps + longest;
+    }
+    if (out.separationDb > kFillSeparationNeededDb) {
+        const long tenths = std::lround(-out.separationDb * 10.0);
+        const std::string got = std::to_string(tenths / 10) + "." + std::to_string(tenths % 10);
+        const std::string need = std::to_string(static_cast<int>(-kFillSeparationNeededDb));
+        if (error)
+            *error = "crosstalk cancellation fails for this layout: separation " + got + " dB, " + need + " dB needed";
+        return false;
+    }
     return true;
 }
 

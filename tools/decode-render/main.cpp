@@ -62,6 +62,8 @@ void usage() {
         "                       The state's: headphones(0|1) headphone_channel speakers(0|1)\n"
         "                       first_channel hrtf(model|ku100) head_size ear_shift through_layout(0|1)\n"
         "                       weighting(basic|max_re) slice(0|1) distance(0|1) static(0|1)\n"
+        "                       fill(0|1) fill_hold fill_fade (degrees) fill_strength (dB, the cancellation's\n"
+        "                       regularisation: lower cancels more) fill_up_to (Hz)\n"
         "                       tracker_turns_scene(0|1) layout(a BS.2051 name, \"4+7+0\")\n"
         "                       speaker(AZ,EL,R: one more loudspeaker, on the next channel) matrix(a SOFA\n"
         "                       FIR-E file) matrix_norm(file|sn3d|n3d)\n"
@@ -102,6 +104,7 @@ bool apply(Settings& s, const std::string& path, const std::string& value, bool&
     if (path == "through_layout") return flag(value, d.throughLayout);
     if (path == "slice") return flag(value, d.pairSlice);
     if (path == "distance") return flag(value, d.distanceCompensation);
+    if (path == "fill") return flag(value, d.fill);
     if (path == "static") return flag(value, d.sceneStatic);
     if (path == "tracker_turns_scene") return flag(value, d.trackerTurnsScene);
     if (path == "headphone_channel") {
@@ -125,6 +128,15 @@ bool apply(Settings& s, const std::string& path, const std::string& value, bool&
         d.earShift = static_cast<float>(v);
         return true;
     }
+    //  the fill's settings, in the state's units: degrees, dB, Hz
+    for (const auto& [name, field] :
+         {std::pair{"fill_hold", &d.fillHoldDeg}, std::pair{"fill_fade", &d.fillFadeDeg},
+          std::pair{"fill_strength", &d.fillStrengthDb}, std::pair{"fill_up_to", &d.fillUpToHz}})
+        if (path == name) {
+            if (!isNumber) return false;
+            *field = static_cast<float>(v);
+            return true;
+        }
     if (path == "weighting") {
         if (value != "basic" && value != "max_re") return false;
         d.weighting = value == "max_re" ? 1 : 0;

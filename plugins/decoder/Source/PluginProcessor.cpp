@@ -115,6 +115,7 @@ void BambiDecoderProcessor::prepare(double sampleRate, int maximumExpectedSample
     //  the level as the parameter has it, so the first block does not fade in from unity
     const float levelDb = parameterValues()[static_cast<std::size_t>(bambi::DecoderParam::OutputGain)];
     engine_.prepare(state, engineOrder_, sampleRate_, maxBlock_, levelDb);
+    setLatencySamples(engine_.latency());
     diag_.speakerOutputs.store(engine_.speakerOutputs(), std::memory_order_release);
     trackerSeen_ = false;
     connectTracker(state);
@@ -467,6 +468,16 @@ juce::String BambiDecoderProcessor::notice() const { return notice_; }
 juce::String BambiDecoderProcessor::designError() const {
     const std::lock_guard<std::mutex> work(workMutex_);
     return juce::String(engine_.designError());
+}
+
+juce::String BambiDecoderProcessor::fillNote() const {
+    const std::lock_guard<std::mutex> work(workMutex_);
+    return juce::String(engine_.fillNote());
+}
+
+void BambiDecoderProcessor::onLinkTick() {
+    //  here and not where the state is committed, which runs under the document's lock
+    if (const int latency = engine_.latency(); latency != getLatencySamples()) setLatencySamples(latency);
 }
 
 bambi::SpeakerDesign BambiDecoderProcessor::speakerDesign() const {

@@ -94,6 +94,10 @@ decode-speaker-distances|--order 3 --seconds 1 --impulse 40,10 --set headphones=
 # A layout file's filter matrix: first order, N3D, 44.1 kHz, three outputs, played on a third-order field at 48 kHz.
 # Catches: its N3D inputs read as SN3D, or its filters not resampled to the rate.
 decode-matrix-file|--order 3 --seconds 1 --set headphones=0 --set speakers=1 --set matrix=core/tests/decode/made-matrix.sofa|speakers
+# A laptop's two speakers, 34 degrees apart and 30 below the ears, their gaps filled: an impulse from behind and to
+# the left plays through the HRTF and the crosstalk cancellation, everything 192 samples later than without.
+# Catches: a change to the fill's windows, its cancellation, or how long every output waits for it.
+decode-fill-pair|--order 3 --seconds 1 --impulse 140,20 --set headphones=0 --set speakers=1 --set speaker=16.7,-30.4,0.653 --set speaker=-17.8,-31,0.666 --set fill=1|speakers
 # A first-order field on 7.1.4, and heard through that layout on headphones, which decode the loudspeakers at
 # seventh order. Catches: the loudspeakers encoded at the field's order rather than the decode's.
 decode-narrow-field|--order 1 --seconds 1 --set speakers=1 --set layout=4+7+0 --set through_layout=1 --set headphone_channel=13|energy

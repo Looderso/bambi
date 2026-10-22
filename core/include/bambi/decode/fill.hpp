@@ -24,13 +24,15 @@
 namespace bambi {
 
 struct FillSettings {
-    double holdDeg{20.0};            ///< fully dry up to this angle from what the layout covers
-    double fadeDeg{60.0};            ///< then a raised cosine to fully binaural over this angle
+    double holdDeg{20.0};            ///< the layout's own decode alone, dry, within this angle of what it covers
+    double fadeDeg{60.0};            ///< then a raised-cosine crossfade to binaural over this angle
     bool equalPower{true};           ///< the dry and binaural gains' squares sum to one; false: the gains do
-    double regularisationDb{-30.0};  ///< of the cancellation's inversion, against the head's mean response
+    double regularisationDb{-25.0};  ///< of the cancellation's inversion, against the head's mean response
     double bandLoHz{300.0};          ///< the cancellation fades in over [lo / 2, lo]
     double bandHiHz{7000.0};  ///< and out over [hi, 1.4 hi]; outside the band the ears' channels play uncancelled,
                               ///< each on the loudspeaker nearest 30 degrees to its side
+
+    friend bool operator==(const FillSettings&, const FillSettings&) = default;
 };
 
 /// The binaural part's order, whatever the field's.
@@ -38,6 +40,9 @@ inline constexpr int kFillOrder = 3;
 /// What the cancellation must reach, mean over its band, for a layout to be filled: the share of each ear's signal
 /// that the other ear hears, dB.
 inline constexpr double kFillSeparationNeededDb = -25.0;
+
+/// The cancellation's delay at `sampleRate`, samples: 128 at 48 kHz, in time at other rates.
+int fillCancellationDelay(double sampleRate);
 
 /// The binaural design of the fill's HRTF part at `sampleRate`: order 3, and a bulk delay of 32 samples at 48 kHz
 /// (in time at other rates), the shortest that keeps the filters' response.
@@ -75,9 +80,10 @@ SpeakerDesign windowedDecoder(const SpeakerDesign& design, const FillWindows& wi
  *  loudspeakers x taps, one filter's taps contiguous, so that MatrixConvolver::publish takes it with the ears as
  *  inputs and the loudspeakers as outputs.
  *
- *  It assumes the loudspeakers arrive together and alike at the listener: its feeds go through the same per-output
- *  gain and delay as the dry decode. The dry part waits for the binaural path -- `delay` plus the latency of each of
- *  the two convolvers in series. */
+ *  Designed for loudspeakers that arrive together and alike at the listener, its feeds then carry each
+ *  loudspeaker's distance gain and delay as the speaker renderer gives the dry part, so they add to the renderer's
+ *  output; `taps` grows by the longest of those delays. The dry part waits for the binaural path -- `delay` plus
+ *  the latency of each of the two convolvers in series. */
 struct Cancellation {
     int taps{0};
     int delay{0};              ///< samples

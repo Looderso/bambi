@@ -16,10 +16,11 @@
 #include "bambi/math/sh.hpp"
 #include "bambi/math/sphere.hpp"
 
-/*  bambi-decoder-shot [out.png] [--speakers | --loudspeakers | --energy | --sources] [--scale N]
+/*  bambi-decoder-shot [out.png] [--speakers | --gaps | --loudspeakers | --energy | --sources] [--scale N]
  *  The default shows the headphones page with the array's 7.1.4 layout loaded and a source moving; --speakers
  *  opens the speakers page, which draws the hull, and plays the layout; --loudspeakers opens its table too;
- *  --energy switches the energy picture on; --sources puts six Encoders on the bus and opens the sources list. */
+ *  --energy switches the energy picture on; --sources puts six Encoders on the bus and opens the sources list;
+ *  --gaps opens the speakers page's gaps sub-tab with the fill on. */
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::String out = argc > 1 ? argv[1] : "/tmp/decoder.png";
@@ -27,7 +28,8 @@ int main(int argc, char** argv) {
     const bool table = argc > 2 && juce::String(argv[2]) == "--loudspeakers";
     const bool energy = argc > 2 && juce::String(argv[2]) == "--energy";
     const bool sources = argc > 2 && juce::String(argv[2]) == "--sources";
-    const bool speakers = table || (argc > 2 && juce::String(argv[2]) == "--speakers");
+    const bool gaps = argc > 2 && juce::String(argv[2]) == "--gaps";
+    const bool speakers = table || gaps || (argc > 2 && juce::String(argv[2]) == "--speakers");
     BambiDecoderProcessor proc;
     juce::AudioProcessor::BusesLayout l;
     l.inputBuses.add(juce::AudioChannelSet::ambisonic(3));
@@ -36,11 +38,12 @@ int main(int argc, char** argv) {
     proc.prepareToPlay(48000.0, 128);
     bambi::host::TestPlayHead head;
     proc.setPlayHead(&head);
-    proc.editDecoder("layout", [speakers](bambi::DecoderState& d) {
+    proc.editDecoder("layout", [speakers, gaps](bambi::DecoderState& d) {
         d.layout = bambi::bs2051Layout("4+7+0")->speakers;
         d.layoutName = "4+7+0";
         d.speakersPlay = speakers;
         d.headphonesPlay = !speakers;
+        d.fill = gaps;
     });
     std::unique_ptr<juce::AudioProcessorEditor> editor(proc.createEditor());
     auto* dec = dynamic_cast<BambiDecoderEditor*>(editor.get());
@@ -91,6 +94,7 @@ int main(int argc, char** argv) {
         proc.processBlock(buffer, midi);
     }
     if (speakers) dec->showOutput(1);
+    if (gaps) dec->showGaps();
     if (sources) {
         dec->tick();
         dec->clickSourcesTriangle();  // the list opens

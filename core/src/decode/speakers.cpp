@@ -51,7 +51,7 @@ bool SpeakerRenderer::prepare(int maxOrder, int maxOutputs, double sampleRate, d
     return true;
 }
 
-bool SpeakerRenderer::publish(const SpeakerDesign& design) noexcept {
+bool SpeakerRenderer::publish(const SpeakerDesign& design, float alongside) noexcept {
     if (ringLive_.empty() || design.outputs > maxOutputs_ || design.outputs < 1 ||
         numChannels(design.order) > maxChannels_)
         return false;
@@ -62,6 +62,7 @@ bool SpeakerRenderer::publish(const SpeakerDesign& design) noexcept {
 
     Set& set = sets_.staging();
     set.outputs = design.outputs;
+    set.alongside = alongside;
     set.channels = C;
     std::fill(set.matrix.begin(), set.matrix.end(), 0.0f);
     std::fill(set.delay.begin(), set.delay.end(), 0);
@@ -91,7 +92,8 @@ void SpeakerRenderer::mix(const Set& set, const float* x, int inChannels, float*
     }
 }
 
-void SpeakerRenderer::process(const float* in, int inChannels, float* out, int outChannels, int frames) noexcept {
+void SpeakerRenderer::process(const float* in, int inChannels, float* out, int outChannels, int frames,
+                              float* alongside) noexcept {
     if (ringLive_.empty()) return;
     //  A new design is taken up between blocks, and only when no fade is running: the old one is copied first, since
     //  its slot goes back to the worker with latest().
@@ -100,6 +102,7 @@ void SpeakerRenderer::process(const float* in, int inChannels, float* out, int o
         if (had) {
             leaving_.outputs = live_->outputs;
             leaving_.channels = live_->channels;
+            leaving_.alongside = live_->alongside;
             std::copy(live_->matrix.begin(), live_->matrix.end(), leaving_.matrix.begin());
             std::copy(live_->delay.begin(), live_->delay.end(), leaving_.delay.begin());
         }
@@ -117,6 +120,7 @@ void SpeakerRenderer::process(const float* in, int inChannels, float* out, int o
         float* o = out + sz(f) * sz(outChannels);
         if (live_ == nullptr) {
             std::fill(o, o + outChannels, 0.0f);
+            if (alongside) alongside[f] = 0.0f;
             continue;
         }
         mix(*live_, x, inChannels, yLive_.data());
@@ -124,6 +128,8 @@ void SpeakerRenderer::process(const float* in, int inChannels, float* out, int o
         //  t is the live design's share of the output: 0 while its lines fill, then the ramp, then 1
         const float t = !fading ? 1.0f : fadePos_ < 0 ? 0.0f : static_cast<float>(rampWeight(fadePos_ + 1, fade_));
         if (fading) mix(leaving_, x, inChannels, yLeave_.data());
+        if (alongside)
+            alongside[f] = fading ? leaving_.alongside * (1.0f - t) + live_->alongside * t : live_->alongside;
         //  Only the outputs a design feeds are written and read, so a pair costs less than a dome.
         const int active = std::max(live_->outputs, fading ? leaving_.outputs : 0);
         for (int k = 0; k < active; ++k) {

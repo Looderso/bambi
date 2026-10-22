@@ -9,11 +9,13 @@
 
 #include "bambi/decode/convolver.hpp"
 #include "bambi/decode/decoder.hpp"
+#include "bambi/decode/fill.hpp"
 #include "bambi/decode/headmodel.hpp"
 #include "bambi/decode/headrotation.hpp"
 #include "bambi/decode/sofafile.hpp"
 #include "bambi/decode/speakers.hpp"
 #include "bambi/decode/virtualarray.hpp"
+#include "bambi/link/latest.hpp"
 #include "bambi/mod/modulation.hpp"
 #include "bambi/patch/state.hpp"
 
@@ -24,11 +26,14 @@
  *                               +--> the layout's array on headphones ------------+   (through the layout)
  *                               |
  *                               +--> layout's decoder: matrix, distance gains, delays --> loudspeakers
+ *                               |      (with its gaps filled: the decoder after the dry window, held for the fill)
+ *                               +--> the gaps: HRTF window, order-3 binaural, cancellation -+  added to them
  *                               +--> or a filter matrix's FIRs ---------------------------> its outputs
  *
  *  The scene's turn -- yaw, pitch and roll, their rates integrated -- is heard by every output; the
  *  head's, from a tracker, only by the headphones and by a pair of loudspeakers whose slice follows the
- *  head. Every output is scaled by the level, which glides per sample toward its target.
+ *  head. Every output is scaled by the level, which glides per sample toward its target. While the layout's gaps
+ *  are filled every output waits for the fill, so one latency stays true for all.
  *
  *  What the state asks for -- the head and its two sliders, the layout's design, a filter matrix -- is
  *  built by build(), on a worker, never the audio thread; prepare() builds it once before the first
@@ -50,6 +55,7 @@ struct DecoderFrame {
 class DecoderEngine {
 public:
     static constexpr int kPartition = 64;  ///< the convolutions' block, and the latency every output lands at
+                                           ///< while no fill plays
 
     /// The two built-in heads a state picks between: the model, and the KU100 as measured. Before prepare().
     void setHeads(const HeadModel& model, const HeadModel& ku100);
@@ -84,6 +90,11 @@ public:
     bool headphonesHeard() const noexcept { return headphonesHeard_; }
     bool speakersHeard() const noexcept { return speakersHeard_; }
 
+    /// Samples every output lands late: kPartition, and the fill's own while it plays. Any thread.
+    int latency() const noexcept { return kPartition + fillExtra_.load(std::memory_order_acquire); }
+    /// The layout's gaps play filled. Any thread.
+    bool fillPlays() const noexcept { return fillExtra_.load(std::memory_order_acquire) > 0; }
+
     //  What is built. Read on the worker, or while it is idle.
     /// The loudspeaker outputs playing: the layout's design, or the filter matrix's; 0 for neither. Any thread.
     int speakerOutputs() const noexcept { return speakerOutputs_.load(std::memory_order_acquire); }
@@ -96,12 +107,17 @@ public:
     const SpeakerDesign& speakerDesign() const noexcept { return speakers_.design(); }
     std::string designError() const;                                        ///< why nothing plays on the loudspeakers
     const std::string& matrixNote() const noexcept { return matrixNote_; }  ///< the matrix in a line; empty without one
+    /// The fill in a line: why it does not play, or how far it keeps the ears apart; empty while it is off.
+    const std::string& fillNote() const noexcept { return fillNote_; }
 
 private:
     /// Which head `d` asks for and can have; parses the state's file head when its text changed.
     int headIndex(const DecoderState& d);
     void buildMatrix(const DecoderState& d);
     void stopMatrix() noexcept;  ///< nothing new enters the convolver, and a block inside it is waited out
+    /// The fill for `d`, after the layout's design: designed and published whole, or stopped with its reason.
+    void buildFill(const DecoderState& d, bool designChanged, bool headChanged);
+    bool stopFill() noexcept;  ///< as stopMatrix, for the fill's convolvers; false when the audio thread stays in
 
     std::array<HeadModel, 2> models_;
     bool headsSet_{false};
@@ -138,6 +154,23 @@ private:
     std::atomic<int> speakerOutputs_{0};
     std::atomic<bool> pairFollows_{false};  ///< the layout is a pair that follows the head: the turned field feeds it
 
+    //  The layout's gaps filled (fill.hpp): its own order-3 head, the HRTF window and which output each cancellation
+    //  row plays on, swapped in whole; the cancellation convolver reshaped only once the audio thread is out of it.
+    struct FillSet {
+        std::vector<float> window;  ///< (order + 1)^2 x 16: a field channel's row over the binaural part's channels
+        std::vector<int> outputs;   ///< per cancellation row: the layout's output
+    };
+    BinauralFilterBuilder fillHead_;
+    MatrixConvolver fillBinaural_, fillCancel_;
+    LatestValue<FillSet> fillSets_;
+    const FillSet* fillLive_{nullptr};
+    std::atomic<bool> fillPlays_{false}, inFill_{false};
+    std::atomic<int> fillExtra_{0};  ///< samples the fill adds to every output while it plays
+    bool fillBuilt_{false}, fillHeadBuilt_{false};
+    FillSettings builtFill_;
+    int preparedFillRows_{0}, preparedFillTaps_{0};
+    std::string fillNote_;
+
     //  The audio thread's.
     HeadRotation sceneStage_;  ///< the scene's turn, heard by every output
     HeadRotation headStage_;   ///< the head undone, for the binaural decode and the slice
@@ -146,7 +179,14 @@ private:
     Mat3 sceneNow_{kIdentity3}, headNow_{kIdentity3};
     bool headphonesHeard_{false}, speakersHeard_{false};
     std::vector<float> sceneField_, turned_, stereo_, speakersOut_;  ///< scratch, sized in prepare
-    std::vector<float> gainRamp_;                                    ///< the level per sample of the block
+    std::vector<float> fillField_, fillEars_, fillOut_;              ///< the fill's scratch
+    std::vector<float> fillWeight_;  ///< per frame of the block: the fill's gain, as the renderer fades it
+    std::vector<float> headLine_;    ///< the headphones' pair, delayed while the fill plays: a ring of 2 x headLength_
+    int headLength_{1}, headWrite_{0};
+    int headWait_{0}, headWaitFrom_{0};     ///< samples read back: now, and the wait a crossfade leaves
+    int headFade_{-1}, headFadeLength_{1};  ///< frames into that crossfade, -1 when none runs; its length
+    bool headphonesWere_{false};            ///< the headphones played the block before
+    std::vector<float> gainRamp_;           ///< the level per sample of the block
     float gainNow_{1.0f}, gainCoefficient_{1.0f};
 };
 

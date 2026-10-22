@@ -51,6 +51,7 @@ struct DecoderControlState final : public editor::PatchControls, public Instance
     OutputPage page{OutputPage::Headphones};
     std::vector<TempTab> temps;  ///< open temporary tabs, in the order they were opened
     int shownTab{0};             ///< 0 the page; 1.. a temporary tab
+    int speakersTab{0};          ///< the speakers page's sub-tab: 0 layout, 1 gaps
     void openTemp(TempTab t);
     void closeTemp(TempTab t);
 

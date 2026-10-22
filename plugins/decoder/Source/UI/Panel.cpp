@@ -309,13 +309,21 @@ float DecoderPanel::paintStateTile(juce::Graphics& g, juce::Rectangle<float> til
 
 // ---- the pages ------------------------------------------------------------------------------
 
-void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> content) {
+juce::Rectangle<float> DecoderPanel::paintStateToggle(juce::Graphics& g, juce::Rectangle<float> row,
+                                                      const juce::String& label, bool on, bool enabled,
+                                                      const char* edit, void (*flip)(DecoderState&)) {
+    const auto toggle =
+        paintSceneToggle(g, row, row.getX() + sceneToggleWidth(label) + 2.0f * sc::toggleBox, label, on, enabled);
+    if (enabled)
+        addClickArea(toggle.hit,
+                     [this, edit, flip] { model().applyEdit(edit, [flip](PluginState& s) { flip(s.decoder); }); });
+    return toggle.hit;
+}
+
+float DecoderPanel::paintHead(juce::Graphics& g, juce::Rectangle<float> content, float y) {
     const DecoderState& d = state_.decoder();
     const bool mine = !model().showingAnother();
-    float y = content.getY();
     const float lineH = noteLineHeight();
-    const float buttonH = ctl::buttonHeight;
-
     //  what the head is: the model, the KU100 as measured, or a SOFA file fitted on load
     const int head = std::clamp(d.hrtf, 0, 2);
     const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), ctl::segmentHeight};
@@ -360,6 +368,16 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
              juce::Justification::centredLeft);
         y += lineH + static_cast<float>(space::groupGap);
     }
+    return y;
+}
+
+void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> content) {
+    const DecoderState& d = state_.decoder();
+    const bool mine = !model().showingAnother();
+    float y = content.getY();
+    const float lineH = noteLineHeight();
+
+    y = paintHead(g, content, y);
 
     y = paintChannels(g, content, y, OutputPage::Headphones);
 
@@ -367,23 +385,18 @@ void DecoderPanel::paintHeadphones(juce::Graphics& g, juce::Rectangle<float> con
     y = paintGroupTitle(g, content, y, "options");
     const juce::Rectangle<float> through{content.getX(), y, content.getWidth(), lineH};
     const bool hasLayout = !d.layout.empty();
-    const auto toggle =
-        paintSceneToggle(g, through, content.getX() + sceneToggleWidth("through the layout") + 2.0f * sc::toggleBox,
-                         "through the layout", d.throughLayout, mine && hasLayout);
-    if (mine && hasLayout)
-        addClickArea(toggle.hit, [this] {
-            model().applyEdit("through the layout",
-                              [](PluginState& s) { s.decoder.throughLayout = !s.decoder.throughLayout; });
-        });
+    const auto hit =
+        paintStateToggle(g, through, "through the layout", d.throughLayout, mine && hasLayout, "through the layout",
+                         [](DecoderState& s) { s.throughLayout = !s.throughLayout; });
     text(g,
          hasLayout ? "the speakers page's " + juce::String(d.layoutName)
                    : juce::String("no layout on the speakers page"),
          labelFont(), colour::label,
-         {toggle.hit.getRight() + static_cast<float>(space::grid), y,
-          content.getRight() - toggle.hit.getRight() - static_cast<float>(space::grid), lineH},
+         {hit.getRight() + static_cast<float>(space::grid), y,
+          content.getRight() - hit.getRight() - static_cast<float>(space::grid), lineH},
          juce::Justification::centredLeft);
     y += lineH + ctl::segmentGap;
-    noteContentBottom(y + static_cast<float>(space::grid));
+    noteContentBottom(y + static_cast<float>(space::grid) + scroll());
 }
 
 void DecoderPanel::chooseSofaFile() {
@@ -444,6 +457,18 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
              juce::Justification::centredLeft);
         y += lineH;
     };
+
+    //  two sub-tabs: the layout and how it plays, and the gaps it leaves, filled binaurally
+    const juce::Rectangle<float> tabs{content.getX(), y, content.getWidth(), ctl::segmentHeight};
+    paintSegments(g, tabs, {"layout", "gaps"}, state_.speakersTab, true, [this](int which) {
+        state_.speakersTab = which;
+        repaint();
+    });
+    y = tabs.getBottom() + static_cast<float>(space::groupGap);
+    if (state_.speakersTab == 1) {
+        paintGaps(g, content, y);
+        return;
+    }
 
     //  what the loudspeakers are: one of the ITU's, a file, or typed -- typed in, or a loaded one edited
     const bool matrix = !d.matrixFile.empty();
@@ -547,12 +572,15 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         //  two loudspeakers: the fold, or the slice the head points at -- under the channels, so the layout's own
         //  section keeps its height whichever layout is chosen
         const juce::Rectangle<float> pair{content.getX(), y, content.getWidth(), ctl::segmentHeight};
-        paintSegments(g, pair, {"fold", "slice"}, d.pairSlice ? 1 : 0, mine, [this](int which) {
+        //  while the gaps are filled the pair plays its fold, the combination chosen by ear: greyed there
+        const bool slice = d.pairSlice && !d.fill;
+        paintSegments(g, pair, {"fold", "slice"}, slice ? 1 : 0, mine && !d.fill, [this](int which) {
             model().applyEdit("pair", [which](PluginState& s) { s.decoder.pairSlice = which == 1; });
         });
         y = pair.getBottom() + ctl::segmentGap;
-        line(d.pairSlice ? "only what the head points at plays, between the loudspeakers"
-                         : "the whole field on the pair, as a stereo listener hears the mix",
+        line(d.fill  ? "fold only while the gaps are filled"
+             : slice ? "only what the head points at plays, between the loudspeakers"
+                     : "everything on the pair, as a stereo listener hears the mix",
              colour::label);
         y += ctl::segmentGap;
     }
@@ -569,15 +597,8 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
             y = seg.getBottom() + ctl::segmentGap;
         }
         const juce::Rectangle<float> distanceRow{content.getX(), y, content.getWidth(), lineH};
-        const auto distance = paintSceneToggle(
-            g, distanceRow, content.getX() + sceneToggleWidth("distance compensation") + 2.0f * sc::toggleBox,
-            "distance compensation", d.distanceCompensation, mine);
-        if (mine)
-            addClickArea(distance.hit, [this] {
-                model().applyEdit("distance compensation", [](PluginState& s) {
-                    s.decoder.distanceCompensation = !s.decoder.distanceCompensation;
-                });
-            });
+        paintStateToggle(g, distanceRow, "distance compensation", d.distanceCompensation, mine, "distance compensation",
+                         [](DecoderState& s) { s.distanceCompensation = !s.distanceCompensation; });
         y += lineH + ctl::segmentGap;
     }
     y += static_cast<float>(space::groupGap);
@@ -589,7 +610,61 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         [this] { state_.openTemp(TempTab::Loudspeakers); },
         matrix ? juce::String("the outputs, one row each")
                : "order " + juce::String(std::max(order, 0)) + kSeparator + "the hull is on the scene");
-    noteContentBottom(y + static_cast<float>(space::grid));
+    noteContentBottom(y + static_cast<float>(space::grid) + scroll());
+}
+
+void DecoderPanel::paintGaps(juce::Graphics& g, juce::Rectangle<float> content, float y) {
+    const DecoderState& d = state_.decoder();
+    const bool mine = !model().showingAnother();
+    const float lineH = noteLineHeight();
+    //  The fill needs a layout of positions: a filter matrix, or no layout, greys it with the reason.
+    const bool matrix = !d.matrixFile.empty();
+    const bool can = !matrix && !d.layout.empty();
+    const juce::Rectangle<float> fillRow{content.getX(), y, content.getWidth(), lineH};
+    paintStateToggle(g, fillRow, "fill the gaps binaurally", d.fill, mine && can, "fill the gaps",
+                     [](DecoderState& s) { s.fill = !s.fill; });
+    y += lineH + ctl::segmentGap;
+    //  what the fill does, or why it cannot here, or how far it keeps the ears apart: two lines at most
+    const juce::String note =
+        matrix             ? juce::String("a filter matrix is loaded: the fill needs a layout with positions")
+        : d.layout.empty() ? juce::String("no loudspeaker layout loaded")
+        : d.fill && state_.processor.fillNote().isNotEmpty()
+            ? state_.processor.fillNote()
+            : juce::String(
+                  "what the layout does not cover plays binaurally on its loudspeakers, through crosstalk "
+                  "cancellation");
+    y = paintHint(g, {content.getX(), y, content.getWidth(), lineH}, note) + static_cast<float>(space::groupGap);
+
+    //  the head the binaural part is made from: the listener's, the same as on the headphones page
+    y = paintGroupTitle(g, content, y, "hrtf");
+    y = paintHead(g, content, y);
+
+    //  how the layout's own decoder crossfades into the binaural part
+    y = paintGroupTitle(g, content, y, "crossfade");
+    const bool tunable = mine && can && d.fill;
+    const auto number = [](double v, const char* unit) { return fromCore(formatNumber(v, 0)) + fromCore(unit); };
+    paintStateTile(
+        g, tileCell(content, y, 0), "no fill within", number(d.fillHoldDeg, "\xc2\xb0"), d.fillHoldDeg, 0.0, 60.0, 1.0,
+        "decoder.fill_hold", tunable, [](DecoderState& s, double v) { s.fillHoldDeg = static_cast<float>(v); },
+        [](DecoderState& s) { s.fillHoldDeg = DecoderState{}.fillHoldDeg; });
+    paintStateTile(
+        g, tileCell(content, y, 1), "crossfade width", number(d.fillFadeDeg, "\xc2\xb0"), d.fillFadeDeg, 5.0, 120.0,
+        1.0, "decoder.fill_fade", tunable, [](DecoderState& s, double v) { s.fillFadeDeg = static_cast<float>(v); },
+        [](DecoderState& s) { s.fillFadeDeg = DecoderState{}.fillFadeDeg; });
+    y = tilesBottom(y, 2) + ctl::sectionGap;
+
+    //  how deep the cancellation goes -- the state's regularisation, negated, so more is deeper -- and how high
+    y = paintGroupTitle(g, content, y, "crosstalk cancellation");
+    paintStateTile(
+        g, tileCell(content, y, 0), "depth", number(-d.fillStrengthDb, " dB"), -d.fillStrengthDb, 10.0, 40.0, 1.0,
+        "decoder.fill_strength", tunable, [](DecoderState& s, double v) { s.fillStrengthDb = static_cast<float>(-v); },
+        [](DecoderState& s) { s.fillStrengthDb = DecoderState{}.fillStrengthDb; });
+    paintStateTile(
+        g, tileCell(content, y, 1), "up to", number(d.fillUpToHz, " hz"), d.fillUpToHz, 3000.0, 12000.0, 100.0,
+        "decoder.fill_up_to", tunable, [](DecoderState& s, double v) { s.fillUpToHz = static_cast<float>(v); },
+        [](DecoderState& s) { s.fillUpToHz = DecoderState{}.fillUpToHz; });
+    y = tilesBottom(y, 2) + ctl::sectionGap;
+    noteContentBottom(y + static_cast<float>(space::grid) + scroll());
 }
 
 void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> content) {
@@ -777,7 +852,7 @@ void DecoderPanel::paintLoudspeakers(juce::Graphics& g, juce::Rectangle<float> c
              juce::Justification::centredLeft);
         y += ctl::buttonHeight;
     }
-    noteContentBottom(y + static_cast<float>(space::grid));
+    noteContentBottom(y + static_cast<float>(space::grid) + scroll());
 }
 
 void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> content) {
@@ -795,13 +870,8 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
             [](DecoderState& s) { s.oscPort = 9000; });
         y = tilesBottom(y, 1) + static_cast<float>(space::grid) / 2.0f;
         const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), lineH};
-        const auto network =
-            paintSceneToggle(g, row, content.getX() + sceneToggleWidth("open to the network") + 2.0f * sc::toggleBox,
-                             "open to the network", d.oscNetwork, mine);
-        if (mine)
-            addClickArea(network.hit, [this] {
-                model().applyEdit("osc network", [](PluginState& s) { s.decoder.oscNetwork = !s.decoder.oscNetwork; });
-            });
+        paintStateToggle(g, row, "open to the network", d.oscNetwork, mine, "osc network",
+                         [](DecoderState& s) { s.oscNetwork = !s.oscNetwork; });
         y += lineH + ctl::segmentGap;
         y = paintLearn(g, content, y);
     } else if (d.trackerSource == 2) {
@@ -860,7 +930,7 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
              juce::Justification::centredLeft);
         y += lineH;
     }
-    noteContentBottom(y + static_cast<float>(space::grid));
+    noteContentBottom(y + static_cast<float>(space::grid) + scroll());
 }
 
 float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content, float y) {
