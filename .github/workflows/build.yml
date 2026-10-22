@@ -336,7 +336,8 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: bambi-macos
-      - run: mkdir plugins && ditto -x -k bambi-macos.zip plugins
+      #  Unpacked beside the checkout, whose own plugins/ is the source.
+      - run: ditto -x -k bambi-macos.zip "$RUNNER_TEMP/release-plugins"
       - name: live host
         run: |
           cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON -DBAMBI_BUILD_HOST=ON -DBAMBI_COPY_PLUGIN=OFF \
@@ -353,7 +354,7 @@ jobs:
         run: |
           export "$(tools/release/macos/keychain.sh)"
           if [ "$GITHUB_REF_TYPE" = tag ]; then version=${GITHUB_REF_NAME#v}; else version=0.0.0-${GITHUB_SHA::7}; fi
-          tools/release/macos/package.sh dist plugins \
+          tools/release/macos/package.sh dist "$RUNNER_TEMP/release-plugins" \
             "build-plugin/apps/live-host/bambi-live-host_artefacts/Release/bambi live host.app" \
             driver/build/bambi.driver "$version"
       - uses: actions/upload-artifact@v7
