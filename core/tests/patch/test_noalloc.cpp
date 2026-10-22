@@ -4,6 +4,18 @@
 #include <functional>
 #include <new>
 
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define BAMBI_TSAN 1
+#endif
+#endif
+#if defined(__SANITIZE_THREAD__)
+#define BAMBI_TSAN 1
+#endif
+#if defined(BAMBI_TSAN)
+#include <sanitizer/allocator_interface.h>
+#endif
+
 #include "../doctest.h"
 #include "bambi/decode/binaural.hpp"
 #include "bambi/decode/decoder.hpp"
@@ -35,6 +47,16 @@ namespace {
 std::atomic<long> gAllocations{0};
 }
 
+#if defined(BAMBI_TSAN)
+/*  ThreadSanitizer's runtime defines the global operator new itself, so a second definition does not link. It
+ *  calls the sanitizer's malloc hook for every allocation instead, operator new and malloc alike.
+ */
+namespace {
+void countAllocation(const volatile void*, std::size_t) { gAllocations.fetch_add(1, std::memory_order_relaxed); }
+void ignoreFree(const volatile void*) {}
+[[maybe_unused]] const int gHooksInstalled = __sanitizer_install_malloc_and_free_hooks(countAllocation, ignoreFree);
+}  // namespace
+#else
 void* operator new(std::size_t n) {
     gAllocations.fetch_add(1, std::memory_order_relaxed);
     void* p = std::malloc(n == 0 ? 1 : n);
@@ -46,6 +68,7 @@ void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 void* operator new[](std::size_t n) { return operator new(n); }
 void operator delete[](void* p) noexcept { std::free(p); }
 void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
+#endif
 
 namespace bambi {
 namespace {

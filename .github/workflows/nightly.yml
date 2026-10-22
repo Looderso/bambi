@@ -78,6 +78,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: brew install ninja
+      #  The native build the x86_64 renders are nulled against
+      - run: cmake -B build -G Ninja && cmake --build build
       - run: tools/check-portable.sh
 
   #  Bug and performance checks on all of bambi's C++: core and its tests, the plugins, the shared UI, the live host
