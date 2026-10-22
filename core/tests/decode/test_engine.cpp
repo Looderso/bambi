@@ -133,6 +133,7 @@ std::vector<std::vector<float>> impulseThrough(const DecoderState& d, Vec3 from,
     for (int c = 0; c < C; ++c) in[static_cast<std::size_t>(c)] = static_cast<float>(y[static_cast<std::size_t>(c)]);
     std::vector<std::vector<float>> out(4, std::vector<float>(kLong, 0.0f));
     std::vector<float*> channels;
+    channels.reserve(out.size());
     for (auto& ch : out) channels.push_back(ch.data());
     engine.process(d, DecoderFrame{}, in.data(), channels.data(), 4, kLong);
     return out;
