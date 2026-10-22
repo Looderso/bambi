@@ -102,8 +102,6 @@ if(APPLE)
       MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Helper/Info.plist)
   target_link_libraries(bambi-decoder-helper PRIVATE "-framework Cocoa" "-framework CoreMotion" "-framework Network"
                                                      "-framework Security")
-  target_compile_options(bambi-decoder-helper PRIVATE -mmacosx-version-min=14.0)
-  target_link_options(bambi-decoder-helper PRIVATE -mmacosx-version-min=14.0)
   #  Nested after whichever side was built: the plugin, or the helper alone, whose change would otherwise never reach
   #  the installed bundles. The installed bundle is nested into only when the build copies plugins there. The script
   #  skips a bundle that is not there yet.

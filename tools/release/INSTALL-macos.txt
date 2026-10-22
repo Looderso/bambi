@@ -1,4 +1,4 @@
-bambi for macOS: VST3 and CLAP, Apple silicon and Intel
+bambi for macOS 14 (Sonoma) and later: VST3 and CLAP, Apple silicon and Intel
 
 The easiest way in is the installer, bambi-macos.pkg, beside this zip on the release page. It installs the plugins
 for every user of this Mac and, if you choose it, the live host for Ableton Live. This zip holds the plugins alone,

@@ -52,8 +52,18 @@ done
 sign "$host_app" --entitlements "$here/live-host.entitlements"
 sign "$driver_bundle"
 
+#  Every executable runs on the oldest macOS the release supports; a build that took its machine's would not.
+oldest=14.0
 for code in "${bundles[@]}" "$host_app" "$driver_bundle"; do
     codesign --verify --strict --deep "$code" || { echo "package: $code does not verify" >&2; exit 1; }
+    for binary in "$code"/Contents/MacOS/* "$code"/Contents/Helpers/*.app/Contents/MacOS/*; do
+        while read -r minos; do
+            if [ "$(printf '%s\n%s\n' "$minos" "$oldest" | sort -V | tail -1)" != "$oldest" ]; then
+                echo "package: $binary needs macOS $minos, later than $oldest" >&2
+                exit 1
+            fi
+        done < <(vtool -show-build "$binary" | awk '$1 == "minos" { print $2 }')
+    done
 done
 
 #  ---- the component packages ----------------------------------------------------------------------------------

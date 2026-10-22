@@ -2,7 +2,7 @@
 
 Intuitive yet powerful spatialization: a free and open-source ambisonics plugin suite. Every plugin shares one
 core, one look, one modulation matrix and a link between instances, and works in AmbiX at any order the host
-carries. VST3 and CLAP, on macOS, Windows and Linux. The plugins today: the **Encoder** places a source, **Echo**
+carries. VST3 and CLAP, on macOS (14 and later), Windows and Linux. The plugins today: the **Encoder** places a source, **Echo**
 and **Reverb** are effects on the field, and the **Decoder** is the monitor — binaural with head tracking, or a
 loudspeaker layout. The Decoder's AirPods and phone tracking need macOS, where a helper app reads them; OSC
 tracking works everywhere.
