@@ -2,10 +2,12 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "bambi/decode/fill.hpp"
 #include "bambi/decode/layouts.hpp"
 #include "bambi/editor/AllocationCheck.h"
 #include "bambi/editor/CheckKit.h"
@@ -311,6 +313,39 @@ static int run() {
         const Channels y = render(busIn(16, 8), 128, 0.25, {}, &s);
         check(!y.empty() && channelEnergy(y, 3) > 1e-4 && channelEnergy(y, 0) > 1e-4 && channelEnergy(y, 4) == 0.0,
               "with a fourth behind, the typed layout plays on channels 1-4");
+    }
+
+    //  A laptop's two speakers with their gaps filled: the fill plays through processBlock, and the host is told the
+    //  latency every output now has. Catches: a fill that never reaches the loudspeakers, a latency the host is never
+    //  told, anything the fill does on the audio thread that the realtime build objects to.
+    {
+        PluginState s{decodeParams()};
+        s.decoder.speakersPlay = true;
+        s.decoder.headphonesPlay = false;
+        s.decoder.layoutTyped = true;
+        s.decoder.layoutName = "typed";
+        for (const auto& [az, el] : {std::pair{16.7, -30.4}, std::pair{-17.8, -31.0}}) {
+            Loudspeaker l;
+            l.azimuthDeg = az;
+            l.elevationDeg = el;
+            l.radiusM = 0.66;
+            l.channel = static_cast<int>(s.decoder.layout.size()) + 1;
+            s.decoder.layout.push_back(l);
+        }
+        const PluginState pair = s;
+        s.decoder.fill = true;
+        int latency = -1;
+        const Channels filled = render(busIn(16, 2), 128, 0.5, {}, &s, [&latency](BambiDecoderProcessor& p) {
+            p.linkTick();
+            latency = p.getLatencySamples();
+        });
+        const Channels alone = render(busIn(16, 2), 128, 0.5, {}, &pair);
+        check(!filled.empty() && channelEnergy(filled, 0) > 1e-4 && channelEnergy(filled, 1) > 1e-4 &&
+                  !identical(filled, alone),
+              "with the gaps filled the laptop's pair plays, and not as it does alone");
+        const int expected = 2 * BambiDecoderProcessor::kPartition + bambi::fillCancellationDelay(kCheckRate);
+        check(latency == expected,
+              "and the host is told " + juce::String(expected) + " samples of latency: " + juce::String(latency));
     }
 
     //  The energy picture: a window that asks gets the field as it arrived, and nothing added -- a monitor adds
