@@ -146,6 +146,7 @@ public:
             rebuild_ = true;  // a binding moved alone changes no field: build the program again regardless
             device_.reshape(std::move(shape));
             update();
+            showIo();  // applying the settings showed the page before the shape had the new inputs
         };
         io_.measure = [this](bool on) {
             measuring_ = on;
