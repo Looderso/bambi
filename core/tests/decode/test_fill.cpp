@@ -150,7 +150,9 @@ double dryShare(const FillWindows& w, Vec3 v) {
 
 }  // namespace
 
-TEST_CASE("through the HRTF and the cancellation, a loudspeaker's own direction plays that loudspeaker alone") {
+TEST_CASE(
+    "through the HRTF and the cancellation, a loudspeaker's own direction plays that loudspeaker alone, at "
+    "the fill's level") {
     //  Catches: the ears or the loudspeakers swapped, a missing conjugate in the inversion, a delay the dry part
     //  would not match, times not kept at another rate.
     for (const double rate : {48000.0, 96000.0}) {
@@ -185,7 +187,7 @@ TEST_CASE("through the HRTF and the cancellation, a loudspeaker's own direction 
                 const double hz = static_cast<double>(k) * rate / 8192.0;
                 if (hz < s.bandLoHz || hz > s.bandHiHz) continue;
                 const Cx self = X[static_cast<std::size_t>(from)][k];
-                worstDb = std::max(worstDb, std::abs(10.0 * std::log10(std::norm(self))));
+                worstDb = std::max(worstDb, std::abs(10.0 * std::log10(std::norm(self)) - 20.0 * std::log10(c.level)));
                 own += std::norm(self);
                 other += std::norm(X[static_cast<std::size_t>(1 - from)][k]);
                 if (hz > 600.0 && hz < 0.7 * s.bandHiHz) {
@@ -198,6 +200,48 @@ TEST_CASE("through the HRTF and the cancellation, a loudspeaker's own direction 
             CHECK(worstDb < 0.5);
             CHECK(std::abs(delay - c.delay) < 0.5);
             CHECK(10.0 * std::log10(other / own) < -30.0);
+        }
+    }
+}
+
+TEST_CASE("the fill plays a loudspeaker's direction as loud as the layout's decoder does, at any rate") {
+    //  Catches: the level left out of the feeds or applied inverted, the energy taken up to Nyquist so the level
+    //  changes with the rate.
+    const Layout pair = laptop();
+    for (const double rate : {48000.0, 96000.0}) {
+        CAPTURE(rate);
+        for (const Layout* l : {bs2051Layout("0+5+0"), &pair}) {
+            const SpeakerDesign d = design(*l, 3);
+            Cancellation c;
+            std::string error;
+            REQUIRE_MESSAGE(designCancellation(d, ku100(rate), FillSettings{}, rate, c, &error), error);
+            RealFft fft;
+            REQUIRE(fft.prepare(8192));
+            const std::size_t audible = static_cast<std::size_t>(20000.0 * 8192.0 / rate) + 1;
+            const int C = numChannels(d.order);
+            std::vector<double> y(static_cast<std::size_t>(C));
+            double decoded = 0.0, filled = 0.0;
+            for (const Loudspeaker& s : l->speakers) {
+                const Vec3 v = direction(s.azimuthDeg, s.elevationDeg);
+                shSN3D(v, d.order, y);
+                for (int o = 0; o < d.outputs; ++o) {
+                    double g = 0.0;
+                    for (int ch = 0; ch < C; ++ch)
+                        g += d.matrix[static_cast<std::size_t>(o * C + ch)] * y[static_cast<std::size_t>(ch)];
+                    decoded += g * g;
+                }
+                const auto e = ears(ku100(rate), v, 8192);
+                const std::array<std::vector<Cx>, 2> B{spectrum(fft, e[0]), spectrum(fft, e[1])};
+                for (std::size_t i = 0; i < c.outputs.size(); ++i) {
+                    std::vector<Cx> x(audible);
+                    for (int m = 0; m < 2; ++m) {
+                        const std::vector<Cx> g = filterSpectrum(fft, c, m, static_cast<int>(i));
+                        for (std::size_t k = 0; k < audible; ++k) x[k] += g[k] * B[static_cast<std::size_t>(m)][k];
+                    }
+                    for (const Cx& f : x) filled += std::norm(f) / static_cast<double>(audible);
+                }
+            }
+            CHECK(std::abs(10.0 * std::log10(filled / decoded)) < 0.2);
         }
     }
 }
@@ -260,7 +304,8 @@ TEST_CASE("at order 3 a source between a pair's loudspeakers stays dry, and one 
 }
 
 TEST_CASE("a layout covering the sphere is left alone, and one that cannot cancel is refused") {
-    //  Catches: a fill that runs where it cannot help, a refusal that never comes.
+    //  Catches: a fill that runs where it cannot help, a refusal that never comes, a refusal judged at the depth
+    //  that plays rather than at the layout's reference.
     const SpeakerDesign octahedron = design(layoutOf({{0, 0}, {90, 0}, {180, 0}, {-90, 0}, {0, 90}, {0, -90}}), 3);
     const CoveredRegion all = coveredRegion(octahedron);
     CHECK(all.sphere);
@@ -279,6 +324,13 @@ TEST_CASE("a layout covering the sphere is left alone, and one that cannot cance
         designCancellation(design(layoutOf({{0, 0}, {0, 90}}), 3), ku100(48000.0), FillSettings{}, 48000.0, c, &error));
     CHECK(c.separationDb > kFillSeparationNeededDb);
     CHECK_FALSE(error.empty());
+
+    //  A shallow depth separates less, but the layout can cancel: it is filled.
+    FillSettings shallow;
+    shallow.regularisationDb = -12.0;
+    error.clear();
+    CHECK_MESSAGE(designCancellation(design(laptop(), 3), ku100(48000.0), shallow, 48000.0, c, &error), error);
+    CHECK(c.separationDb > kFillSeparationNeededDb);
 }
 
 TEST_CASE("what a layout covers: a dome's coplanar square, a ring's arcs, not its imaginary loudspeakers") {
@@ -367,4 +419,67 @@ TEST_CASE("the cancellation's feeds carry each loudspeaker's distance gain and d
             }
             CHECK(worst <= 1e-6 * peak);
         }
+}
+
+TEST_CASE("with the gaps filled, a layout plays as loud over every direction as its decoder alone") {
+    //  Catches: the harmonics' weights over the sphere left out, the dry part or the fill left out of the sum, the
+    //  gain inverted.
+    const Layout pair = laptop();
+    for (const Layout* l : {&pair, bs2051Layout("0+5+0"), bs2051Layout("4+7+0")}) {
+        const SpeakerDesign d = design(*l, 3);
+        FillWindows w;
+        fillWindows(coveredRegion(d), FillSettings{}, 3, w);
+        const SpeakerDesign dry = windowedDecoder(d, w);
+        Cancellation c;
+        std::string error;
+        const BinauralFilterBuilder& head = ku100(48000.0);
+        REQUIRE_MESSAGE(designCancellation(d, head, FillSettings{}, 48000.0, c, &error), error);
+        const double loudness = fillLoudness(d, w, c, head, 48000.0);
+
+        RealFft fft;
+        REQUIRE(fft.prepare(8192));
+        const std::size_t audible = static_cast<std::size_t>(20000.0 * 8192.0 / 48000.0) + 1;
+        const std::size_t C = static_cast<std::size_t>(numChannels(3)), L = c.outputs.size();
+        std::vector<std::vector<Cx>> G;  // [ear * L + loudspeaker]
+        for (int m = 0; m < 2; ++m)
+            for (std::size_t i = 0; i < L; ++i) G.push_back(filterSpectrum(fft, c, m, static_cast<int>(i)));
+        const auto decoded = [&](const SpeakerDesign& s, const std::vector<double>& y) {
+            double e = 0.0;
+            for (int o = 0; o < s.outputs; ++o) {
+                double g = 0.0;
+                for (std::size_t ch = 0; ch < C; ++ch) g += s.matrix[static_cast<std::size_t>(o) * C + ch] * y[ch];
+                e += g * g;
+            }
+            return e;
+        };
+        //  A Fibonacci grid: the fill through the HRTF window, the binaural filters and the cancellation, plainly.
+        double alone = 0.0, filled = 0.0;
+        std::vector<double> y(C), yh(C);
+        constexpr int kPoints = 400;
+        for (int j = 0; j < kPoints; ++j) {
+            const double z = 1.0 - (2.0 * j + 1.0) / kPoints, r = std::sqrt(1.0 - z * z), phi = j * 2.399963229728653;
+            shSN3D(Vec3{r * std::cos(phi), r * std::sin(phi), z}, 3, y);
+            for (std::size_t a = 0; a < C; ++a) {
+                yh[a] = 0.0;
+                for (std::size_t b = 0; b < C; ++b) yh[a] += w.hrtf[a * C + b] * y[b];
+            }
+            std::array<std::vector<double>, 2> e{std::vector<double>(8192), std::vector<double>(8192)};
+            for (int ear = 0; ear < 2; ++ear)
+                for (int ch = 0; ch < head.channels(); ++ch) {
+                    const auto f = head.filter(ch, ear);
+                    for (int t = 0; t < head.taps(); ++t)
+                        e[static_cast<std::size_t>(ear)][static_cast<std::size_t>(t)] +=
+                            yh[static_cast<std::size_t>(ch)] * f[static_cast<std::size_t>(t)];
+                }
+            const std::array<std::vector<Cx>, 2> B{spectrum(fft, e[0]), spectrum(fft, e[1])};
+            double binaural = 0.0;
+            for (std::size_t i = 0; i < L; ++i)
+                for (std::size_t k = 0; k < audible; ++k)
+                    binaural += std::norm(G[i][k] * B[0][k] + G[L + i][k] * B[1][k]) / static_cast<double>(audible);
+            alone += decoded(d, y);
+            filled += loudness * loudness * (decoded(dry, y) + binaural);
+        }
+        CAPTURE(l->speakers.size());
+        CHECK(std::abs(10.0 * std::log10(filled / alone)) < 0.2);
+    }
 }

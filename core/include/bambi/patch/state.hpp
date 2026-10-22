@@ -144,7 +144,7 @@ struct DecoderState {
     float fillHoldDeg{20.0f};         ///< the layout's own decode alone within this angle of what it covers, 0..60
     float fillFadeDeg{60.0f};         ///< then a crossfade to binaural over this angle, 5..120
     float fillStrengthDb{-25.0f};     ///< the cancellation's regularisation, -40..-10; lower cancels more
-    float fillUpToHz{7000.0f};        ///< the cancellation's upper edge, 3000..12000
+    float fillUpToHz{4500.0f};        ///< the cancellation's upper edge, 3000..12000
     int speakerFirstChannel{1};       ///< the bus channel the layout's channel 1 plays on: the layout moved as a block
     std::string layoutName;           ///< a built-in's name, or the file's, for the page
     bool layoutTyped{false};          ///< typed in, or edited after loading: the table is its source now

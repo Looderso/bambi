@@ -234,6 +234,8 @@ void DecoderEngine::buildFill(const DecoderState& d, bool designChanged, bool he
     Cancellation cancel;
     std::string error;
     if (!designCancellation(design, fillHead_, settings, sampleRate_, cancel, &error)) return off(error);
+    const double loudness = fillLoudness(design, windows, cancel, fillHead_, sampleRate_);
+    for (float& v : cancel.filters) v = static_cast<float>(v * loudness);
 
     //  The HRTF window transposed, an ambisonic channel's row over the binaural part's channels, for the audio thread.
     const int C = numChannels(order_), H = numChannels(kFillOrder), rows = static_cast<int>(cancel.outputs.size());
@@ -266,10 +268,11 @@ void DecoderEngine::buildFill(const DecoderState& d, bool designChanged, bool he
     if (reshape || headChanged || !fillBuilt_) fillBinaural_.publish(fillHead_);
     fillSets_.publish();
 
-    //  The dry part: the layout's decoder after the dry window, waiting for the binaural part's two convolvers, and
-    //  the fill alongside it at full gain -- the renderer fades both in together.
+    //  The dry part: the layout's decoder after the dry window, at the fill's loudness, waiting for the binaural
+    //  part's two convolvers, and the fill alongside it at full gain -- the renderer fades both in together.
     const int extra = cancel.delay + kPartition;
     SpeakerDesign dry = windowedDecoder(design, windows);
+    for (double& m : dry.matrix) m *= loudness;
     for (double& t : dry.delaySeconds) t += extra / sampleRate_;
     fillPlays_.store(true, std::memory_order_seq_cst);
     if (!speakers_.publishDesign(dry, 1.0f))

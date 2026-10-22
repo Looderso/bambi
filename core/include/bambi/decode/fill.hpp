@@ -29,7 +29,7 @@ struct FillSettings {
     bool equalPower{true};           ///< the dry and binaural gains' squares sum to one; false: the gains do
     double regularisationDb{-25.0};  ///< of the cancellation's inversion, against the head's mean response
     double bandLoHz{300.0};          ///< the cancellation fades in over [lo / 2, lo]
-    double bandHiHz{7000.0};  ///< and out over [hi, 1.4 hi]; outside the band the ears' channels play uncancelled,
+    double bandHiHz{4500.0};  ///< and out over [hi, 1.4 hi]; outside the band the ears' channels play uncancelled,
                               ///< each on the loudspeaker nearest 30 degrees to its side
 
     friend bool operator==(const FillSettings&, const FillSettings&) = default;
@@ -37,9 +37,11 @@ struct FillSettings {
 
 /// The binaural part's order, whatever the field's.
 inline constexpr int kFillOrder = 3;
-/// What the cancellation must reach, mean over its band, for a layout to be filled: the share of each ear's signal
-/// that the other ear hears, dB.
+/// What the cancellation must reach for a layout to be filled -- the share of each ear's signal that the other ear
+/// hears, mean over the band, dB -- with the inversion exact and regularised at kFillReferenceDb, so the verdict is the
+/// layout's, whatever depth plays.
 inline constexpr double kFillSeparationNeededDb = -25.0;
+inline constexpr double kFillReferenceDb = -30.0;
 
 /// The cancellation's delay at `sampleRate`, samples: 128 at 48 kHz, in time at other rates.
 int fillCancellationDelay(double sampleRate);
@@ -91,6 +93,8 @@ struct Cancellation {
     std::vector<float> filters;
     double separationDb{0.0};  ///< mean over the band: the share of each ear's channel the other ear hears, with
                                ///< the head the filters were designed for
+    double level{1.0};  ///< the gain in the feeds that plays a loudspeaker's own direction as loud as the layout's
+                        ///< decoder plays it, averaged over the loudspeakers
 };
 
 /// Designs it from the real loudspeakers of `design` and the fill's binaural filters in `head` (built from
@@ -98,5 +102,11 @@ struct Cancellation {
 /// of kFillSeparationNeededDb; `out` then holds what was designed, to say by how much.
 bool designCancellation(const SpeakerDesign& design, const BinauralFilterBuilder& head, const FillSettings& settings,
                         double sampleRate, Cancellation& out, std::string* error = nullptr);
+
+/// The gain on the whole -- the layout's decoder after the dry window, and the fill through `cancel` after the HRTF
+/// window -- that plays every direction, on average, as loud as the layout's decoder alone, so switching the fill
+/// changes the sound and not the loudness.
+double fillLoudness(const SpeakerDesign& design, const FillWindows& windows, const Cancellation& cancel,
+                    const BinauralFilterBuilder& head, double sampleRate);
 
 }  // namespace bambi
