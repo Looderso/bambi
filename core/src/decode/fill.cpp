@@ -366,13 +366,22 @@ bool designCancellation(const SpeakerDesign& design, const BinauralFilterBuilder
                 for (int ch = 0; ch < Cd; ++ch) gain += design.matrix[sz(o) * sz(Cd) + sz(ch)] * y[sz(ch)];
                 decoded += gain * gain;
             }
-            for (int j = 0; j < L; ++j)
-                for (int k = 0; k < audible; ++k) {
-                    Cx x = 0.0;
-                    for (int m = 0; m < 2; ++m) x += Gc[(sz(j) * 2 + sz(m)) * sz(bins) + sz(k)] * c(m, i, k);
-                    filled += std::norm(x) / audible;
-                }
         }
+        //  Summed over the loudspeakers the plane waves come from and the feeds they reach, per bin
+        //  sum_ij |sum_m Gc[j][m] C[m][i]|^2 = sum_mn (sum_j Gc[j][m] Gc[j][n]*) (sum_i C[m][i] C[n][i]*).
+        for (int k = 0; k < audible; ++k) {
+            Cx S[2][2] = {}, A[2][2] = {};
+            for (int j = 0; j < L; ++j)
+                for (int m = 0; m < 2; ++m)
+                    for (int q = 0; q < 2; ++q) {
+                        S[m][q] += Gc[(sz(j) * 2 + sz(m)) * sz(bins) + sz(k)] *
+                                   std::conj(Gc[(sz(j) * 2 + sz(q)) * sz(bins) + sz(k)]);
+                        A[m][q] += c(m, j, k) * std::conj(c(q, j, k));
+                    }
+            for (int m = 0; m < 2; ++m)
+                for (int q = 0; q < 2; ++q) filled += (S[m][q] * A[m][q]).real();
+        }
+        filled /= audible;
         out.level = filled > 0.0 ? std::sqrt(decoded / filled) : 1.0;
         for (float& v : out.filters) v = static_cast<float>(v * out.level);
     }
@@ -428,8 +437,8 @@ double fillLoudness(const SpeakerDesign& design, const FillWindows& windows, con
         }
     }
 
-    //  The fill: per bin, each loudspeaker's response to the binaural channels, T = G Hs, against the HRTF window's
-    //  weighted Gram matrix M = W diag(weight) W^T, mean over the audible bins as the cancellation's level is.
+    //  The fill: the HRTF window's weighted Gram matrix M = W diag(weight) W^T, mean over the audible bins as the
+    //  cancellation's level is.
     int n = 1;
     while (n < cancel.taps + head.taps()) n *= 2;
     RealFft fft;
@@ -463,20 +472,28 @@ double fillLoudness(const SpeakerDesign& design, const FillWindows& windows, con
             for (int c = 0; c < C; ++c)
                 M[sz(a) * sz(H) + sz(b)] +=
                     windows.hrtf[sz(a) * sz(C) + sz(c)] * weight[sz(c)] * windows.hrtf[sz(b) * sz(C) + sz(c)];
+    //  Per bin the loudspeakers' feeds from the two ears, P = sum_i G_i G_i^H, against the ears' signals under the
+    //  window, Q = Hs^T M Hs*: both 2 x 2, so the loudspeakers and the harmonics are each summed once.
     double filled = 0.0;
-    std::vector<Cx> T(sz(H));
-    for (int k = 0; k < audible; ++k)
-        for (int i = 0; i < L; ++i) {
-            for (int r = 0; r < H; ++r) {
-                T[sz(r)] = 0.0;
+    for (int k = 0; k < audible; ++k) {
+        Cx P[2][2] = {}, Q[2][2] = {};
+        for (int i = 0; i < L; ++i)
+            for (int m = 0; m < 2; ++m)
+                for (int q = 0; q < 2; ++q)
+                    P[m][q] += Gs[(sz(m) * sz(L) + sz(i)) * sz(audible) + sz(k)] *
+                               std::conj(Gs[(sz(q) * sz(L) + sz(i)) * sz(audible) + sz(k)]);
+        for (int a = 0; a < H; ++a)
+            for (int b = 0; b < H; ++b) {
+                const double w = M[sz(a) * sz(H) + sz(b)];
+                if (w == 0.0) continue;
                 for (int m = 0; m < 2; ++m)
-                    T[sz(r)] += Gs[(sz(m) * sz(L) + sz(i)) * sz(audible) + sz(k)] *
-                                Hs[(sz(r) * 2 + sz(m)) * sz(audible) + sz(k)];
+                    for (int q = 0; q < 2; ++q)
+                        Q[m][q] += Hs[(sz(a) * 2 + sz(m)) * sz(audible) + sz(k)] * w *
+                                   std::conj(Hs[(sz(b) * 2 + sz(q)) * sz(audible) + sz(k)]);
             }
-            for (int a = 0; a < H; ++a)
-                for (int b = 0; b < H; ++b)
-                    filled += (T[sz(a)] * std::conj(T[sz(b)])).real() * M[sz(a) * sz(H) + sz(b)];
-        }
+        for (int m = 0; m < 2; ++m)
+            for (int q = 0; q < 2; ++q) filled += (P[m][q] * Q[m][q]).real();
+    }
     filled /= audible;
     const double played = kept + filled;
     return played > 0.0 ? std::sqrt(full / played) : 1.0;

@@ -699,6 +699,7 @@ static int run() {
                 const SpeakerDesign m = windowedDecoder(d, windows);
                 if (!designCancellation(d, head, settings, 48000.0, cancel, &why))
                     std::printf("  (%s: %s)\n", c.name, why.c_str());
+                if (!(fillLoudness(d, windows, cancel, head, 48000.0) > 0.0)) std::printf("  (no loudness)\n");
                 if (m.matrix.empty()) std::printf("  (no decoder)\n");
             });
             const int L = static_cast<int>(cancel.outputs.size()), C = numChannels(c.order),

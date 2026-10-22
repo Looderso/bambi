@@ -64,9 +64,9 @@ designed for, mean over the band:
 
 | layout | audio thread | window / binaural / cancellation | separation | design on the worker |
 |---|---|---|---|---|
-| a pair, order 3 | 0.38 % | 0.04 / 0.25 / 0.05 % | 34 dB | 0.5 ms |
-| 7.1.4, order 3 | 0.56 % | 0.04 / 0.25 / 0.23 % | 37 dB | 0.9 ms |
-| 64 loudspeakers on a half dome, order 7 | 1.78 % | 0.22 / 0.25 / 1.26 % | 37 dB | 11.5 ms |
+| a pair, order 3 | 0.38 % | 0.04 / 0.25 / 0.05 % | 34 dB | 0.9 ms |
+| 7.1.4, order 3 | 0.56 % | 0.04 / 0.25 / 0.23 % | 37 dB | 1.4 ms |
+| 64 loudspeakers on a half dome, order 7 | 1.78 % | 0.22 / 0.25 / 1.26 % | 37 dB | 5.8 ms |
 
 The fill's own binaural build costs 3.1 ms per slider move. In the prototype, turning the head 10° cost most of the
 separation (down to 4–14 dB on a pair, 5.0 and 7.1.4), so beyond a pair the fill wants head tracking, which it does not
