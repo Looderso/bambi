@@ -12,7 +12,7 @@ What exists now. What bambi is after: [VISION](VISION.md). Why: [DECISIONS](DECI
 | Path Encoder | built — trajectories, transform, width, input modes, modulation, the scene ([ENCODER](encoder/ENCODER.md)) |
 | Echo | built — taps of the field by direction, four loops ([ECHO](echo/ECHO.md)) |
 | Reverb | built — image-source reflections and a feedback-delay tail read from the bus ([REVERB](reverb/REVERB.md)) |
-| Decoder | built — binaural, loudspeakers, a pair; head tracking ([DECODER](decoder/DECODER.md)) |
+| Decoder | built — binaural, loudspeakers, a pair, a layout's gaps filled binaurally; head tracking ([DECODER](decoder/DECODER.md)) |
 | live host | built, macOS — Live plays through the suite on bambi's loop device ([LIVE-HOST](suite/LIVE-HOST.md)) |
 | formats and platforms | VST3 and CLAP; macOS, Windows and Linux built and checked in CI; release zips on a `v*` tag ([PORTABILITY](suite/PORTABILITY.md)) |
 | hosts | checked in REAPER in both formats ([HOST-CHECKS](HOST-CHECKS.md)); Live through the live host; Logic waits for AU |

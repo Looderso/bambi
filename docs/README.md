@@ -18,7 +18,7 @@ later. Documents are filed by what they apply to.
 | [encoder/](encoder/) | bambi Encoder: [features](encoder/ENCODER.md), [sources and the matrix](encoder/ENCODER-SOURCES.md), [the window](encoder/UI.md) |
 | [echo/](echo/) | bambi Echo, taps of the field by direction: [the model](echo/ECHO.md), [engine](echo/ECHO-ENGINE.md), [controls](echo/ECHO-CONTROLS.md), [visualisation](echo/ECHO-VISUALISATION.md) |
 | [reverb/](reverb/) | bambi Reverb, the room: [REVERB.md](reverb/REVERB.md) |
-| [decoder/](decoder/) | the Decoder, headphones and loudspeakers: [DECODER.md](decoder/DECODER.md), [binaural](decoder/DECODER-BINAURAL.md), [head tracking](decoder/DECODER-HEAD-TRACKING.md), [HRTF data and the head model](decoder/DECODER-HRTF.md) |
+| [decoder/](decoder/) | the Decoder, headphones and loudspeakers: [DECODER.md](decoder/DECODER.md), [binaural](decoder/DECODER-BINAURAL.md), [head tracking](decoder/DECODER-HEAD-TRACKING.md), [HRTF data and the head model](decoder/DECODER-HRTF.md), [filling a layout's gaps](decoder/DECODER-FILL.md) |
 
 ## Rules for filing
 

@@ -6,7 +6,7 @@ a stereo pair and an array are served from the same scene, and moving from one t
 the session. It is not an effect and draws no "what it added"; it draws what comes out where.
 
 Pages: [binaural, heads and the pair](DECODER-BINAURAL.md), [head tracking](DECODER-HEAD-TRACKING.md),
-[HRTF databases and the head model](DECODER-HRTF.md).
+[HRTF databases and the head model](DECODER-HRTF.md), [filling a layout's gaps](DECODER-FILL.md).
 
 ## Outputs and the channel model
 
@@ -65,8 +65,8 @@ matrix for AmbiX in, one row per output channel, with each loudspeaker's gain an
   the pair's middle in the pair's plane: a source on a loudspeaker's axis lands three to one on its side, one in
   the middle in both alike, one behind in both at the front's level. One loudspeaker is an omni. The pair's
   *fold* and *slice* designs are in [the binaural page](DECODER-BINAURAL.md#the-pair-fold-and-slice).
-- **Crosstalk cancellation** (3D from two speakers) is not a feature: a sweet spot of a head's width and a treated
-  room.
+- **The gaps** a layout leaves can play binaurally on its loudspeakers through crosstalk cancellation, for one
+  listener in the sweet spot: [filling a layout's gaps](DECODER-FILL.md).
 
 Designing 64 loudspeakers takes 2 ms at order 1 and 6 ms at order 7 (Release); it runs on a worker.
 
@@ -146,13 +146,15 @@ The shared shell, theme, controls and scene view with a different centre. Built 
   tracker, since the sliders turn the scene and not the head.
 - **The outputs are tabs in the header**, *headphones* and *speakers*. The name opens the output's page; a square
   in the tab plays it, so opening the speakers' page while listening on headphones changes nothing heard.
-- **The right panel shows the open output's page**, always in the same shape: *what the output is* (the head as
-  *model · ku100 · sofa file* with its two sliders; the loudspeakers as *itu · file · typed* with the chosen kind's
-  own controls), then *channels* (the headphones' pair; or the layout's first channel and the bus's channels with
-  what plays on each, a key for the two outputs' inks), then *options* (listening situation and distance
-  compensation, or the layout heard through on headphones). A two-loudspeaker layout gets *fold · slice* between
-  the layout and the channels. The loudspeaker table opens as a temporary tab from `loudspeakers…`; the tracker's
-  setup does the same, each with a close cross. The head and ears sliders show their values without units.
+- **The right panel shows the open output's page**, always in the same shape: *what the output is* (the head as *model ·
+  ku100 · sofa file* with its two sliders; the loudspeakers as *itu · file · typed* with the chosen kind's own
+  controls), then *channels* (the headphones' pair; or the layout's first channel and the bus's channels with what plays
+  on each, a key for the two outputs' inks), then *options* (listening situation and distance compensation, or the
+  layout heard through on headphones). A two-loudspeaker layout gets *fold · slice* between the layout and the channels.
+  The speakers page opens on two sub-tabs, *layout* (all of the above) and *gaps* ([filling a layout's
+  gaps](DECODER-FILL.md)), which holds the head as the headphones page does. The loudspeaker table opens as a temporary
+  tab from `loudspeakers…`; the tracker's setup does the same, each with a close cross. The head and ears sliders show
+  their values without units.
 - **The orientation strip sits where the effects have their matrix**: tabs for the tracker (none · osc · airpods ·
   phone), the tracker's word at the right (whether it speaks and how often, or that the input has no direction);
   under them *head · scene*, recentre, setup and *static*, greyed under *none*; then the scene's yaw, pitch and

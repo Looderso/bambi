@@ -26,6 +26,10 @@ An order-3 instance with every feature live costs about **0.08 % of a core** (0.
 disabling auto-vectorisation costs the encode **0.4 %**, because it is L1-store-bandwidth bound and
 the default build already emits 4-wide `fmla` ([PORTABILITY](../suite/PORTABILITY.md)).
 
+**The Decoder's fill of a layout's gaps** — `bambi-bench`, Release, 2026-10-22: on top of the layout's own decode,
+**0.37 %** of a core for a pair and **0.56 %** for 7.1.4 at order 3, **1.70 %** for 64 loudspeakers at order 7; the
+detail per stage is in [DECODER-FILL](../decoder/DECODER-FILL.md).
+
 **Portability** — one x86-64 cross-build of this source, 2026-09-17, detail and causes in
 [PORTABILITY](../suite/PORTABILITY.md): **68 of 68 targets with no source change and no new warning**,
 the suite passing under Rosetta, and block-size independence 1…1024 holding — against **9 of 11
