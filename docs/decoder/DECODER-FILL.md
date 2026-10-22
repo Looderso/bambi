@@ -1,7 +1,7 @@
 # Decoder: filling a layout's gaps
 
 Most loudspeaker layouts leave part of the sphere uncovered: a pair everything off its arc, a 5.1 or 7.1 ring what is
-above and below, a dome what is below. With *fill the gaps binaurally* on (the speakers page's *gaps* sub-tab; off by
+above and below, a dome what is below. With *fill the gaps binaurally* on (the speakers page's *fill* sub-tab; off by
 default), what the layout covers plays as its decoder plays it, and what it does not cover plays binaurally on the same
 loudspeakers through crosstalk cancellation, so each ear hears its own channel. It is for one listener in the sweet
 spot, facing the layout as it was measured. Why, and what was tried: [0262](../DECISIONS.md).
@@ -45,7 +45,7 @@ spot, facing the layout as it was measured. Why, and what was tried: [0262](../D
 
 ## Settings
 
-On the speakers page's *gaps* sub-tab, beside the head the binaural part is made from (*hrtf*: the same choice
+On the speakers page's *fill* sub-tab, beside the head the binaural part is made from (*hrtf*: the same choice
 and sliders as the headphones page). Session state, never automated; a session without them opens with the fill off.
 While the gaps of a pair are filled, its *fold · slice* is greyed on *fold*, the combination the fill was tuned with.
 

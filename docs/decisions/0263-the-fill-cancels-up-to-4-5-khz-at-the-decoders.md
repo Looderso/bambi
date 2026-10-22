@@ -24,4 +24,4 @@ off. The check now always uses a depth of 30 dB, whatever depth is set, so wheth
 the layout alone.
 
 **Contingent on** the resonance staying above the band for the HRTFs offered; with an HRTF from a SOFA file that
-resonates lower, *up to* should be lowered, which the *gaps* sub-tab allows.
+resonates lower, *up to* should be lowered, which the *fill* sub-tab allows.

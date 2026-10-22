@@ -2,6 +2,7 @@
 #include "HeadStrip.h"
 
 #include <algorithm>
+#include <array>
 
 #include "bambi/ui/Draw.h"
 #include "bambi/ui/Theme.h"
@@ -17,17 +18,25 @@ namespace hdr = theme::header;
 HeadStrip::HeadStrip(DecoderControlState& state) : ParameterPage(state), state_(state) { setOpaque(true); }
 
 bool HeadStrip::liveValue(ParamId id, double& out) const {
-    //  the scene's turn in force: the slider, its rate integrated, and the tracker when it turns the scene
+    //  each axis's own turn: its slider and what its rate has turned, never the tracker or another axis
     const auto& diag = state_.processor.diagnostics();
     if (id == decoderParam("head.yaw"))
-        out = diag.sceneYaw.load(std::memory_order_relaxed);
+        out = diag.turnYaw.load(std::memory_order_relaxed);
     else if (id == decoderParam("head.pitch"))
-        out = diag.scenePitch.load(std::memory_order_relaxed);
+        out = diag.turnPitch.load(std::memory_order_relaxed);
     else if (id == decoderParam("head.roll"))
-        out = diag.sceneRoll.load(std::memory_order_relaxed);
+        out = diag.turnRoll.load(std::memory_order_relaxed);
     else
         return false;
     return true;
+}
+
+void HeadStrip::onDefaultRestored(ParamId id) {
+    ParameterPage::onDefaultRestored(id);
+    //  an angle set back to zero by hand is at zero: what its rate had turned goes with it
+    for (int axis = 0; axis < 3; ++axis)
+        if (id == decoderParam(std::array{"head.yaw", "head.pitch", "head.roll"}[static_cast<std::size_t>(axis)]))
+            state_.processor.zeroTurn(axis);
 }
 
 void HeadStrip::paint(juce::Graphics& g) {
@@ -74,11 +83,22 @@ void HeadStrip::paint(juce::Graphics& g) {
             model().applyEdit("tracker", [which](PluginState& s) { s.decoder.trackerSource = which; });
         },
         [helper](int which) { return which < 2 || helper; });  // airpods and the phone need the bundled helper
-    //  the tracker's word at the right of the row, where the matrix has its count, and a status square before it
-    const float tabTop = ctl::matrixTabsTop, tabHeight = ctl::tabBarHeight - ctl::matrixTabsTop;
-    const float wordLeft = (boxes.empty() ? inset : boxes.back().getRight()) + ctl::tabGap;
-    const float wordWidth = std::min(textWidth(labelFont(), live) + 2.0f, width - inset - wordLeft);
-    const float wordX = width - inset - wordWidth;
+    //  At the right of the row, where the matrix has its count: the tracker's word with a status square before it,
+    //  then recentre and the tracker's setup as a temporary tab, greyed without a tracker.
+    const float tabTop = ctl::matrixTabsTop, tabHeight = ctl::tabRowHeight;
+    const bool tracked = source != 0;
+    //  the buttons as tall as the tabs beside them, so the row is one height
+    const juce::String setupLabel = juce::String::fromUTF8("setup\xe2\x80\xa6");
+    setup_ = {width - inset - framedButtonWidth(setupLabel), tabTop, framedButtonWidth(setupLabel), tabHeight};
+    paintButton(g, setup_, setupLabel, tracked, [this] { state_.openTemp(TempTab::Tracking); });
+    recentre_ = {setup_.getX() - ctl::segmentGap - framedButtonWidth("recentre"), tabTop, framedButtonWidth("recentre"),
+                 tabHeight};
+    paintButton(g, recentre_, "recentre", tracked && mine, [this] { state_.processor.recentre(); });
+    const float wordLeft =
+        (boxes.empty() ? inset : boxes.back().getRight()) + ctl::tabGap + hdr::statusSquare + hdr::gap / 2.0f;
+    const float wordRight = recentre_.getX() - static_cast<float>(space::grid);
+    const float wordWidth = std::max(0.0f, std::min(textWidth(labelFont(), live) + 2.0f, wordRight - wordLeft));
+    const float wordX = wordRight - wordWidth;
     text(g, live, labelFont(), colour::label, {wordX, tabTop, wordWidth, tabHeight}, juce::Justification::centredRight);
     statusSquare(g, wordX - hdr::gap / 2.0f - hdr::statusSquare, tabTop + tabHeight / 2.0f,
                  source == 0 ? colour::inactive
@@ -87,34 +107,9 @@ void HeadStrip::paint(juce::Graphics& g) {
     const juce::Rectangle<float> content{inset, ctl::tabBarHeight + ctl::segmentGap, width - 2.0f * inset,
                                          static_cast<float>(getHeight()) - ctl::tabBarHeight - ctl::segmentGap};
     float y = content.getY();
-    const bool tracked = source != 0;
-
-    //  What the tracker's orientation does -- undone as a head, so what the listener hears stays in the room, or
-    //  one more turn of the scene -- and the tracker's buttons; static holds the scene still whatever the sliders
-    //  and rates say, to hear a mix stand still while its turn is automated. Everything a tracker needs greys
-    //  without one.
-    const juce::Rectangle<float> turns{content.getX(), y, ctl::pairChoiceWidth, ctl::segmentHeight};
-    paintSegments(g, turns, {"head", "scene"}, d.trackerTurnsScene ? 1 : 0, mine && tracked, [this](int which) {
-        model().applyEdit("tracker turns", [which](PluginState& s) { s.decoder.trackerTurnsScene = which == 1; });
-    });
-    const juce::Rectangle<float> row{turns.getRight(), y, content.getRight() - turns.getRight(), ctl::segmentHeight};
-    const auto still = paintSceneToggle(g, row, content.getRight(), "static", d.sceneStatic, mine);
-    if (mine)
-        addClickArea(still.hit, [this] {
-            model().applyEdit("static", [](PluginState& s) { s.decoder.sceneStatic = !s.decoder.sceneStatic; });
-        });
-    const float buttonY = y + (ctl::segmentHeight - ctl::buttonHeight) / 2.0f;
-    setup_ = {still.hit.getX() - static_cast<float>(space::grid * 2) - framedButtonWidth("setup\xe2\x80\xa6"), buttonY,
-              framedButtonWidth("setup\xe2\x80\xa6"), ctl::buttonHeight};
-    paintButton(g, setup_, juce::String::fromUTF8("setup\xe2\x80\xa6"), tracked,
-                [this] { state_.openTemp(TempTab::Tracking); });
-    recentre_ = {setup_.getX() - ctl::segmentGap - framedButtonWidth("recentre"), buttonY,
-                 framedButtonWidth("recentre"), ctl::buttonHeight};
-    paintButton(g, recentre_, "recentre", tracked && mine, [this] { state_.processor.recentre(); });
-    y += ctl::segmentHeight + ctl::segmentGap;
 
     //  The scene's turn: yaw, pitch and roll, their rates under them -- the strip is wide and short, so the rates
-    //  stack under the states instead of standing beside them -- the turn in force as the live mark. In each
+    //  stack under the states instead of standing beside them -- each angle's own turn as the live mark. In each
     //  angle's name line, the tracker's sign on that axis; the toggle is added after the tile, so it takes the click.
     const float columnW = (content.getWidth() - 2.0f * ctl::tileColumnGap) / 3.0f;
     const float tileH = tileHeight(type::value);
@@ -125,23 +120,23 @@ void HeadStrip::paint(juce::Graphics& g) {
     int column = 0;
     for (const char* key : {"head.yaw", "head.pitch", "head.roll"}) {
         const juce::Rectangle<float> tile = cell(column, y);
-        addParameterTile(g, tile, decoderParam(key), {}, mine && !d.sceneStatic);
+        addParameterTile(g, tile, decoderParam(key), {}, mine);
+        const int axis = column++;
+        //  a flip changes how a tracker is read: without one it greys, and shows off, since nothing is flipped
         const juce::Rectangle<float> nameLine{tile.getX(), tile.getY(), tile.getWidth(), ctl::tileNameHeight};
-        const int axis = column;
-        const auto flip = paintSceneToggle(g, nameLine, tile.getRight(), "flip", d.flip[static_cast<std::size_t>(axis)],
-                                           mine && tracked);
+        const auto flip = paintSceneToggle(g, nameLine, tile.getRight(), "flip",
+                                           tracked && d.flip[static_cast<std::size_t>(axis)], mine && tracked);
         if (mine && tracked)
             addClickArea(flip.hit, [this, axis] {
                 model().applyEdit("flip", [axis](PluginState& s) {
                     s.decoder.flip[static_cast<std::size_t>(axis)] = !s.decoder.flip[static_cast<std::size_t>(axis)];
                 });
             });
-        ++column;
     }
     y += tileH + ctl::tileRowGap;
     column = 0;
     for (const char* key : {"head.yaw_rate", "head.pitch_rate", "head.roll_rate"})
-        addParameterTile(g, cell(column++, y), decoderParam(key), {}, mine && !d.sceneStatic);
+        addParameterTile(g, cell(column++, y), decoderParam(key), {}, mine);
 }
 
 }  // namespace bambi::ui

@@ -88,7 +88,7 @@ void MatrixView::paint(juce::Graphics& g) {
     const auto& patch = model_.state();
 
     //  the tabs, and how many targets the matrix has
-    const auto tabHeight = ctl::tabBarHeight - ctl::matrixTabsTop;
+    const auto tabHeight = ctl::tabRowHeight;
     tabAreas_.fill({});
     const auto offered = tabsOffered();
     //  a tab this plugin does not offer cannot be the current one: `setCurrentTab` is unguarded in
