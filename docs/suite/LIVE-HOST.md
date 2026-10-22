@@ -144,8 +144,9 @@ Live's own does. The space bar plays or stops on every page.
 
 ## Routing page
 
-Three columns with wires: Live's tracks and groups plus the host's inputs; returns and Main; the Decoders. A node's line holds its marker (live, bambi, bus, in group), "+ encoder" or the
-Encoder's chip, its inserts (click opens, drag reorders), "+" for inserts, and "send": pressed, it rings what it may
+Three columns with wires: Live's tracks and groups plus the host's inputs; returns and Main; the Decoders. A node's line holds its marker (live, bambi, bus, in group, no pair), "+ encoder" or the
+Encoder's chip (a track that cannot be encoded shows why instead of the button: "no audio" for a MIDI track with no
+instrument, "not to Main" for one whose output in Live is not Main), its inserts (click opens, drag reorders), "+" for inserts, and "send": pressed, it rings what it may
 reach and a click wires it at 0 dB; wires open under the chosen node as chips, dragged for level. The set opens with
 everything in Live; *route all* and *all to Live* sit in the band. A sidechain is picked by arming a slot
 (`ui::Armed`) and clicking a source. The three columns always fit the page: the gutters where the wires run narrow

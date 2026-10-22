@@ -2,6 +2,7 @@
 #include "Routing.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <set>
 
@@ -22,6 +23,19 @@ using live::Target;
 using ui::kSeparator;
 
 juce::String effectName(live::Effect e) { return e == live::Effect::Reverb ? "reverb" : "echo"; }
+
+//  Every label a line's tag shows: the tags are all as wide as the widest.
+constexpr const char* kTagLive = "live";
+constexpr const char* kTagBus = "bus";
+constexpr const char* kTagInGroup = "in group";
+constexpr const char* kTagNoPair = "no pair";
+constexpr const char* kTagBambi = "bambi";
+constexpr const char* kTagNoAudio = "no audio";
+constexpr const char* kTagNotToMain = "not to Main";
+constexpr const char* kTagStereo = "stereo";
+constexpr const char* kTagMono = "mono";
+constexpr std::array kTagLabels{kTagLive,    kTagBus,       kTagInGroup, kTagNoPair, kTagBambi,
+                                kTagNoAudio, kTagNotToMain, kTagStereo,  kTagMono};
 
 juce::Colour colourOf(live::Effect e) {
     return colour::identity(e == live::Effect::Reverb ? Product::Reverb : Product::Echo);
@@ -618,7 +632,14 @@ juce::Rectangle<float> RoutingPage::frame(juce::Graphics& g, juce::Rectangle<flo
     return nameAt;
 }
 
-float RoutingPage::tagWidth() { return ui::textWidth(ui::smallFont(), "in group") + 2.0f * rt::tagPad; }
+float RoutingPage::tagWidth() {
+    static const float width = [] {
+        float widest = 0.0f;
+        for (const char* label : kTagLabels) widest = std::max(widest, ui::textWidth(ui::smallFont(), label));
+        return widest + 2.0f * rt::tagPad;
+    }();
+    return width;
+}
 
 //  What the node is, in a small outlined tag: in ink while bambi plays it, in the label's colour while Live does.
 float RoutingPage::tag(juce::Graphics& g, float x, float cy, const juce::String& label, bool inField) {
@@ -651,7 +672,7 @@ float RoutingPage::liveNeed(const Node& n, int depth) const {
     const live::Role role = live::roleOf(tree_, field_, n.id);
     float w = rt::indent * static_cast<float>(depth) + rt::padX + rt::nameWidth + rt::gap + tagWidth() + rt::gap * 2.0f;
     if (role == live::Role::Live || role == live::Role::InGroup)
-        return w + ui::framedButtonWidth("+ encoder") + rt::padX;
+        return w + (live::canEncode(tree_, n.id) ? ui::framedButtonWidth("+ encoder") : 0.0f) + rt::padX;
     if (role == live::Role::Bus)
         w += ui::framedButtonWidth("encode whole") + rt::gap * 2.0f;
     else if (const live::Part* part = partOf(n.id))
@@ -664,18 +685,25 @@ float RoutingPage::liveLine(juce::Graphics& g, const Node& n, int depth, float x
     const live::Role role = live::roleOf(tree_, field_, n.id);
     const bool inField = role == live::Role::Source || role == live::Role::Bus;
     const bool unpaired = role == live::Role::Source && pairOf(n.id) < 0;
-    const juce::String label = role == live::Role::Live      ? "live"
-                               : role == live::Role::Bus     ? "bus"
-                               : role == live::Role::InGroup ? "in group"
-                               : unpaired                    ? "no pair"
-                                                             : "bambi";
+    const bool inLive = role == live::Role::Live || role == live::Role::InGroup;
+    //  a track that cannot be encoded says why in place of the button: no audio (a MIDI track with no instrument), or
+    //  an output that is not Main
+    const bool takeable = !inLive || live::canEncode(tree_, n.id);
+    const bool notToMain = !takeable && n.audio;
+    const juce::String label = !takeable                     ? (notToMain ? kTagNotToMain : kTagNoAudio)
+                               : role == live::Role::Live    ? kTagLive
+                               : role == live::Role::Bus     ? kTagBus
+                               : role == live::Role::InGroup ? kTagInGroup
+                               : unpaired                    ? kTagNoPair
+                                                             : kTagBambi;
     const float indent = rt::indent * static_cast<float>(depth);
     const bool twoLines = inField && liveNeed(n, depth) > width;
     const auto box = lineBox(x + indent, y, width - indent, twoLines);
     const auto nameAt =
         frame(g, box, juce::String(n.name), colour::ofLive(juce::String(n.colour), colour::rule), inField, n.id);
-    //  listed under its group as Live files it, but routed past it by hand: where its audio goes, after its name
-    if (n.group && n.parent != n.group) {
+    //  listed under its group as Live files it, but routed past it by hand: where its audio goes, after its name --
+    //  unless the tag already says it is not to Main
+    if (n.group && n.parent != n.group && !notToMain) {
         const juce::String mark =
             juce::String::fromUTF8("\xe2\x86\x92 ") + (n.path == Node::Path::Main ? "Main" : "elsewhere");
         const float after =
@@ -687,11 +715,15 @@ float RoutingPage::liveLine(juce::Graphics& g, const Node& n, int depth, float x
     const float cy = box.getY() + rt::boxHeight / 2.0f;
     float cx = tag(g, nameAt.getRight() + rt::gap, cy, label, inField && !unpaired);
     const auto id = n.id;
-    if (role == live::Role::Live || role == live::Role::InGroup) {
-        const juce::Rectangle<float> add{cx, cy - rt::control / 2.0f, ui::framedButtonWidth("+ encoder"), rt::control};
-        ui::drawFramedButton(g, add, "+ encoder", idle());
-        if (idle())
-            addClickArea(add, [this, id] { change([this, id](live::Shape& s) { live::addEncoder(s, tree_, id); }); });
+    if (inLive) {
+        if (takeable) {
+            const juce::Rectangle<float> add{cx, cy - rt::control / 2.0f, ui::framedButtonWidth("+ encoder"),
+                                             rt::control};
+            ui::drawFramedButton(g, add, "+ encoder", idle());
+            if (idle())
+                addClickArea(add,
+                             [this, id] { change([this, id](live::Shape& s) { live::addEncoder(s, tree_, id); }); });
+        }
     } else if (role == live::Role::Bus) {
         const juce::Rectangle<float> whole{cx, cy - rt::control / 2.0f, ui::framedButtonWidth("encode whole"),
                                            rt::control};
@@ -730,7 +762,7 @@ float RoutingPage::inputLine(juce::Graphics& g, const live::HostInput& in, float
     const auto box = lineBox(x, y, width, twoLines);
     const auto nameAt = frame(g, box, juce::String(in.name), colour::label, true, in.id);
     const float cy = box.getY() + rt::boxHeight / 2.0f;
-    float cx = tag(g, nameAt.getRight() + rt::gap, cy, in.width == 2 ? "stereo" : "mono", true);
+    float cx = tag(g, nameAt.getRight() + rt::gap, cy, in.width == 2 ? kTagStereo : kTagMono, true);
     cx = encoderChip(g, in.id, cx, cy) + rt::gap;
     const float chainY = twoLines ? cy + rt::row : cy;
     const float chainX = sidechainSlot(g, part != nullptr ? part->sidechain : 0, {Waiting::Kind::Sidechain, in.id, 0},
@@ -753,7 +785,7 @@ float RoutingPage::returnLine(juce::Graphics& g, const Node& r, float x, float y
     const auto nameAt =
         frame(g, box, juce::String(r.name), colour::ofLive(juce::String(r.colour), colour::rule), inField, r.id);
     const float cy = box.getY() + rt::boxHeight / 2.0f;
-    float cx = tag(g, nameAt.getRight() + rt::gap, cy, inField ? "bambi" : "live", inField);
+    float cx = tag(g, nameAt.getRight() + rt::gap, cy, inField ? kTagBambi : kTagLive, inField);
     const auto id = r.id;
     if (!inField) {
         const juce::Rectangle<float> add{cx, cy - rt::control / 2.0f, ui::framedButtonWidth("+ to bambi"), rt::control};

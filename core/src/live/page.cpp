@@ -74,9 +74,14 @@ Role roleOf(const Tree& tree, const Field& field, TrackId node) {
     return Role::Live;
 }
 
+bool canEncode(const Tree& tree, TrackId node) {
+    const Node* n = find(tree, node);
+    return n != nullptr && reaches(*n);
+}
+
 void addEncoder(Shape& shape, const Tree& tree, TrackId node) {
     const Node* n = find(tree, node);
-    if (n == nullptr) return;
+    if (n == nullptr || !reaches(*n)) return;
     //  inside a group encoded whole: every group from it down to `node` opens, what else each held taken in its place
     const std::vector<TrackId> groups = groupsOf(tree, *n);  // the nearest first
     int outer = -1;

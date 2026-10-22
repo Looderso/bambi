@@ -34,6 +34,10 @@ std::vector<Line> linesOf(const Tree& tree);
 enum class Role { Live, Source, Bus, InGroup };
 Role roleOf(const Tree& tree, const Field& field, TrackId node);
 
+/// Whether `node` can be encoded into bambi's mix: it plays towards Main and has audio -- a MIDI track with no
+/// instrument has none.
+bool canEncode(const Tree& tree, TrackId node);
+/// An Encoder on `node`; nothing for a node that cannot be encoded.
 void addEncoder(Shape& shape, const Tree& tree, TrackId node);
 void removeEncoder(Shape& shape, const Tree& tree, const Field& field, TrackId node);
 

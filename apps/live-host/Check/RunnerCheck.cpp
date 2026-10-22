@@ -1377,6 +1377,75 @@ int decodersFitHolds() {
     return failed;
 }
 
+//  Live's default set on the routing page -- two MIDI tracks, the second with no instrument, two audio tracks, two
+//  returns -- and a track whose output is not Main. Pressed along each line: every track with audio towards Main is
+//  taken; on the others no press changes anything or opens a menu. Catches: "+ encoder" drawn on a track the mix leaves
+//  out, which takes a press and does nothing, or an Encoder's chip drawn there, which opens a menu for an Encoder that
+//  is not.
+int defaultSetEncodes() {
+    livehost::RoutingPage page;
+    page.setSize(ui::theme::metrics::windowWidth, ui::theme::metrics::windowHeight);
+    const auto node = [](live::TrackId id, live::Node::Kind kind, const char* name) {
+        live::Node n;
+        n.id = id;
+        n.kind = kind;
+        n.name = name;
+        n.colour = "#e0b552";
+        n.fader = 0.0;
+        return n;
+    };
+    live::Tree tree;
+    tree.nodes = {node(1, live::Node::Kind::Track, "1 MIDI"),       node(2, live::Node::Kind::Track, "2 MIDI"),
+                  node(3, live::Node::Kind::Track, "3 Audio"),      node(4, live::Node::Kind::Track, "4 Audio"),
+                  node(5, live::Node::Kind::Track, "5 Sends Only"), node(6, live::Node::Kind::Return, "A Reverb"),
+                  node(7, live::Node::Kind::Return, "B Delay")};
+    tree.nodes[1].audio = false;                       // no instrument: no audio output
+    tree.nodes[4].path = live::Node::Path::Elsewhere;  // its output is not Main
+    live::Shape shape;
+    shape.returns = {6, 7};
+    const auto showIt = [&] { page.show(tree, shape, live::layOut(tree, shape), {}); };
+    int changes = 0;
+    page.reshape = [&](const live::Shape& s) {
+        ++changes;
+        shape = s;
+        showIt();
+    };
+    page.preview = [](const live::Shape&) {};
+    juce::Image image(juce::Image::RGB, page.getWidth(), page.getHeight(), true);
+    const auto paint = [&] {
+        juce::Graphics g(image);
+        page.paint(g);
+    };
+    int failed = 0;
+    for (const live::TrackId id :
+         {live::TrackId{1}, live::TrackId{2}, live::TrackId{3}, live::TrackId{4}, live::TrackId{5}}) {
+        shape.taken.clear();
+        page.choose(std::nullopt);
+        showIt();
+        paint();
+        const auto line = page.drawnAt(id);
+        changes = 0;
+        int menus = 0;
+        bool taken = false;
+        for (int i = 0; line && !taken; ++i) {
+            const float x = line->getX() + 2.0f * static_cast<float>(i);
+            if (x >= line->getRight()) break;
+            page.clickAt({x, line->getY() + ui::theme::routing::boxHeight / 2.0f});
+            paint();
+            taken = std::find(shape.taken.begin(), shape.taken.end(), id) != shape.taken.end();
+            if (!page.drawnMenu().empty()) ++menus;
+            page.choose(std::nullopt);
+            paint();
+        }
+        const bool should = live::canEncode(tree, id);
+        const bool ok = line.has_value() && taken == should && (should || (changes == 0 && menus == 0));
+        failed += ok ? 0 : 1;
+        std::printf("  %s: %s %s\n", tree.nodes[static_cast<std::size_t>(id - 1)].name.c_str(),
+                    taken ? "taken" : "not taken", ok ? "" : "  FAIL");
+    }
+    return failed;
+}
+
 //  The routing page over a set of a group with two tracks, a track, a return and two Decoders: painted in every state
 //  -- nothing chosen, a node chosen with its wires open, "send" waiting, the menu open -- and pressed everywhere on a
 //  grid, painted again after each press; then one track taken, sent to the second Decoder, its level dragged, the
@@ -2339,6 +2408,8 @@ static int run() {
     failed += routingHolds();
     std::printf("every Decoder within reach\n");
     failed += decodersFitHolds();
+    std::printf("an encoder offered only on tracks that can be encoded\n");
+    failed += defaultSetEncodes();
 
     std::printf("the column's transport\n");
     failed += railTransportHolds();

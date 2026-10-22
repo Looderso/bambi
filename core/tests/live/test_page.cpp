@@ -55,6 +55,33 @@ TEST_CASE("an Encoder added takes that node alone, at any depth; inside a group 
     CHECK(whole.taken == std::vector<TrackId>{2, 4});  // 1 opened, 2 taken in its place; 3 opened on the way
 }
 
+TEST_CASE("an Encoder is offered and added only on a track that can be encoded: none with no audio or not to Main") {
+    /*  Catches: the refusal gone, which leaves the track taken where the mix skips it -- the press does nothing, and
+        the track goes into the mix the moment it gains an instrument -- or either case missed, by the offer or the
+        refusal, so the page's button and the mix disagree. */
+    Tree t = set();
+    Node midi = node(7);  // a MIDI track with no instrument
+    midi.audio = false;
+    Node away = node(8);  // its output not routed to Main
+    away.path = Node::Path::Elsewhere;
+    t.nodes.push_back(midi);
+    t.nodes.push_back(away);
+    for (const TrackId id : {TrackId{7}, TrackId{8}}) {
+        CHECK_FALSE(canEncode(t, id));
+        Shape s;
+        addEncoder(s, t, id);
+        CHECK(s.taken.empty());
+    }
+    //  every node: offered exactly when an Encoder added to it puts it in the mix
+    for (const Node& n : t.nodes) {
+        if (n.kind == Node::Kind::Return) continue;
+        Shape s;
+        addEncoder(s, t, n.id);
+        CHECK(canEncode(t, n.id) == (roleOf(t, layOut(t, s), n.id) != Role::Live));
+    }
+    CHECK_FALSE(canEncode(t, 99));
+}
+
 TEST_CASE("each node's role: in Live, a source, a bus, or inside a group encoded whole") {
     //  Catches: a child of a whole group read as in Live -- the page would offer to take it, playing it twice -- or
     //  a bus read as a source.
