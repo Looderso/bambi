@@ -10,6 +10,10 @@ if(NOT DEFINED CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "")
 endif()
 
+# The oldest macOS everything built here runs on -- the Decoder's head-tracking helper needs 14. Unset, every binary
+# would need the macOS of the machine that built it. Set before project(), which reads it.
+set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0 CACHE STRING "The oldest macOS the build runs on")
+
 project(bambi VERSION 0.1.0 LANGUAGES C CXX)
 #  Objective-C, for the one thing that needs it: the decoder's helper app and its launcher, on macOS. A language
 #  is enabled at the top, where CMake can set it up; enabled inside a subdirectory it leaves its rules unset.
