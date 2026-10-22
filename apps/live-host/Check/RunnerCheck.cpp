@@ -1995,15 +1995,15 @@ int remoteDecoder() {
 }  // namespace
 
 //  What a Decoder's scene draws as sources is every Encoder on the bus that has published a position, and nothing else. The
-//  host runs its Encoders in its own process, as this does, so the bus is read from outside here as the Decoder reads it.
-//  Only what this run added is counted: another host on the machine may be on the same bus.
+//  host runs its Encoders in its own process, as this does, so the bus is read from outside here as the Decoder reads it:
+//  on the session this process named for its plugins, not the machine's most recent, which another host or a DAW running
+//  beside the check may hold. Only what this run added is counted: earlier checks' instances are on it too.
 int positionsOnTheBus() {
     const auto peersNow = [] {
         std::vector<LinkPeer> peers;
-        LinkDirectory directory;
         LinkBus viewer;
-        if (directory.open())
-            if (const auto session = directory.mostRecent(linkNowMicros()))
+        if (const char* named = std::getenv(kHostSessionVariable); named != nullptr)
+            if (const auto session = Uuid::parse(named))
                 if (viewer.open(*session, Uuid::generate(), Product::Decoder)) viewer.poll(peers);
         return peers;
     };
