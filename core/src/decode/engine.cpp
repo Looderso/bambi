@@ -18,6 +18,14 @@ namespace {
 
 std::size_t sz(int n) { return static_cast<std::size_t>(n); }
 
+/// Into (-180, 180]: an angle that has gone round is the same angle. One already there is returned as it is, bit for
+/// bit.
+double wrapDegrees(double deg) {
+    if (deg > -180.0 && deg <= 180.0) return deg;
+    const double a = std::fmod(deg + 180.0, 360.0);
+    return (a <= 0.0 ? a + 360.0 : a) - 180.0;
+}
+
 /// The most the fill makes every output wait, its cancellation's delay and one partition, with a sample to spare.
 double fillWaitSeconds(double sampleRate) {
     return (fillCancellationDelay(sampleRate) + DecoderEngine::kPartition + 1) / sampleRate;
@@ -371,16 +379,16 @@ void DecoderEngine::process(const DecoderState& d, const DecoderFrame& c, const 
     if (n <= 0 || order_ < 0) return;
     const int C = numChannels(order_);
 
-    //  The scene's turn: yaw, pitch and roll as set, their rates integrated while they run, the whole held at zero
-    //  while static. The tracker is an offset on top: a head, which the binaural decode and the slice undo so the
-    //  scene stays in the room, or one more turn of the scene.
+    //  The scene's turn: yaw, pitch and roll as set plus their rates integrated while they run, an axis set back to
+    //  zero by hand losing what its rate had turned. The tracker is an offset on top: a head, which the binaural
+    //  decode and the slice undo so the scene stays in the room, or one more turn of the scene.
+    zeroTurns(clock_, c.zeroTurns);
     const auto sceneAfter = [&](double dt) {
-        Mat3 scene = kIdentity3;
-        if (!d.sceneStatic) {
-            clock_.advance(c.yawRateDeg, c.pitchRateDeg, c.rollRateDeg, c.ratesRun ? dt : 0.0);
-            scene = headFromYpr(c.yawDeg + clock_.yawRad() * kRad2Deg, c.pitchDeg + clock_.pitchRad() * kRad2Deg,
-                                c.rollDeg + clock_.rollRad() * kRad2Deg);
-        }
+        clock_.advance(c.yawRateDeg, c.pitchRateDeg, c.rollRateDeg, c.ratesRun ? dt : 0.0);
+        turnNow_ = {wrapDegrees(c.yawDeg + clock_.yawRad() * kRad2Deg),
+                    wrapDegrees(c.pitchDeg + clock_.pitchRad() * kRad2Deg),
+                    wrapDegrees(c.rollDeg + clock_.rollRad() * kRad2Deg)};
+        Mat3 scene = headFromYpr(turnNow_[0], turnNow_[1], turnNow_[2]);
         if (d.trackerTurnsScene) scene = multiply(c.tracker, scene);
         return scene;
     };

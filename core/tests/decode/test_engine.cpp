@@ -9,6 +9,7 @@
 
 #include "bambi/decode/engine.hpp"
 #include "bambi/decode/layouts.hpp"
+#include "bambi/decode/orientation.hpp"
 #include "bambi/dsp/fft.hpp"
 #include "bambi/math/legendre.hpp"
 #include "bambi/math/sh.hpp"
@@ -88,6 +89,58 @@ TEST_CASE("held, the loudspeakers' feeds stop and the headphones play on") {
     CHECK(energy(out[0]) > 1e-6);
     CHECK(energy(out[3]) == 0.0);
     CHECK(energy(out[4]) == 0.0);
+}
+
+namespace {
+
+/// An engine prepared at order 1 that has played `blocks` of kFrames with `c`.
+void play(DecoderEngine& engine, const DecoderState& d, const DecoderFrame& c, int blocks) {
+    std::vector<std::vector<float>> out(2, std::vector<float>(kFrames, 0.0f));
+    std::array<float*, 2> channels{out[0].data(), out[1].data()};
+    const std::vector<float> in = click(1);
+    for (int b = 0; b < blocks; ++b) engine.process(d, c, in.data(), channels.data(), 2, kFrames);
+}
+
+}  // namespace
+
+TEST_CASE("an axis set back to zero by hand loses what its rate turned, and the other axes keep theirs") {
+    //  Catches: the rate's turn kept after a reset, so the scene stays turned until the transport restarts; every
+    //  axis cleared by one reset.
+    DecoderEngine engine;
+    engine.setHeads(shipped(), shipped());
+    const DecoderState d;
+    REQUIRE(engine.prepare(d, 1, kRate, kFrames, 0.0f));
+    DecoderFrame spinning;
+    spinning.yawRateDeg = 90.0;
+    spinning.pitchRateDeg = 45.0;
+    play(engine, d, spinning, 24);  // 0.512 s
+    CHECK(engine.turn()[0] == doctest::Approx(46.08));
+    CHECK(engine.turn()[1] == doctest::Approx(23.04));
+
+    DecoderFrame reset;  // yaw back to zero by hand, the rates stopped
+    reset.zeroTurns = 1;
+    play(engine, d, reset, 1);
+    CHECK(engine.turn()[0] == doctest::Approx(0.0));
+    CHECK(engine.turn()[1] == doctest::Approx(23.04));
+}
+
+TEST_CASE("each axis's turn is its own angle plus its rate's, with no tracker in it and no jump past the pole") {
+    //  Catches: the turn read back from the whole rotation, so a tracker turning the scene moves the yaw, and a
+    //  pitch past 90 degrees reads as yaw and roll turned half round.
+    DecoderEngine engine;
+    engine.setHeads(shipped(), shipped());
+    DecoderState d;
+    d.trackerTurnsScene = true;
+    REQUIRE(engine.prepare(d, 1, kRate, kFrames, 0.0f));
+    DecoderFrame c;
+    c.yawDeg = 10.0;
+    c.pitchDeg = 80.0;
+    c.pitchRateDeg = 40.0;
+    c.tracker = headFromYpr(30.0, 0.0, 0.0);
+    play(engine, d, c, 24);
+    CHECK(engine.turn()[0] == doctest::Approx(10.0));
+    CHECK(engine.turn()[1] == doctest::Approx(100.48));
+    CHECK(engine.turn()[2] == doctest::Approx(0.0));
 }
 
 TEST_CASE("the level starts where prepare puts it, rather than gliding there from unity") {

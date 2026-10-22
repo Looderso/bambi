@@ -140,8 +140,7 @@ std::vector<juce::Rectangle<float>> HitArea::paintTabRow(juce::Graphics& g, floa
                                                          const std::function<void(int)>& select,
                                                          const std::function<bool(int)>& offered) {
     namespace ctl = theme::controls;
-    return paintTabRowAt(g, x, ctl::matrixTabsTop, ctl::tabBarHeight - ctl::matrixTabsTop, names, selected, select,
-                         offered);
+    return paintTabRowAt(g, x, ctl::matrixTabsTop, ctl::tabRowHeight, names, selected, select, offered);
 }
 
 std::vector<juce::Rectangle<float>> HitArea::paintTabRowAt(juce::Graphics& g, float x, float top, float height,

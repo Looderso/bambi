@@ -224,7 +224,7 @@ static int run() {
         check(!ahead.empty() && !identical(ahead, y), "the slice is another design than the fold");
         check(!turnedAway.empty() && !identical(ahead, turnedAway), "and the head turns what the slice plays");
         //  The scene's turn reaches every output: the fold hears yaw, and the tracker turning the scene is heard
-        //  where the head was not. Static holds the scene still whatever the sliders say.
+        //  where the head was not.
         const auto sceneTurned = [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw", 180.0f); };
         const Channels sceneOnFold = render(busIn(16, 4), 128, 0.25, sceneTurned, &s);
         check(!sceneOnFold.empty() && !identical(y, sceneOnFold), "yaw turns the scene the fold plays");
@@ -232,16 +232,22 @@ static int run() {
         trackerScene.decoder.trackerTurnsScene = true;
         const Channels byTracker = render(busIn(16, 4), 128, 0.25, headTurned, &trackerScene);
         check(!byTracker.empty() && !identical(y, byTracker), "and the tracker turns the scene when told to");
-        PluginState held = s;
-        held.decoder.sceneStatic = true;
-        const Channels heldStill = render(busIn(16, 4), 128, 0.25, sceneTurned, &held);
-        check(!heldStill.empty() && identical(y, heldStill), "static holds the scene whatever the sliders say");
-        //  Catches: a rate not integrated, or integrated while the scene is static.
+        //  Catches: a rate not integrated; the turn a reset clears never reaching the audio thread, so the scene stays
+        //  turned until the transport restarts.
         const auto spinning = [](BambiDecoderProcessor& p) { setParameter(p, "head.yaw_rate", 90.0f); };
-        const Channels spun = render(busIn(16, 4), 128, 0.25, spinning, &s),
-                       spunHeld = render(busIn(16, 4), 128, 0.25, spinning, &held);
-        check(!spun.empty() && !identical(y, spun) && identical(y, spunHeld),
-              "a yaw rate turns the scene over time, and not while static");
+        double spunTurn = 0.0, afterReset = -1.0;
+        const Channels spun = render(busIn(16, 4), 128, 0.25, spinning, &s, [&](BambiDecoderProcessor& p) {
+            spunTurn = p.diagnostics().turnYaw.load();
+            setParameter(p, "head.yaw_rate", 0.0f);
+            p.zeroTurn(0);
+            juce::AudioBuffer<float> buffer(16, 128);
+            buffer.clear();
+            juce::MidiBuffer midi;
+            p.processBlock(buffer, midi);
+            afterReset = p.diagnostics().turnYaw.load();
+        });
+        check(!spun.empty() && !identical(y, spun) && spunTurn > 15.0, "a yaw rate turns the scene over time");
+        check(std::abs(afterReset) < 1e-3, "and yaw set back to zero by hand loses what the rate turned");
     }
 
     //  The layout moved as a block: from channel 3, a pair plays on 3-4, and headphones on 1-2 play beside it.

@@ -73,9 +73,10 @@ void DecoderSceneView::paint(juce::Graphics& g) {
     {
         juce::Graphics::ScopedSaveState clip(g);
         if (!globe) g.reduceClipRegion(frame.getSmallestIntegerContainer());
-        //  the energy of what every output hears, in the room's frame, under everything drawn in ink
+        //  the energy of what every output hears, under everything drawn in ink, turned with the gaze as they are
         if (state_.sphere.energyOn && state_.sphere.energyAvailable)
-            energyLayer_.paint(g, projection_, state_.sphere.camera, vp, state_.sphere.energy, 1.0f);
+            energyLayer_.paint(g, projection_, state_.sphere.camera, vp, state_.sphere.energy, 1.0f,
+                               state_.headFrame ? &head_ : nullptr);
         paintGraticule(g, vp);
 
         //  What plays decides what is full ink.

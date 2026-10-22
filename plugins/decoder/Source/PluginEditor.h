@@ -44,7 +44,8 @@ public:
     void openTemp(bambi::ui::TempTab tab) { controls.openTemp(tab); }
     /// Switch the energy picture on, as the equirect's toggle would.
     void showEnergy() { controls.sphere.energyOn = true; }
-    void showGaps() { controls.speakersTab = 1; }  ///< the speakers page's gaps sub-tab
+    void showDecoding() { controls.speakersTab = 1; }  ///< the speakers page's decoding sub-tab
+    void showFill() { controls.speakersTab = 2; }      ///< the speakers page's fill sub-tab
     //  the session's decoders, as the header's switch lists them after a frame
     int sessionDecoders() const { return static_cast<int>(controls.decoders.size()); }
     void showDecoder(int index) {
