@@ -1,6 +1,7 @@
 #  Every push and pull request: the repository's checks, core's tests on three systems, the plugins built and
 #  checked on three systems, and the sanitizers and clang-tidy where the change reaches them. A tag `v*` also
-#  publishes the plugins as a release. The slow, exhaustive runs are nightly.yml's.
+#  publishes the plugins as a release, the macOS download signed and notarised with an installer that carries the
+#  live host; so does a run started by hand with `release` on. The slow, exhaustive runs are nightly.yml's.
 #
 #  Link-time optimisation makes a JUCE link need a lot of memory, so links run two at a time, and ccache keeps
 #  what did not change from being compiled again.
@@ -315,10 +316,56 @@ jobs:
           name: bambi-${{ matrix.system }}
           path: bambi-${{ matrix.system }}.zip
 
+  #  The macOS download signed and notarised, with an installer that also carries the live host and its loop driver.
+  #  On a tag, and on a run started by hand with `release` on, which tries it before a release; never on a pull
+  #  request. It replaces the plugins job's macOS zip with the signed one.
+  macos-package:
+    name: package · macos
+    needs: plugins
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - run: brew install ninja
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: plugins-release-macos-latest
+          max-size: 2G
+      - uses: actions/download-artifact@v8
+        with:
+          name: bambi-macos
+      - run: mkdir plugins && ditto -x -k bambi-macos.zip plugins
+      - name: live host
+        run: |
+          cmake -B build-plugin -G Ninja -DBAMBI_BUILD_PLUGIN=ON -DBAMBI_BUILD_HOST=ON -DBAMBI_COPY_PLUGIN=OFF \
+            -DCMAKE_JOB_POOLS=link=2 -DCMAKE_JOB_POOL_LINK=link "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+          cmake --build build-plugin --target bambi-live-host
+      - run: driver/build.sh
+      - name: sign, package, notarise
+        env:
+          MACOS_CERTS_P12: ${{ secrets.MACOS_CERTS_P12 }}
+          MACOS_CERTS_PASSWORD: ${{ secrets.MACOS_CERTS_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          export "$(tools/release/macos/keychain.sh)"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version=${GITHUB_REF_NAME#v}; else version=0.0.0-${GITHUB_SHA::7}; fi
+          tools/release/macos/package.sh dist plugins \
+            "build-plugin/apps/live-host/bambi-live-host_artefacts/Release/bambi live host.app" \
+            driver/build/bambi.driver "$version"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bambi-macos
+          path: dist/bambi-macos.*
+          overwrite: true
+
   release:
     name: release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [checks, plugins]
+    needs: [checks, plugins, macos-package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -328,9 +375,11 @@ jobs:
           submodules: true
       #  The binaries are AGPLv3, which obliges the complete corresponding source beside them: JUCE included,
       #  which GitHub's own source archive of a tag leaves out.
+      #  The loop driver's source too: BlackHole at its pin, which the build fetches rather than the repository holding.
       - name: source
         run: |
-          git ls-files --recurse-submodules -z |
+          driver/build.sh source
+          { git ls-files --recurse-submodules -z; find driver/BlackHole -name .git -prune -o -type f -print0; } |
             tar --null -T - --transform "s|^|bambi-${GITHUB_REF_NAME}/|" -czf "bambi-${GITHUB_REF_NAME}-source.tar.gz"
       - uses: actions/download-artifact@v8
         with:
@@ -340,6 +389,7 @@ jobs:
         with:
           files: |
             artifacts/bambi-*.zip
+            artifacts/bambi-*.pkg
             bambi-*-source.tar.gz
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
           generate_release_notes: true

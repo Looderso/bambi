@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Writes THIRD-PARTY-NOTICES.txt: the copyright and licence of everything compiled into the plugins.
+"""Writes THIRD-PARTY-NOTICES.txt: the copyright and licence of everything compiled into the plugins and the live host.
 
 bambi's own dependencies are listed below. JUCE's come from its SPDX bill of materials: every library
 vendored inside a JUCE module the plugins link, following the modules' dependencies, less the ones the
@@ -103,12 +103,16 @@ def notices() -> str:
         "Copyright (C) 2026 Lorenz Häusler and the bambi contributors.",
         "",
         "bambi's own code is licensed under the GNU General Public License, version 3 or later (LICENSE).",
-        "The plugins include JUCE, which bambi uses under the GNU Affero General Public License, version 3,",
-        "so the plugins as distributed are licensed under the AGPLv3 (LICENSE-AGPL-3.0.md). The complete",
-        "source of each release, JUCE included, is attached to that release:",
+        "The plugins and the live host include JUCE, which bambi uses under the GNU Affero General Public",
+        "License, version 3, so as distributed they are licensed under the AGPLv3 (LICENSE-AGPL-3.0.md). The",
+        "complete source of each release, JUCE and the virtual audio driver's included, is attached to that release:",
         "https://github.com/Looderso/bambi/releases",
         "",
         "VST is a registered trademark of Steinberg Media Technologies GmbH.",
+        "",
+        "The live host's virtual audio driver on macOS (bambi.driver) is built from BlackHole, modified:",
+        "Copyright (C) 2019 Existential Audio Inc., licensed under the GNU General Public License, version 3",
+        "(LICENSE). BlackHole's name and branding belong to Existential Audio Inc.; the driver carries neither.",
         "",
         "The plugins contain the following third-party components, under the licences reproduced below.",
         "",

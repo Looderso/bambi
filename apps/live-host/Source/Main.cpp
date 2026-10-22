@@ -19,6 +19,7 @@
 #include "Engine.h"
 #include "HostLog.h"
 #include "IoPage.h"
+#include "LiveDevice.h"
 #include "Rail.h"
 #include "Routing.h"
 #include "Settings.h"
@@ -486,7 +487,10 @@ public:
     const juce::String getApplicationName() override { return "bambi live host"; }
     const juce::String getApplicationVersion() override { return "0.1.0"; }
     bool moreThanOneInstanceAllowed() override { return false; }
-    void initialise(const juce::String&) override { window_ = std::make_unique<Window>(); }
+    void initialise(const juce::String&) override {
+        bambi::livehost::installLiveDevice();
+        window_ = std::make_unique<Window>();
+    }
     //  opened again while running -- the device starting it, the Finder, the Dock -- shows the hidden window
     void anotherInstanceStarted(const juce::String&) override {
         if (window_ != nullptr) window_->reveal();

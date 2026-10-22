@@ -18,8 +18,10 @@ const fs = require("fs");
 const {spawn} = require("child_process");
 
 const PORT = 9461;
+//  The host built beside the device in a source checkout; anywhere else, the installed host, found by its bundle id.
 const APP = path.resolve(__dirname,
                          "../../../build-plugin/apps/live-host/bambi-live-host_artefacts/Release/bambi live host.app");
+const BUNDLE_ID = "org.bambi.livehost";
 
 //  A line too long for one Max message -- a symbol holds at most 32767 bytes -- goes as pieces: each "+" and at most
 //  PIECE characters, never splitting a character in two, then "." to join them. A JSON line never starts with either.
@@ -52,10 +54,10 @@ function launchDue(now, lastStart) {
 function startHost() {
     const now = Date.now();
     if (!launchDue(now, startedAt)) return;
-    if (!fs.existsSync(APP)) return;
     startedAt = now;
-    spawn("open", [APP], {detached: true, stdio: "ignore"}).unref();
-    maxApi.post("bambi: started " + APP);
+    const args = fs.existsSync(APP) ? [APP] : ["-b", BUNDLE_ID];
+    spawn("open", args, {detached: true, stdio: "ignore"}).unref();
+    maxApi.post("bambi: started " + args.join(" "));
 }
 
 function connect() {
