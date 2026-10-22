@@ -1,6 +1,6 @@
 # 0262 · A layout's gaps play binaurally through crosstalk cancellation, as settled by ear on a pair
 
-**Status:** accepted
+**Status:** accepted, revised in part by [0263](0263-the-fill-cancels-up-to-4-5-khz-at-the-decoders.md)
 
 *2026-10-22. A laptop's two speakers could not reproduce most directions; a prototype filled them in.*
 

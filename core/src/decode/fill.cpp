@@ -262,11 +262,30 @@ bool designCancellation(const SpeakerDesign& design, const BinauralFilterBuilder
     const double lo0 = 0.5 * settings.bandLoHz, lo1 = settings.bandLoHz;
     const double hi0 = settings.bandHiHz, hi1 = std::min(1.4 * settings.bandHiHz, 0.95 * nyquist);
     std::vector<Cx> G(sz(L) * 2 * sz(bins));  // [loudspeaker][ear][bin]
+    const double betaRef = std::pow(10.0, kFillReferenceDb / 10.0);
+    double referenceRatio = 0.0;  // what the layout can reach: the inversion exact and regularised at the reference
+    int referenceCounted = 0;
     for (int k = 0; k < bins; ++k) {
         Cx A[2][2] = {};
         for (int l = 0; l < 2; ++l)
             for (int m = 0; m < 2; ++m)
                 for (int i = 0; i < L; ++i) A[l][m] += c(l, i, k) * std::conj(c(m, i, k));
+        const double hzRef = k * sampleRate / n;
+        if (hzRef >= lo1 && hzRef <= hi0) {
+            const double r = betaRef * 0.5 * (A[0][0].real() + A[1][1].real());
+            const Cx a00 = A[0][0] + r, a11 = A[1][1] + r, d = a00 * a11 - A[0][1] * A[1][0];
+            const Cx ri[2][2] = {{a11 / d, -A[0][1] / d}, {-A[1][0] / d, a00 / d}};
+            Cx E[2][2] = {};
+            for (int l = 0; l < 2; ++l)
+                for (int m = 0; m < 2; ++m)
+                    for (int i = 0; i < L; ++i) {
+                        Cx g = 0.0;
+                        for (int j = 0; j < 2; ++j) g += std::conj(c(j, i, k)) * ri[j][m];
+                        E[l][m] += c(l, i, k) * g;
+                    }
+            referenceRatio += (std::norm(E[0][1]) + std::norm(E[1][0])) / (std::norm(E[0][0]) + std::norm(E[1][1]));
+            ++referenceCounted;
+        }
         const double reg = beta * 0.5 * (A[0][0].real() + A[1][1].real());
         A[0][0] += reg;
         A[1][1] += reg;
@@ -332,6 +351,39 @@ bool designCancellation(const SpeakerDesign& design, const BinauralFilterBuilder
             ++counted;
         }
         out.separationDb = 10.0 * std::log10(std::max(ratio / std::max(counted, 1), 1e-30));
+
+        //  The level: for a plane wave from each loudspeaker, the energy the fill's feeds carry, mean over the
+        //  audible bins, against what the layout's decoder plays for it. One gain for all, so the fill and the
+        //  decoder part meet at the loudspeakers at one level, at any rate.
+        std::vector<double> y(sz(numChannels(design.order)));
+        double decoded = 0.0, filled = 0.0;
+        const int Cd = numChannels(design.order);
+        const int audible = std::min(bins, static_cast<int>(20000.0 * n / sampleRate) + 1);
+        for (int i = 0; i < L; ++i) {
+            shSN3D(at[sz(i)], design.order, y);
+            for (int o = 0; o < design.outputs; ++o) {
+                double gain = 0.0;
+                for (int ch = 0; ch < Cd; ++ch) gain += design.matrix[sz(o) * sz(Cd) + sz(ch)] * y[sz(ch)];
+                decoded += gain * gain;
+            }
+        }
+        //  Summed over the loudspeakers the plane waves come from and the feeds they reach, per bin
+        //  sum_ij |sum_m Gc[j][m] C[m][i]|^2 = sum_mn (sum_j Gc[j][m] Gc[j][n]*) (sum_i C[m][i] C[n][i]*).
+        for (int k = 0; k < audible; ++k) {
+            Cx S[2][2] = {}, A[2][2] = {};
+            for (int j = 0; j < L; ++j)
+                for (int m = 0; m < 2; ++m)
+                    for (int q = 0; q < 2; ++q) {
+                        S[m][q] += Gc[(sz(j) * 2 + sz(m)) * sz(bins) + sz(k)] *
+                                   std::conj(Gc[(sz(j) * 2 + sz(q)) * sz(bins) + sz(k)]);
+                        A[m][q] += c(m, j, k) * std::conj(c(q, j, k));
+                    }
+            for (int m = 0; m < 2; ++m)
+                for (int q = 0; q < 2; ++q) filled += (S[m][q] * A[m][q]).real();
+        }
+        filled /= audible;
+        out.level = filled > 0.0 ? std::sqrt(decoded / filled) : 1.0;
+        for (float& v : out.filters) v = static_cast<float>(v * out.level);
     }
     //  Each loudspeaker's distance gain and delay, as the speaker renderer gives the dry part, folded into its
     //  feeds: designed for loudspeakers that arrive together, they reach a room that is not a sphere the same way.
@@ -355,8 +407,9 @@ bool designCancellation(const SpeakerDesign& design, const BinauralFilterBuilder
         out.filters.swap(placed);
         out.taps = taps + longest;
     }
-    if (out.separationDb > kFillSeparationNeededDb) {
-        const long tenths = std::lround(-out.separationDb * 10.0);
+    const double reference = 10.0 * std::log10(std::max(referenceRatio / std::max(referenceCounted, 1), 1e-30));
+    if (reference > kFillSeparationNeededDb) {
+        const long tenths = std::lround(-reference * 10.0);
         const std::string got = std::to_string(tenths / 10) + "." + std::to_string(tenths % 10);
         const std::string need = std::to_string(static_cast<int>(-kFillSeparationNeededDb));
         if (error)
@@ -364,6 +417,86 @@ bool designCancellation(const SpeakerDesign& design, const BinauralFilterBuilder
         return false;
     }
     return true;
+}
+
+double fillLoudness(const SpeakerDesign& design, const FillWindows& windows, const Cancellation& cancel,
+                    const BinauralFilterBuilder& head, double sampleRate) {
+    //  Averaged over the sphere a field of SN3D harmonics has energy 1 / (2n + 1) in each channel of degree n and
+    //  none shared between channels, so each part's mean energy is a sum over its matrix's columns.
+    const int C = numChannels(windows.order), H = head.channels(), L = static_cast<int>(cancel.outputs.size());
+    std::vector<double> weight(sz(C));
+    for (int c = 0; c < C; ++c) weight[sz(c)] = 1.0 / (2.0 * acnOrder(c) + 1.0);
+    const SpeakerDesign dry = windowedDecoder(design, windows);
+    double full = 0.0, kept = 0.0;
+    for (std::size_t i = 0; i < design.channel.size(); ++i) {
+        const double g = i < design.gain.size() ? design.gain[i] : 1.0;
+        const std::size_t row = sz(design.channel[i]) * sz(C);
+        for (int c = 0; c < C; ++c) {
+            full += g * g * design.matrix[row + sz(c)] * design.matrix[row + sz(c)] * weight[sz(c)];
+            kept += g * g * dry.matrix[row + sz(c)] * dry.matrix[row + sz(c)] * weight[sz(c)];
+        }
+    }
+
+    //  The fill: the HRTF window's weighted Gram matrix M = W diag(weight) W^T, mean over the audible bins as the
+    //  cancellation's level is.
+    int n = 1;
+    while (n < cancel.taps + head.taps()) n *= 2;
+    RealFft fft;
+    if (!fft.prepare(sz(n))) return 1.0;
+    const int bins = n / 2 + 1, audible = std::min(bins, static_cast<int>(20000.0 * n / sampleRate) + 1);
+    std::vector<double> x(sz(n)), re(sz(bins)), im(sz(bins));
+    const auto spectrumOf = [&](std::span<const float> f, std::vector<Cx>& to) {
+        std::fill(x.begin(), x.end(), 0.0);
+        for (std::size_t t = 0; t < f.size() && t < sz(n); ++t) x[t] = f[t];
+        fft.forward(x, re, im);
+        for (int k = 0; k < audible; ++k) to[sz(k)] = {re[sz(k)], im[sz(k)]};
+    };
+    std::vector<Cx> Hs(sz(H) * 2 * sz(audible)), Gs(sz(2) * sz(L) * sz(audible));
+    for (int r = 0; r < H; ++r)
+        for (int m = 0; m < 2; ++m) {
+            std::vector<Cx> s(sz(audible));
+            spectrumOf(head.filter(r, m), s);
+            std::copy(s.begin(), s.end(), Hs.begin() + static_cast<std::ptrdiff_t>((sz(r) * 2 + sz(m)) * sz(audible)));
+        }
+    for (int m = 0; m < 2; ++m)
+        for (int i = 0; i < L; ++i) {
+            std::vector<Cx> s(sz(audible));
+            const std::size_t at = (sz(m) * sz(L) + sz(i)) * sz(cancel.taps);
+            spectrumOf(std::span<const float>(cancel.filters.data() + at, sz(cancel.taps)), s);
+            std::copy(s.begin(), s.end(),
+                      Gs.begin() + static_cast<std::ptrdiff_t>((sz(m) * sz(L) + sz(i)) * sz(audible)));
+        }
+    std::vector<double> M(sz(H) * sz(H), 0.0);
+    for (int a = 0; a < H; ++a)
+        for (int b = 0; b < H; ++b)
+            for (int c = 0; c < C; ++c)
+                M[sz(a) * sz(H) + sz(b)] +=
+                    windows.hrtf[sz(a) * sz(C) + sz(c)] * weight[sz(c)] * windows.hrtf[sz(b) * sz(C) + sz(c)];
+    //  Per bin the loudspeakers' feeds from the two ears, P = sum_i G_i G_i^H, against the ears' signals under the
+    //  window, Q = Hs^T M Hs*: both 2 x 2, so the loudspeakers and the harmonics are each summed once.
+    double filled = 0.0;
+    for (int k = 0; k < audible; ++k) {
+        Cx P[2][2] = {}, Q[2][2] = {};
+        for (int i = 0; i < L; ++i)
+            for (int m = 0; m < 2; ++m)
+                for (int q = 0; q < 2; ++q)
+                    P[m][q] += Gs[(sz(m) * sz(L) + sz(i)) * sz(audible) + sz(k)] *
+                               std::conj(Gs[(sz(q) * sz(L) + sz(i)) * sz(audible) + sz(k)]);
+        for (int a = 0; a < H; ++a)
+            for (int b = 0; b < H; ++b) {
+                const double w = M[sz(a) * sz(H) + sz(b)];
+                if (w == 0.0) continue;
+                for (int m = 0; m < 2; ++m)
+                    for (int q = 0; q < 2; ++q)
+                        Q[m][q] += Hs[(sz(a) * 2 + sz(m)) * sz(audible) + sz(k)] * w *
+                                   std::conj(Hs[(sz(b) * 2 + sz(q)) * sz(audible) + sz(k)]);
+            }
+        for (int m = 0; m < 2; ++m)
+            for (int q = 0; q < 2; ++q) filled += (P[m][q] * Q[m][q]).real();
+    }
+    filled /= audible;
+    const double played = kept + filled;
+    return played > 0.0 ? std::sqrt(full / played) : 1.0;
 }
 
 }  // namespace bambi

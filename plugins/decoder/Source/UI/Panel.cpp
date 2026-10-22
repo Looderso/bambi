@@ -238,7 +238,7 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
             kx += textWidth(labelFont(), who) + sc::toggleGroupGap;
         }
         y += lineH;
-        //  and where each playing output is, in words
+        //  and where each output is, in words, the one that does not play said so
         const auto where = [&](const std::vector<int>& at) {
             if (!onHost) return rangesOf(at);
             juce::String out;
@@ -256,7 +256,8 @@ float DecoderPanel::paintChannels(juce::Graphics& g, juce::Rectangle<float> cont
         juce::String line;
         for (const auto& [name, on, at] :
              {std::tuple{"headphones", d.headphonesPlay, &hpAt}, std::tuple{"speakers", d.speakersPlay, &spAt}})
-            if (on && !at->empty()) line += (line.isEmpty() ? "" : kSeparator) + name + " " + where(*at);
+            if (!at->empty())
+                line += (line.isEmpty() ? "" : kSeparator) + name + " " + where(*at) + (on ? "" : ", not playing");
         if (onHost) line += (line.isEmpty() ? "" : "  ") + juce::String("(placed on the host's audio sheet)");
         if (line.isNotEmpty()) {
             y += ctl::segmentGap;
@@ -458,14 +459,18 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
         y += lineH;
     };
 
-    //  two sub-tabs: the layout and how it plays, and the gaps it leaves, filled binaurally
+    //  three sub-tabs: the layout and where it plays, how it is decoded, and the gaps it leaves, filled binaurally
     const juce::Rectangle<float> tabs{content.getX(), y, content.getWidth(), ctl::segmentHeight};
-    paintSegments(g, tabs, {"layout", "gaps"}, state_.speakersTab, true, [this](int which) {
+    paintSegments(g, tabs, {"layout", "decoding", "fill"}, state_.speakersTab, true, [this](int which) {
         state_.speakersTab = which;
         repaint();
     });
     y = tabs.getBottom() + static_cast<float>(space::groupGap);
     if (state_.speakersTab == 1) {
+        paintDecoding(g, content, y);
+        return;
+    }
+    if (state_.speakersTab == 2) {
         paintGaps(g, content, y);
         return;
     }
@@ -476,7 +481,8 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
     const bool ituLayout = !matrix && !typedLayout && !d.layout.empty() && bs2051Layout(d.layoutName) != nullptr;
     const bool fileLayout = matrix || (!d.layout.empty() && !ituLayout && !typedLayout);
     const int kind = shownKind_ >= 0 ? shownKind_ : typedLayout ? 2 : fileLayout ? 1 : 0;
-    const juce::Rectangle<float> row{content.getX(), y, content.getWidth(), ctl::segmentHeight};
+    //  at its own width, so it does not line up under the sub-tabs as if it were a second row of them
+    const juce::Rectangle<float> row{content.getX(), y, segmentsWidth({"itu", "file", "typed"}), ctl::segmentHeight};
     paintSegments(g, row, {"itu", "file", "typed"}, kind, mine, [this](int which) {
         shownKind_ = which;
         repaint();
@@ -541,36 +547,49 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
             line(juce::String(d.layoutName) + kSeparator + juce::String(real) + " loudspeakers, typed", colour::text);
         else
             line("nothing typed yet: edit the loaded layout in the table, or start empty", colour::label);
-        const juce::Rectangle<float> fresh{content.getX(), y, framedButtonWidth("start empty"), buttonH};
-        paintButton(g, fresh, "start empty", mine, [this] {
-            model().applyEdit("new layout", [](PluginState& s) {
-                s.decoder.layout.clear();
-                s.decoder.layoutName = "typed";
-                s.decoder.layoutTyped = true;
-                s.decoder.matrixFile.clear();
-                s.decoder.matrixOutputs = 0;
-            });
-            shownKind_ = -1;
-            state_.openTemp(TempTab::Loudspeakers);
-        });
-        text(g, "then add loudspeakers in the table", labelFont(), colour::label,
-             {fresh.getRight() + static_cast<float>(space::grid), y, content.getWidth(), buttonH},
-             juce::Justification::centredLeft);
-        y += buttonH + ctl::segmentGap;
+        y = paintButtonNote(
+                g, content, y, "start empty", mine,
+                [this] {
+                    model().applyEdit("new layout", [](PluginState& s) {
+                        s.decoder.layout.clear();
+                        s.decoder.layoutName = "typed";
+                        s.decoder.layoutTyped = true;
+                        s.decoder.matrixFile.clear();
+                        s.decoder.matrixOutputs = 0;
+                    });
+                    shownKind_ = -1;
+                    state_.openTemp(TempTab::Loudspeakers);
+                },
+                "then add loudspeakers in the table") +
+            ctl::segmentGap;
     }
     const juce::String error = layoutError_.isNotEmpty() ? layoutError_ : state_.processor.designError();
     if (!error.isEmpty()) line("refused: " + error, colour::text);
     y += static_cast<float>(space::groupGap);
 
-    const bool pairLayout = !matrix && realLoudspeakers(d.layout) == 2;
-
+    //  the table, a tab of its own, then where the layout plays
+    const int order = state_.processor.engineOrder();
+    y = paintButtonNote(
+            g, content, y, juce::String::fromUTF8("loudspeakers\xe2\x80\xa6"), !d.layout.empty() || matrix,
+            [this] { state_.openTemp(TempTab::Loudspeakers); },
+            matrix ? juce::String("the outputs, one row each")
+                   : "order " + juce::String(std::max(order, 0)) + kSeparator + "the hull is on the scene") +
+        static_cast<float>(space::groupGap);
     y = paintChannels(g, content, y, OutputPage::Speakers);
+    noteContentBottom(y + static_cast<float>(space::grid) + scroll());
+}
 
-    //  options
-    y = paintGroupTitle(g, content, y, "options");
+void DecoderPanel::paintDecoding(juce::Graphics& g, juce::Rectangle<float> content, float y) {
+    const DecoderState& d = state_.decoder();
+    const bool mine = !model().showingAnother();
+    const float lineH = noteLineHeight();
+    const auto hint = [&](const juce::String& what) { y = paintHint(g, content.withTop(y), what); };
+    const bool matrix = !d.matrixFile.empty();
+    const bool none = !matrix && d.layout.empty();  // greyed, with the reason, as the fill sub-tab does
+    const bool pairLayout = !matrix && realLoudspeakers(d.layout) == 2;
+    if (none) hint("no loudspeaker layout loaded");
     if (pairLayout) {
-        //  two loudspeakers: the fold, or the slice the head points at -- under the channels, so the layout's own
-        //  section keeps its height whichever layout is chosen
+        //  two loudspeakers: the fold, or the slice the head points at
         const juce::Rectangle<float> pair{content.getX(), y, content.getWidth(), ctl::segmentHeight};
         //  while the gaps are filled the pair plays its fold, the combination chosen by ear: greyed there
         const bool slice = d.pairSlice && !d.fill;
@@ -578,38 +597,29 @@ void DecoderPanel::paintSpeakers(juce::Graphics& g, juce::Rectangle<float> conte
             model().applyEdit("pair", [which](PluginState& s) { s.decoder.pairSlice = which == 1; });
         });
         y = pair.getBottom() + ctl::segmentGap;
-        line(d.fill  ? "fold only while the gaps are filled"
+        hint(d.fill  ? "fold only while fill the gaps binaurally is on"
              : slice ? "only what the head points at plays, between the loudspeakers"
-                     : "everything on the pair, as a stereo listener hears the mix",
-             colour::label);
-        y += ctl::segmentGap;
+                     : "everything on the pair, as a stereo listener hears the mix");
     }
     if (matrix) {
-        line("the file's decoder as it is: no weighting, no distance compensation", colour::label);
+        hint("the file's decoder as it is: no weighting, no distance compensation");
     } else {
         if (pairLayout) {
-            line("microphones take no weighting", colour::label);
+            hint("microphones take no weighting");
         } else {
             const juce::Rectangle<float> seg{content.getX(), y, content.getWidth(), ctl::segmentHeight};
-            paintSegments(g, seg, {"one listener", "audience"}, d.weighting == 1 ? 1 : 0, mine, [this](int which) {
-                model().applyEdit("weighting", [which](PluginState& s) { s.decoder.weighting = which; });
-            });
+            paintSegments(g, seg, {"one listener", "audience"}, d.weighting == 1 ? 1 : 0, mine && !none,
+                          [this](int which) {
+                              model().applyEdit("weighting", [which](PluginState& s) { s.decoder.weighting = which; });
+                          });
             y = seg.getBottom() + ctl::segmentGap;
         }
         const juce::Rectangle<float> distanceRow{content.getX(), y, content.getWidth(), lineH};
-        paintStateToggle(g, distanceRow, "distance compensation", d.distanceCompensation, mine, "distance compensation",
+        paintStateToggle(g, distanceRow, "distance compensation", d.distanceCompensation, mine && !none,
+                         "distance compensation",
                          [](DecoderState& s) { s.distanceCompensation = !s.distanceCompensation; });
         y += lineH + ctl::segmentGap;
     }
-    y += static_cast<float>(space::groupGap);
-
-    //  the table, a tab of its own
-    const int order = state_.processor.engineOrder();
-    y = paintButtonNote(
-        g, content, y, juce::String::fromUTF8("loudspeakers\xe2\x80\xa6"), !d.layout.empty() || matrix,
-        [this] { state_.openTemp(TempTab::Loudspeakers); },
-        matrix ? juce::String("the outputs, one row each")
-               : "order " + juce::String(std::max(order, 0)) + kSeparator + "the hull is on the scene");
     noteContentBottom(y + static_cast<float>(space::grid) + scroll());
 }
 
@@ -862,7 +872,25 @@ void DecoderPanel::paintTracking(juce::Graphics& g, juce::Rectangle<float> conte
     const float lineH = noteLineHeight();
     const float buttonH = ctl::buttonHeight;
 
-    //  the chosen source's own setup first; the source itself is chosen in the orientation strip
+    //  What the tracker does, chosen once for a tracker rather than while playing: head tracking, compensated on
+    //  headphones so sources stay in the room, or one more rotation of the scene, heard on every output. Greyed
+    //  without a tracker.
+    {
+        const juce::Rectangle<float> turns{content.getX(), y, content.getWidth(), ctl::segmentHeight};
+        paintSegments(g, turns, {"tracks the head", "rotates the scene"}, d.trackerTurnsScene ? 1 : 0,
+                      mine && d.trackerSource != 0, [this](int which) {
+                          model().applyEdit("tracker turns",
+                                            [which](PluginState& s) { s.decoder.trackerTurnsScene = which == 1; });
+                      });
+        y = turns.getBottom() + ctl::segmentGap;
+        y = paintHint(g, content.withTop(y),
+                      d.trackerTurnsScene ? "the whole scene rotates with the tracker, on headphones and loudspeakers"
+                                          : "on headphones the scene counter-rotates against your head, so sources "
+                                            "stay put as you turn; loudspeakers are unaffected") +
+            static_cast<float>(space::groupGap);
+    }
+
+    //  then the chosen source's own setup; the source itself is chosen in the orientation strip
     if (d.trackerSource == 1) {
         paintStateTile(
             g, tileCell(content, y, 0), "port", juce::String(d.oscPort), d.oscPort, 1024, 65535, 1.0,
@@ -945,9 +973,9 @@ float DecoderPanel::paintLearn(juce::Graphics& g, juce::Rectangle<float> content
     const bool learned = d.oscForm != 0 && !d.oscAddresses[0].empty();
     const bool split = learned && !d.oscAddresses[1].empty() && !d.oscAddresses[2].empty();
     if (!learned)
-        line(
-            "format: by address" + kSeparator + "adm-osc, sparta and iem; anything else is learned from the list below",
-            colour::label);
+        y = paintHint(g, content.withTop(y),
+                      "format: by address" + kSeparator +
+                          "adm-osc, sparta and iem; anything else is learned from the list below");
     else if (split)
         line("format: learned" + kSeparator + "yaw " + d.oscAddresses[0] + ", pitch " + d.oscAddresses[1] + ", roll " +
                  d.oscAddresses[2],

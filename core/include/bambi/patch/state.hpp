@@ -144,7 +144,7 @@ struct DecoderState {
     float fillHoldDeg{20.0f};         ///< the layout's own decode alone within this angle of what it covers, 0..60
     float fillFadeDeg{60.0f};         ///< then a crossfade to binaural over this angle, 5..120
     float fillStrengthDb{-25.0f};     ///< the cancellation's regularisation, -40..-10; lower cancels more
-    float fillUpToHz{7000.0f};        ///< the cancellation's upper edge, 3000..12000
+    float fillUpToHz{4500.0f};        ///< the cancellation's upper edge, 3000..12000
     int speakerFirstChannel{1};       ///< the bus channel the layout's channel 1 plays on: the layout moved as a block
     std::string layoutName;           ///< a built-in's name, or the file's, for the page
     bool layoutTyped{false};          ///< typed in, or edited after loading: the table is its source now
@@ -156,7 +156,6 @@ struct DecoderState {
     int matrixNormalization{0};     ///< what its filters expect on their input: 0 as the file says, 1 SN3D, 2 N3D
     int trackerSource{0};           ///< 0 none, 1 OSC, 2 AirPods through the bundled helper, 3 a phone's page
     bool trackerTurnsScene{false};  ///< the tracker's orientation turns the scene, not the head: no compensation
-    bool sceneStatic{false};        ///< the scene's turn from the sliders and rates held at zero, the tracker kept
     int oscPort{9000};
     bool oscNetwork{false};                         ///< bound to this computer until asked
     std::array<bool, 3> flip{false, false, false};  ///< learn mode's signs

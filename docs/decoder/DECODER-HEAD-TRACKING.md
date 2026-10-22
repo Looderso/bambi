@@ -85,14 +85,16 @@ per 64-frame hop and crossfaded within it, so nothing snaps, the same bits howev
 0.1 % of a core at order 3, 0.5 % at order 7 while turning.
 
 1. **The scene's turn**, heard by every output: yaw, pitch and roll as the host has them plus their rates
-   integrated while the transport runs, wrapping, the whole held at zero while *static*.
+   integrated while the transport runs, wrapping. Double-clicking an angle to reset it to zero also clears the
+   rotation its rate has accumulated, so the scene is back at zero at once, not at the next transport start or
+   locate.
 2. **The head undone**, for the binaural decode and the pair's slice only: the field turned by the inverse of the
    tracker's orientation, so what the listener hears stays in the room. An array hears the scene's turn and no
    head, since the listener's head really is in the room.
 
-- **The tracker turns the head or the scene** (the strip's `head · scene`). As a head it is undone, as above. As the
-  scene it is one more turn of the scene, heard by every output and undone by none: a performer wearing the tracker
-  turns the mix for the room or for listeners on headphones.
+- **The tracker tracks the head or rotates the scene** (*tracks the head · rotates the scene* in the tracker's setup).
+  As head tracking it is compensated, as above. As the scene it is one more turn of the scene, heard by every output
+  and undone by none: a performer wearing the tracker turns the mix for the room or for listeners on headphones.
 - **The pair's slice** uses the head's orientation ([binaural](DECODER-BINAURAL.md#the-pair-fold-and-slice)).
 - **Recentre** on a key.
 - **An offline render takes the automation.** It renders the scene's turn as automated, sliders and rates, and holds

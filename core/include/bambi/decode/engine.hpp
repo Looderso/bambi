@@ -50,6 +50,7 @@ struct DecoderFrame {
     float levelDb{0.0f};       ///< the outputs' level; -60 and below is silence
     Mat3 tracker{kIdentity3};  ///< the tracker's orientation, recentred; the identity without one
     bool speakersHeld{false};  ///< the loudspeakers' feeds held back, as while one loudspeaker is tested alone
+    int zeroTurns{0};          ///< axes set back to zero by hand, their rates' turn cleared: 1 yaw, 2 pitch, 4 roll
 };
 
 class DecoderEngine {
@@ -87,6 +88,8 @@ public:
     const float* sceneField() const noexcept { return sceneField_.data(); }  ///< the field turned by the scene
     const Mat3& head() const noexcept { return headNow_; }                   ///< the head the decode undid
     const Mat3& scene() const noexcept { return sceneNow_; }  ///< the scene's turn in force at the block's end
+    /// Each axis's own turn at the block's end, its angle plus its rate's, degrees in (-180, 180]: no tracker in it.
+    const std::array<double, 3>& turn() const noexcept { return turnNow_; }
     bool headphonesHeard() const noexcept { return headphonesHeard_; }
     bool speakersHeard() const noexcept { return speakersHeard_; }
 
@@ -177,6 +180,7 @@ private:
     RotationClock clock_;      ///< the rates integrated
     std::int64_t hopPos_{0};   ///< frames since prepare: where in its rotation hop the scene's turn is set
     Mat3 sceneNow_{kIdentity3}, headNow_{kIdentity3};
+    std::array<double, 3> turnNow_{};  ///< yaw, pitch, roll in degrees
     bool headphonesHeard_{false}, speakersHeard_{false};
     std::vector<float> sceneField_, turned_, stereo_, speakersOut_;  ///< scratch, sized in prepare
     std::vector<float> fillField_, fillEars_, fillOut_;              ///< the fill's scratch

@@ -319,6 +319,7 @@ namespace controls
     inline constexpr float tabPadX       = 9.0f;   ///< either side of a tab's name: the open one's block
     inline constexpr float tabGap        = 4.0f;   ///< between two tabs' blocks
     inline constexpr float matrixTabsTop = 7.0f;
+    inline constexpr float tabRowHeight  = tabBarHeight - matrixTabsTop;  ///< a strip's tab row, and what sits in it
 
     //  the right column's content
     inline constexpr float contentTop       = 14.0f;
@@ -412,7 +413,6 @@ namespace controls
     inline constexpr float triggerStep        = 0.01f;
     inline constexpr float handleStep         = 0.002f;   ///< a handle length, in radians
     //  the decoder's orientation strip and its loudspeaker table
-    inline constexpr float pairChoiceWidth = 112.0f;  ///< the strip's two-entry segments row: head · scene
     inline constexpr float tableColumns[6] = {24.0f, 40.0f, 40.0f, 40.0f, 40.0f, 44.0f};  ///< ch, az, el, dist, gain, delay
     inline constexpr float learnSlotWidth  = 44.0f;   ///< a learned address's slot column
     inline constexpr float dropdownWidth  = 7.0f;  ///< a dropdown's triangle, the one look for a list behind a control

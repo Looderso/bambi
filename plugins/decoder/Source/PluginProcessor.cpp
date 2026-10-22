@@ -577,6 +577,7 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
     //  The test burst holds the array's feeds back, so the loudspeaker is heard alone.
     const int test = testChannel_.load(std::memory_order_acquire);
     controls.speakersHeld = test != 0;
+    controls.zeroTurns = zeroTurns_.exchange(0, std::memory_order_relaxed);
 
     engine_.process(d, controls, field_.data(), buffer.getArrayOfWritePointers(), outChannels, n);
 
@@ -613,6 +614,10 @@ void BambiDecoderProcessor::renderBlock(juce::AudioBuffer<float>& buffer, juce::
         diag_.sceneYaw.store(static_cast<float>(y), std::memory_order_relaxed);
         diag_.scenePitch.store(static_cast<float>(pt), std::memory_order_relaxed);
         diag_.sceneRoll.store(static_cast<float>(r), std::memory_order_relaxed);
+        const auto& turn = engine_.turn();
+        diag_.turnYaw.store(static_cast<float>(turn[0]), std::memory_order_relaxed);
+        diag_.turnPitch.store(static_cast<float>(turn[1]), std::memory_order_relaxed);
+        diag_.turnRoll.store(static_cast<float>(turn[2]), std::memory_order_relaxed);
     }
 
     //  The test burst: noise on one channel, on top of whatever else plays there. Deterministic: the same xorshift

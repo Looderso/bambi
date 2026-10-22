@@ -142,24 +142,26 @@ The shared shell, theme, controls and scene view with a different centre. Built 
   hull the layout pans across (while the speakers' page is open), a head turned by the tracker, and, switched on at
   the equirect's corner, the energy picture of the field every output hears. What plays is full ink: the head
   while headphones play, the loudspeakers while a layout plays or headphones listen through it. A *head frame*
-  toggle turns the view with the gaze; the head is a circle with two eyes on its rim, facing front without a
-  tracker, since the sliders turn the scene and not the head.
+  toggle turns the view with the gaze, the energy picture with it; the head is a circle with two eyes on its rim,
+  facing front without a tracker, since the sliders turn the scene and not the head.
 - **The outputs are tabs in the header**, *headphones* and *speakers*. The name opens the output's page; a square
   in the tab plays it, so opening the speakers' page while listening on headphones changes nothing heard.
-- **The right panel shows the open output's page**, always in the same shape: *what the output is* (the head as *model ·
-  ku100 · sofa file* with its two sliders; the loudspeakers as *itu · file · typed* with the chosen kind's own
-  controls), then *channels* (the headphones' pair; or the layout's first channel and the bus's channels with what plays
-  on each, a key for the two outputs' inks), then *options* (listening situation and distance compensation, or the
-  layout heard through on headphones). A two-loudspeaker layout gets *fold · slice* between the layout and the channels.
-  The speakers page opens on two sub-tabs, *layout* (all of the above) and *gaps* ([filling a layout's
-  gaps](DECODER-FILL.md)), which holds the head as the headphones page does. The loudspeaker table opens as a temporary
-  tab from `loudspeakers…`; the tracker's setup does the same, each with a close cross. The head and ears sliders show
-  their values without units.
+- **The right panel shows the open output's page.** The headphones page: the head as *model · ku100 · sofa file*
+  with its two sliders, then *channels* (the pair on the bus), then *options* (the layout heard through on
+  headphones). The speakers page has three sub-tabs: *layout* (*itu · file · typed* with the chosen kind's own
+  controls, `loudspeakers…`, then *channels*), *decoding* (*fold · slice* for a two-loudspeaker layout, the listening
+  situation, distance compensation) and *fill* ([filling a layout's gaps](DECODER-FILL.md)), which holds the head as
+  the headphones page does. *Channels* is the bus's channels with what plays on each, a key for the two outputs'
+  inks and a line naming each output's channels, the one that does not play marked *not playing*. The loudspeaker table opens
+  as a temporary tab from `loudspeakers…`; the tracker's setup does the same, each with a close cross. The head and
+  ears sliders show their values without units.
 - **The orientation strip sits where the effects have their matrix**: tabs for the tracker (none · osc · airpods ·
-  phone), the tracker's word at the right (whether it speaks and how often, or that the input has no direction);
-  under them *head · scene*, recentre, setup and *static*, greyed under *none*; then the scene's yaw, pitch and
-  roll with a `flip` per axis, their rates under them, the turn in force as the live mark. See
-  [head tracking](DECODER-HEAD-TRACKING.md).
+  phone), then the tracker's word (whether it speaks and how often, or that the input has no direction), recentre
+  and setup; under them the scene's yaw, pitch and roll, each with a `flip` for the tracker's sign on that axis,
+  their rates under them, the current rotation of each axis (its angle plus what its rate has accumulated) as the
+  live mark. Recentre, setup and the flips grey under *none*. Double-clicking an angle to reset it also clears the
+  rotation its rate has accumulated. Whether the tracker tracks the head or rotates the scene is chosen in its
+  setup. See [head tracking](DECODER-HEAD-TRACKING.md).
 - **The level column** draws one bar per channel of the output bus.
 - **A second decoder in a session** gets a small instance switch left of the link line, drawn only while there are
   two or more. A followed decoder shows the other's orientation and parameters, not its pages: the link's patch

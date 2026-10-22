@@ -8,7 +8,9 @@
 #include <vector>
 
 #include "bambi/decode/engine.hpp"
+#include "bambi/decode/fill.hpp"
 #include "bambi/decode/layouts.hpp"
+#include "bambi/decode/orientation.hpp"
 #include "bambi/dsp/fft.hpp"
 #include "bambi/math/legendre.hpp"
 #include "bambi/math/sh.hpp"
@@ -90,6 +92,58 @@ TEST_CASE("held, the loudspeakers' feeds stop and the headphones play on") {
     CHECK(energy(out[4]) == 0.0);
 }
 
+namespace {
+
+/// An engine prepared at order 1 that has played `blocks` of kFrames with `c`.
+void play(DecoderEngine& engine, const DecoderState& d, const DecoderFrame& c, int blocks) {
+    std::vector<std::vector<float>> out(2, std::vector<float>(kFrames, 0.0f));
+    std::array<float*, 2> channels{out[0].data(), out[1].data()};
+    const std::vector<float> in = click(1);
+    for (int b = 0; b < blocks; ++b) engine.process(d, c, in.data(), channels.data(), 2, kFrames);
+}
+
+}  // namespace
+
+TEST_CASE("an axis set back to zero by hand loses what its rate turned, and the other axes keep theirs") {
+    //  Catches: the rate's turn kept after a reset, so the scene stays turned until the transport restarts; every
+    //  axis cleared by one reset.
+    DecoderEngine engine;
+    engine.setHeads(shipped(), shipped());
+    const DecoderState d;
+    REQUIRE(engine.prepare(d, 1, kRate, kFrames, 0.0f));
+    DecoderFrame spinning;
+    spinning.yawRateDeg = 90.0;
+    spinning.pitchRateDeg = 45.0;
+    play(engine, d, spinning, 24);  // 0.512 s
+    CHECK(engine.turn()[0] == doctest::Approx(46.08));
+    CHECK(engine.turn()[1] == doctest::Approx(23.04));
+
+    DecoderFrame reset;  // yaw back to zero by hand, the rates stopped
+    reset.zeroTurns = 1;
+    play(engine, d, reset, 1);
+    CHECK(engine.turn()[0] == doctest::Approx(0.0));
+    CHECK(engine.turn()[1] == doctest::Approx(23.04));
+}
+
+TEST_CASE("each axis's turn is its own angle plus its rate's, with no tracker in it and no jump past the pole") {
+    //  Catches: the turn read back from the whole rotation, so a tracker turning the scene moves the yaw, and a
+    //  pitch past 90 degrees reads as yaw and roll turned half round.
+    DecoderEngine engine;
+    engine.setHeads(shipped(), shipped());
+    DecoderState d;
+    d.trackerTurnsScene = true;
+    REQUIRE(engine.prepare(d, 1, kRate, kFrames, 0.0f));
+    DecoderFrame c;
+    c.yawDeg = 10.0;
+    c.pitchDeg = 80.0;
+    c.pitchRateDeg = 40.0;
+    c.tracker = headFromYpr(30.0, 0.0, 0.0);
+    play(engine, d, c, 24);
+    CHECK(engine.turn()[0] == doctest::Approx(10.0));
+    CHECK(engine.turn()[1] == doctest::Approx(100.48));
+    CHECK(engine.turn()[2] == doctest::Approx(0.0));
+}
+
 TEST_CASE("the level starts where prepare puts it, rather than gliding there from unity") {
     //  Catches: the level glide starting at unity, so a render at -60 dB opens with a burst.
     DecoderFrame quiet;
@@ -164,14 +218,51 @@ TEST_CASE("with the gaps filled every output waits the same: the reported latenc
             worst = std::max(worst, static_cast<double>(std::abs(filled[c][i + wait] - plain[c][i])));
         CHECK(worst < 1e-6);
     }
-    //  On its own loudspeaker the source keeps its level and lands as late as everything else.
+    //  On its own loudspeaker the source lands as late as everything else, and that loudspeaker carries it.
     CHECK(peakAt(filled[0]) == peakAt(plain[0]) + wait);
-    CHECK(std::abs(10.0 * std::log10(energy(filled[0]) / energy(plain[0]))) < 1.0);
+    CHECK(10.0 * std::log10(energy(filled[1]) / energy(filled[0])) < -6.0);
+}
+
+TEST_CASE("with the gaps filled the loudspeakers play as loud over every direction as without") {
+    //  Catches: the fill's loudness left out of the dry part or of the cancellation's feeds.
+    const auto loudness = [](bool fill) {
+        DecoderState d;
+        d.speakersPlay = true;
+        d.layout = bs2051Layout("0+5+0")->speakers;
+        d.headphoneChannel = 6;
+        d.fill = fill;
+        DecoderEngine engine;
+        engine.setHeads(shipped(), shipped());
+        constexpr int kEach = 2048, kPoints = 200, kOut = 7;
+        REQUIRE(engine.prepare(d, 3, kRate, kEach, 0.0f));
+        const int C = numChannels(3);
+        std::vector<float> in(static_cast<std::size_t>(kEach * C));
+        std::vector<double> y(static_cast<std::size_t>(C));
+        std::vector<std::vector<float>> out(kOut, std::vector<float>(kEach));
+        std::vector<float*> channels;
+        channels.reserve(out.size());
+        for (auto& ch : out) channels.push_back(ch.data());
+        double e = 0.0;
+        for (int j = 0; j <= kPoints; ++j) {  // one block more, for the last impulse's tail
+            std::fill(in.begin(), in.end(), 0.0f);
+            if (j < kPoints) {
+                const double z = 1.0 - (2.0 * j + 1.0) / kPoints, r = std::sqrt(1.0 - z * z),
+                             phi = j * 2.399963229728653;
+                shSN3D(Vec3{r * std::cos(phi), r * std::sin(phi), z}, 3, y);
+                for (int c = 0; c < C; ++c)
+                    in[static_cast<std::size_t>(c)] = static_cast<float>(y[static_cast<std::size_t>(c)]);
+            }
+            engine.process(d, DecoderFrame{}, in.data(), channels.data(), kOut, kEach);
+            for (int o = 0; o < 5; ++o) e += energy(out[static_cast<std::size_t>(o)]);
+        }
+        return e;
+    };
+    CHECK(std::abs(10.0 * std::log10(loudness(true) / loudness(false))) < 0.5);
 }
 
 TEST_CASE("behind and to the left the fill gives the ears what headphones would give them") {
     //  Catches: the HRTF window, the binaural decode or the cancellation wired the wrong way round, the fill's rows
-    //  on the wrong outputs, a delay the ears do not get.
+    //  on the wrong outputs, a delay the ears do not get, the fill's loudness left out of the feeds.
     int latency = 0;
     const DecoderState d = laptopPair(true);
     const Vec3 from = direction(140, 20);  // not on the median plane, so swapped ears or loudspeakers show
@@ -185,6 +276,15 @@ TEST_CASE("behind and to the left the fill gives the ears what headphones would 
     quadratureGrid(12, 20, dirs, w);
     REQUIRE(head.prepare(shipped(), fillFilterDesign(kRate), dirs, w));
     head.build(0.0, 1.0);
+    //  What the fill gives the ears, in its band: the source, at the cancellation's level and the fill's loudness.
+    Layout layout;
+    layout.speakers = d.layout;
+    const SpeakerDesign sd = design(layout, 3);
+    FillWindows windows;
+    fillWindows(coveredRegion(sd), FillSettings{}, 3, windows);
+    Cancellation cancel;
+    REQUIRE(designCancellation(sd, head, FillSettings{}, kRate, cancel));
+    const double gain = cancel.level * fillLoudness(sd, windows, cancel, head, kRate);
     const auto earsFrom = [&](Vec3 v) {
         std::vector<double> y(static_cast<std::size_t>(numChannels(kFillOrder)));
         shSN3D(v, kFillOrder, y);
@@ -218,11 +318,11 @@ TEST_CASE("behind and to the left the fill gives the ears what headphones would 
         const auto target = spec(B[static_cast<std::size_t>(ear)]);
         for (std::size_t k = 0; k < fft.bins(); ++k) {
             const double hz = static_cast<double>(k) * kRate / 8192.0;
-            if (hz < 500.0 || hz > 5000.0) continue;
+            if (hz < 500.0 || hz > 4000.0) continue;
             const auto late = std::polar(1.0, -2.0 * kPi * static_cast<double>(k) * latency / 8192.0);
             const auto heard = hl[k] * xL[k] + hr[k] * xR[k];
-            err += std::norm(heard - target[k] * late);
-            ref += std::norm(target[k]);
+            err += std::norm(heard - gain * target[k] * late);
+            ref += std::norm(gain * target[k]);
         }
     }
     CHECK(10.0 * std::log10(err / ref) < -15.0);

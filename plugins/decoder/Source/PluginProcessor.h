@@ -105,6 +105,11 @@ public:
     juce::String matrixNote() const;  ///< the loaded matrix in a line, for the page; empty without one
     /// Take the yaw off the tracker's orientation at the next block; pitch and roll stay. Any thread.
     void recentre() noexcept { recentre_.store(true, std::memory_order_relaxed); }
+    /// Yaw, pitch or roll (0, 1, 2) set back to zero by hand: what its rate has turned goes at the next block. Any
+    /// thread.
+    void zeroTurn(int axis) noexcept {
+        if (axis >= 0 && axis < 3) zeroTurns_.fetch_or(1 << axis, std::memory_order_relaxed);
+    }
     /*  A burst of noise on one bus channel, counted from 1, so a loudspeaker is heard alone and its channel
         checked: 0.4 s at -20 dBFS peak with 10 ms fades, the array's own feeds held back while it plays. 0 stops
         it. Any thread; the audio thread plays it from the next block and clears it when it ends. */
@@ -126,6 +131,7 @@ public:
         std::atomic<std::int64_t> trackerLastMs{0};  ///< when the last orientation arrived, juce::Time millis
         std::atomic<float> headYaw{0.0f}, headPitch{0.0f}, headRoll{0.0f};     ///< the head the decode undoes, degrees
         std::atomic<float> sceneYaw{0.0f}, scenePitch{0.0f}, sceneRoll{0.0f};  ///< the scene's turn in force, degrees
+        std::atomic<float> turnYaw{0.0f}, turnPitch{0.0f}, turnRoll{0.0f};     ///< each axis's angle plus its rate's
     };
     const Diagnostics& diagnostics() const noexcept { return diag_; }
     int engineOrder() const noexcept override { return engineOrder_; }
@@ -238,6 +244,7 @@ private:
     bool trackerSeen_{false};
     double yaw0_{0.0};
     std::atomic<bool> recentre_{false};
+    std::atomic<int> zeroTurns_{0};    ///< one bit per axis whose rate's turn to clear: message thread -> audio thread
     std::atomic<int> testChannel_{0};  ///< the burst's channel, 0 for none
     std::atomic<int> testPos_{0};      ///< frames of the burst played; audio thread
     std::uint32_t testNoise_{1};       ///< the burst's noise generator, reseeded at each start; audio thread
