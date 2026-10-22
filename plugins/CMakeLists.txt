@@ -75,6 +75,19 @@ elseif(BAMBI_LTO)
 endif()
 message(STATUS "link-time optimisation: ${BAMBI_LTO}")
 
+# GNU ld takes from a static library only what is undefined when it reaches it. A plugin's JUCE is in its shared-code
+# library, and the link line names it before the plugin's own code and the shared libraries, which use JUCE too. So on
+# Linux a plugin bundle links its libraries as one group, searched until nothing more resolves, and a symbol still
+# undefined fails the link instead of the host that loads the bundle. A sanitizer's runtime is the executable's, so a
+# sanitizer build leaves its symbols undefined in a bundle.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(_group "-Wl,--start-group <LINK_LIBRARIES> -Wl,--end-group")
+  if(NOT BAMBI_SANITIZE)
+    string(PREPEND _group "-Wl,--no-undefined ")
+  endif()
+  string(REPLACE "<LINK_LIBRARIES>" "${_group}" CMAKE_CXX_CREATE_SHARED_MODULE "${CMAKE_CXX_CREATE_SHARED_MODULE}")
+endif()
+
 # JUCE, compiled once, for the tools. A module links its sources into every target that links it, so the
 # libraries below take only its headers and settings (bambi-juce-headers), and each binary gets exactly one
 # copy of JUCE: a plugin the one JUCE's plugin wrapper compiles into it, a tool this one. No library links a
